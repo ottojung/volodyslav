@@ -47,27 +47,24 @@ A supported retained journal satisfies:
 
 1. record `(A,q)` has `id.author == A` and `id.sequence == q`;
 2. for every retained A, every sequence `1..frontier[A]` exists;
-3. one `JournalRecordId` has one canonical immutable meaning;
+3. one `JournalRecordId` has one canonical historical meaning;
 4. every retained semantic-event context is covered by the retained frontier;
-5. all record versions are decodable under the current supported interpretation.
+5. every retained record is encoded in the one canonical format selected by the replica's current `global/version`.
 
-## Record version
+## Single current record format
 
-Every persisted Journal 3 record carries an explicit format discriminator:
+Journal records do not carry a per-record format/version discriminator.
 
-```text
-JournalRecordVersion = positive integer
-```
+The existing database `global/version` value selects the representation of the entire active replica, including journal records and journal-derived metadata. A supported current replica therefore never contains a mixture of old/new journal record formats and ordinary replay never upcasts or downcasts individual records.
 
-The initial Journal 3 persisted format uses:
+A version migration which changes journal representation rewrites every retained record into the target version's canonical format before target cutover. That rewrite may change/add/remove representation fields, but for every pre-existing record it preserves:
 
-```text
-recordVersion = 1
-```
+- `JournalRecordId`;
+- the historical semantic fact represented by that ID;
+- causal context/authority meaning;
+- ValueId and other cross-record reference identity.
 
-`recordVersion` selects the immutable record codec/meaning for that record. Future versions may add a decoder/upcaster, but may not destructively rewrite an existing `(author,sequence)` into new meaning.
-
-A pure upcaster converts one historical record representation into the current in-memory semantic model without external I/O, clock reads, computor calls, migration callbacks, or changing the historical fact represented by that ID.
+The old active replica and the inactive migration target may temporarily use different whole-database formats while migration is in progress. Each replica itself remains homogeneous.
 
 ## Record classes
 
@@ -83,7 +80,6 @@ Every record starts with:
 
 ```text
 JournalRecordBase = {
-    recordVersion: JournalRecordVersion,
     id: JournalRecordId
 }
 ```
@@ -104,14 +100,13 @@ EventRef = {
 
 `context` and `authorityTime` are immutable event meaning.
 
-Two representations claiming one semantic event ID must agree on:
+Two current-format representations claiming one semantic event ID must agree on:
 
-- record version/decoded meaning;
 - context;
 - authority time;
 - node;
 - event kind;
-- every kind-specific body field.
+- every kind-specific semantic field.
 
 Disagreement is a writer fork/corruption error, not a graph conflict.
 
@@ -121,7 +116,7 @@ Disagreement is a writer fork/corruption error, not a graph conflict.
 ValueId = JournalRecordId
 ```
 
-A `ValueId` is valid only when its record decodes to a `ValueEvent`.
+A `ValueId` is valid only when its record is a `ValueEvent`.
 
 One ValueId denotes exactly one immutable semantic value occurrence for one semantic `NodeKey`.
 
@@ -189,6 +184,22 @@ Synchronization copies a foreign ValueEvent unchanged. Receipt does not create a
 
 Reset/migration may intentionally create new baseline ValueEvents carrying an already-existing physical NodeIdentifier and target payload/timestamps; those new event IDs are distinct new semantic occurrences.
 
+## NodeIdentifier uniqueness basis
+
+Journal 3 relies on the existing NodeIdentifier allocation contract rather than establishing uniqueness by rescanning historical ValueEvents.
+
+Conceptually a locally allocated NodeIdentifier combines:
+
+```text
+(DatabaseFingerprint, strictly increasing local allocation index)
+```
+
+The database-fingerprint intent explicitly accepts the negligible probability of two independently-created hosts receiving the same fingerprint. Within one continuing fingerprint namespace, the durable `last_node_index` allocation watermark never moves backward and an allocated/retired local index is never reused.
+
+Therefore NodeIdentifiers are treated as globally and forever unique under the project's accepted fingerprint-collision assumption plus monotone local allocation.
+
+Same-writer restoration and migration must preserve/reconstruct the allocator watermark before that writer may allocate again. Observable current reuse of one physical identifier for incompatible semantic nodes remains corruption, but historical replay does not need a second independent uniqueness mechanism beyond the allocator/fingerprint invariant.
+
 ## DeleteEvent
 
 ```text
@@ -237,9 +248,27 @@ its basis contains exactly one entry for every current direct input:
 ]
 ```
 
-The displayed `D0,D1,...` order is illustrative only. Persisted `ValidationBasis` entries are always sorted by the project's canonical semantic `NodeKey` order, independent of graph-schema input ordering.
+The displayed `D0,D1,...` order is illustrative only.
 
-Replay meaning is keyed by the explicit `input` NodeKey. Canonical NodeKey ordering gives one stable serialization/meaning which future decoders can validate without possessing the historical schema that authored the certificate.
+### Canonical NodeKey order
+
+For the current database format, persisted `ValidationBasis` entries are ordered by the canonical persisted semantic identity of their NodeKey:
+
+```text
+nodeKeyOrder(A,B) =
+    lexicographicCompare(
+        nodeKeyStringToString(serializeNodeKey(A)),
+        nodeKeyStringToString(serializeNodeKey(B))
+    )
+```
+
+using the same JavaScript string lexicographic ordering as the current `compareNodeKeyStringByNodeKey` storage comparator.
+
+This is deliberately the order of canonical persisted `NodeKeyString` identities, not the separate typed `compareNodeKey()` ordering. The ordering is independent of graph-schema input position.
+
+If a future database version changes NodeKey representation/order, migration rewrites all retained affected journal records into that version's one canonical representation; current replay is not required to retain an eternal per-record v1 ordering rule.
+
+Replay meaning is keyed by the explicit `input` NodeKey. Canonical NodeKey ordering gives one stable serialization/meaning for the current database representation without possessing the historical schema that authored the certificate.
 
 The current schema is used separately to determine whether the certificate's explicit input-key set is complete/applicable to the current node interpretation.
 
