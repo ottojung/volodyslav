@@ -8,6 +8,8 @@ A record can have a valid object shape yet still be impossible Journal 3 history
 
 Supported retained history must satisfy these rules before replay or synchronization may treat the records as semantic evidence.
 
+All records considered here have already been decoded according to the replica's one current `global/version` format. There is no per-record version dispatch during ordinary well-formedness checking.
+
 ## Reference causality
 
 For semantic events E and F, `happenedBefore(E,F)` is defined by `incremental-graph-journal-types.md`.
@@ -54,7 +56,7 @@ A validation basis is an array of explicit semantic-input claims:
 
 The basis must not contain two entries with the same `input` NodeKey.
 
-Entries must be serialized in canonical semantic `NodeKey` order. This ordering is independent of the graph-schema input order which existed when the validation was authored, so a future decoder can validate/canonicalize the immutable record without requiring that historical schema.
+Entries must be serialized by the current format's canonical persisted `NodeKeyString` lexicographic order defined in the types spec. This ordering is independent of the graph-schema input order which existed when the validation was authored, so current software can validate/canonicalize the retained record without requiring that historical schema.
 
 For each entry B:
 
@@ -103,15 +105,15 @@ set(C.basis.input) == set(inputEdges(C.node))
 
 A controlled bootstrap/reset/migration baseline likewise records one basis entry for every direct input in its target schema interpretation, with `"unknown"` where the target legacy validity edge is intentionally absent.
 
-In all cases the resulting entries are serialized by canonical NodeKey order after that set has been constructed.
+In all cases the resulting entries are serialized by canonical current NodeKey order after that set has been constructed.
 
-An old historical certificate remains intelligible after a later schema migration because its basis records its own semantic input NodeKeys explicitly. It is not retroactively malformed merely because the current schema now gives that node a different input set; migration creates a new current ValueId/certificate baseline for the new schema.
+An old historical certificate remains intelligible after a later schema migration because its basis records its own semantic input NodeKeys explicitly. Database migration rewrites its representation into the target current format while preserving that historical claim. It is not retroactively malformed merely because the current schema now gives that node a different input set; semantic migration creates a new current ValueId/certificate baseline for the new schema.
 
 For current replay, such an old certificate is eligible only if its explicit basis input-key set equals the current direct-input set for its node, as defined by the replay specification.
 
 ## No partial salvage of malformed certificates
 
-A malformed certificate is rejected as an immutable historical record.
+A malformed certificate is rejected as retained historical state.
 
 Replay/import must not:
 
@@ -152,7 +154,7 @@ Its effect is deliberately independent of which value occurrence is currently se
 
 Core DeleteEvent and ValueEvent contain no semantic-event-ID references, so their cross-record well-formedness is determined by:
 
-- valid record identity/version;
+- valid current-format record identity/body;
 - valid causal context;
 - valid authority allocation/order;
 - valid NodeKey/payload/timestamp/identifier fields; and
@@ -198,13 +200,15 @@ later WriterStateRecord.lastNodeIndex
 
 Replay rejects a decreasing watermark.
 
+This monotone watermark is also part of the existing NodeIdentifier uniqueness argument: once a local allocation index has been retired, later authoring under the same fingerprint must not allocate it again.
+
 ## Imported-record validation
 
-Synchronization/import must validate these rules before activating imported history.
+Synchronization/import operates only between compatible current database versions and validates these rules before activating imported history.
 
-If a source provides a syntactically valid record whose reference causality or self-described basis is impossible, the source history is unsupported/corrupt.
+If a source provides a syntactically valid current-format record whose reference causality or self-described basis is impossible, the source history is unsupported/corrupt.
 
-The receiver must not rewrite/re-author the source event to make it fit its current graph.
+The receiver must not rewrite/re-author the source event to make it fit its current graph. Cross-version representation rewriting belongs only to the explicit database migration path before ordinary synchronization.
 
 ## Replay assumption
 
