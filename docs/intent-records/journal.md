@@ -245,3 +245,31 @@ Keeping one current persisted format is more important than making database migr
 A migration which changes journal representation may inspect and rewrite the complete retained journal. Its running time and I/O may therefore grow linearly with the number and serialized size of retained journal records, even when the current graph or recent change set is small. This whole-history migration cost is an accepted price for avoiding permanent per-record version tags, compatibility decoders, and mixed-format state.
 
 Implementations should still stream the rewrite when practical so the accepted time/I/O cost does not imply retaining the complete journal in RAM. This trade-off concerns migration cost only; it does not weaken journal retention, replay correctness, synchronization convergence, or the separate synchronization-performance intent.
+
+---
+
+$id-1270770443138081
+title: Independent migration may stale dependents of replaced occurrences
+date: 2026/09/14
+source: @ottojung
+kind: accepted-tradeoff
+
+Journal-aware migration does not require replicas to coordinate on one canonical semantic migration author when a migration genuinely creates or replaces value occurrences.
+
+Each replica may independently author its own replacement `ValueEvent`. When those histories later synchronize, normal conflict authority selects the current occurrence. A dependent whose certificate names a losing replacement occurrence may therefore become stale and require revalidation or recomputation.
+
+This consequence is accepted in order to preserve migration independence and the no-remote-participation requirement. Occurrence-preserving migrations, including semantic-preserving `override()` representation rewrites, keep existing shared ValueIds and do not incur this identity split.
+
+---
+
+$id-1847369205416728
+title: Canonical bootstrap creation must be arbitrated
+date: 2026/09/14
+source: @ottojung
+kind: requirement
+
+The one-time transition from legacy state into a synchronization cohort's canonical Journal bootstrap must not permit two independently created canonical histories to both become accepted for the same cohort.
+
+The configured transport-neutral cohort bootstrap source must distinguish an existing canonical snapshot, definite absence suitable for first creation, and an indeterminate/error result. Indeterminate/error must fail rather than authorize creation.
+
+This requirement specifies lifecycle semantics only. It does not prescribe Git locking, a hosted backend, RPCs, or another transport mechanism. If distinct canonical bootstrap histories are nevertheless discovered, the state is unsupported and requires explicit recovery rather than payload-based reconciliation.
