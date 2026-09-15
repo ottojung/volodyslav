@@ -6,7 +6,7 @@ This document defines the software-facing boundaries required by Journal 3.
 
 Journal 3 deliberately does not expose raw journal mutation to ordinary computors or application code. The public IncrementalGraph contract remains centered on `pull()`, `invalidate()`, and inspection. Journal storage/replay APIs are internal infrastructure used by graph transactions, synchronization, migration, reset, recovery, and diagnostics.
 
-The API shapes below are semantic interfaces. Exact JavaScript class/function names may differ, but an implementation must preserve the ownership, snapshot, streaming, atomicity, and error behavior specified here.
+The API shapes below are semantic interfaces. Exact JavaScript class/function names may differ, but an implementation must preserve the ownership, snapshot, streaming, atomicity, compatibility, and error behavior specified here.
 
 They do not prescribe or replace a Git/remote/backend protocol. An existing transport may adapt its stable snapshot into these semantic interfaces without Journal 3 specifying how that transport discovers, stores, or publishes the bytes.
 
@@ -49,7 +49,7 @@ A future read-only journal-inspection API may expose history for diagnostics. Su
 
 ## JournalStore
 
-Conceptually, each live database owns one `JournalStore` associated with the same durable transaction domain as the materialized IncrementalGraph state.
+Conceptually, each live database owns one `JournalStore` associated with the same durable transaction domain as the materialized IncrementalGraph state and its durable global metadata.
 
 It provides these capabilities:
 
@@ -62,14 +62,33 @@ JournalStore {
 }
 ```
 
-The store is not independently swappable from the graph database. A committed supported database always pairs one retained journal with its matching projection.
+The store is not independently swappable from the graph database. A committed supported database always pairs one retained journal with its matching projection and compatibility metadata.
+
+## Snapshot compatibility metadata
+
+Journal interpretation depends on the same durable metadata that already guards IncrementalGraph opening:
+
+```text
+JournalCompatibility = {
+    databaseVersion: Version,
+    graphSchemeString: string
+}
+```
+
+`databaseVersion` is the exact persisted `global/version` value for the selected replica.
+
+`graphSchemeString` is the exact persisted `global/graph_scheme` string for that replica. It is compared exactly, matching the existing graph-scheme contract: textual differences count as different even when both strings parse to structurally equivalent JSON.
+
+This is not a new remote protocol or a second version system. It exposes the existing durable database compatibility metadata through the same immutable semantic snapshot as the journal records that depend on it.
 
 ## JournalSnapshot
 
-A `JournalSnapshot` is an immutable read view at one exact committed journal frontier:
+A `JournalSnapshot` is an immutable read view at one exact committed database state:
 
 ```text
 JournalSnapshot {
+    databaseVersion: Version
+    graphSchemeString: string
     localWriter: JournalAuthor
     frontier: JournalFrontier
 
@@ -85,14 +104,15 @@ JournalSnapshot {
 
 Snapshot laws:
 
-1. `frontier` never changes during the snapshot lifetime.
-2. `iterate(A,p,q)` yields exactly `A:(p+1)..q` in ascending sequence order when `q <= frontier[A]`.
-3. It never silently skips a sequence.
-4. Every yielded record is the immutable record stored under that `JournalRecordId`.
-5. The snapshot exposes a causally closed retained journal.
-6. Reading a snapshot never invokes computors and never mutates journal or graph state.
+1. `databaseVersion`, `graphSchemeString`, and `frontier` never change during the snapshot lifetime.
+2. Those compatibility fields and every journal record exposed by the snapshot belong to the **same committed selected replica state**. They must not be assembled from independent mutable reads which could straddle a migration/cutover.
+3. `iterate(A,p,q)` yields exactly `A:(p+1)..q` in ascending sequence order when `q <= frontier[A]`.
+4. It never silently skips a sequence.
+5. Every yielded record is the immutable record stored under that `JournalRecordId` in the snapshot's database version.
+6. The snapshot exposes a causally closed retained journal.
+7. Reading a snapshot never invokes computors and never mutates journal or graph state.
 
-An implementation may additionally provide efficient node/event indexes, but callers must not infer authority from an index that is not part of the immutable record history.
+An implementation may additionally provide efficient node/event indexes, but callers must not infer authority from an index that is not part of the journal history.
 
 ## Stable synchronization source
 
@@ -106,9 +126,20 @@ JournalSyncSource {
 
 The returned snapshot stays stable until released by the synchronization caller. How Git, another local database, a file, or another transport provides that snapshot is outside Journal 3 semantics.
 
-A synchronization algorithm may issue many range reads against the snapshot. All of those reads belong to the same frozen source frontier.
+A synchronization/reset algorithm may issue many range reads against the snapshot. The compatibility check and all of those reads belong to the same frozen source state.
 
-This is the only source-read stability property synchronization requires semantically: one operation must not accidentally read writer heads from one source state and records from a later incompatible source state.
+In particular this pattern is invalid:
+
+```text
+read source global/version + global/graph_scheme
+source migrates/cuts over
+openSnapshot() from new source state
+interpret new journal using old compatibility decision
+```
+
+Instead the caller obtains `databaseVersion` and `graphSchemeString` **from the returned JournalSnapshot itself**, compares them with the receiver's active metadata, and then reads records from that same snapshot.
+
+This is the source-read stability property synchronization and reset require semantically. It does not dictate how the underlying transport implements the stable snapshot.
 
 ## JournalPublication
 
@@ -195,11 +226,13 @@ JournalImportTarget {
 }
 ```
 
+Before source records are interpreted/imported, the caller has already compared the held `JournalSnapshot.databaseVersion` and `graphSchemeString` with the receiver's active committed metadata. A mismatch is `JournalVersionCompatibilityError`, not a record-validation error and not permission to run an implicit migration.
+
 Imported records preserve their exact IDs and canonical meanings. The import path must reject:
 
 - a hole in a claimed writer prefix;
 - conflicting content for an already-retained ID;
-- malformed/unsupported record encoding;
+- malformed/unsupported current-version record encoding;
 - impossible ValueId reference causality;
 - duplicate/noncanonical self-describing validation-basis entries;
 - a final frontier which is not causally closed;
@@ -258,9 +291,13 @@ Exact return-object spelling is implementation-defined; these meanings are norma
 - `authoredThrough` is the receiver's local writer head after any synchronization normalization records;
 - `changed` is true iff the committed journal/projection changed.
 
-A successful call means the receiver has atomically committed a valid causally closed union/normalization result.
+A successful call means:
 
-A source which contributes no missing records and requires no normalization is a semantic no-op.
+- compatibility metadata was read from the same held snapshot as the imported records;
+- source `databaseVersion` and `graphSchemeString` exactly matched the receiver's active committed metadata;
+- the receiver atomically committed a valid causally closed union/normalization result.
+
+A source which contributes no missing records and requires no normalization is a semantic no-op after the same compatibility check succeeds.
 
 Synchronization-authored normalization is real journal history. The API does not promise to retract it if later unseen concurrent history changes current graph selection.
 
@@ -285,7 +322,7 @@ The names are illustrative; the distinctions are normative.
 
 A caller must be able to distinguish:
 
-- incompatible/unsupported input which must not be merged;
+- incompatible source snapshot metadata which requires migration/another compatible source and must not be imported;
 - conflicting same-writer history;
 - malformed/corrupt journal records;
 - projection invariant failure;
@@ -303,6 +340,8 @@ resetTo(source: JournalSyncSource) -> Promise<ResetResult>
 
 It is an exclusive lifecycle operation specified by `incremental-graph-journal-reset.md`.
 
+Reset obtains one held `JournalSnapshot`, compares that snapshot's exact `databaseVersion` and `graphSchemeString` with the receiver's active committed metadata, and uses that same snapshot for the source journal/projection target. Compatibility must not be checked in an independent mutable read before `openSnapshot()`.
+
 A successful reset preserves retained history and appends a causally-later local reset baseline so that the receiver's materialized graph becomes observationally equivalent to the chosen source projection under the reset rules.
 
 Reset does not destructively replace the receiver's journal with the source journal.
@@ -312,6 +351,8 @@ Reset does not destructively replace the receiver's journal with the source jour
 Journal bootstrap and version migration remain owned by the database migration lifecycle. Migration code does not receive an unrestricted raw journal writer.
 
 Instead the Journal-3-aware migration layer translates the migration's settled target state into the baseline/history records required by `incremental-graph-journal-migrations.md` and commits them atomically with migration cutover.
+
+A format-changing migration may rewrite retained journal records into the target database version's one canonical record representation as specified by the migration document; ordinary `JournalSnapshot` use always exposes one current database representation selected by its `databaseVersion`.
 
 ## Locking ownership
 
