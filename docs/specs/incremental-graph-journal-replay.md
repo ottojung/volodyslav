@@ -6,7 +6,7 @@ This document defines the deterministic projection from supported Journal 3 hist
 
 The journal is authoritative. The legacy graph sublevels are a materialized view.
 
-The projection is defined semantically over immutable journal history. An implementation may maintain equivalent indexes incrementally and is not required to rescan all retained history after every operation.
+The projection is defined semantically over retained journal history. An implementation may maintain equivalent indexes incrementally and is not required to rescan all retained history after every operation.
 
 ## Inputs to replay
 
@@ -25,14 +25,16 @@ project(
 Before replay, the retained journal must satisfy:
 
 - stream identity/prefix contiguity;
-- immutable-record/version decoding;
+- decoding under the one canonical journal format selected by the replica's current `global/version`;
 - timestamp/authority invariants;
 - causal closure; and
 - the cross-record rules in `incremental-graph-journal-well-formedness.md`.
 
+Replay never performs per-record version dispatch, upcasting, or downcasting. If the database version changes, the migration path must first rewrite the complete retained journal into the target current representation.
+
 The current schema is application/version interpretation, not an additional mutable synchronization authority. It defines current structural `inputEdges(K)` and the persisted `graph_scheme` lowering.
 
-Historical ValidateEvents are self-describing with explicit input NodeKeys, so merely decoding old certificate claims does not require historical schema ordering.
+Historical ValidateEvents are self-describing with explicit input NodeKeys, so merely understanding old certificate claims does not require historical schema ordering. Their persisted representation has already been rewritten into the current database format by any intervening migration.
 
 ## Semantic history of one node
 
@@ -103,7 +105,9 @@ present(K) iff head(K) is ValueEvent
 
 Every present K uses the `NodeIdentifier` carried by its selected ValueEvent.
 
-If two distinct present semantic NodeKeys select the same incompatible physical NodeIdentifier, projection fails as unsupported/corrupt current state.
+NodeIdentifier uniqueness is established by the existing allocation contract: the accepted-negligible-collision `DatabaseFingerprint` namespace plus a strictly monotone non-reused local allocation index. Replay does not establish global uniqueness by scanning all historical ValueEvents.
+
+If two distinct present semantic NodeKeys nevertheless select the same incompatible physical NodeIdentifier, projection fails as unsupported/corrupt current state.
 
 The final `identifiers_keys_map` must be bijective over current present keys.
 
@@ -375,6 +379,8 @@ WriterState values must be monotone nondecreasing.
 
 Foreign writer-state records do not change this database's local watermark.
 
+Before continuing local allocation after restoration/migration, this reconstructed watermark must preserve the existing monotone allocator invariant so a retired local index cannot be reused.
+
 ## Replay equality
 
 Two current projections are semantically equivalent when they agree on:
@@ -409,7 +415,7 @@ A clear whole-history/reference path should remain available as an implementatio
 
 ## Replay checkpoint correctness
 
-A checkpoint names an exact JournalFrontier F and contains derived state equivalent to replaying history through F under the compatible schema interpretation for that checkpoint.
+A checkpoint names an exact JournalFrontier F and contains derived state equivalent to replaying history through F under the compatible schema/current database interpretation for that checkpoint.
 
 It is usable only when:
 
@@ -417,9 +423,11 @@ It is usable only when:
 checkpointProjection == project(journal through F)
 ```
 
-and later replay consumes immutable suffix history from the same writer streams.
+and later replay consumes retained suffix history from the same writer streams and same current database representation.
 
-Checkpoint loss is harmless to authority. Authoritative record loss is not.
+Checkpoint loss is harmless to authority. Authoritative journal-record loss is not.
+
+A database format migration may discard/rebuild checkpoints rather than versioning them independently.
 
 ## Corruption/inconsistency handling
 
@@ -427,7 +435,7 @@ Replay/import rejects rather than guesses when it encounters, among other things
 
 - a writer-stream hole;
 - conflicting canonical meaning for one JournalRecordId;
-- undecodable/unsupported record version;
+- journal bytes/body not valid for the current replica's `global/version` format;
 - an event whose claimed causal context is not retained;
 - a ValueId reference which is not causally prior to the referencing event;
 - a validation target naming a non-ValueEvent or another semantic node;
