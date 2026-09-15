@@ -10,7 +10,7 @@ This branch specifies the journal itself and its integration with IncrementalGra
 
 The Journal 3 specification is split by responsibility:
 
-- `incremental-graph-journal-types.md` — immutable record identities, event shapes, causal context, authority ordering;
+- `incremental-graph-journal-types.md` — record identities, event shapes, causal context, authority ordering;
 - `incremental-graph-journal-well-formedness.md` — cross-record/reference validity;
 - `incremental-graph-journal-replay.md` — deterministic projection from retained history to the legacy graph representation;
 - `incremental-graph-journal-emission.md` — mapping ordinary graph transitions to journal records;
@@ -18,7 +18,7 @@ The Journal 3 specification is split by responsibility:
 - `incremental-graph-journal-api.md` — internal/public software-facing boundaries and error/result semantics;
 - `incremental-graph-journal-sync.md` — history replication and synchronization normalization;
 - `incremental-graph-journal-reset.md` — append-only controlled reset/rebaseline;
-- `incremental-graph-journal-migrations.md` — initial bootstrap and later replay-complete migrations;
+- `incremental-graph-journal-migrations.md` — initial bootstrap, whole-format rewrite, and later replay-complete migrations;
 - `incremental-graph-journal-theorems.md` — correctness laws/proof obligations;
 - `incremental-graph-journal-examples.md` — worked semantic traces.
 
@@ -32,7 +32,7 @@ A Journal 3 database has one durable writer identity:
 JournalAuthor = DatabaseFingerprint
 ```
 
-Each author owns one immutable append-only stream:
+Each author owns one append-only semantic stream:
 
 ```text
 A:1, A:2, A:3, ...
@@ -42,12 +42,12 @@ C:1, C:2, C:3, ...
 
 A local database may retain prefixes of many writer streams.
 
-A writer may create new records only under its own identity. Synchronization copies foreign records verbatim; it does not rename, summarize, or re-author them merely because another database learned them.
+A writer may create new records only under its own identity. Synchronization copies foreign records verbatim within one compatible current database version; it does not rename, summarize, or re-author them merely because another database learned them.
 
 The retained history is therefore conceptually:
 
 ```text
-JournalReplica = Map<JournalAuthor, immutable contiguous prefix>
+JournalReplica = Map<JournalAuthor, contiguous prefix>
 ```
 
 with frontier:
@@ -71,6 +71,16 @@ Example:
 means records `A:1..417`, `B:1..93`, and `C:1..51` are retained.
 
 A supported retained frontier is causally closed: if a semantic event claims to have observed another writer through q, that writer's records through q are also retained.
+
+## One current persisted format
+
+The current replica's existing `global/version` selects the representation of the entire replica, including Journal 3 records and journal-derived metadata.
+
+Journal records do not carry independent version stamps. A supported active replica contains only its current-version journal representation, and ordinary open/replay/synchronization does not upcast/downcast individual historical records.
+
+When a database version changes the journal representation, migration constructs an inactive target and rewrites every retained record into the target canonical format before cutover. Existing `(author,sequence)` identities and historical semantic/causal/reference meaning are preserved. The old active and new inactive replicas may temporarily use different versions; each replica individually remains homogeneous.
+
+Whole-journal migration time/I/O is an explicit accepted trade-off for this simplicity.
 
 ## Journal-first state
 
@@ -126,25 +136,27 @@ A graph/journal mismatch is unsupported/corrupt state or derived-state damage. I
 
 A repair/rebuild procedure may recreate graph/index state from valid history, but it may not invent missing journal semantics from the graph once Journal 3 is established.
 
-### J3-INV-3: immutable append-only identity
+### J3-INV-3: immutable journal identity and historical meaning
 
-Once `(author, sequence)` is durably published, that record's canonical meaning never changes and the record is not destructively removed by Journal 3 maintenance.
+Once `(author, sequence)` is durably published, that ID's historical semantic fact never changes and the record is not destructively removed by Journal 3 maintenance.
 
-A supported writer stream is a contiguous prefix from 1. There are no durable holes.
+A supported writer stream is a contiguous prefix from 1. There are no durable holes, and database migration must not insert/remove/renumber pre-existing coordinates.
 
-Derived indexes/checkpoints may be rebuilt or deleted. Authoritative records may not.
+A database-version migration may rewrite the physical/current-format representation of an existing record, but only deterministically while preserving its ID, historical meaning, authority/causal fact, and cross-record references.
+
+Derived indexes/checkpoints may be rebuilt or deleted. Authoritative historical facts may not.
 
 ### J3-INV-4: one continuing writer stream per writer identity
 
 Only writer A may create new A-authored records.
 
-Foreign replicas may retain and relay A's immutable records.
+Foreign replicas may retain and relay A's records.
 
-If a writable A database discovers a longer exact prefix of its own immutable A stream, it may recover/import that suffix under exclusive maintenance and continue authoring strictly after the recovered head.
+If a writable A database discovers a longer exact prefix of its own A stream, it may recover/import that suffix under exclusive maintenance and continue authoring strictly after the recovered head.
 
-If two copies disagree on any overlapping A record, A's history has forked or storage is corrupt; the disagreement is rejected rather than merged.
+If two same-version copies disagree on any overlapping A record, A's history has forked or storage is corrupt; the disagreement is rejected rather than merged.
 
-Two independently live writable installations intentionally sharing one `DatabaseFingerprint` are outside the supported lifecycle.
+Two independently live writable installations intentionally sharing one `DatabaseFingerprint` are outside the supported lifecycle. Accidental independently-created fingerprint collision is the explicit accepted negligible-risk trade-off recorded elsewhere.
 
 ### J3-INV-5: causal closure
 
@@ -178,7 +190,7 @@ Ordinary graph transactions use the per-replica commit boundary. Synchronization
 
 ### J3-INV-7: deterministic replay
 
-For one compatible current interpretation and one supported causally closed journal J:
+For one compatible current interpretation and one supported causally closed current-format journal J:
 
 ```text
 project(J)
@@ -209,7 +221,7 @@ A `ValidateEvent` identifies each semantic input explicitly:
 }
 ```
 
-Basis input NodeKeys are unique and entries are serialized in canonical semantic NodeKey order, independent of graph-schema input enumeration order.
+Basis input NodeKeys are unique and entries are serialized by canonical persisted `NodeKeyString` lexicographic order, independent of graph-schema input enumeration order.
 
 Known ValueIds are causally prior occurrences of the named semantic input. `"unknown"` is allowed only in controlled bootstrap/reset/migration baselines.
 
@@ -217,7 +229,7 @@ Current replay uses a certificate as current structural proof only when its expl
 
 ## Authoritative history versus derived acceleration
 
-Authoritative history consists of immutable writer records and every payload/timestamp/causal fact needed by replay.
+Authoritative history consists of writer records and every payload/timestamp/causal fact needed by replay.
 
 Derived state may include:
 
@@ -240,7 +252,9 @@ Checkpoint {
 }
 ```
 
-and permit loading the projection then replaying the suffix. Deleting that checkpoint is harmless to correctness. Deleting the authoritative records it summarizes is not Journal 3 checkpointing.
+and permit loading the projection then replaying the suffix. Deleting that checkpoint is harmless to correctness. Deleting the authoritative historical records it summarizes is not Journal 3 checkpointing.
+
+A database migration may rewrite/discard/rebuild checkpoint representation rather than versioning checkpoints independently.
 
 ## Semantic event model
 
@@ -272,6 +286,18 @@ Equal payload bytes do not imply equal occurrence identity.
 
 A computation which legitimately preserves the current semantic value (`Unchanged` or cache revalidation) preserves the existing ValueId and records a new validation when persisted graph state changes from stale to fresh.
 
+## NodeIdentifier uniqueness
+
+Journal 3 relies on the existing identifier allocator contract:
+
+```text
+NodeIdentifier ~= (DatabaseFingerprint, strictly increasing local index)
+```
+
+The fingerprint is treated as sufficiently collision-resistant by explicit repository intent. Within one continuing fingerprint namespace, `last_node_index` is a monotone retirement watermark and local allocation indices are never reused.
+
+That is the basis for treating NodeIdentifiers as globally and forever unique. Replay still rejects observable incompatible current reuse, but does not introduce a second historical uniqueness protocol.
+
 ## Conflict authority
 
 Journal semantic authority extends exact happened-before.
@@ -284,7 +310,7 @@ The authority order is deterministic conflict precedence, not a promise of true 
 
 ## Synchronization model
 
-Synchronization transfers the immutable suffixes missing from one stable source snapshot and unions them with receiver history.
+Synchronization transfers the current-format suffixes missing from one stable compatible-version source snapshot and unions them with receiver history.
 
 Because history itself is transferred:
 
@@ -300,9 +326,11 @@ Raw history union may require explicit receiver-authored normalization to preser
 
 Those normalization records are ordinary semantic history after commit, not transport acknowledgements.
 
+Ordinary synchronization never converts records across database versions. Peers migrate first.
+
 ## Synchronization convergence model
 
-At the retained imported-history level, compatible immutable prefix union is idempotent, commutative, and associative.
+At the retained imported-history level, compatible same-version prefix union is idempotent, commutative, and associative.
 
 Normalization is different: synchronization may itself author real `DeleteEvent(reason="sync")` or value-scoped `InvalidateEvent(reason="sync")` records because a real receiver graph transition occurred at that synchronization boundary.
 
@@ -316,7 +344,7 @@ The precise law/proof obligation is specified in `incremental-graph-journal-sync
 
 Reset retains history.
 
-It first observes/imports the chosen source history, then appends a receiver-authored causally later baseline whose projection matches the requested source graph semantics.
+It first observes/imports the chosen compatible-version source history, then appends a receiver-authored causally later baseline whose projection matches the requested source graph semantics.
 
 Old receiver events remain replay/debug history. There is no new journal incarnation and no cursor reset because immutable frontiers remain true statements about retained history.
 
@@ -324,9 +352,13 @@ Same-writer restoration which merely catches up an exact missing local suffix do
 
 ## Migration model
 
-Initial pre-Journal-3 bootstrap constructs a replay baseline from the supported legacy graph.
+Initial pre-Journal-3 bootstrap constructs a replay baseline directly in the target current database format from the supported legacy graph.
 
-Later Journal-3-aware migration retains all old history and appends a complete current-state migration baseline for the target graph. Future replay uses the recorded migration result rather than rerunning historical migration callbacks.
+Later Journal-3-aware migration first rewrites every retained journal record into the target version's canonical representation while preserving old `JournalRecordId`s and historical meaning. It then appends a complete current-state migration baseline for any semantic graph/schema change.
+
+Future replay uses only the one target current representation and the recorded migration result rather than rerunning historical migration callbacks or historical record-format interpreters.
+
+The format rewrite must be deterministic so replicas which independently migrate shared history later agree exactly on overlapping same-ID target records.
 
 Cross-version ordinary synchronization remains disallowed until both sides have a compatible current interpretation.
 
@@ -336,20 +368,22 @@ Journal 3 has no destructive compaction operation.
 
 Retained history may grow with historical activity and payload volume.
 
-Future compression, blob deduplication, archival, indexes, and checkpoints are permitted only when the logical immutable history and replay meaning remain intact.
+Future compression, blob deduplication, archival, indexes, and checkpoints are permitted only when the logical historical identities and replay meaning remain intact.
+
+A whole-database migration may replace an old physical encoding with the target current encoding of the same retained history; that is not destructive semantic compaction.
 
 ## Transport independence
 
 Journal semantics do not depend on Git, a SQL database, a hosted service, filesystem snapshots, or another transport/storage product.
 
-Journal 3 requires only transport-neutral properties such as stable source snapshots and ordered immutable writer-prefix reads.
+Journal 3 requires only transport-neutral properties such as stable source snapshots and ordered current-format writer-prefix reads.
 
 Concrete remote/backend publication protocols and changes to existing transport behavior are intentionally outside the current scope.
 
 ## Current-version replay boundary
 
-Core current-state replay operates under one compatible current database version and graph schema.
+Core current-state replay operates under one compatible current `global/version` and graph schema.
+
+The complete active journal is already encoded in that version's one canonical format. Future record-format evolution is handled by whole-database migration which rewrites all retained records before cutover, not by permanent per-record version fields or decoder/upcaster chains.
 
 Journal-aware migration records complete target baselines so current replay never needs to rerun old application migrations.
-
-Because old authoritative records remain stored indefinitely, future record-format evolution must preserve the ability to decode/upcast historical immutable records according to their recorded format contract.
