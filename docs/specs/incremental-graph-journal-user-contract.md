@@ -67,13 +67,15 @@ synchronizeFrom(source)
 
 is an administrative operation, not a computor call.
 
+Ordinary synchronization requires source and receiver to already use one compatible current database/schema representation. It does not migrate or convert individual journal records on the fly.
+
 After a successful pairwise synchronization:
 
-- the receiver retains every compatible immutable source record through the captured source frontier;
+- the receiver retains every compatible source historical record through the captured source frontier;
 - any required receiver normalization history is committed;
 - the active graph equals replay of the active journal;
 - no computor was invoked;
-- source payloads are taken from immutable ValueEvents, not recomputed;
+- source payloads are taken from ValueEvents, not recomputed;
 - repeating against the same unchanged already-incorporated source is a semantic no-op.
 
 Synchronization may observably change:
@@ -109,14 +111,17 @@ An outer operation processing multiple sources may have committed earlier source
 
 Failures distinguish incompatibility, writer fork/corruption, malformed history, projection failure, and ordinary publication/I/O failure sufficiently for lifecycle code to respond appropriately.
 
+A database-version mismatch is a migrate-first incompatibility rather than permission for synchronization to upcast/downcast records.
+
 ## Same-writer restoration
 
-A controlled installation which has an exact prefix of its own writer history may recover a longer exact suffix.
+A controlled installation which has an exact prefix of its own writer history may recover a longer exact suffix at the same compatible current database version.
 
 After successful recovery:
 
-- the restored writer history is retained verbatim;
+- the restored writer history is retained exactly in the current representation;
 - graph state is replayed from it;
+- local allocator/writer state is restored before new allocation;
 - new local events continue after the recovered head;
 - no synthetic reset is required solely because history was temporarily missing locally.
 
@@ -135,7 +140,7 @@ requests the source's projected graph state relative to all history reset curren
 After success:
 
 - old receiver history is still retained;
-- source history is retained/imported;
+- compatible-version source history is retained/imported;
 - a new local reset baseline establishes source-equivalent payload/timestamp/freshness/validity semantics;
 - current ValueIds may differ from the source because reset authors new baseline occurrences;
 - the operation is atomic;
@@ -149,11 +154,23 @@ Repeated reset to an unchanged target which is already satisfied may report no c
 
 A Journal-3-aware application does not expose an initialized graph until required version migration/bootstrap and journal/projection validation succeed.
 
-Initial conversion from a supported pre-Journal-3 database records a replay baseline equivalent to the legacy graph.
+The active replica has one persisted representation selected by its existing `global/version`. Journal records do not carry independent format versions, and normal startup/replay does not maintain a mixture of old/new journal formats or invoke per-record upcasters.
 
-Later migrations retain old history and record their settled target result. Future startup/replay does not rerun historical migration callbacks merely to reconstruct current state.
+Initial conversion from a supported pre-Journal-3 database records a replay baseline directly in the target current format equivalent to the legacy graph.
 
-Historical validation certificates remain decodable because they explicitly identify the semantic input NodeKeys they referred to; current replay only uses a certificate as current proof when its input-key set matches the current schema.
+For a later Journal-3-aware database-version migration:
+
+1. the old active replica remains in its source format while an inactive target is built;
+2. every retained journal record is deterministically rewritten into the target version's canonical representation while preserving its `JournalRecordId`, historical semantic fact, causal identity, and references;
+3. semantic graph/schema changes are recorded separately by a new migration baseline;
+4. the target graph/journal pair is verified; and
+5. cutover is atomic.
+
+After cutover the target contains only the target current representation. Future startup/replay neither decodes the old record format nor reruns historical migration callbacks merely to reconstruct current state.
+
+Because representation migration may touch every retained record, migration time and I/O may grow with the complete journal. That cost is an accepted trade-off for keeping the database single-format; implementations should still stream the rewrite where practical rather than requiring the complete journal in RAM.
+
+Historical validation certificates remain semantically intelligible because they explicitly identify the semantic input NodeKeys they referred to. Their representation is rewritten into the target current format during migration, while current replay only uses a certificate as current proof when its input-key set matches the current schema.
 
 ## Projection rebuild
 
@@ -163,10 +180,12 @@ For valid history, successful rebuild is semantically invisible to application c
 
 If authoritative history itself is malformed/forked, rebuild fails rather than changing history to match damaged graph bytes.
 
+Projection rebuild does not rewrite journal record format; representation changes belong to the explicit database-version migration path.
+
 ## No journal-compaction maintenance expectation
 
 Journal 3 has no user-visible hourly/periodic destructive compaction obligation.
 
-A caller does not need to ensure that old peers acknowledge history before old records remain correct. Authoritative replay records are retained.
+A caller does not need to ensure that old peers acknowledge history before old historical facts remain correct. Authoritative replay history is retained.
 
 Derived maintenance such as checkpoints/index rebuilding may be introduced independently and must not change semantic history.
