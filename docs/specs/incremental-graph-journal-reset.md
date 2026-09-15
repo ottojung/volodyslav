@@ -27,10 +27,14 @@ The concrete outer lifecycle may identify that source by hostname, local snapsho
 Reset requires:
 
 - a valid writable Journal 3 receiver;
-- a stable causally closed source snapshot;
-- compatible current Journal 3/database/schema interpretation;
+- one stable causally closed source snapshot;
+- exact compatibility between the source snapshot's `databaseVersion` / `graphSchemeString` and the receiver's active committed `global/version` / `global/graph_scheme` values;
 - exclusive maintenance ownership of the receiver;
 - no conflicting record content for any overlapping `JournalRecordId`.
+
+The compatibility metadata must come from the **same held `JournalSnapshot`** used to derive the reset target and import source records. Reset must not perform an earlier independent mutable metadata read and then open a later snapshot, because a source migration/cutover between those reads could pair one version/schema decision with another version's journal history.
+
+A compatibility mismatch fails with `JournalVersionCompatibilityError`. Reset does not perform an implicit source migration.
 
 If the source contains a longer exact prefix of the receiver's own writer stream, reset first performs the same safe same-writer prefix recovery defined by synchronization. If overlapping same-writer content disagrees, reset fails rather than forking the writer history.
 
@@ -39,7 +43,7 @@ If the source contains a longer exact prefix of the receiver's own writer stream
 Let:
 
 ```text
-S = source journal snapshot
+S = the held compatible source JournalSnapshot
 PS = project(S)
 ```
 
