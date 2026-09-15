@@ -16,7 +16,8 @@ Examples:
 
 - receiver and source disagree on `A:42` body;
 - body/context/authority differs for one ID;
-- same-writer restoration discovers divergent overlapping prefixes.
+- same-writer restoration discovers divergent overlapping prefixes;
+- two correctly migrated replicas produce different target bodies for the same historical ID because an implementation incorrectly used replica-local state instead of the canonical per-record migration codec.
 
 Required behavior:
 
@@ -49,7 +50,7 @@ Required behavior:
 
 Meaning:
 
-> A semantic event context is not a genuine causally closed observed frontier.
+> A semantic event context is not a genuine causally closed observed frontier for the causal history that event claims.
 
 This category covers both missing retained coordinates and transitive-context omissions.
 
@@ -75,6 +76,8 @@ For semantic event F=(W,q), these are also causal-closure violations:
 - `F.context[W] != q - 1`;
 - some semantic E included by F's context has an `E.context[A]` coordinate greater than `F.context[A]`;
 - `happenedBefore(E,F)` but F's authority does not compare later than E's authority.
+
+The controlled legacy-bootstrap conversion rule may omit canonical foreign coordinates from a joining legacy ValueEvent specifically so migration execution read order does not invent happened-before between pre-existing legacy values. Such an event remains well formed only if its actual context is itself closed and its authority extends every predecessor it does claim.
 
 Required behavior:
 
@@ -131,9 +134,9 @@ Required behavior:
 
 Meaning:
 
-> The source snapshot and receiver may each be valid independently, but ordinary synchronization/reset cannot interpret them under one compatible current database/schema/record model.
+> A held source/lifecycle artifact and the requested receiver or migration transition may each be valid independently, but they cannot be interpreted under the compatibility contract required by that operation.
 
-Compatibility is determined from the **held `JournalSnapshot` itself**:
+For ordinary synchronization/reset, compatibility is determined from the **held `JournalSnapshot` itself**:
 
 ```text
 snapshot.databaseVersion
@@ -142,21 +145,33 @@ snapshot.graphSchemeString
 
 These fields are the exact source `global/version` value and exact persisted `global/graph_scheme` string from the same committed source state as the snapshot's journal frontier/records.
 
+For pre-Journal canonical bootstrap join, compatibility is determined from the frozen `CanonicalBootstrapSnapshot`:
+
+```text
+canonical.databaseVersion
+canonical.graphSchemeString
+```
+
+and those fields must equal the configured legacy transition's expected **bootstrap target** version/schema. A later current cohort version is not an acceptable substitute.
+
 Examples:
 
-- source snapshot `databaseVersion` differs from the receiver's active `global/version` and requires migration first;
-- source snapshot `graphSchemeString` differs exactly from the receiver's active `global/graph_scheme` string;
-- a caller previously observed compatible source metadata, but the source migrated before `openSnapshot()` and the held snapshot now exposes different version/schema metadata.
+- ordinary source snapshot `databaseVersion` differs from the receiver's active `global/version` and requires migration first;
+- ordinary source snapshot `graphSchemeString` differs exactly from the receiver's active `global/graph_scheme` string;
+- a caller previously observed compatible source metadata, but the source migrated before `openSnapshot()` and the held snapshot now exposes different version/schema metadata;
+- a cohort bootstrap source returns an artifact encoded for a database version/schema other than the supported bootstrap target;
+- an implementation tries to use a current post-migration Journal snapshot as canonical bootstrap input instead of the original frozen bootstrap artifact.
 
 This is incompatibility, not corruption.
 
 Required behavior:
 
-- compare compatibility metadata from the held source snapshot before interpreting/importing its records or deriving a reset target;
-- do not trust a compatibility check performed against a different mutable source state before `openSnapshot()`;
-- do not attempt per-record upcast/downcast or implicit migration inside ordinary sync/reset;
-- do not activate any staged source history when the check fails;
-- lifecycle may migrate one/both sides through the supported whole-database migration path, then retry.
+- compare compatibility metadata from the held ordinary source snapshot before interpreting/importing its records or deriving a reset target;
+- compare canonical bootstrap artifact metadata before interpreting the cut or authoring bootstrap history;
+- do not trust a compatibility check performed against a different mutable source state;
+- do not attempt per-record upcast/downcast or implicit migration inside ordinary sync/reset/bootstrap join;
+- do not activate staged source/bootstrap history when the check fails;
+- lifecycle may run the supported whole-database migration chain after successful bootstrap at its original target version.
 
 ## JournalProjectionError
 
@@ -200,7 +215,8 @@ Examples:
 
 - LevelDB batch/write failure;
 - inactive-target flush failure;
-- atomic active-pointer/cutover failure.
+- atomic active-pointer/cutover failure;
+- canonical bootstrap cut could not be durably established before the creator would begin ordinary Journal authoring.
 
 Required behavior depends on the publication boundary, but must preserve this invariant:
 
@@ -214,21 +230,29 @@ A failed ordinary transaction consumes no durable journal sequence position.
 
 Meaning:
 
-> A stable synchronization/reset source snapshot could not be opened or read completely for operational reasons.
+> A required stable synchronization/reset/bootstrap source artifact could not be opened or read completely for operational reasons.
 
 Examples:
 
-- I/O error while opening/reading the snapshot's compatibility metadata;
+- I/O error while opening/reading an ordinary snapshot's compatibility metadata;
 - I/O error while streaming an otherwise valid suffix;
-- source snapshot unexpectedly unavailable before required ranges are read.
+- source snapshot unexpectedly unavailable before required ranges are read;
+- configured cohort bootstrap source says an artifact exists but its exact frozen cut cannot be read.
 
 Required behavior:
 
 - staged partial records are not activated;
 - existing receiver remains supported;
-- retry may resume/restart according to implementation-specific staging behavior, but semantics are unchanged.
+- retry may resume/restart according to implementation-specific staging behavior, but semantics are unchanged;
+- failure to read a known canonical bootstrap artifact does not fall back to creating another one.
 
-A source which is readable but exposes incompatible `databaseVersion`/`graphSchemeString` uses `JournalVersionCompatibilityError`, not `JournalSourceReadError`.
+A readable source/artifact with incompatible version/schema uses `JournalVersionCompatibilityError`, not `JournalSourceReadError`.
+
+## Invalid migration decision
+
+The existing migration framework may reject a Journal-aware `override()` whose callback result differs from the canonical per-record target payload rewrite.
+
+This is a migration-definition/decision error, not a writer fork: no divergent target record becomes active. Implementations may surface the existing `InvalidMigrationDecisionError` from `migration.md`.
 
 ## Invalid local writer continuation
 
