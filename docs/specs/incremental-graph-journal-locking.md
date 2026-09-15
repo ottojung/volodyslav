@@ -2,252 +2,181 @@
 
 ## Purpose
 
-Journal 3 reuses the existing IncrementalGraph locking model. It does not introduce a second independent lock hierarchy.
+Journal 3 reuses the existing IncrementalGraph locking/publication model. It does not introduce an independent lock hierarchy.
 
-This document specifies how journal allocation/publication fits into the existing dome/telescope/darkroom/holiday discipline from `incremental-graph-locking-design.md`.
+The additional requirement is atomic consistency between authoritative Journal history and its materialized graph projection.
 
-The central rule is:
+## Fundamental publication invariant
+
+At every supported observable committed boundary:
 
 ```text
-journal finalization is part of graph finalization
+persistedGraph == project(retainedJournal)
 ```
 
-A supported graph commit and the journal records which explain it cross the durable publication boundary together.
+No supported state exposes:
+
+```text
+new journal + old graph
+```
+
+or:
+
+```text
+old journal + new graph
+```
 
 ## Ordinary graph operations
 
-Ordinary `pull()` and `invalidate()` retain their existing dome/telescope behavior.
+Ordinary `pull()`/`invalidate()` work may perform computation before final publication, but exact Journal identities/contexts/authority coordinates are finalized only inside the serialized commit boundary.
 
-The operation body may determine tentative replay intents outside the darkroom, but final journal identities and authority coordinates are allocated only while the per-replica darkroom serializes finalization.
+The operation may stage semantic intents while computation is running.
 
-The finalization boundary therefore owns both:
+At finalization it:
 
-- reconciliation of the graph transaction against the latest committed state; and
-- conversion of staged Journal 3 intents into exact immutable records.
+1. reacquires/holds the existing publication/darkroom protection required by the graph;
+2. observes the latest committed graph and Journal frontier;
+3. validates/reconciles the staged transition against that committed state;
+4. allocates one contiguous local writer range;
+5. orders records according to semantic reference/dependency constraints;
+6. assigns every semantic event `(W,q)` exact own-writer context `q-1` and the complete observed causally closed cross-writer frontier;
+7. allocates AuthorityTimes after every observed causal predecessor;
+8. atomically writes finalized Journal records and corresponding graph mutations;
+9. updates volatile allocator/index caches only after durable success.
 
-## Why local journal allocation belongs in the darkroom
+A failed ordinary operation consumes no durable Journal sequence position.
 
-Two concurrent successful transactions under the same writer must not both allocate the same next journal sequence.
+## Why contexts are finalized under the commit boundary
 
-A transaction which later fails must not leave a permanent hole in the writer stream.
+A context describes the complete history actually observed by the committed event, not the history that happened to exist when computation began.
 
-Therefore this pattern is forbidden:
+If another allowed operation commits before finalization, the final event context must reflect the causally observed committed state required by the locking/operation semantics.
 
-```text
-transaction starts
-reserve durable A:101
-transaction later fails
-```
+The finalizer must never construct a context only from explicit ValueId references. It must retain the complete closed observed frontier so `happenedBefore` remains transitive.
 
-and this race is forbidden:
+## Same-publication ordering
 
-```text
-T1 reads local head 100 -> chooses 101
-T2 reads local head 100 -> chooses 101
-```
+Within one successful local publication, deterministic ordering must extend all semantic constraints.
 
-Instead, darkroom finalization serializes the successful publication order:
+At minimum:
 
-```text
-committed head = 100
-T1 finalizes -> allocates 101..104 -> commits
-T2 finalizes -> now observes head 104 -> allocates 105..107 -> commits
-```
+- a new ValueEvent precedes a ValidateEvent targeting it;
+- any same-publication input value referenced by a certificate precedes that certificate;
+- direct/root invalidation/change precedes propagated dependent invalidations caused by it;
+- structural cause deletion precedes dependent sync/reset/migration deletion caused by it;
+- no record references a later same-publication record.
 
-Failed transactions allocate no durable journal coordinates.
+Non-semantic WriterStateRecord placement may be chosen deterministically as long as replayed writer state and reference/context rules remain correct.
 
-## Finalization sequence
+## Existing graph telescope/nighttime behavior
 
-For one ordinary transaction, while holding the appropriate darkroom lock:
+Journal 3 does not weaken existing protection against invalidation/recomputation races.
 
-1. read the current settled graph/journal state required for commit-time reconciliation;
-2. settle validity/freshness/identifier mutations according to the existing graph transaction rules;
-3. determine the **actual committed semantic transition**;
-4. derive the exact Journal 3 records required by `incremental-graph-journal-emission.md`;
-5. allocate one contiguous local writer sequence interval;
-6. allocate semantic authority times from the current observed high-water;
-7. resolve same-publication references such as a validation pointing at its newly allocated value occurrence;
-8. append journal writes and materialized graph writes to one durable publication/batch;
-9. flush the publication;
-10. only after durable success, publish matching volatile state/caches;
-11. release the darkroom.
+The graph's existing per-node telescope/nighttime/darkroom rules remain responsible for ensuring that the graph transition being committed is legitimate.
 
-The graph and journal must not have separate flush-success decisions.
+Journal finalization records that legitimate settled transition; it does not create a second concurrency protocol which lets graph operations race around existing locks.
 
-## Computor execution remains outside the darkroom
+## Synchronization
 
-Journal 3 does not move expensive computors into the commit mutex.
+Pairwise synchronization may stream imported records into inactive staging without blocking ordinary graph reads/writes for the entire transfer, subject to existing lifecycle behavior.
 
-A `pull()` still executes dependency pulls and the computor under the ordinary nighttime/telescope discipline, outside the short darkroom finalization.
+Before final target publication it obtains exclusive maintenance ownership sufficient to make the receiver cutover atomic.
 
-The transaction stages the computor's actual result as an intent. Only after that result exists does finalization assign the persistent `ValueEvent` identity and publication order.
+Any receiver-authored sync normalization event is finalized after the complete imported frontier it normalizes:
 
-This keeps concurrent pulls on different nodes possible while still serializing writer-log publication.
+- next receiver sequence;
+- exact own-writer context;
+- closed cross-writer context including imported history;
+- authority after imported high-water.
 
-## Same-publication ValueId references
+Imported records themselves retain their original immutable contexts/authority/IDs.
 
-A changed computation commonly needs:
+Synchronization publishes staging only when final Journal validation/replay succeeds.
 
-```text
-ValueEvent V
-ValidateEvent C where C.value == V.id
-```
+## Reset
 
-The transaction body does not need to know V's final sequence in advance.
+Reset runs as exclusive maintenance because it observes/imports one source cut and may author semantic rebaseline records.
 
-It may stage a symbolic same-publication reference:
+It does **not** reserve a graph-wide baseline record set in advance.
+
+After computing:
 
 ```text
-newValue("K")
+J0 = receiver/source union
+P0 = project(J0)
+PS = source target
 ```
 
-or equivalent internal handle.
+reset stages only the minimal Value/Delete/Validate/Invalidate intents required by the reset specification.
 
-During serialized finalization:
+Final receiver-authored reset records are allocated as one deterministic local writer continuation after the complete observed J0 frontier.
 
-1. V receives its exact record ID;
-2. the staged validation reference resolves to that ID;
-3. V is ordered before C;
-4. the validation basis is finalized from the then-current semantic input ValueIds and canonicalized by NodeKey;
-5. both are written atomically.
+Preserved ValueIds are not reallocated merely because reset is under maintenance.
 
-These temporary handles are not persisted Journal 3 identities and must not escape the transaction.
+## Absent-installation restore
 
-## Commit-time propagated invalidation
+Receiver-less restoration of an absent installation does not author semantic Journal records merely to copy already-existing history.
 
-Concurrent graph transactions can affect which freshness transitions actually occur.
+It atomically establishes local storage containing the held restored history/projection and adopts the held snapshot's `localWriter` before ordinary writes are enabled.
 
-Therefore propagated `InvalidateEvent`s must correspond to the transition after commit-time reconciliation, not blindly to a stale snapshot captured when the transaction began.
+If the restored database then requires migration, the migration gate runs under ordinary migration maintenance rules before graph APIs are exposed.
 
-If finalization finds that a dependent was already stale before this transaction's committed effect, it does not author another propagated invalidation merely because the operation's earlier working snapshot expected a fresh-to-stale transition.
+## Pre-Journal canonical bootstrap
 
-If finalization discovers an actual fresh-to-stale transition which was not known earlier, the matching Journal 3 invalidation must be added before commit.
+The canonical bootstrap source authors the semantic bootstrap history once under exclusive migration maintenance.
 
-## Journal-derived allocator caches
+Joining legacy installations do not allocate duplicate semantic bootstrap records. They atomically install the canonical semantic history after verifying legacy graph equivalence, preserve their own `localWriter`, and append only local WriterState history needed to preserve their own allocator watermark.
 
-Implementations may keep volatile/derived caches such as:
+The exact joining-writer record allocation is serialized under that installation's local publication boundary before cutover.
 
-- local journal head;
-- retained frontier;
-- maximum observed `AuthorityTime`;
-- writer-state watermark;
-- per-node current ValueId indexes.
+## Journal-aware migration
 
-These caches are published to volatile memory only after the same durable publication which establishes the journal/graph state they summarize.
+A migration may perform two physically large phases under exclusive maintenance:
 
-After restart they may be reconstructed from the retained journal rather than treated as independent authority.
+1. deterministic representation rewrite of retained old records into inactive target storage;
+2. semantic target repair.
 
-## Imported synchronization records
+Representation rewrite preserves old IDs and does not allocate new Journal positions.
 
-Synchronization runs under the exclusive holiday/maintenance boundary.
+Semantic migration preserves existing selected ValueIds for unchanged occurrences. It stages new semantic events only for actual target changes:
 
-Source journal records may be streamed into inactive durable staging without holding the active replica darkroom for the entire transfer.
+- ValueEvent for new/replaced occurrence;
+- DeleteEvent for required target absence;
+- ValidateEvent for changed target proof;
+- value-scoped InvalidateEvent for target stale state;
+- WriterStateRecord when local allocator watermark changes.
 
-Before cutover, the synchronization operation:
+When the migration creates/replaces semantic occurrences, one canonical cohort semantic migration history is authored according to the migration specification. Other participating peers retain those immutable records rather than independently allocating equivalent new ValueIds.
 
-1. validates the complete target journal frontier;
-2. computes required receiver-authored normalization intents;
-3. allocates those local records after any recovered/imported local-writer suffix;
-4. constructs/validates the matching target graph projection;
-5. durably flushes the target;
-6. atomically switches active state.
+A peer may still author its own local WriterStateRecord as needed to preserve its allocator namespace.
 
-No ordinary graph activity may overlap the final synchronization replacement/cutover.
+## Atomic inactive-target cutover
 
-## Same-writer suffix recovery under holiday
-
-If synchronization/restoration imports a longer exact prefix of the receiver's own writer stream, no ordinary local authoring may race that recovery.
-
-The holiday boundary guarantees this.
-
-After import, local allocation caches are reconstructed from the recovered history before any synchronization normalization records are allocated. Thus a recovered local stream:
+For synchronization/reset/bootstrap/migration, an implementation may build an inactive target containing:
 
 ```text
-A:1..120
+target journal
+target graph projection
+target global metadata
+derived indexes
 ```
 
-is followed by new local normalization, if any, beginning at:
+Only after validation/durable flushing succeeds may it atomically switch the active selection.
 
-```text
-A:121
-```
+Failure before cutover leaves the old supported active database selected. Incomplete staging is disposable and has no semantic authority.
 
-never at an old pre-recovery coordinate.
+## Projection rebuild
 
-## Reset and migration
+Projection rebuild is exclusive maintenance over a fixed authoritative Journal state.
 
-Reset and migration use the holiday boundary.
+It may reconstruct graph sublevels and derived indexes without authoring semantic history.
 
-They may construct a large replay baseline away from the active replica, but local record IDs/authority are allocated as one serialized writer continuation relative to the complete history observed by the operation.
+If the Journal changes during rebuild, the implementation must either prevent that through exclusivity or restart/reconcile against a new fixed cut before publication.
 
-Their cutover publishes:
+## Lock ordering/deadlock requirement
 
-```text
-new retained journal
-+ matching graph projection
-+ matching writer allocator state
-```
+Journal 3 introduces no independent Journal mutex which can be acquired in arbitrary order relative to existing graph locks.
 
-as one lifecycle transition.
+Implementations must integrate Journal publication into existing transaction/maintenance ownership so there is one documented acquisition order.
 
-## Replay rebuild
-
-A full `rebuildProjectionFromJournal()` or equivalent maintenance operation also uses the holiday boundary.
-
-It may discard and reconstruct derived graph/index state, but it does not mutate authoritative journal records merely to rebuild their projection.
-
-If replay validation discovers a journal invariant violation, rebuild fails rather than silently changing history.
-
-## Lock ordering
-
-Journal 3 adds no lock which may be acquired before the dome and then wait for a telescope/darkroom in the opposite order.
-
-The existing order remains:
-
-```text
-ordinary pull:
-    nighttime dome
-    -> telescope(s) along DAG dependency order
-    -> per-replica darkroom for each transaction finalization
-
-ordinary invalidate/read:
-    daytime dome
-    -> darkroom only where the existing operation requires commit-snapshot/finalization
-
-maintenance:
-    holiday gate
-    -> holiday dome
-    -> inactive target work / cutover
-```
-
-Journal data structures must be accessed within these existing ownership boundaries or through immutable snapshots which need no conflicting lock.
-
-## Snapshot reads
-
-A `JournalSnapshot` represents one exact committed frontier.
-
-Creating such a snapshot must establish that later commits cannot change the meaning of records/frontier visible through it. This may be implemented by storage-engine snapshot primitives, immutable prefix handles, inactive replica references, or another mechanism.
-
-Consuming a snapshot does not hold a telescope lock and does not invoke computors.
-
-A long-lived synchronization source snapshot need not block unrelated source authoring when the existing storage/transport can provide immutable snapshot semantics; this is a performance preference, not a semantic requirement.
-
-This document intentionally does not prescribe how Git or another transport obtains/carries that stable snapshot.
-
-## Atomicity theorem
-
-For every supported observable committed state C:
-
-```text
-C.graph == project(C.journal)
-```
-
-and there is no supported observation point at which a transaction has committed only one side.
-
-This theorem applies equally to:
-
-- ordinary pull/invalidate publication;
-- synchronization cutover;
-- reset cutover;
-- migration cutover; and
-- replay rebuild replacement.
+A correctness-preserving optimization may shorten exclusive windows, but it must not expose a split Journal/projection state or finalize semantic records from a stale/unclosed causal frontier.
