@@ -152,6 +152,8 @@ The artifact remains stable/retrievable for late legacy installations even after
 
 A current `JournalSnapshot` which merely contains the canonical records as a prefix is not equivalent to this artifact.
 
+The artifact's storage/transport mechanism is deliberately unspecified. The requirement is semantic durability/availability of the immutable artifact through the configured cohort bootstrap source, not a new backend protocol.
+
 A joining host retains the canonical cut verbatim and may additionally persist:
 
 - historical joining-writer bootstrap ValueEvents for local-only/different legacy occurrences;
