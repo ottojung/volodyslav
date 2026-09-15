@@ -44,6 +44,8 @@ snapshot.graphSchemeString == receiver.graphSchemeString
 
 A completely absent installation is not an ordinary synchronization receiver. It first uses receiver-less restoration/fresh-creation lifecycle.
 
+A pre-Journal legacy installation likewise does not ordinary-sync directly against current Journal state; it first completes the canonical-bootstrap lifecycle at the frozen bootstrap target and runs required migrations.
+
 ## Pairwise synchronization sequence
 
 A successful pairwise synchronization conceptually:
@@ -137,9 +139,11 @@ An outer procedure may process source snapshots sequentially. Each successful pa
 These are separate lifecycle transitions:
 
 - **absent restore** — recovers this installation's continuing writer identity/history before ordinary sync;
-- **reset** — minimally rebaselines an established receiver to a source projection while retaining history;
-- **pre-Journal bootstrap** — uses one canonical semantic bootstrap basis chosen through the cohort-bootstrap-source decision; a joining legacy host may append a local bootstrap delta while preserving canonical ValueIds for unaffected occurrences;
-- **Journal-aware migration** — rewrites retained representation deterministically, preserves ValueIds for `keep`/`override`/`invalidate` and other occurrence-preserving changes, and may independently author new ValueIds for genuine replacement occurrences.
+- **reset** — minimally rebaselines an established receiver to a source projection while retaining history; its repair events intentionally causally follow the observed source/receiver union;
+- **pre-Journal bootstrap** — joins one frozen canonical bootstrap cut at its original target version; equal legacy occurrences reuse canonical ValueIds, genuinely different legacy occurrences are represented as concurrent historical values using legacy `modifiedAt` authority, and local absence does not become deletion evidence;
+- **Journal-aware migration** — rewrites every retained record through one canonical per-record format transformation, preserves ValueIds for `keep`/`override`/`invalidate` and other occurrence-preserving changes, and may independently author new ValueIds for genuine replacement occurrences.
+
+The bootstrap lifecycle does not reuse reset semantics and does not import post-bootstrap current history. After bootstrap and required migrations, ordinary synchronization imports compatible later history.
 
 Independent genuine replacement migrations may later make dependents stale after synchronization when certificates name a losing replacement ValueId. This is accepted; no canonical migration participant is required.
 
