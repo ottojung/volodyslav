@@ -2,624 +2,380 @@
 
 ## Purpose
 
-These traces are explanatory tests of the normative Journal 3 rules.
+These traces are explanatory tests of the normative Journal 3 rules. Normative specifications win if a trace ever disagrees with them.
 
-They do not replace the formal specifications. When a trace and a normative rule appear to disagree, the normative rule wins and the trace must be corrected.
-
-For brevity, exact HLC values, complete contexts, physical identifiers, and timestamps are omitted where they are not the point of the example. Sequence order shown within one writer is authoritative. Journal records are assumed to use the one canonical format selected by the replica's current `global/version`.
-
-Assume structural dependency:
-
-```text
-A -> B -> C
-```
-
-unless a trace says otherwise.
-
-Certificate bases are written explicitly as `{ input, value }` records. The basis is self-describing historical evidence; it is not interpreted by remembering an old positional schema order. Persisted basis entries are canonically ordered by persisted NodeKeyString identity.
+Exact HLC values, full contexts, identifiers, and timestamps are omitted where not relevant.
 
 ## Trace 1: first materialization
 
-Writer X pulls previously absent A and the computor returns payload `a1`.
-
-History:
+Writer X pulls absent A and computes `a1`:
 
 ```text
-X:1 Value(A, payload=a1)        # ValueId X:1
+X:1 Value(A, payload=a1)
 X:2 Validate(A, value=X:1, basis=[])
 ```
 
-Projection:
+Projection: A is present and fresh.
 
-```text
-A = a1
-A fresh
-```
-
-No separate "add" metadata is needed. Presence comes from the selected ValueEvent.
-
-## Trace 2: changed recomputation propagates staleness
+## Trace 2: changed recomputation propagates persistent staleness
 
 Before:
 
 ```text
-A = X:1, fresh
-B = X:3, fresh, basis [{ input:A, value:X:1 }]
-C = X:5, fresh, basis [{ input:B, value:X:3 }]
+A=X:1 fresh
+B=X:3 fresh, basis [{input:A,value:X:1}]
 ```
 
-A recomputes to `a2`.
-
-One possible publication order:
+A changes:
 
 ```text
-X:7 Value(A, payload=a2)                  # new ValueId X:7
-X:8 Validate(A, value=X:7, basis=[])
-X:9 Invalidate(B, value=X:3, propagated)
-X:10 Invalidate(C, value=X:5, propagated)
+X:5 Value(A, payload=a2)
+X:6 Validate(A, value=X:5, basis=[])
+X:7 Invalidate(B, scope=value(X:3), reason=propagated)
 ```
 
-Projection:
-
-```text
-A = X:7, fresh
-B = X:3, stale
-C = X:5, stale
-```
-
-B/C payloads are preserved as cached oldValue candidates. Their staleness is explicit replay history.
+Projection: A fresh at X:5; B keeps cached X:3 but is stale.
 
 ## Trace 3: explicit invalidate then Unchanged
 
-Before:
-
 ```text
-A = X:1, fresh
-B = X:3, fresh, basis [{ input:A, value:X:1 }]
+X:7 Invalidate(A, scope=node, reason=explicit)
+X:8 Invalidate(B, scope=value(B1), reason=propagated)
 ```
 
-Explicitly invalidate A:
+Later A returns `Unchanged`:
 
 ```text
-X:7 Invalidate(A, scope=node, explicit)
-X:8 Invalidate(B, scope=value(X:3), propagated)
+X:9 Validate(A, value=A1, basis=[])
 ```
 
-Projection:
-
-```text
-A stale
-B stale
-```
-
-Pull A. Its computor returns `Unchanged`:
-
-```text
-X:9 Validate(A, value=X:1, basis=[])
-```
-
-Now:
-
-```text
-A fresh
-B still stale
-```
-
-The later A validation causally covers A's node invalidation, but it does not remove B's value-scoped propagated invalidation.
-
-Only when B itself is pulled and cache-revalidates/recomputes can B become fresh:
-
-```text
-X:10 Validate(
-    B,
-    value=X:3,
-    basis=[{ input:A, value:X:1 }]
-)
-```
-
-Projection then has A/B fresh.
+A becomes fresh. B remains stale until B itself validates/recomputes because X:8 is still uncovered for B1.
 
 ## Trace 4: concurrent values
-
-Writer X and writer Y both start from a common value A0 and independently recompute A.
 
 ```text
 X:20 Value(A, payload=x, modifiedAt=10:00)
 Y:14 Value(A, payload=y, modifiedAt=10:01)
 ```
 
-Neither event context contains the other.
+The events are concurrent. Deterministic authority selects Y:14. Payload equality is irrelevant.
 
-They are concurrent. If their HLC physical components preserve these modifiedAt seeds, Y:14 wins because its authority time is later.
+## Trace 5: causality beats physical time
 
-After synchronization every replica retaining both histories selects the same Y occurrence.
+X authors authority `(100,0)`. Y observes X but has wall/modified seed 90. Y must allocate after observed high-water, e.g. `(100,1)`, so X happened-before Y implies lower authority.
 
-No payload comparison occurs.
-
-## Trace 5: causality beats physical-time preference
-
-Writer X authors:
+## Trace 6: malformed future/concurrent reference
 
 ```text
-X:20 Value(A, payload=x, authority=(100,0))
+X:5 Validate(B, value=B1, basis=[{input:A,value:Y:9}])
+Y:9 Value(A,...)
 ```
 
-Y observes X:20 while its wall clock/modifiedAt seed is only 90, then recomputes A.
+If X:5's context did not observe Y:9, the validation is malformed even if Y:9 later appears in retained union.
 
-Y must allocate authority after the observed high-water, e.g.:
+## Trace 7: malformed non-transitive context
 
 ```text
-Y:14 Value(A, payload=y, authority=(100,1), context includes X:20)
+A:1
+
+B:1
+context = { A:1 }
+
+C:1
+context = { B:1, A:0 }
 ```
 
-Therefore:
+C:1 is malformed.
+
+It includes B:1 but omits A:1, which B:1 had already observed. Without rejecting this context, the definitions would yield:
 
 ```text
-X:20 happenedBefore Y:14
-X:20 < Y:14 by authority
+A:1 happenedBefore B:1
+B:1 happenedBefore C:1
+A:1 !happenedBefore C:1
 ```
 
-even though Y's physical seed alone would have looked older.
+Journal 3 requires contexts to be causally closed, so this history never becomes supported.
 
-## Trace 6: validation cannot reference a future value
-
-Suppose retained union contains:
+## Trace 8: malformed own-writer context
 
 ```text
-X:5 Validate(
-    B,
-    value=X:3,
-    basis=[{ input:A, value:Y:9 }]
-)
-Y:9 Value(A, ...)
+A:1 context={X:1}
+A:2 context={A:0,X:0}
 ```
 
-but X:5's context does not observe Y through 9 and Y:9 is not a same-writer-earlier record.
-
-This is malformed history.
-
-The eventual presence of Y:9 in the union does not retroactively make X:5 valid evidence.
-
-Synchronization/replay rejects the certificate rather than substituting some other ValueId or dropping only that basis entry.
-
-## Trace 7: receiver-only dependent becomes persistently stale
-
-Receiver X has:
+A:2 is malformed because:
 
 ```text
-A = A1, fresh
-B = B1, fresh, basis [{ input:A, value:A1 }]
+A:2.context[A] must equal 1
 ```
 
-A remote source contains a new selected A2 but never materialized B:
+The exact prior own prefix also carries A:1's transitive observation of X:1.
+
+## Trace 9: receiver-only/newly-selected dependent becomes persistently stale
 
 ```text
-Y:10 Value(A, payload=a2)
-Y:11 Validate(A, value=Y:10, basis=[])
+A -> B
 ```
 
-After raw history union:
+Receiver X:
 
 ```text
-A selects Y:10
-B still selects B1
-B's old basis entry for A names A1 rather than current Y:10
+A=a1 stale
 ```
 
-Tentative replay makes B stale because of the basis mismatch. That mismatch is already persistent evidence; it does not disappear merely because A later becomes fresh. Therefore this particular case does not by itself require a value-scoped sync marker.
+Source Y:
 
-If instead B's selected certificate exactly matched the selected A ValueId and B were stale only because A itself was stale, phase 2 would persist a value-scoped sync invalidation as shown in Trace 21.
+```text
+B=b2 fresh
+certificate(B) = [{input:A,value:a1}]
+```
 
-## Trace 8: source deletes an input
+After union B=b2 may be newly selected on X. Its certificate exactly matches current A=a1, but A is stale. Sync therefore authors:
 
-Receiver has materialized:
+```text
+X:n Invalidate(B, scope=value(b2), reason=sync)
+```
+
+If A later revalidates `Unchanged`, A becomes fresh but B remains stale until B itself validates/recomputes.
+
+## Trace 10: source deletes an input
 
 ```text
 A -> B -> C
 ```
 
-Remote history contains a DeleteEvent for A which wins current head selection.
-
-Raw union would otherwise leave historical ValueEvents selected for B/C.
-
-Journal 3 synchronization computes the structural removal closure and authors receiver events in dependency order:
+A remote DeleteEvent wins for A. Sync authors explicit dependency closure:
 
 ```text
 X:n   Delete(B, reason=sync)
 X:n+1 Delete(C, reason=sync)
 ```
 
-A's winning imported delete plus B/C's receiver-authored deletes make current materialization dependency-closed.
+Old B/C ValueEvents remain historical but cannot silently reappear.
 
-B/C's old payload events remain historical but cannot silently reappear later.
+## Trace 11: repeat synchronization
 
-## Trace 9: initial/full sync is zero-frontier sync
-
-Source frontier:
-
-```text
-X:100
-Y:50
-```
-
-Empty receiver:
-
-```text
-X:0
-Y:0
-```
-
-Transfer:
-
-```text
-X:1..100
-Y:1..50
-```
-
-Later receiver frontier:
-
-```text
-X:97
-Y:50
-```
-
-uses the same algorithm and transfers:
-
-```text
-X:98..100
-```
-
-Only the starting frontier differs. Both operations first check exact snapshot-bound database version/schema compatibility.
-
-## Trace 10: repeat synchronization
-
-After the receiver has incorporated all source records and authored any required sync normalization, synchronize again against the unchanged source.
-
-No writer suffix is missing.
-
-All normalization obligations are already represented, so the operation produces:
+After all source history and required normalization are incorporated, syncing the unchanged source again produces:
 
 ```text
 changed=false
 no new semantic records
-same graph projection
+same projection
 ```
 
-The compatibility check still uses the newly held source snapshot; a later incompatible source migration would make the next call fail rather than silently reusing an old compatibility result.
+## Trace 12: exact same-writer prefix recovery
 
-## Trace 11: exact same-writer prefix recovery
+Local A has `A:1..100`; controlled source has agreeing `A:1..120`.
 
-Local installation A retained through:
+Import `A:101..120`, reconstruct writer head/watermark/high-water, then continue at A:121 or later. If local/source A:87 differ, fail as a fork.
+
+## Trace 13: certificate selection prefers invalidation coverage
+
+Current K occurrence is V; inputs are unchanged.
+
+R2 authors:
 
 ```text
-A:1..100
+I  = Invalidate(K, scope=value(V))
+C2 = Validate(K, value=V, full current basis)
 ```
 
-A controlled source contains:
+with `I happenedBefore C2`.
+
+Concurrently R1 authors:
 
 ```text
-A:1..120
+C1 = Validate(K, value=V, same full basis)
 ```
 
-and records 1..100 agree exactly.
+C1 does not observe I but has greater total authority because of clock skew.
 
-Under exclusive maintenance, after exact snapshot version/schema compatibility succeeds, import:
+Then:
 
 ```text
-A:101..120
+basisMatchCount(C1) == basisMatchCount(C2)
+coversValueInvalidations(C1) == false
+coversValueInvalidations(C2) == true
 ```
 
-reconstruct writer-local head/watermark/high-water, then continue new local authoring at A:121 or later.
+C2 is selected before authority is consulted. K is fresh.
 
-No reset or re-authoring is required.
+A clock tie-break cannot resurrect an invalidation that a causally later complete validation actually covered.
 
-If source A:87 differs from local A:87, recovery fails with a writer-fork/corruption error.
+## Trace 14: competing partial certificates never combine
 
-## Trace 12: multi-input competing certificates
-
-Node K has current direct inputs:
+K has inputs A/B and current values A2/B2.
 
 ```text
-A, B
+C1 = [{A:A2},{B:B1}]
+C2 = [{A:A1},{B:B2}]
 ```
 
-Current selected input values after union are:
+Each matches one input. Replay chooses one complete certificate by the selection key; it never fabricates `{A:A2,B:B2}` by combining them.
+
+## Trace 15: historical old-schema certificate remains intelligible
+
+Old K inputs A/B:
 
 ```text
-A2, B2
+C_old=[{A:A1},{B:B1}]
 ```
 
-Current selected K value is K1.
+New schema uses A/C. C_old still unambiguously describes old proof, but is not current-shape-compatible. Migration may preserve K's ValueId while authoring a new A/C ValidateEvent for that same occurrence if the cached value itself was preserved.
 
-History has two causally eligible certificates with the same explicit input-key set:
+## Trace 16: value-scoped invalidation dies with the occurrence
+
+K1 is stale due to `Invalidate(value=K1)`. Later new K2 wins. The old K1 marker remains history but does not stale K2.
+
+## Trace 17: receiver-less absent-state restore
+
+No local database exists.
+
+The configured installation recovery source yields snapshot S with:
 
 ```text
-C1 basis=[
-  { input:A, value:A2 },
-  { input:B, value:B1 }
-]
-
-C2 basis=[
-  { input:A, value:A1 },
-  { input:B, value:B2 }
-]
+S.localWriter = A
+S contains A:1..120 and required foreign history
 ```
 
-Each matches one current input.
-
-Neither certificate may be split/combined into fictitious evidence:
+Startup restores the local database with:
 
 ```text
-[
-  { input:A, value:A2 },
-  { input:B, value:B2 }
-]
+localWriter = A
 ```
 
-Journal 3 chooses one complete certificate using the specified basis-match-count then authority tie-break. The resulting `valid` projection contains only the matching edge(s) represented by that one chosen certificate.
+reconstructs A's allocator/writer state and projection, then runs the migration gate if needed.
 
-If later C3 appears with:
+If querying that source fails, startup fails. It does not generate a new fingerprint B and silently start fresh.
+
+## Trace 18: canonical multi-host pre-Journal bootstrap
+
+Legacy hosts X and Y previously synchronized:
 
 ```text
-basis=[
-  { input:A, value:A2 },
-  { input:B, value:B2 }
-]
+A -> B
 ```
 
-and is eligible, it has two matches and becomes the preferred certificate.
+They share the same legacy A occurrence. X has a later B modification.
 
-## Trace 13: historical certificate from an old schema
+If X/Y independently minted semantic bootstrap histories, later sync could choose A's bootstrap ValueId from Y and B's from X, making X's B certificate mismatch despite the legacy state having been valid.
 
-Suppose an old schema for K had direct inputs A/B, and retained history includes:
+Supported transition instead chooses/reconciles one canonical legacy state. Suppose X creates:
 
 ```text
-C_old basis=[
-  { input:A, value:A1 },
-  { input:B, value:B1 }
-]
+X:1 Value(A,...)
+X:2 Value(B,...)
+...
 ```
 
-A later migration changes K's current direct-input set to A/C. During the database-version transition, C_old is deterministically rewritten into the target current record representation without changing its historical claim. The semantic migration then emits a new migration ValueId/certificate baseline for A/C.
+Y joins by retaining **those exact semantic bootstrap records**. Y does not mint Y-authored copies of A/B. It keeps its own local writer identity Y and records only its own writer allocator state as needed.
 
-`C_old` remains fully intelligible historical evidence: it unambiguously says it validated against A and B.
+Both hosts therefore use the same bootstrap ValueIds for shared A/B state. Later Journal synchronization cannot stale B merely because hosts independently invented duplicate baseline identities—they did not.
 
-But it is not eligible proof for the current A/C schema because its explicit basis input-key set does not equal the current direct-input set.
+If Y's legacy semantic graph differs from the canonical target, automatic canonical join fails until that difference is explicitly reconciled/rebaselined.
 
-Journal 3 therefore does not need the historical schema's positional input ordering merely to understand the old record, and it does not accidentally reinterpret old B evidence as current C evidence.
+## Trace 19: occurrence-preserving migration
 
-## Trace 14: concurrent node invalidation and validation
-
-K has value K1.
-
-Writer X validates K1 while writer Y concurrently explicitly invalidates K:
+Before migration:
 
 ```text
-X:10 Validate(K, value=K1, ...)
-Y:7  Invalidate(K, scope=node, explicit)
+A=A1
+B=B1, certificate [{A:A1}]
 ```
 
-Neither is causally after the other.
+A version bump changes record representation and perhaps proof/schema metadata, but keeps A/B payloads, identifiers, createdAt, and modifiedAt unchanged.
 
-Even if X:10 compares later by total authority, it does not cover Y:7.
-
-K remains stale / its incoming proof is not accepted as fresh proof.
-
-A later validation Z which observes Y:7 can cover it.
-
-This is why certificate clearing uses causality, not last-writer-wins authority.
-
-## Trace 15: value-scoped invalidation dies with old occurrence
-
-K currently selects K1 and has:
+Migration preserves:
 
 ```text
-Invalidate(K, scope=value(K1), propagated)
+targetValueId(A)=A1
+targetValueId(B)=B1
 ```
 
-so K1 is stale.
-
-Later a new current K2 ValueEvent wins.
-
-The old K1 invalidation remains historical, but it does not make K2 stale. K2's freshness follows certificates/invalidation applicable to K2.
-
-If K2 is stale solely because one of its direct inputs is stale while K2's own certificate exactly matches all current input ValueIds, synchronization normalization must persist a new value-scoped invalidation for K2 itself; an old K1 marker cannot do that job.
-
-## Trace 16: reset is a new baseline, not history deletion
-
-Receiver has current A=X:20.
-
-Source target projects A=Y:8.
-
-Reset first opens one held source snapshot and checks that its exact database version and graph-scheme string match the receiver. It then observes/imports history and authors a new receiver baseline:
+If target proof for B differs, migration may author:
 
 ```text
-X:30 Value(A, payload copied from Y:8, reason=reset)
-X:31 Validate(A, value=X:30, basis=[])
+Validate(B, value=B1, target-schema basis, reason=migration)
 ```
 
-X:20 and Y:8 remain in history.
+without a new B ValueEvent.
 
-X:30 is causally after all history reset observed, so it establishes the requested current reset target relative to that observed history.
+Two independently representation-migrated hosts therefore retain the same A1/B1 occurrence identities and do not create artificial basis mismatch simply because a version changed.
 
-An unseen concurrent event from writer Z can still affect later ordinary synchronization when it is finally learned.
+## Trace 20: semantic migration creating new occurrence is canonical across cohort
 
-## Trace 17: bootstrap stale node with partial proof
+Suppose migration truly transforms A's payload and therefore must create A2.
 
-Legacy graph has K with two current inputs A/B:
+If two reconciled peers independently created X:A2 and Y:A2 for the same intended migration result, downstream shared certificates could split again.
+
+The cohort therefore retains one canonical semantic migration record for A2. Other peers deterministically rewrite their old shared history and retain that same new migration occurrence rather than re-minting an equivalent one.
+
+## Trace 21: minimal reset preserves unaffected occurrences
+
+Receiver/source union P0 already selects:
 
 ```text
-K stale
-valid[A] contains K
-valid[B] does not contain K
+A=A1
+B=B1
 ```
 
-Bootstrap first creates ValueIds A0, B0, K0.
+with source target PS having the same A/B payloads, identifiers, and timestamps, but B's proof/freshness differs.
 
-Then it records:
+Reset preserves:
+
+```text
+resetValueId(A)=A1
+resetValueId(B)=B1
+```
+
+and authors only the required B validation/invalidation. It does not create new A/B ValueEvents merely because reset was requested.
+
+If PS instead requires a different A occurrence, reset authors a new A ValueEvent. B may still keep B1 and receive a new certificate naming the reset A ValueId if B's own value state is unchanged.
+
+## Trace 22: reset deletion is deterministic
+
+If P0 currently has K present and PS requires K absent, reset authors exactly one `Delete(K,reason=reset)`.
+
+If P0 already selects absence, reset authors no delete.
+
+There is no alternate implementation strategy that produces a different history for the same case.
+
+## Trace 23: bootstrap stale node with partial proof
+
+Legacy K has inputs A/B, is stale, and only A->K validity remains.
+
+Bootstrap records:
 
 ```text
 Validate(
   K,
   value=K0,
   basis=[
-    { input:A, value:A0 },
-    { input:B, value:"unknown" }
+    {input:A,value:A0},
+    {input:B,value:"unknown"}
   ],
   reason=bootstrap
 )
-Invalidate(K, scope=value(K0), reason=bootstrap)
+Invalidate(K,scope=value(K0),reason=bootstrap)
 ```
 
-Replay reconstructs:
+Replay reproduces stale K with A->K valid and B->K invalid without inventing missing historical provenance.
 
-```text
-K stale
-A -> K validity edge present
-B -> K validity edge absent
-```
+## Trace 24: projection rebuild
 
-without inventing an unknown historical B occurrence.
-
-## Trace 18: migration rewrites format and records semantic results
-
-Suppose source database version V1 has retained records including X:1..100. Target version V2 changes the journal record representation and the graph migration computes K payload `new`.
-
-Migration first rewrites every retained V1 record into V2's one canonical format:
-
-```text
-X:1(V1 representation)   -> X:1(V2 representation)
-...
-X:100(V1 representation) -> X:100(V2 representation)
-```
-
-The IDs, causal facts, ValueId references, and historical semantic meanings remain unchanged. Independently migrating another replica with the same X:1 must produce the same canonical V2 X:1.
-
-The semantic migration then appends a new migration ValueEvent carrying K's actual target payload/timestamps plus a target validation baseline whose explicit basis input keys describe the target schema.
-
-Years later replay uses one V2/current record model. It neither decodes V1 records nor loads or executes the historical migration callback which once computed `new`.
-
-## Trace 19: projection rebuild
-
-Assume authoritative journal is valid but a derived `freshness` LevelDB record is damaged.
-
-Maintenance discards/rebuilds the materialized graph from journal history.
-
-After rebuild:
+Authoritative Journal is valid but a derived freshness record is damaged. Maintenance rebuilds graph from Journal:
 
 ```text
 materializedGraph == project(journal)
 ```
 
-No journal event is authored merely because a derived cache was repaired.
+No semantic event is authored merely to repair derived state. Invalid Journal history causes rebuild failure instead of history mutation.
 
-If the journal itself contains a fork/impossible causal reference, rebuild fails instead of changing history to match the damaged graph.
+## Trace 25: synchronization normalization is real history
 
-Projection rebuild does not rewrite journal format; that is reserved for the database migration path.
+Receiver has fresh A/B. Source Y supplies a winning delete of A; source Z has unseen concurrent higher-authority A2.
 
-## Trace 20: synchronization normalization is real history
+If receiver synchronizes Y first it may correctly author `Delete(B,reason=sync)`. That delete remains real history even if Z later makes A present again.
 
-Assume structural edge:
-
-```text
-A -> B
-```
-
-Receiver X currently has fresh A1/B1.
-
-Source Y contains a higher-authority DeleteEvent for A but has never materialized B. Source Z contains an even higher-authority concurrent ValueEvent A2.
-
-If X synchronizes Y first, the observed state genuinely has A absent while B1 is selected. X must preserve dependency closure and authors:
-
-```text
-X:n Delete(B, reason=sync)
-```
-
-That delete is a real committed semantic event.
-
-Later X synchronizes Z. A2 may now become the selected A head, but the already-authored X:n deletion of B is not retracted merely because the previously unseen A2 changed the later projection.
-
-In a counterfactual execution that incorporated Z before Y, A might never have become absent at a committed synchronization boundary, so X:n might never have been authored.
-
-Journal 3 does **not** claim those two counterfactual executions have identical history/result. It claims that in either actual execution, every committed normalization event is historical truth and fair synchronization eventually disseminates it so all replicas in that execution converge.
-
-This is not an acknowledgement artifact: the deletion records a state transition that really occurred under the receiver's then-observed supported history.
-
-## Trace 21: newly selected remote occurrence must retain propagated staleness
-
-Assume:
-
-```text
-A -> B
-```
-
-Common history contains:
-
-```text
-A = A1, fresh
-```
-
-Writer Y computes B while A1 is fresh:
-
-```text
-Y:10 Value(B, payload=b2)             # ValueId B2 = Y:10
-Y:11 Validate(
-    B,
-    value=Y:10,
-    basis=[{ input:A, value:A1 }]
-)
-```
-
-So on Y:
-
-```text
-A = A1, fresh
-B = B2, fresh
-```
-
-Meanwhile receiver X explicitly invalidates A. X's current A ValueId remains A1, but A is stale:
-
-```text
-X:20 Invalidate(A, scope=node, explicit)
-```
-
-X now synchronizes from Y. The stable source snapshot is first checked for exact database-version and graph-scheme compatibility.
-
-After union/closure:
-
-```text
-A = A1, stale
-B = B2, selected from Y
-B's selected certificate exactly says { input:A, value:A1 }
-```
-
-B has no basis mismatch and no own uncovered current-value invalidation. Tentative replay makes B stale **only because its direct input A is stale**.
-
-Even though B2 was not X's pre-sync selected ValueId, phase 2 must persist this propagated stale transition:
-
-```text
-X:21 Invalidate(B, scope=value(B2), reason=sync)
-```
-
-Now X pulls A and its computor returns `Unchanged`. X authors a later validation for the same A1 which covers the explicit A invalidation:
-
-```text
-X:22 Validate(A, value=A1, basis=[])
-```
-
-Final replay is:
-
-```text
-A = A1, fresh
-B = B2, stale
-```
-
-B does **not** become fresh automatically just because A revalidated unchanged. The sync-authored value-scoped invalidation on B2 remains uncovered until B itself is pulled and cache-revalidated/recomputed.
-
-This is why phase 2 is defined over the post-union selected occurrence and must not require:
-
-```text
-Pbefore.valueId(B) == P1.valueId(B)
-```
-
-The selected B occurrence's provenance is irrelevant; what matters is whether its own proof is otherwise ready and its staleness is solely inherited from a stale direct input.
+A different counterfactual source order might have avoided that delete. Journal 3 guarantees convergence of each actual fair execution, not identical histories across executions which genuinely authored different normalization events.
