@@ -217,3 +217,31 @@ The IncrementalGraph journal is transport-independent.
 Journal identity, event semantics, replay, synchronization, and conflict authority must not depend on Git hashes, commits, branches, ancestry, repository revisions, Supabase-specific identifiers, or other transport-specific identities. Transport mechanisms may carry or persist journal records, but they do not participate in journal semantics.
 
 Journal 3 does not require changing the existing Git transport protocol; such transport changes, if ever desired, are separate work.
+
+---
+
+$id-2863157490134726
+title: One current format per database replica
+date: 2026/09/14
+source: @ottojung
+kind: requirement
+
+A supported database replica must contain persisted state in one current database format selected by that replica's existing `global/version` value. Journal records must not carry independent per-record version stamps, and ordinary open/replay/synchronization code must not upcast, downcast, or otherwise interpret a mixture of historical record formats inside one replica.
+
+A database migration may temporarily keep the old active replica and a new inactive target replica at different database versions while constructing the atomic cutover. Within each replica, however, persisted graph state, journal records, and journal-derived metadata must all use that replica's single version format.
+
+When journal storage format changes, migration rewrites every retained journal record into the target version's canonical representation before cutover. The rewrite preserves each record's `JournalRecordId`, historical semantic fact, causal identity, and cross-record references. New semantic migration events are appended separately when the graph/schema migration itself changes current meaning.
+
+---
+
+$id-9304516876420351
+title: Whole-journal migration cost is acceptable
+date: 2026/09/14
+source: @ottojung
+kind: accepted-tradeoff
+
+Keeping one current persisted format is more important than making database migration proportional only to recent journal changes.
+
+A migration which changes journal representation may inspect and rewrite the complete retained journal. Its running time and I/O may therefore grow linearly with the number and serialized size of retained journal records, even when the current graph or recent change set is small. This whole-history migration cost is an accepted price for avoiding permanent per-record version tags, compatibility decoders, and mixed-format state.
+
+Implementations should still stream the rewrite when practical so the accepted time/I/O cost does not imply retaining the complete journal in RAM. This trade-off concerns migration cost only; it does not weaken journal retention, replay correctness, synchronization convergence, or the separate synchronization-performance intent.
