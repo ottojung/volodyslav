@@ -48,7 +48,7 @@ A supported retained journal satisfies:
 1. record `(A,q)` has `id.author == A` and `id.sequence == q`;
 2. for every retained A, every sequence `1..frontier[A]` exists;
 3. one `JournalRecordId` has one canonical historical meaning;
-4. every retained semantic-event context is covered by the retained frontier;
+4. every retained semantic-event context is a causally closed frontier covered by the retained journal;
 5. every retained record is encoded in the one canonical format selected by the replica's current `global/version`.
 
 ## Single current record format
@@ -367,15 +367,51 @@ happenedBefore(E,F) iff
 
 Same-writer semantic order follows immutable writer-stream order even when non-semantic records lie between two events.
 
-A semantic event's context is the complete retained journal frontier causally observed before that event, extended to include earlier same-publication records as appropriate.
+A semantic event's `context` is a **causally closed journal frontier** describing every journal record the event's writer had observed before that event, extended with earlier records from the same atomic publication.
 
-For semantic E:
+For semantic event F with:
 
 ```text
-E.context[E.id.author] < E.id.sequence
+F.id = (W,q)
 ```
 
-and every coordinate in E.context must be retained in a supported journal.
+its own-writer coordinate is exact:
+
+```text
+F.context[W] == q - 1
+```
+
+because a writer necessarily observes its complete already-committed local prefix and every earlier record allocated in the same serialized publication.
+
+Cross-writer coordinates must themselves be closed under the causal observations of the included semantic events. Formally, for every retained semantic event E such that:
+
+```text
+E.id.sequence <= F.context[E.id.author]
+```
+
+F must include everything E had observed:
+
+```text
+for every writer A:
+    E.context[A] <= F.context[A]
+```
+
+Therefore if:
+
+```text
+happenedBefore(E,F)
+happenedBefore(F,G)
+```
+
+then:
+
+```text
+happenedBefore(E,G)
+```
+
+for every supported journal. `happenedBefore` is a genuine transitive partial order, not merely a direct-observation relation.
+
+Every context coordinate must be retained in a supported journal. A context which points at retained records but omits a causal predecessor of an included semantic event is malformed even though all of its numerical coordinates are individually in range.
 
 ## Ordinary authority allocation
 
