@@ -8,10 +8,9 @@ It is not a second design. Each item points at behavior defined elsewhere; imple
 
 ## 1. Persisted journal primitives
 
-Implement durable representations for:
+Implement durable current-version representations for:
 
 - `JournalRecordId { author, sequence }`;
-- `recordVersion`;
 - `JournalFrontier`;
 - `AuthorityTime`;
 - `ValueEvent`;
@@ -22,10 +21,12 @@ Implement durable representations for:
 
 Acceptance:
 
+- the replica's existing `global/version` is the only persisted format-version selector;
+- journal records contain no per-record version discriminator;
 - one writer range can be iterated in sequence order;
-- records round-trip exactly through the codec;
-- invalid/malformed record versions and bodies are rejected with specific errors;
-- validation bases are self-describing, duplicate-free, and canonical-NodeKey ordered;
+- current-format records round-trip exactly through the codec;
+- malformed current-format bodies are rejected with specific errors;
+- validation bases are self-describing, duplicate-free, and ordered by canonical persisted `NodeKeyString` order;
 - no public API permits arbitrary journal mutation.
 
 ## 2. Journal snapshot
@@ -82,7 +83,7 @@ Acceptance:
 
 - value/delete head selection is deterministic;
 - reference-causality rules are enforced;
-- historical certificate records are understood from their explicit input NodeKeys without historical positional schema ordering;
+- retained certificate records are understood from explicit input NodeKeys without historical positional schema ordering;
 - current certificate shape compatibility/selection is deterministic;
 - freshness/validity exactly match the flag-based graph contract;
 - physical identifiers/timestamps/payloads come from selected ValueEvents;
@@ -93,13 +94,13 @@ Keep the reference replay path simple enough to serve as a test oracle even if p
 
 ## 6. Bootstrap migration
 
-Implement pre-Journal-3 bootstrap.
+Implement pre-Journal-3 bootstrap directly into the target current database format.
 
 Acceptance:
 
 - all existing materialized values/payloads/timestamps/identifiers are represented;
 - stale nodes with partial validity use the controlled `"unknown"` basis value correctly;
-- bootstrap basis entries explicitly name every direct input and use canonical NodeKey order;
+- bootstrap basis entries explicitly name every direct input and use canonical NodeKeyString order;
 - bootstrap authority allocation follows the modifiedAt-preserving special rule;
 - replayed graph equals the legacy graph exactly;
 - local allocation watermark is preserved;
@@ -111,6 +112,7 @@ Implement synchronization against one `JournalSyncSource`/stable snapshot.
 
 Acceptance:
 
+- source/receiver are already at compatible current database versions;
 - imports every missing writer suffix, not only source-local writer history;
 - verifies overlapping IDs;
 - supports exact same-writer prefix recovery;
@@ -118,6 +120,7 @@ Acceptance:
 - import is streamable;
 - no computor execution;
 - imported records retain exact writer/ID/body;
+- no per-record upcast/downcast occurs during sync;
 - no receipt/adoption event is created merely for transport.
 
 ## 8. Synchronization normalization
@@ -151,18 +154,23 @@ Acceptance:
 
 ## 10. Journal-aware migration
 
-Implement later Journal-3-aware migration baseline generation.
+Implement whole-database Journal-3-aware migration.
 
 Acceptance:
 
-- old history remains immutable;
-- target-present nodes receive new migration occurrences;
+- the source active replica remains entirely in source format until cutover;
+- every retained source journal record is rewritten into the target canonical format in inactive storage;
+- rewritten pre-existing records preserve `(author,sequence)`, causal/reference identity, and historical semantic meaning;
+- rewriting the same source record independently produces the same target-format body;
+- the target contains no mixture of source/target record formats and no per-record version tags;
+- target-present nodes receive new migration occurrences for semantic target state;
 - removed current nodes receive migration DeleteEvents;
 - target validity/freshness are reproduced by baseline certificate + optional invalidation;
-- target certificate input-key sets match target schema and use canonical NodeKey ordering;
-- historical old-schema certificates remain decodable without old positional input ordering;
+- target certificate input-key sets match target schema and use canonical NodeKeyString ordering;
+- historical old-schema certificates remain semantically self-describing after representation rewrite;
 - target schema replay equals migration target;
-- replay never reruns historical migration callbacks.
+- replay never reruns historical migration callbacks;
+- migration may stream across/rewrite the complete retained journal; time/I/O proportional to journal size is accepted.
 
 ## 11. Open/rebuild lifecycle
 
@@ -170,6 +178,7 @@ Implement current-state validation/rebuild boundaries.
 
 Acceptance:
 
+- startup interprets the complete active replica using its one `global/version` format;
 - startup does not expose known graph/journal disagreement;
 - valid journal + damaged derived graph can be rebuilt;
 - invalid/forked authoritative journal is rejected rather than "repaired" from graph bytes;
@@ -182,7 +191,7 @@ Provide specific errors/values sufficient to distinguish:
 - writer fork;
 - stream gap;
 - causal-closure/reference-causality violation;
-- record codec/version/self-described-basis violation;
+- current-format record codec/self-described-basis violation;
 - database/schema version incompatibility;
 - projection invariant failure;
 - durable publication/I/O failure.
@@ -204,7 +213,8 @@ Priority properties:
 - normalization fixed-point/termination for each actual fair execution;
 - reset target theorem;
 - bootstrap equivalence;
-- migration equivalence.
+- migration equivalence;
+- deterministic whole-journal format migration.
 
 ## 14. Performance work deferred, not forgotten
 
@@ -218,6 +228,8 @@ The first correct implementation may perform whole-graph work where the current 
 - inactive/staged target publication;
 - reference replay separate from optimized projection maintenance.
 
+Separately, repository intent explicitly accepts whole-journal work for a format-changing database migration. Do not weaken the one-format invariant merely to make migrations change-sensitive.
+
 Correctness must not be weakened to meet an unstated performance target.
 
 ## 15. Completion condition
@@ -228,4 +240,4 @@ Journal 3 is implementation-complete only when ordinary operations, synchronizat
 persistedGraph == project(retainedJournal)
 ```
 
-and the tests cover the proof obligations relevant to each path.
+and when every supported active replica contains only its current `global/version` representation and the tests cover the proof obligations relevant to each path.
