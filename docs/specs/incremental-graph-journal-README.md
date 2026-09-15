@@ -2,76 +2,92 @@
 
 Journal 3 is split by semantic responsibility so an implementer can follow one deliberate path from record model to lifecycle behavior.
 
-For a first implementation pass, read them in this order:
+For a first implementation pass, read in this order:
 
-1. `incremental-graph-journal.md` — conceptual model, scope, and global invariants.
-2. `incremental-graph-journal-types.md` — persisted records, self-describing certificates, causality, and conflict authority.
-3. `incremental-graph-journal-well-formedness.md` — cross-record reference validity and canonical certificate rules.
-4. `incremental-graph-journal-replay.md` — how retained history deterministically produces current graph state.
-5. `incremental-graph-journal-emission.md` — how ordinary graph operations create replay-complete history.
-6. `incremental-graph-journal-locking.md` — how staged effects become one atomic graph+journal publication.
-7. `incremental-graph-journal-api.md` — software boundaries, stable snapshots including version/schema compatibility metadata, import/publication APIs, results, and errors.
-8. `incremental-graph-journal-sync.md` — pairwise history replication, normalization, and fair-execution convergence.
-9. `incremental-graph-journal-reset.md` — controlled semantic rebaseline without history deletion.
-10. `incremental-graph-journal-migrations.md` — initial bootstrap and future whole-database version/schema migration.
-11. `incremental-graph-journal-properties.md` — retained-history algebra and the distinction between union and semantic normalization.
-12. `incremental-graph-journal-theorems.md` — proof obligations for implementation/tests.
-13. `incremental-graph-journal-examples.md` — worked traces of difficult cases.
-14. `incremental-graph-journal-errors.md` — operationally meaningful failure categories.
-15. `incremental-graph-journal-storage.md` — local persistence/codec/snapshot requirements without transport design.
-16. `incremental-graph-journal-user-contract.md` — observable expectations of graph/lifecycle callers.
-17. `incremental-graph-journal-testing.md` — differential/property/convergence/corruption test strategy.
-18. `incremental-graph-journal-checklist.md` — suggested implementation sequence and acceptance checks.
+1. `incremental-graph-journal.md` — conceptual model, scope, global invariants.
+2. `incremental-graph-journal-types.md` — record identities, causally closed contexts, event shapes, authority.
+3. `incremental-graph-journal-well-formedness.md` — context/reference/certificate validity.
+4. `incremental-graph-journal-replay.md` — deterministic projection and certificate selection.
+5. `incremental-graph-journal-emission.md` — ordinary graph transition emission.
+6. `incremental-graph-journal-locking.md` — finalization and atomic Journal/projection publication.
+7. `incremental-graph-journal-api.md` — stable snapshots, receiver-less restore, import/publication boundaries.
+8. `incremental-graph-journal-sync.md` — suffix replication, normalization, convergence.
+9. `incremental-graph-journal-reset.md` — minimal controlled semantic rebaseline.
+10. `incremental-graph-journal-migrations.md` — canonical legacy bootstrap and occurrence-preserving migration.
+11. `incremental-graph-journal-properties.md` — retained-history algebra and normalization distinctions.
+12. `incremental-graph-journal-theorems.md` — proof obligations.
+13. `incremental-graph-journal-examples.md` — worked traces/counterexamples.
+14. `incremental-graph-journal-errors.md` — failure categories.
+15. `incremental-graph-journal-storage.md` — local persistence/codec requirements.
+16. `incremental-graph-journal-user-contract.md` — observable caller expectations.
+17. `incremental-graph-journal-testing.md` — differential/property/regression testing.
+18. `incremental-graph-journal-checklist.md` — implementation sequence/acceptance checks.
 
-The surrounding lifecycle documents are:
+Surrounding lifecycle specifications:
 
-- `incremental-graph-synchronization.md` — lifecycle-facing synchronization contract;
-- `database-lifecycle.md` — open/start/migrate/sync/reset/rebuild lifecycle.
+- `incremental-graph-synchronization.md` — IncrementalGraph-facing synchronization shell;
+- `database-lifecycle.md` — startup/restore/open/migrate/sync/reset/rebuild lifecycle.
 
 ## One-sentence model
 
 ```text
-The retained journal is authority; the current IncrementalGraph database is project(journal).
+Retained immutable Journal history is authority; the current IncrementalGraph database is project(journal).
 ```
 
-## Specification completeness
+## Key correctness commitments
 
-Within the Journal 3 scope, the semantic design now specifies:
+Within Journal 3 scope the specification now defines:
 
-- persisted record identities/shapes under one current whole-database `global/version` representation;
-- deterministic whole-journal representation rewrite at database migration boundaries while preserving historical record IDs/meaning;
-- causal/reference well-formedness and conflict authority;
-- replay/projection, including self-describing validation certificates;
-- ordinary local event emission and commit-time allocation;
-- graph+journal locking and atomic publication;
-- stable-snapshot/range software interfaces, including exact `global/version` and exact `global/graph_scheme` metadata from the same source snapshot cut;
-- suffix synchronization, same-writer recovery, semantic normalization, and convergence;
-- persistent stale propagation for the selected current occurrence even when synchronization selects a new remote `ValueId`;
-- reset/rebaseline semantics with compatibility checked from the same held source snapshot;
-- pre-Journal-3 bootstrap and later schema/version migration;
-- local storage/codec requirements;
-- correctness laws, worked traces, tests, and implementation acceptance criteria.
+- one immutable contiguous stream per writer;
+- semantic-event contexts as **transitively causally closed cuts**, including exact own-writer prefix;
+- causality-respecting total conflict authority;
+- replay-complete ValueEvents and self-describing validation certificates;
+- certificate selection by basis applicability, then current-value invalidation coverage, then authority;
+- ordinary event emission with commit-time IDs/contexts/HLC allocation;
+- stable source snapshots whose compatibility metadata and records belong to one source cut;
+- receiver-less restoration before fresh identity generation for an absent installation;
+- exact same-writer prefix recovery for an existing behind receiver;
+- suffix synchronization and persistent normalization;
+- one canonical semantic bootstrap history across a reconciled legacy synchronization cohort;
+- preservation of ValueIds across migration when the semantic cached occurrence is preserved;
+- one canonical semantic migration history when migration truly creates/replaces occurrences across a cohort;
+- minimal deterministic reset which separates value identity from proof/freshness repair;
+- one current persisted format per active database;
+- no destructive authoritative history compaction;
+- explicit correctness laws, regression traces, errors, and acceptance tests.
 
-An implementer should not need to invent additional Journal semantics for those paths. Production implementation details may vary where the specifications explicitly leave representation or optimization choices open.
+An implementer should not need to invent additional Journal semantics for these paths.
+
+## Important regressions to understand before implementation
+
+The worked examples/tests intentionally include these non-obvious failures which the normative rules prevent:
+
+- A observes B which observed C, but A's persisted context omits C -> malformed non-transitive history;
+- two equally matching validations compete, but only one causally covers a current-value invalidation -> the covering certificate wins before clock authority;
+- a newly selected remote dependent is stale only because its direct input is stale -> synchronization persists that occurrence's staleness;
+- two legacy hosts independently mint equivalent bootstrap ValueIds -> unsupported; the cohort must share one canonical semantic bootstrap history;
+- a database version changes only schema/proof/freshness -> preserved cached occurrence keeps its ValueId;
+- reset changes only proof/freshness -> preserved value occurrence keeps its ValueId;
+- no local database but synchronized installation state exists -> restore continuing writer identity rather than silently create a fresh fingerprint.
 
 ## Scope boundary
 
-The Journal 3 specification deliberately stops at the semantic stable-snapshot boundary.
+Journal 3 stops at the semantic stable-snapshot/lifecycle boundary.
 
 It does **not** specify or require changes to:
 
-- Git branch/commit/file transport behavior;
+- existing Git branch/commit/file transport behavior;
 - a hosted synchronization backend;
 - Supabase/PostgreSQL/HTTP schemas or RPCs;
 - authentication/deployment topology.
 
-A transport may continue to work as it does today as long as its adapter can provide the stable journal snapshot semantics required by Journal 3, including compatibility metadata and journal history from one immutable source cut.
+A transport may continue to work as it does today if its adapter can provide the required stable snapshot/recovery-source semantics.
 
-Also deliberately outside core correctness:
+Also outside core correctness:
 
 - destructive compaction (there is none);
-- a persisted checkpoint format (checkpoints are optional derived acceleration);
-- high-level operation grouping/history UI (optional non-authoritative diagnostics);
-- the end-to-end change-sensitive synchronization time bound owned by #1607.
+- persisted checkpoint format (optional derived acceleration);
+- high-level operation grouping/history UI (optional diagnostics);
+- end-to-end change-sensitive synchronization running-time guarantee owned by #1607.
 
-Those are intentional non-requirements/deferred optimizations, not missing Journal 3 semantic specification.
+These are explicit scope boundaries/deferred optimizations, not missing Journal semantics.
