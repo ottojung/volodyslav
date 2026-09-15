@@ -206,15 +206,9 @@ B still selects B1
 B's old basis entry for A names A1 rather than current Y:10
 ```
 
-Tentative replay makes B stale.
+Tentative replay makes B stale because of the basis mismatch. That mismatch is already persistent evidence; it does not disappear merely because A later becomes fresh. Therefore this particular case does not by itself require a value-scoped sync marker.
 
-Because B was fresh before sync and keeps the same B1 ValueId, receiver X authors:
-
-```text
-X:n Invalidate(B, scope=value(B1), reason=sync)
-```
-
-Later A may itself be invalidated and revalidate unchanged as Y:10. B must remain stale until B is pulled. The sync invalidation guarantees that behavior.
+If instead B's selected certificate exactly matched the selected A ValueId and B were stale only because A itself was stale, phase 2 would persist a value-scoped sync invalidation as shown in Trace 21.
 
 ## Trace 8: source deletes an input
 
@@ -275,7 +269,7 @@ uses the same algorithm and transfers:
 X:98..100
 ```
 
-Only the starting frontier differs.
+Only the starting frontier differs. Both operations first check exact snapshot-bound database version/schema compatibility.
 
 ## Trace 10: repeat synchronization
 
@@ -283,15 +277,15 @@ After the receiver has incorporated all source records and authored any required
 
 No writer suffix is missing.
 
-`Pbefore` is already the normalized projection, so no fresh-to-stale transition or dependency-closure repair is newly caused.
-
-Result:
+All normalization obligations are already represented, so the operation produces:
 
 ```text
 changed=false
 no new semantic records
 same graph projection
 ```
+
+The compatibility check still uses the newly held source snapshot; a later incompatible source migration would make the next call fail rather than silently reusing an old compatibility result.
 
 ## Trace 11: exact same-writer prefix recovery
 
@@ -309,7 +303,7 @@ A:1..120
 
 and records 1..100 agree exactly.
 
-Under exclusive maintenance, import:
+Under exclusive maintenance, after exact snapshot version/schema compatibility succeeds, import:
 
 ```text
 A:101..120
@@ -429,13 +423,15 @@ Later a new current K2 ValueEvent wins.
 
 The old K1 invalidation remains historical, but it does not make K2 stale. K2's freshness follows certificates/invalidation applicable to K2.
 
+If K2 is stale solely because one of its direct inputs is stale while K2's own certificate exactly matches all current input ValueIds, synchronization normalization must persist a new value-scoped invalidation for K2 itself; an old K1 marker cannot do that job.
+
 ## Trace 16: reset is a new baseline, not history deletion
 
 Receiver has current A=X:20.
 
 Source target projects A=Y:8.
 
-Reset first observes/imports source history, then authors a new receiver baseline:
+Reset first opens one held source snapshot and checks that its exact database version and graph-scheme string match the receiver. It then observes/imports history and authors a new receiver baseline:
 
 ```text
 X:30 Value(A, payload copied from Y:8, reason=reset)
@@ -548,3 +544,82 @@ In a counterfactual execution that incorporated Z before Y, A might never have b
 Journal 3 does **not** claim those two counterfactual executions have identical history/result. It claims that in either actual execution, every committed normalization event is historical truth and fair synchronization eventually disseminates it so all replicas in that execution converge.
 
 This is not an acknowledgement artifact: the deletion records a state transition that really occurred under the receiver's then-observed supported history.
+
+## Trace 21: newly selected remote occurrence must retain propagated staleness
+
+Assume:
+
+```text
+A -> B
+```
+
+Common history contains:
+
+```text
+A = A1, fresh
+```
+
+Writer Y computes B while A1 is fresh:
+
+```text
+Y:10 Value(B, payload=b2)             # ValueId B2 = Y:10
+Y:11 Validate(
+    B,
+    value=Y:10,
+    basis=[{ input:A, value:A1 }]
+)
+```
+
+So on Y:
+
+```text
+A = A1, fresh
+B = B2, fresh
+```
+
+Meanwhile receiver X explicitly invalidates A. X's current A ValueId remains A1, but A is stale:
+
+```text
+X:20 Invalidate(A, scope=node, explicit)
+```
+
+X now synchronizes from Y. The stable source snapshot is first checked for exact database-version and graph-scheme compatibility.
+
+After union/closure:
+
+```text
+A = A1, stale
+B = B2, selected from Y
+B's selected certificate exactly says { input:A, value:A1 }
+```
+
+B has no basis mismatch and no own uncovered current-value invalidation. Tentative replay makes B stale **only because its direct input A is stale**.
+
+Even though B2 was not X's pre-sync selected ValueId, phase 2 must persist this propagated stale transition:
+
+```text
+X:21 Invalidate(B, scope=value(B2), reason=sync)
+```
+
+Now X pulls A and its computor returns `Unchanged`. X authors a later validation for the same A1 which covers the explicit A invalidation:
+
+```text
+X:22 Validate(A, value=A1, basis=[])
+```
+
+Final replay is:
+
+```text
+A = A1, fresh
+B = B2, stale
+```
+
+B does **not** become fresh automatically just because A revalidated unchanged. The sync-authored value-scoped invalidation on B2 remains uncovered until B itself is pulled and cache-revalidated/recomputed.
+
+This is why phase 2 is defined over the post-union selected occurrence and must not require:
+
+```text
+Pbefore.valueId(B) == P1.valueId(B)
+```
+
+The selected B occurrence's provenance is irrelevant; what matters is whether its own proof is otherwise ready and its staleness is solely inherited from a stale direct input.
