@@ -87,7 +87,6 @@ JournalRecordBase = {
 All local record classes consume writer-local stream positions. Therefore `JournalSequence` is a log coordinate, not a count of semantic value changes.
 
 ## Semantic EventRef
-
 Semantic events additionally carry:
 
 ```text
@@ -182,7 +181,7 @@ Deletion ends that materialization lineage. Later materialization from semantic 
 
 Synchronization copies a foreign ValueEvent unchanged. Receipt does not create another local ValueEvent.
 
-Reset/migration may intentionally create new baseline ValueEvents carrying an already-existing physical NodeIdentifier and target payload/timestamps; those new event IDs are distinct new semantic occurrences.
+Reset/bootstrap/migration may create a new ValueEvent carrying an already-existing physical NodeIdentifier only when the applicable lifecycle rule genuinely creates or replaces the semantic value occurrence. The new event ID is then a distinct ValueId. Proof/freshness-only changes and semantic-preserving migration `override()` do not create a new ValueEvent; `override()` changes target-version representation through the whole-history format rewrite while preserving the existing ValueId.
 
 ## NodeIdentifier uniqueness basis
 
@@ -397,7 +396,6 @@ for every writer A:
 ```
 
 Therefore if:
-
 ```text
 happenedBefore(E,F)
 happenedBefore(F,G)
