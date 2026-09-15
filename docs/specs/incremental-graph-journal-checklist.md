@@ -35,9 +35,13 @@ Implement the semantic `JournalSnapshot` abstraction.
 
 Acceptance:
 
-- snapshot frontier is immutable;
+- snapshot carries exact `databaseVersion` from source `global/version`;
+- snapshot carries exact `graphSchemeString` from source `global/graph_scheme`;
+- compatibility metadata, local writer identity, frontier, and records all belong to one immutable committed source state;
+- snapshot compatibility metadata/frontier are immutable for its lifetime;
 - `get(A,q)` and ordered range iteration observe one fixed retained prefix;
 - range iteration detects/does not silently skip holes;
+- a migration/cutover between an earlier external metadata read and `openSnapshot()` cannot cause stale compatibility metadata to be reused; sync/reset always compare metadata from the held snapshot itself;
 - snapshot reads have no graph side effects.
 
 ## 3. Local publication finalization
@@ -112,7 +116,9 @@ Implement synchronization against one `JournalSyncSource`/stable snapshot.
 
 Acceptance:
 
-- source/receiver are already at compatible current database versions;
+- source snapshot's exact `databaseVersion` and `graphSchemeString` are compared with receiver active metadata before source journal interpretation/import;
+- that compatibility metadata belongs to the same snapshot as the source frontier/records;
+- version/schema mismatch raises `JournalVersionCompatibilityError` rather than implicit migration;
 - imports every missing writer suffix, not only source-local writer history;
 - verifies overlapping IDs;
 - supports exact same-writer prefix recovery;
@@ -131,8 +137,11 @@ Acceptance:
 
 - dependency-closure removal authors explicit sync DeleteEvents;
 - cause-before-dependent delete ordering is deterministic;
-- receiver-only fresh dependents which become stale retain persistent value-scoped sync invalidations;
-- nodes already stale do not receive duplicate stale-transition events merely from repeated sync;
+- every selected current occurrence whose own proof exactly matches current inputs but is stale solely because a direct input is stale gets/retains a persistent current-value sync invalidation;
+- that rule applies even when synchronization **changes** the selected ValueId or newly materializes/selects a remote occurrence;
+- the regression `A -> B`: receiver A stale, source supplies fresh remote B based on same A ValueId, then receiver A revalidates `Unchanged` => B remains stale until B itself is pulled;
+- basis-mismatch or already-uncovered-invalidated nodes do not receive unnecessary duplicate markers;
+- repeated sync does not create duplicate stale-transition events;
 - repeat synchronization against unchanged source is a semantic no-op;
 - after non-normalization changes stop, generated sync normalization reaches a finite fixed point under fair dissemination;
 - tests do not incorrectly require counterfactual source schedules which authored different normalization events to have identical final histories.
@@ -143,6 +152,9 @@ Implement `resetTo` semantics under exclusive maintenance.
 
 Acceptance:
 
+- source target is derived from one held `JournalSnapshot`;
+- exact source snapshot `databaseVersion`/`graphSchemeString` match receiver active metadata before import/baseline authoring;
+- compatibility metadata and source journal belong to the same snapshot cut;
 - source history is retained/imported first;
 - old receiver history remains retained;
 - source-present target nodes receive new reset ValueIds;
@@ -192,7 +204,7 @@ Provide specific errors/values sufficient to distinguish:
 - stream gap;
 - causal-closure/reference-causality violation;
 - current-format record codec/self-described-basis violation;
-- database/schema version incompatibility;
+- snapshot database-version / exact graph-scheme incompatibility;
 - projection invariant failure;
 - durable publication/I/O failure.
 
@@ -209,6 +221,8 @@ Priority properties:
 - prefix-union algebra;
 - local emission preservation;
 - certificate soundness;
+- snapshot-bound compatibility checking;
+- persistent stale propagation for newly selected remote occurrences;
 - repeat-sync no-op;
 - normalization fixed-point/termination for each actual fair execution;
 - reset target theorem;
@@ -240,4 +254,4 @@ Journal 3 is implementation-complete only when ordinary operations, synchronizat
 persistedGraph == project(retainedJournal)
 ```
 
-and when every supported active replica contains only its current `global/version` representation and the tests cover the proof obligations relevant to each path.
+and when every supported active replica contains only its current `global/version` representation, sync/reset compatibility is established from one held source snapshot, and the tests cover the proof obligations relevant to each path.
