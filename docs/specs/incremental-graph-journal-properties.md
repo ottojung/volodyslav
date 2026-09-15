@@ -141,6 +141,8 @@ not C through F1.
 
 Therefore post-bootstrap value changes/creations cannot be reinterpreted as state which a stale pre-Journal host should overwrite/delete during bootstrap.
 
+The artifact remains encoded under its bootstrap target version/schema even if active cohort replicas later migrate forward. It is lifecycle source state, not an active current JournalReplica.
+
 A late host first joins at B's original bootstrap target version, then follows ordinary database migration to current version, then ordinary synchronization imports compatible post-bootstrap history.
 
 ## Migration representation is not same-version join
@@ -200,6 +202,6 @@ This is an accepted migration trade-off. Journal-aware migration does not requir
 
 Materialized graph sublevels, indexes, checkpoints, staging replicas, transport branches/cursors, and cached validation summaries are not authoritative Journal elements.
 
-The frozen canonical-bootstrap artifact is likewise lifecycle source state rather than an active current JournalReplica.
+The frozen canonical-bootstrap artifact is lifecycle source state rather than an active current JournalReplica.
 
 Derived state may be created/deleted/rebuilt without changing retained semantic history, subject to atomic cutover and replay equivalence.
