@@ -2,256 +2,228 @@
 
 ## Purpose
 
-This checklist translates the normative Journal 3 specifications into implementation milestones and acceptance checks.
-
-It is not a second design. Each item points at behavior defined elsewhere; implementation details may vary as long as the normative result is preserved.
+This checklist translates the normative Journal 3 specifications into implementation milestones and acceptance checks. It is not a second design.
 
 ## 1. Persisted journal primitives
 
 Implement durable current-version representations for:
 
-- `JournalRecordId { author, sequence }`;
+- `JournalRecordId`;
 - `JournalFrontier`;
 - `AuthorityTime`;
-- `ValueEvent`;
-- `DeleteEvent`;
-- `ValidateEvent`;
-- `InvalidateEvent`;
+- Value/Delete/Validate/Invalidate events;
 - `WriterStateRecord`.
 
 Acceptance:
 
-- the replica's existing `global/version` is the only persisted format-version selector;
-- journal records contain no per-record version discriminator;
-- one writer range can be iterated in sequence order;
-- current-format records round-trip exactly through the codec;
-- malformed current-format bodies are rejected with specific errors;
-- validation bases are self-describing, duplicate-free, and ordered by canonical persisted `NodeKeyString` order;
-- no public API permits arbitrary journal mutation.
+- `global/version` is the only persisted format selector;
+- no per-record version discriminator;
+- ordered per-writer range iteration;
+- canonical current-format codec;
+- validation bases are explicit, duplicate-free, canonical NodeKeyString order;
+- no public arbitrary journal mutation API.
 
-## 2. Journal snapshot
-
-Implement the semantic `JournalSnapshot` abstraction.
+## 2. Causal context validation
 
 Acceptance:
 
-- snapshot carries exact `databaseVersion` from source `global/version`;
-- snapshot carries exact `graphSchemeString` from source `global/graph_scheme`;
-- compatibility metadata, local writer identity, frontier, and records all belong to one immutable committed source state;
-- snapshot compatibility metadata/frontier are immutable for its lifetime;
-- `get(A,q)` and ordered range iteration observe one fixed retained prefix;
-- range iteration detects/does not silently skip holes;
-- a migration/cutover between an earlier external metadata read and `openSnapshot()` cannot cause stale compatibility metadata to be reused; sync/reset always compare metadata from the held snapshot itself;
-- snapshot reads have no graph side effects.
+- semantic event `(W,q)` has `context[W] == q-1`;
+- every context coordinate is retained;
+- if F's context includes semantic E, every coordinate of E.context is <= F.context;
+- malformed `A:1 -> B:1 -> C:1` transitive omission is rejected;
+- `happenedBefore` is transitive in generated supported histories;
+- happened-before always implies increasing authority.
 
-## 3. Local publication finalization
+## 3. Journal snapshot
 
-Integrate journal finalization with the existing graph darkroom/transaction publication boundary.
+Implement `JournalSnapshot` with:
+
+- exact source `databaseVersion`;
+- exact `graphSchemeString`;
+- `localWriter`;
+- immutable frontier;
+- stable range reads.
+
+Compatibility metadata/frontier/records must belong to one immutable committed source cut.
+
+## 4. Local publication finalization
 
 Acceptance:
 
-- failed transactions leave no durable journal sequence hole;
-- concurrent successful transactions receive disjoint contiguous writer ranges in commit order;
-- same-publication ValueId references resolve only after final IDs are allocated;
-- exact validation bases are rebuilt/confirmed from finalized current inputs at commit time;
-- graph+journal commit atomically;
-- volatile journal allocator caches publish only after durable success.
+- failed transactions leave no durable sequence hole;
+- successful concurrent transactions get disjoint contiguous writer ranges;
+- final event IDs/contexts/HLCs are allocated inside serialized finalization;
+- own-writer context is exact after final ordering;
+- graph+journal publish atomically;
+- volatile allocator state advances only after durable success.
 
-## 4. Ordinary graph emission
+## 5. Ordinary graph emission
 
-Implement each case from `incremental-graph-journal-emission.md`.
+Cover fresh no-op, first materialization, changed recomputation, `Unchanged`, cache revalidation, explicit/propagated invalidation, deletion, and allocator advancement.
 
-Acceptance tests cover:
-
-- fresh pull no-op;
-- first materialization;
-- changed recomputation;
-- `Unchanged`;
-- cache revalidation;
-- explicit invalidation;
-- transitive propagated invalidation;
-- materialization deletion/removal;
-- `last_node_index` advancement.
-
-For each committed case assert:
+For every case:
 
 ```text
 project(journalAfter) == graphAfter
 ```
 
-## 5. Replay engine
-
-Implement a clear reference replay path before/alongside incremental optimization.
+## 6. Replay engine
 
 Acceptance:
 
-- value/delete head selection is deterministic;
-- reference-causality rules are enforced;
-- retained certificate records are understood from explicit input NodeKeys without historical positional schema ordering;
-- current certificate shape compatibility/selection is deterministic;
-- freshness/validity exactly match the flag-based graph contract;
-- physical identifiers/timestamps/payloads come from selected ValueEvents;
-- local writer watermark comes from local WriterStateRecords;
-- full rebuild from journal yields valid existing graph storage.
+- deterministic value/delete head selection;
+- transitive/reference causality enforced;
+- certificate shape compatibility deterministic;
+- certificate selection key is exactly:
 
-Keep the reference replay path simple enough to serve as a test oracle even if production later maintains projections incrementally.
+```text
+basisMatchCount
+coversValueInvalidations
+then authority
+```
 
-## 6. Bootstrap migration
+- no certificate mixing;
+- freshness/validity reproduce graph semantics;
+- full rebuild from Journal works.
 
-Implement pre-Journal-3 bootstrap directly into the target current database format.
+## 7. Absent-installation restore
+
+Implement the receiver-less startup transition before fresh fingerprint generation.
 
 Acceptance:
 
-- all existing materialized values/payloads/timestamps/identifiers are represented;
-- stale nodes with partial validity use the controlled `"unknown"` basis value correctly;
-- bootstrap basis entries explicitly name every direct input and use canonical NodeKeyString order;
-- bootstrap authority allocation follows the modifiedAt-preserving special rule;
-- replayed graph equals the legacy graph exactly;
-- local allocation watermark is preserved;
+- configured installation recovery source is queried first;
+- source exists -> restore and adopt held snapshot `localWriter`;
+- source definitively absent -> fresh fingerprint may be generated;
+- source query/read failure -> startup fails and MUST NOT fall back to fresh;
+- restored writer head/watermark/high-water/projection are reconstructed before new allocation.
+
+## 8. Canonical pre-Journal bootstrap
+
+Acceptance:
+
+- one canonical semantic bootstrap history exists per synchronization cohort;
+- participating legacy changes intended to survive are reconciled before the cohort crosses the boundary;
+- canonical bootstrap represents payloads/timestamps/identifiers/freshness/validity exactly;
+- joining installations retain exact canonical semantic ValueIds/certificates rather than re-authoring equivalents;
+- joining installations preserve their own local writer fingerprint and allocator watermark;
+- joining legacy graph mismatch fails automatic canonical join;
+- stale partial validity uses controlled `"unknown"`;
 - cutover is atomic.
 
-## 7. Pairwise synchronization
-
-Implement synchronization against one `JournalSyncSource`/stable snapshot.
+## 9. Pairwise synchronization
 
 Acceptance:
 
-- source snapshot's exact `databaseVersion` and `graphSchemeString` are compared with receiver active metadata before source journal interpretation/import;
-- that compatibility metadata belongs to the same snapshot as the source frontier/records;
-- version/schema mismatch raises `JournalVersionCompatibilityError` rather than implicit migration;
-- imports every missing writer suffix, not only source-local writer history;
-- verifies overlapping IDs;
-- supports exact same-writer prefix recovery;
-- rejects same-writer fork;
-- import is streamable;
+- compatibility checked from held source snapshot before interpreting records;
+- every missing writer suffix imported;
+- overlap verified;
+- exact same-writer prefix recovery supported;
+- writer fork rejected;
+- import streamable;
+- imported records unchanged;
 - no computor execution;
-- imported records retain exact writer/ID/body;
-- no per-record upcast/downcast occurs during sync;
-- no receipt/adoption event is created merely for transport.
+- no transport acknowledgement/adoption event.
 
-## 8. Synchronization normalization
+An absent installation does not enter through this receiver-required operation; it uses §7.
 
-Implement both normalization phases.
+## 10. Synchronization normalization
 
 Acceptance:
 
-- dependency-closure removal authors explicit sync DeleteEvents;
-- cause-before-dependent delete ordering is deterministic;
-- every selected current occurrence whose own proof exactly matches current inputs but is stale solely because a direct input is stale gets/retains a persistent current-value sync invalidation;
-- that rule applies even when synchronization **changes** the selected ValueId or newly materializes/selects a remote occurrence;
-- the regression `A -> B`: receiver A stale, source supplies fresh remote B based on same A ValueId, then receiver A revalidates `Unchanged` => B remains stale until B itself is pulled;
-- basis-mismatch or already-uncovered-invalidated nodes do not receive unnecessary duplicate markers;
-- repeated sync does not create duplicate stale-transition events;
-- repeat synchronization against unchanged source is a semantic no-op;
-- after non-normalization changes stop, generated sync normalization reaches a finite fixed point under fair dissemination;
-- tests do not incorrectly require counterfactual source schedules which authored different normalization events to have identical final histories.
+- structural closure authors explicit sync deletes;
+- every selected occurrence stale solely because a direct input is stale gets/retains a current-value sync invalidation;
+- this applies to newly selected remote ValueIds;
+- basis mismatch/node invalidation/already-uncovered value invalidation do not create unnecessary markers;
+- repeat sync is no-op;
+- fair normalization reaches finite fixed point.
 
-## 9. Reset
-
-Implement `resetTo` semantics under exclusive maintenance.
+## 11. Reset
 
 Acceptance:
 
-- source target is derived from one held `JournalSnapshot`;
-- exact source snapshot `databaseVersion`/`graphSchemeString` match receiver active metadata before import/baseline authoring;
-- compatibility metadata and source journal belong to the same snapshot cut;
-- source history is retained/imported first;
-- old receiver history remains retained;
-- source-present target nodes receive new reset ValueIds;
-- source validity/freshness are rebaselined exactly;
-- reset certificate basis keys equal target direct-input keys and are canonically ordered;
-- receiver-local allocator watermark remains local;
-- replayed result is observationally equal to source target;
-- repeated reset to already-equal unchanged target may no-op.
+- source target/compatibility from one held snapshot;
+- J0 source+receiver history retained;
+- if P0 already selects the target semantic occurrence, reset preserves its ValueId;
+- new ValueEvent only when payload/identifier/timestamps/presence must actually change;
+- validity/freshness-only changes use ValidateEvent/InvalidateEvent;
+- dependents may retain own ValueId while certificates update for changed input ValueIds;
+- exactly one reset delete iff P0 present and target absent;
+- repeated satisfied reset may no-op;
+- receiver allocator remains local;
+- replayed result equals target semantic graph.
 
-## 10. Journal-aware migration
-
-Implement whole-database Journal-3-aware migration.
+## 12. Journal-aware migration
 
 Acceptance:
 
-- the source active replica remains entirely in source format until cutover;
-- every retained source journal record is rewritten into the target canonical format in inactive storage;
-- rewritten pre-existing records preserve `(author,sequence)`, causal/reference identity, and historical semantic meaning;
-- rewriting the same source record independently produces the same target-format body;
-- the target contains no mixture of source/target record formats and no per-record version tags;
-- target-present nodes receive new migration occurrences for semantic target state;
-- removed current nodes receive migration DeleteEvents;
-- target validity/freshness are reproduced by baseline certificate + optional invalidation;
-- target certificate input-key sets match target schema and use canonical NodeKeyString ordering;
-- historical old-schema certificates remain semantically self-describing after representation rewrite;
-- target schema replay equals migration target;
-- replay never reruns historical migration callbacks;
-- migration may stream across/rewrite the complete retained journal; time/I/O proportional to journal size is accepted.
+- complete retained old history is deterministically rewritten into target format preserving IDs/meaning;
+- target has one format only;
+- preserved semantic value occurrences preserve ValueIds;
+- schema/proof/freshness change alone does not create ValueEvent;
+- new ValueEvent only for actual create/replace/transform occurrence change;
+- target proof may be re-established with ValidateEvent targeting preserved ValueId;
+- target stale state may use value-scoped migration invalidation on preserved ValueId;
+- semantic migration which creates/replaces occurrences uses one canonical semantic migration history across a reconciled synchronization cohort;
+- representation-only/occurrence-preserving migrations may run independently while preserving shared ValueIds;
+- target replay equals migration target;
+- historical migration callbacks are not needed for replay;
+- whole-journal rewrite may be O(history) and streamable.
 
-## 11. Open/rebuild lifecycle
-
-Implement current-state validation/rebuild boundaries.
+## 13. Open/rebuild lifecycle
 
 Acceptance:
 
-- startup interprets the complete active replica using its one `global/version` format;
-- startup does not expose known graph/journal disagreement;
-- valid journal + damaged derived graph can be rebuilt;
-- invalid/forked authoritative journal is rejected rather than "repaired" from graph bytes;
-- allocator/high-water/index caches can be reconstructed from authoritative history.
+- one current format;
+- known graph/journal mismatch not exposed;
+- valid history can rebuild damaged projection;
+- invalid authoritative history rejected;
+- context closure, allocator, high-water, and indexes reconstructible/validated.
 
-## 12. Error model
+## 14. Error model
 
-Provide specific errors/values sufficient to distinguish:
+Provide actionable categories for:
 
 - writer fork;
 - stream gap;
-- causal-closure/reference-causality violation;
-- current-format record codec/self-described-basis violation;
-- snapshot database-version / exact graph-scheme incompatibility;
+- transitive causal-context closure failure;
+- ValueId reference causality failure;
+- current-format record validation;
+- snapshot version/schema incompatibility;
 - projection invariant failure;
-- durable publication/I/O failure.
+- publication/source-read failure.
 
-Do not collapse all journal failures into generic corruption or generic sync failure when the caller can act differently based on category.
-
-## 13. Reference model / property verification
-
-Before relying on optimized incremental projection/synchronization, implement tests or a bounded model against `incremental-graph-journal-theorems.md`.
+## 15. Reference model / property verification
 
 Priority properties:
 
-- deterministic replay under writer interleavings;
-- causality -> authority;
+- deterministic replay;
+- context transitivity and causality -> authority;
 - prefix-union algebra;
 - local emission preservation;
-- certificate soundness;
-- snapshot-bound compatibility checking;
-- persistent stale propagation for newly selected remote occurrences;
+- invalidation-aware certificate selection;
+- stable snapshot compatibility;
+- selected-remote stale persistence;
 - repeat-sync no-op;
-- normalization fixed-point/termination for each actual fair execution;
-- reset target theorem;
-- bootstrap equivalence;
-- migration equivalence;
-- deterministic whole-journal format migration.
+- normalization convergence;
+- absent restore vs fresh creation;
+- canonical multi-host bootstrap;
+- occurrence-preserving migration and canonical semantic migration;
+- minimal deterministic reset;
+- deterministic whole-journal representation migration.
 
-## 14. Performance work deferred, not forgotten
+## 16. Performance boundary
 
 Issue #1607 owns end-to-end change-sensitive synchronization complexity.
 
-The first correct implementation may perform whole-graph work where the current specification permits it, but should keep these boundaries amenable to later optimization:
+Correctness must not be weakened to satisfy an unstated performance target. Whole-journal representation migration cost is separately accepted.
 
-- ordered journal suffix reads;
-- derived reverse structural-edge index;
-- incremental current-head/certificate indexes;
-- inactive/staged target publication;
-- reference replay separate from optimized projection maintenance.
+## 17. Completion condition
 
-Separately, repository intent explicitly accepts whole-journal work for a format-changing database migration. Do not weaken the one-format invariant merely to make migrations change-sensitive.
-
-Correctness must not be weakened to meet an unstated performance target.
-
-## 15. Completion condition
-
-Journal 3 is implementation-complete only when ordinary operations, synchronization, reset, migration, restart/open, and projection rebuild all preserve:
+Journal 3 implementation is complete only when ordinary operations, startup/restore, bootstrap/migration, synchronization, reset, restart/open, and rebuild preserve:
 
 ```text
 persistedGraph == project(retainedJournal)
 ```
 
-and when every supported active replica contains only its current `global/version` representation, sync/reset compatibility is established from one held source snapshot, and the tests cover the proof obligations relevant to each path.
+and all causal, identity-preservation, compatibility, and regression laws above are covered by implementation tests/models.
