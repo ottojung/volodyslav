@@ -366,7 +366,7 @@ happenedBefore(E,F) iff
 
 Same-writer semantic order follows immutable writer-stream order even when non-semantic records lie between two events.
 
-A semantic event's `context` is a **causally closed journal frontier** describing every journal record the event's writer had observed before that event, extended with earlier records from the same atomic publication.
+For ordinary Journal authoring, a semantic event's `context` is a **causally closed journal frontier** describing every journal record the event's writer semantically observed before that event, extended with earlier records from the same atomic publication.
 
 For semantic event F with:
 
@@ -396,6 +396,7 @@ for every writer A:
 ```
 
 Therefore if:
+
 ```text
 happenedBefore(E,F)
 happenedBefore(F,G)
@@ -410,6 +411,21 @@ happenedBefore(E,G)
 for every supported journal. `happenedBefore` is a genuine transitive partial order, not merely a direct-observation relation.
 
 Every context coordinate must be retained in a supported journal. A context which points at retained records but omits a causal predecessor of an included semantic event is malformed even though all of its numerical coordinates are individually in range.
+
+### Historical bootstrap conversion exception
+
+The initial conversion of a pre-Journal legacy value occurrence is the only case where **migration execution read order is not itself semantic observation**.
+
+A `ValueEvent(reason="bootstrap")` produced from legacy state represents the historical value occurrence, not a new value write performed at upgrade time. Therefore the bootstrap rules in `incremental-graph-journal-migrations.md` may intentionally omit canonical bootstrap records from a joining legacy ValueEvent's cross-writer context so a pre-existing divergent legacy occurrence remains concurrent with the canonical occurrence.
+
+The resulting context must still satisfy all structural Journal rules:
+
+- exact own-writer prefix `q-1`;
+- transitive closure over every coordinate it does include;
+- no impossible references;
+- authority extending every actual happened-before predecessor.
+
+No ordinary pull, synchronization, reset, or Journal-aware migration may use this exception. Bootstrap Validate/Invalidate records authored after legacy value conversion use normal complete causal observation of the value records they reference.
 
 ## Ordinary authority allocation
 
@@ -440,9 +456,9 @@ The cached high-water is derived allocator state, not independent semantic autho
 
 Journal 3 imposes no maximum-clock-skew rejection rule.
 
-## Initial-bootstrap ValueEvent authority exception
+## Pre-Journal bootstrap ValueEvent authority exception
 
-Only the initial pre-Journal-3 bootstrap baseline defined by `incremental-graph-journal-migrations.md` may allocate bootstrap ValueEvents with:
+Only ValueEvents converting pre-Journal legacy occurrences as defined by `incremental-graph-journal-migrations.md` may allocate:
 
 ```text
 authorityTime = {
@@ -451,16 +467,19 @@ authorityTime = {
 }
 ```
 
-without incrementing H for every equal-time bootstrap value.
+without first joining migration execution time or an already-read canonical foreign high-water.
 
-This exception is valid only because:
+This applies both to the canonical creator's baseline ValueEvents and to a late joiner's genuinely different legacy ValueEvents.
 
-1. bootstrap ValueEvents are allocated before later bootstrap semantic events;
-2. they are enumerated in nondecreasing modifiedAt order;
+The exception is valid because:
+
+1. these events represent pre-existing legacy value versions whose `modifiedAt` is the conflict-version coordinate;
+2. each writer enumerates its bootstrap ValueEvents in nondecreasing `(modifiedAt, canonical NodeKey)` order;
 3. equal-time same-writer events remain strictly ordered by writer-local sequence in the total EventRef authority order;
-4. later bootstrap Validate/Invalidate events return to ordinary HLC allocation after H has been raised to the maximum bootstrap value authority/time.
+4. a joining legacy ValueEvent does not claim happened-before over the canonical conflicting occurrence merely because migration read it;
+5. later bootstrap Validate/Invalidate events return to ordinary HLC allocation after high-water is raised to include the canonical cut and all bootstrap ValueEvents they causally observe.
 
-No ordinary pull, sync, reset, or later migration may use this exception.
+No ordinary pull, sync, reset, or later Journal-aware migration may use this exception.
 
 ## Total semantic authority order
 
