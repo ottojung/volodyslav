@@ -56,7 +56,7 @@ A successful pairwise synchronization means:
 - every imported writer record retains its original identity/body;
 - all retained semantic-event contexts are valid causally closed cuts;
 - required receiver normalization is committed;
-- the active graph equals replay of active Journal history;
+- active graph equals replay of active Journal history;
 - no computor ran;
 - repeating against the unchanged incorporated source is a semantic no-op.
 
@@ -83,30 +83,17 @@ Failure before pairwise cutover leaves the previous active Journal/projection pa
 
 An outer operation may process several sources independently, so earlier successful pairwise commits may remain when a later source fails.
 
-Lifecycle callers must be able to distinguish operational failure, compatibility failure, writer fork, malformed causal/reference history, and projection failure.
+Lifecycle callers must distinguish operational failure, compatibility failure, writer fork, malformed causal/reference history, and projection failure.
 
 ## Absent-installation startup
 
-A machine with **no local database/writer identity** does not begin by creating a fresh fingerprint and then ordinary-syncing.
+A machine with no local database/writer identity does not begin by creating a fresh fingerprint and then ordinary-syncing.
 
 Startup first queries the configured recovery source for synchronized state belonging to this installation.
 
-If it exists, receiver-less restoration conceptually performs:
+If it exists, receiver-less restoration conceptually performs `restoreAbsentFrom(source)`, adopts the held snapshot's `localWriter`, restores retained history/projection/allocator state, and then runs the normal migration gate if needed.
 
-```text
-restoreAbsentFrom(source)
-```
-
-and:
-
-- adopts the held snapshot's `localWriter` as the continuing local fingerprint;
-- restores retained history and graph projection;
-- reconstructs local writer head/allocator/high-water before new writes;
-- runs the normal migration gate if the restored database is older.
-
-If the recovery-source query/read fails, startup fails. It must not silently create a new identity.
-
-Only a definite “no synchronized state for this installation” result permits genuine fresh creation.
+If the recovery-source query/read fails, startup fails. Only definite absence permits genuine fresh creation.
 
 ## Same-writer restoration of an existing database
 
@@ -116,48 +103,57 @@ After recovery, allocation continues strictly after the recovered head. Any over
 
 ## Initial Journal bootstrap from legacy state
 
-Pre-Journal replicas expected to synchronize after the transition use one canonical semantic bootstrap history for the reconciled legacy state.
+Pre-Journal replicas expected to synchronize after transition use one canonical semantic bootstrap history as a shared ValueId basis.
 
-The canonical source authors the semantic Value/Validate/Invalidate bootstrap records once.
+Before choosing create versus join, startup queries the configured transport-neutral **cohort bootstrap source**:
 
-Other cohort installations:
+1. canonical source exists -> join it;
+2. source definitively absent -> create the canonical bootstrap;
+3. query failed/indeterminate -> startup fails and does not create competing history.
 
-- verify their legacy graph matches the canonical target;
-- retain those exact semantic bootstrap records/ValueIds;
-- preserve their own local writer fingerprint;
-- preserve their own allocator watermark through local writer-state history;
-- do **not** mint equivalent semantic bootstrap ValueIds independently.
+A joining host does not need an exactly equal legacy graph. It retains canonical records verbatim, then authors under its own writer only the minimal `reason="bootstrap"` delta needed to reproduce its local supported legacy graph.
 
-A divergent legacy installation must be explicitly reconciled/rebaselined or fail automatic upgrade rather than create competing baseline identities.
+Therefore:
+
+- nodes whose immutable semantic occurrence fields match the canonical projection retain the canonical ValueIds;
+- a locally changed node gets a joining-writer ValueEvent only for that changed occurrence;
+- local presence/absence differences use minimal Value/Delete records;
+- validity/freshness-only differences use Validate/Invalidate without replacing equal occurrences;
+- the joining host keeps its own writer fingerprint and allocator watermark.
+
+This lets an offline host preserve legitimate legacy changes while still sharing occurrence identity for all unaffected state.
+
+If the bootstrap-source query is indeterminate, the host fails rather than racing another canonical creator. Distinct canonical histories for one cohort are unsupported.
 
 ## Journal-aware migration
 
-A database migration may rewrite the physical representation of every retained Journal record into the target current format while preserving existing record IDs and historical meaning.
+A database migration may rewrite the physical representation of every retained Journal record into the target current format while preserving record IDs and historical meaning.
 
-Semantic migration then applies only the target changes actually required.
+Semantic migration then applies only target changes actually required.
 
-### Preserved cached occurrences
+### `keep`
 
-If migration keeps one current cached occurrence's:
+`keep` preserves the semantic occurrence and selected ValueId.
 
-- NodeIdentifier;
-- payload;
-- createdAt;
-- modifiedAt;
+### `override()`
 
-then its selected ValueId is preserved.
+`override()` is a semantic-preserving representation rewrite. It preserves the selected ValueId even when the target-version stored payload representation changes.
 
-Schema/proof/freshness changes alone do not manufacture a replacement value occurrence.
+The payload-representation conversion belongs to the deterministic whole-history representation rewrite. The selected `ValueEvent` keeps its JournalRecordId, semantic meaning, NodeIdentifier, createdAt, and modifiedAt.
 
-Migration may append a new ValidateEvent or value-scoped InvalidateEvent targeting that same preserved ValueId.
+Two replicas independently performing the same representation-only override therefore keep the same pre-migration ValueId shared.
 
-### New/replaced occurrences
+`override()` must not be used when the semantic value changes; the existing migration contract requires invalidation/recomputation or another explicit semantic replacement for that case.
 
-A new migration ValueEvent is authored only when migration actually creates/replaces/transforms the semantic occurrence.
+### Proof/freshness changes
 
-When a version transition does create/rewrite semantic occurrences, replicas expected to synchronize use one canonical semantic migration history for the reconciled source state rather than independently minting equivalent new ValueIds.
+Schema/proof/freshness changes alone do not manufacture a replacement value occurrence. Migration may append Validate/Invalidate records targeting a preserved ValueId.
 
-Representation-only or occurrence-preserving migrations may be performed independently because shared ValueIds stay shared.
+### Genuine new/replaced occurrences
+
+A new migration ValueEvent is authored only when migration actually creates/replaces the semantic occurrence.
+
+Journal-aware migrations may run independently on different replicas. If two replicas independently create distinct ValueIds for a genuine replacement, ordinary synchronization later chooses by conflict authority; dependents whose certificates name a losing replacement may become stale and recompute/revalidate. This is accepted rather than requiring a particular peer to coordinate migration.
 
 Future replay never reruns the historical migration callback.
 
@@ -173,28 +169,22 @@ requires an established writable receiver and one held compatible source snapsho
 
 Reset retains receiver/source history and makes the receiver projection source-target-equivalent relative to all observed history.
 
-Reset is **minimal by semantic layer**:
+Reset is minimal by semantic layer:
 
 - if the union already selects the requested immutable value occurrence, preserve its ValueId;
 - if value state actually differs, author a new reset ValueEvent;
-- if only proof differs, author the required ValidateEvent for the preserved/current ValueId;
+- if only proof differs, author the required ValidateEvent;
 - if only freshness differs, use the required value-scoped InvalidateEvent or later validation;
 - if target requires absence while union selects a value, author exactly one reset DeleteEvent;
 - if target absence is already selected, author no redundant delete.
 
-Thus a reset does not replace the whole graph with fresh ValueIds merely because it is a reset.
-
-Repeated reset to an unchanged already-satisfied target may return `changed=false` and author nothing.
-
-No computor runs during reset.
+Repeated reset to an unchanged already-satisfied target may return `changed=false` and author nothing. No computor runs during reset.
 
 ## Projection rebuild
 
 An administrative rebuild may discard/reconstruct derived graph/index state from authoritative current-format Journal history.
 
-For valid history, successful rebuild is semantically invisible to ordinary callers.
-
-If authoritative Journal history itself is malformed—such as a writer fork, non-transitively-closed event context, or impossible ValueId reference—rebuild fails instead of changing history to match graph bytes.
+For valid history, successful rebuild is semantically invisible. If authoritative history is malformed, rebuild fails rather than changing history to match graph bytes.
 
 ## No destructive compaction expectation
 
