@@ -96,9 +96,9 @@ During serialized finalization the implementation:
 5. allocates one contiguous writer sequence block;
 6. assigns exact event IDs/ValueIds in deterministic topological order;
 7. assigns every semantic event `(W,q)` own-writer context exactly `q-1`;
-8. starts cross-writer context from the complete causally closed frontier observed by the publication;
+8. starts cross-writer context from the complete causally closed frontier semantically observed by the publication;
 9. resolves same-publication references only to earlier records;
-10. allocates AuthorityTimes extending every causal predecessor;
+10. allocates AuthorityTimes which extend every causal predecessor;
 11. writes Journal records and matching graph mutations atomically.
 
 Failed operations consume no durable Journal coordinate.
@@ -227,7 +227,7 @@ joinCanonicalBootstrap(legacyState, canonicalBootstrapSnapshot)
 
 `joinCanonicalBootstrap` is **not reset**. It:
 
-1. requires the artifact's exact `databaseVersion` / `graphSchemeString` to equal the supported legacy->Journal bootstrap target; mismatch is `JournalVersionCompatibilityError` before history is authored;
+1. requires the artifact's exact `databaseVersion` / `graphSchemeString` to equal the supported legacy->Journal bootstrap target; mismatch throws/returns `JournalVersionCompatibilityError` before history is authored;
 2. retains exactly the canonical records through `bootstrapFrontier`;
 3. preserves the joining installation's own writer fingerprint/allocator state;
 4. reuses canonical ValueIds for equal legacy occurrences;
@@ -252,7 +252,7 @@ The representation rewrite is a canonical per-record transform. If ValueEvent pa
 
 The semantic phase preserves existing ValueIds for occurrence-preserving decisions and appends only semantic records needed for the target state.
 
-`override()` is occurrence-preserving, but its callback is not authoritative record-rewrite input for Journal-aware history. Its selected-record result must equal the canonical per-record codec output; otherwise migration fails before cutover.
+`override()` is occurrence-preserving, but its callback is not authoritative record-rewrite input for Journal-aware history. Its selected-record result must equal the canonical per-record codec output; otherwise migration fails with the migration framework's invalid-decision error before cutover.
 
 Journal-aware migration does not require one canonical migration participant. Replicas may independently author distinct new ValueIds for genuine created/replaced occurrences; later synchronization may stale dependents whose certificates name a losing replacement occurrence.
 
@@ -274,7 +274,9 @@ JournalPublicationError
 JournalSourceReadError
 ```
 
-The exact class names may differ; the semantic distinctions are normative.
+Migration may additionally surface the existing `InvalidMigrationDecisionError` when a Journal-aware `override()` disagrees with the canonical per-record rewrite.
+
+The exact class names may differ except where an existing migration error type is referenced; the semantic distinctions are normative.
 
 ## Locking ownership
 
