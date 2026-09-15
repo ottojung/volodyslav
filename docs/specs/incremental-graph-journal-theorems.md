@@ -180,7 +180,9 @@ same projection
 
 ## Law 14: full sync is zero-frontier sync
 
-An empty receiver uses the same suffix-transfer/validation/normalization/replay algorithm starting at frontier zero. There is no distinct semantic full-sync merge algorithm.
+An already-established receiver whose retained frontier is zero uses the same suffix-transfer/validation/normalization/replay algorithm as any later synchronization. There is no distinct semantic full-sync merge algorithm.
+
+A completely absent installation with no local writer identity is not this case; it first uses the receiver-less restoration/fresh-creation lifecycle.
 
 ## Law 15: dependency-closure normalization
 
