@@ -14,6 +14,7 @@ A conforming local implementation must persist enough information to recover:
 - ordered per-writer range iteration;
 - the retained frontier (either explicitly or derivably);
 - current local writer identity;
+- existing durable compatibility metadata `global/version` and `global/graph_scheme` as part of the selected replica state;
 - any derived indexes chosen for performance.
 
 Journal records are authoritative historical state.
@@ -39,6 +40,8 @@ The exact names/layout are implementation choices unless separately standardized
 The current replica's existing `global/version` value selects the persisted representation of the entire replica, including journal records and journal-derived metadata.
 
 A supported active replica contains only that version's current journal record format. Journal records do not carry their own version discriminator, and ordinary storage/replay code does not retain compatibility codecs for multiple record formats inside one replica.
+
+`global/graph_scheme` is likewise part of the selected replica's durable interpretation boundary. Ordinary synchronization/reset requires exact source/receiver equality of both the current version and exact stored graph-scheme string.
 
 During a database migration, the old active replica and an inactive target replica may temporarily be at different whole-database versions. The migration must finish rewriting retained history into the target format before the target can become active.
 
@@ -149,11 +152,23 @@ A corrupted index does not authorize changing historical journal meaning.
 
 ## Source snapshots from local storage
 
-When one local database is used as a `JournalSyncSource`, storage must provide a stable snapshot/immutable prefix handle satisfying `incremental-graph-journal-api.md`.
+When one local database is used as a `JournalSyncSource`, storage must provide a stable snapshot/immutable selected-replica handle satisfying `incremental-graph-journal-api.md`.
 
-The implementation may use native database snapshot semantics or another mechanism which guarantees that all reads belong to one fixed frontier.
+That snapshot must freeze together:
 
-Journal 3 does not specify how an external transport such as Git packages or exposes an equivalent stable source snapshot.
+```text
+global/version
+global/graph_scheme
+local writer identity
+journal frontier
+journal records through that frontier
+```
+
+All of those values must come from one committed selected replica state. It is not sufficient to read version/schema first and later open a journal snapshot which could refer to a post-migration/post-cutover replica.
+
+The implementation may use native database snapshot semantics, an immutable selected-replica handle, or another mechanism which guarantees that all reads belong to one fixed committed state.
+
+Journal 3 does not specify how an external transport such as Git packages or exposes an equivalent stable source snapshot. It specifies only the semantic requirement that an adapter expose compatibility metadata and journal content from one stable source cut.
 
 ## Startup validation
 
