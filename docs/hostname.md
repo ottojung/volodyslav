@@ -6,6 +6,8 @@
 
 Because Volodyslav can be deployed and run on multiple hosts simultaneously, it is important to track *where* data was created. This variable provides that information at the source — both for event log entries and for nodes in the incremental computation graph.
 
+For the synchronized IncrementalGraph database lifecycle, the configured hostname also names one host history. It is chosen before that host's first supported bootstrap and is immutable for the lifetime of that host history. Changing `VOLODYSLAV_HOSTNAME` while retaining an established live database is not a supported host rename; see `docs/specs/database-lifecycle.md` §7.5.
+
 ## How It Works
 
 ### Event Log Entries
@@ -44,6 +46,8 @@ export VOLODYSLAV_HOSTNAME="server01.prod.example.com"
 ```
 
 `VOLODYSLAV_HOSTNAME` is a **required** environment variable. Volodyslav will refuse to start if it is not set (it is checked by `ensureEnvironmentIsInitialized` at startup).
+
+Choose the value before establishing the host's synchronized database history and keep it unchanged afterward. If you intentionally want a different hostname, that is a new host identity and must follow the fresh/restoration lifecycle for that hostname; do not point the new hostname at the previous host's live database or manually rename/copy its synchronization branch.
 
 ## Why Not Use `os.hostname()`?
 

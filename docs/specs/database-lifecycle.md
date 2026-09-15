@@ -34,12 +34,12 @@ At the lifecycle level, a database is in one of these states:
 
 The supported transitions are:
 
-1. **Bootstrap**: absent local state becomes a local database through a Volodyslav-controlled restore or fresh creation path.
+1. **Bootstrap/restoration**: absent local state becomes a local database through same-host restoration or fresh creation.
 2. **Open**: existing local state is opened and its required lifecycle metadata is interpreted.
 3. **Ordinary evolution**: application operations transactionally update the current database while preserving graph and persistence invariants.
 4. **Migration**: a usable older database is transformed to the current application version and committed by a controlled cutover.
 5. **Synchronization**: a stable local database is checkpointed and exchanged with compatible host states, then reopened through the migration gate.
-6. **Controlled reset**: a synchronization path selects a host snapshot as the new logical state and commits it through the database abstraction.
+6. **Controlled reset**: an already-established local database intentionally selects a compatible host snapshot as its new logical state and commits a fresh local semantic baseline through the database abstraction.
 
 A successful startup ends in the **Current** state before the database-backed application interface is exposed as initialized. Failure to satisfy a transition's preconditions aborts that transition; Volodyslav MUST NOT silently reinterpret an incompatible or unsupported state as a fresh database.
 
@@ -51,12 +51,12 @@ Database startup follows this sequence:
 
 1. **Validate operating context.** Required environment configuration is read before normal database use. This includes a working location, synchronization repository, and a valid local hostname. Required external capabilities, including Git, must be available.
 2. **Determine whether local live state exists.** Existence is a bootstrap decision only. Existing state is opened; it is not overwritten by a remote snapshot merely because startup is occurring.
-3. **Bootstrap when absent.** Volodyslav selects one of the controlled creation paths described in [Database creation](#4-database-creation).
+3. **Bootstrap when absent.** Volodyslav selects one of the controlled creation paths described in [Database creation](#4-database-creation). Fresh creation records the running database version and any version-required initial state before normal synchronization is attempted.
 4. **Open the local database.** The database implementation opens the durable state and establishes the active logical state. Required structural metadata must be valid enough to identify and load that state.
-5. **Run the migration gate.** A fresh database is marked with the running database version. A database already at that version proceeds unchanged. A database at a different version must complete migration.
+5. **Run the migration gate.** A database freshly created by this startup already records the running version and proceeds unchanged. An existing database already at that version likewise proceeds unchanged. A database at a different version must complete migration.
 6. **Construct and expose the incremental graph.** The database-backed graph interface becomes initialized only after opening and migration have succeeded.
 
-Startup does **not** perform an ordinary synchronization when local live state already exists. Synchronization is a separate controlled operation. This distinction prevents routine startup from unexpectedly replacing or merging local state and makes migration the only version-changing startup transition.
+Startup does **not** perform an ordinary synchronization when local live state already exists. Synchronization is a separate controlled operation. This distinction prevents routine startup from unexpectedly replacing or merging local state and makes migration the only version-changing startup transition for an existing database.
 
 Initialization is exclusive with database maintenance operations. Concurrent ordinary reads or writes must not observe a partially bootstrapped, migrating, resetting, or synchronizing database.
 
@@ -72,23 +72,48 @@ Supported creation requires:
 - functioning required filesystem, database, and Git capabilities; and
 - exclusive execution of the bootstrap transition for the working location.
 
+The hostname is host identity configuration, not mutable runtime metadata. It is chosen/configured before this host's first supported bootstrap and is thereafter immutable for that host history. Distinct supported host histories use distinct hostnames. Changing `VOLODYSLAV_HOSTNAME` while retaining an established live database does not rename that host; it leaves the supported lifecycle.
+
 The synchronization repository is part of creation even when the resulting database is empty. Absence of local state does not authorize bypassing repository or hostname checks.
 
 ### 4.2 Restoring this host's synchronized state
 
 When local live state is absent, Volodyslav first asks whether the synchronization repository contains state previously published for the current hostname.
 
-If it does, startup uses the controlled reset-to-host path to restore that snapshot into a newly opened local database. The imported state is committed through the database's normal cutover mechanism, then the database is reopened and passed through the migration gate. Thus a host can recover its own synchronized state and then migrate it to the running version.
+If it does, startup performs **same-host restoration** of that authoritative snapshot into local live state. The physical implementation may reuse snapshot staging and inactive-target cutover machinery also used by controlled reset, but restoration is not a semantic reset: it resumes this host's saved logical history rather than replacing an existing logical database with a newly authored reset baseline.
 
-Any failure to query, obtain, parse, or install that state is fatal to bootstrap. Volodyslav does not silently fall back to an empty database after discovering that the host is supposed to have synchronized state.
+The restored state is committed through the database's normal cutover mechanism, then reopened and passed through the migration gate. Therefore the saved state may be older than the running application when a supported migration can bring it forward. A saved pre-Journal-2 state may likewise be restored as legacy state and then migrated before Journal 2 synchronization or semantic reset becomes available.
+
+For Journal 2 identity safety, the supported lifecycle has a **publication-before-propagation invariant**: Journal 2 state authored by a host MUST NOT become synchronization input to another host through any supported transport path unless the authoring host's own authoritative synchronization branch has first been advanced to include that state. Under the current transport lifecycle this is achieved by rendering/checkpointing and synchronizing the local host's branch before peer state is processed in a cycle which could propagate the local state. Therefore, if the authoritative same-host snapshot selected for restoration is still pre-Journal-2, no Journal 2 event from that writer exists in supported external state. This is what makes migration of that restored legacy snapshot safe to bootstrap under the existing durable writer identity.
+
+This guarantee is part of the definition of supported Volodyslav-produced state; restoration is not required to prove it by global discovery. In particular, Volodyslav MUST NOT scan, contact, or wait for every possible peer branch merely to establish that no unsupported same-writer Journal 2 state exists elsewhere. A supported pre-Journal-2 authoritative snapshot is sufficient to rely on the publication-before-propagation invariant. If locally available evidence actually demonstrates that the invariant was bypassed or that incompatible same-writer Journal 2 events exist outside the authoritative snapshot, the state is outside the supported restoration lifecycle and restoration/migration MUST reject it rather than bootstrap Journal 2 under a writer identity whose event IDs may already have been published. The lifecycle does not require detection of unsupported external manipulation which is not locally observable.
+
+Any failure to query, obtain, parse, or install the authoritative same-host state which the restoration path actually requires is fatal to bootstrap. Volodyslav does not silently fall back to an empty database after discovering that the host is supposed to have synchronized state.
 
 ### 4.3 Creating a new host state
 
-If the current hostname has no synchronized branch, startup initializes the local synchronization working state and runs normal synchronization from an empty local database. This establishes the host's synchronization history and then considers other host branches under the ordinary synchronization rules.
+If the current hostname has no synchronized branch, startup creates a fresh empty local database. Fresh initialization MUST atomically establish the running database version and all version-required initial metadata before the database is marked current or used by normal synchronization.
 
-The empty database is a legitimate initial state. On the first migration gate, absence of a stored database version means **fresh database**, and the running version is recorded without running a data migration.
+This is the only supported way to establish a new host history under a hostname which has no authoritative synchronized state. It does not reuse another host's live database or branch. Under Journal 2, fresh creation gives the new host its own `DatabaseFingerprint`/`JournalAuthor`; through the supported lifecycle, distinct hostnames therefore denote distinct writer identities.
 
-This fallback is not a general-purpose import from an arbitrary host. Other host states are accepted only through normal synchronization, including its exact version-compatibility requirement. In particular, an unversioned fresh database is not implicitly treated as compatible with a versioned remote host.
+When the running database version includes Journal 2, that same fresh-initialization publication establishes the database's durable `DatabaseFingerprint` and persists:
+
+```text
+header.writer = DatabaseFingerprint
+header.journalIncarnation = 1
+header.localJournalCounter = 0
+header.localOperationCounter = 0
+header.causalSummary = {}
+header.authorityClock = { physical: 0, logical: 0 }
+```
+
+The fresh Journal 2 state contains no node summaries, changed-node markers, stored source cursors, raw semantic events, or high-level operation records. This is fresh database creation, not a data migration. Failure to establish the running version or any required initial state aborts creation rather than exposing an unversioned or journal-less database as current.
+
+Only after fresh initialization has made the empty database current does startup initialize the local synchronization working state and run normal synchronization. The new host can then consider other host branches under the ordinary exact-version and Journal 2 compatibility rules.
+
+The empty current database is a legitimate initial synchronization state. A later migration gate simply observes that its recorded version already equals the running version and performs no migration.
+
+This fallback is not a general-purpose import from an arbitrary host. Other host states are accepted only through normal synchronization, including its exact version-compatibility requirement. Fresh creation never treats an unversioned local state as compatible with a versioned remote host because the running version is established before synchronization begins.
 
 ### 4.4 Creation postconditions
 
@@ -97,6 +122,8 @@ After successful creation and startup:
 - a local live database exists and is openable;
 - its active logical state is structurally loadable;
 - it records the database version expected by the running application;
+- when that version includes Journal 2, its valid Journal 2 writer/header state has been established before the database became current, writable, or synchronization input;
+- its configured hostname remains the immutable name of this host history for later startup and synchronization;
 - its synchronization identity and history were established by Volodyslav; and
 - the graph interface is initialized from that state.
 
@@ -117,6 +144,14 @@ Ordinary evolution preserves these lifecycle invariants:
 
 These invariants are obligations of supported write paths. If a supported operation reports success while violating one of them, that is a lifecycle bug.
 
+### 5.1 Background Journal housekeeping
+
+Canonical Journal 2 compaction is a supported durable housekeeping operation against the current active database, but it is **not** one of the six lifecycle transitions in §2. It does not construct replacement state, change the selected active replica, change the database version, or change the active logical graph/synchronization state. Its durable writes are confined to pruning historical Journal records whose future-relevant meaning is already represented elsewhere in the current Journal 2 state.
+
+Accordingly, canonical compaction is not an exclusive maintenance transition under §5 invariant 5 or §14 rule 7 merely because it writes persistent bytes. It MAY overlap ordinary graph activity only where the Journal locking specification permits that overlap. `incremental-graph-journal-locking.md` defines its `daytime` mode, per-replica commit serialization, cross-mode handoff, batch boundaries, and failure atomicity.
+
+Compaction MUST NOT change legacy graph sublevels, `JournalHeader`, node summaries, changed-node markers, the reverse structural-edge index, stored source cursors, or any other synchronization-relevant current meaning. A lifecycle transition MUST NOT require a particular compaction point as one of its preconditions or postconditions.
+
 ## 6. Migration
 
 Migration is the supported transition between database versions. It is part of startup and of reopening after synchronization; it is not a separate user-facing repair or import tool.
@@ -125,9 +160,11 @@ Migration is the supported transition between database versions. It is part of s
 
 The running application supplies the target database version and current graph schema. After opening the active state:
 
-- if no version is recorded, the database is treated as fresh and is marked current;
+- if no version is recorded on an existing state presented to the migration gate, the database is treated as fresh only when the lifecycle can still establish the running version and all version-required fresh metadata before any current use; otherwise the state is unsupported;
 - if the stored version equals the running version, migration is a no-op; and
 - if the versions differ, migration is required before the graph interface can be initialized.
+
+Fresh creation under §4.3 establishes the running version before its first normal synchronization, so its later migration gate follows the second case rather than using synchronization to infer compatibility for an unversioned state.
 
 Version inequality requests migration; it does not by itself prove that migration can succeed. The migration procedure must still establish all migration preconditions.
 
@@ -173,6 +210,8 @@ Normal synchronization requires:
 - remote snapshots that can be parsed into staging state; and
 - exact database-version compatibility for every host state that is merged.
 
+Under the supported lifecycle, every participating hostname branch denotes one distinct host history. When Journal 2 is present, distinct host histories therefore have distinct `DatabaseFingerprint`/`JournalAuthor` identities. Synchronization may rely on that invariant; it is not required to compare fingerprints across hostname branches to detect unsupported hostname reassignment, branch copying, database cloning, or manual repository surgery.
+
 The in-process database is closed before synchronization changes its durable state. The operation is serialized against graph activity so checkpointing and merging see stable transition boundaries.
 
 ### 7.2 Normal synchronization flow
@@ -189,7 +228,7 @@ Normal synchronization performs these lifecycle steps:
 8. Remove the host's staging state.
 9. Reopen the application database and run the migration gate before exposing it again.
 
-The merge resolves state according to graph timestamps and dependency semantics, not textual repository merge rules. Locally newer state is retained, remotely newer compatible state may be taken, and affected derived state may be invalidated so that it is recomputed from the merged dependencies. A successful merge preserves graph coherence and does not make a partially constructed target active.
+The merge resolves state according to the synchronization specification selected by the current database version, not textual repository merge rules. A successful merge preserves graph coherence and does not make a partially constructed target active.
 
 ### 7.3 Per-host failure behavior
 
@@ -201,11 +240,21 @@ After an initiated synchronization, Volodyslav attempts to reopen the local data
 
 ### 7.4 Controlled reset
 
-A reset-to-host synchronization selects a host snapshot and installs it through a non-active target state followed by cutover. It is used during restoration and may also be invoked through a Volodyslav-controlled synchronization path.
+Controlled reset is a replacement transition for an **already-established** local logical database. It is distinct from absent-local-state same-host restoration in §4.2.
 
-Reset is intentionally different from normal merge: it selects the snapshot as the logical source rather than combining it node by node with the current state. The selected snapshot must still be structurally importable and must pass required database identity checks. When reset is applied to an already-existing local database, implementation-defined host-local state that must remain local is preserved by the reset path. When reset is used during absent-local-state bootstrap, there is no previous local database identity to preserve; the selected synchronized host snapshot is installed according to the bootstrap protocol.
+A reset selects one source snapshot as the new logical graph state rather than combining it node by node with the receiver. The selected snapshot must satisfy the compatibility requirements of the reset semantics associated with the current database version. Under Journal 2, semantic reset requires a valid compatible Journal 2 source snapshot; a journal-less, pre-Journal-2, or version-incompatible source is not a supported reset source.
 
-After reset, the database is reopened through the migration gate. A reset snapshot may therefore be older than the running application if the supported migration can bring it forward. This does not weaken the normal synchronization rule that peer-to-peer merging requires matching versions before merge.
+The reset is installed through a non-active target state followed by cutover. Host-local state which the lifecycle requires to remain local is preserved according to the reset specification, and the reset establishes whatever fresh local semantic baseline that database version requires.
+
+After reset, the database is reopened through the migration gate as a normal lifecycle safety boundary, but semantic reset itself is not a cross-version migration mechanism. Recovering an older same-host saved snapshot and then migrating it is restoration under §4.2, not controlled reset.
+
+### 7.5 Hostname identity is immutable
+
+A hostname names one host history for the supported lifecycle. Once a host has been established under that hostname, there is no supported rename transition. Migration, synchronization, controlled reset, restart, and ordinary evolution preserve the hostname identity of the installation; they do not move its authoritative history to another hostname.
+
+Starting with a different configured hostname is a different host identity. If no live database exists and that hostname already has an authoritative branch, §4.2 restores that host. If no live database exists and that hostname has no authoritative branch, §4.3 creates a new host history with a fresh database identity. Reusing an existing live database while changing the configured hostname is not either creation path and is unsupported.
+
+The supported repository therefore has no hostname aliases for one writer and no two independently participating hostname branches with the same `DatabaseFingerprint`/`JournalAuthor`. Synchronization is not responsible for discovering, grouping, comparing, skipping, or reconciling such branches. Manually renaming/copying/forking branches or changing host configuration to manufacture them is outside the lifecycle.
 
 ## 8. Version compatibility
 
@@ -247,14 +296,16 @@ The following are outside the supported database lifecycle model:
 
 - copying a live database directory between installations;
 - manually replacing, restoring, or combining database directories;
+- changing `VOLODYSLAV_HOSTNAME` for an established host while retaining its live database;
+- assigning one hostname to multiple independently continuing host installations;
+- renaming, copying, forking, or otherwise constructing/modifying host branches outside Volodyslav;
 - editing a rendered synchronization snapshot;
-- constructing or modifying host branches outside Volodyslav;
 - changing database files while Volodyslav is running;
 - bypassing the startup migration gate;
 - forcing synchronization between versions that fail compatibility checks; and
 - treating checkpoint history as a user-facing backup/restore interface.
 
-Such actions may happen at the operating-system level, but Volodyslav does not promise to interpret, validate, preserve, migrate, synchronize, or recover the resulting state. If file-level recovery or import becomes a product requirement, it must be introduced as a new Volodyslav-controlled transition with explicit preconditions and postconditions.
+Such actions may happen at the operating-system or repository level, but Volodyslav does not promise to detect, interpret, validate, preserve, migrate, synchronize, or recover the resulting state. If hostname reassignment, branch migration, file-level recovery, or import becomes a product requirement, it must be introduced as a new Volodyslav-controlled transition with explicit preconditions and postconditions.
 
 ## 11. Corruption model
 
@@ -281,7 +332,7 @@ A state is not corruption merely because an operation refuses it. Exact version 
 
 Volodyslav validates at lifecycle boundaries where validation establishes a guarantee needed by the next transition. Examples include:
 
-- environment and hostname validation before bootstrap or synchronization;
+- environment and hostname syntax validation before bootstrap or synchronization;
 - structural validation needed to open the active state;
 - migration completeness and new-schema compatibility;
 - synchronized host version equality and merge preconditions;
@@ -289,6 +340,10 @@ Volodyslav validates at lifecycle boundaries where validation establishes a guar
 - persistence and cutover success before exposing a new active state.
 
 Within those boundaries, Volodyslav may trust persistent state produced by supported Volodyslav transitions. It is not required to revalidate every internal consequence on every read or to defend against arbitrary storage tampering.
+
+In particular, a transition whose correctness relies on a supported-lifecycle invariant may rely on that invariant without discovering every external state which could hypothetically violate it. Validation is local to the state and evidence the transition actually has available unless another specification explicitly requires communication. Unsupported remote states do not create an obligation to search the universe for them.
+
+The hostname/fingerprint uniqueness invariant is such a lifecycle guarantee. Synchronization is not required to compare fingerprints across different hostname branches, search for hostname aliases, or detect a manually cloned database merely to establish that its supported inputs are distinct host histories.
 
 Validation remains appropriate when it provides:
 
@@ -312,7 +367,7 @@ When reviewing a failure, classify it by the transition being attempted:
 | Migration precondition failure | Previous state is usable, but the migration policy cannot completely and coherently represent it under the target schema. | Fail migration without selecting an incomplete target; revise the migration or its declared support. |
 | Synchronization precondition failure | Repository, host snapshot, version, graph, or operational prerequisites for sync are not satisfied. | Fail or isolate the affected host according to sync semantics; do not force a merge. |
 | Corruption | The state is outside the closure of supported transitions, or a transition precondition was bypassed. | Fail loudly where detected; no general interpretation or recovery is promised. |
-| Unsupported manipulation | State was produced by direct filesystem, snapshot, or repository editing rather than a Volodyslav transition. | Treat it as outside the model; define a controlled import/recovery transition before supporting it. |
+| Unsupported manipulation | State was produced by direct filesystem, snapshot, hostname, or repository editing rather than a Volodyslav transition. | Treat it as outside the model; define a controlled import/recovery transition before supporting it. |
 
 ## 14. Implementation consequences
 
@@ -326,16 +381,21 @@ Implementations and future changes MUST preserve the following lifecycle propert
 6. Migration and synchronization MUST construct replacement state away from the selected active state and cut over only after their state-building preconditions succeed.
 7. Maintenance transitions MUST be exclusive with ordinary graph activity.
 8. Per-host synchronization failures MAY coexist with successful merges from other hosts, but the aggregate result MUST report the failures.
-9. Reopening after synchronization or reset MUST pass through the migration gate before database-backed services resume.
+9. Reopening after synchronization, controlled reset, or restoration MUST pass through the migration gate before database-backed services resume.
 10. Tests and diagnostics SHOULD distinguish incompatibility, failed preconditions, corruption, and unsupported manipulation rather than using those terms interchangeably.
 11. New recovery, import, or restore behavior MUST be implemented as a Volodyslav-controlled lifecycle transition. Documentation alone MUST NOT redefine raw file manipulation as supported.
 12. Storage refactors MAY change physical artifacts without changing this specification, provided these lifecycle preconditions, transitions, and postconditions remain true.
+13. Normal synchronization MUST preserve publication-before-propagation: a host's Journal 2 state MUST NOT be obtainable by another host as synchronization input through any supported transport path unless that state has first been published to the author's own authoritative synchronization branch.
+14. Fresh creation MUST establish the running database version and all version-required initial metadata before the fresh database participates in normal synchronization.
+15. Durable background Journal housekeeping which is not a lifecycle transition MUST preserve the active logical state and synchronization-relevant current Journal meaning, obey its own concurrency/atomicity specification, and MUST NOT be required by any lifecycle transition's preconditions or postconditions.
+16. A host's configured hostname is fixed for that host history once bootstrap establishes or restores it. Distinct supported host histories have distinct hostnames and, under Journal 2, distinct `DatabaseFingerprint`/`JournalAuthor` identities. No synchronization path is required to detect violations of this invariant caused by unsupported configuration, database cloning, or repository manipulation.
 
 ## 15. Known boundaries
 
 The current lifecycle does not define:
 
 - arbitrary corruption repair;
+- hostname rename or host-branch reassignment;
 - a user-facing database backup or import command;
 - cross-version synchronization;
 - malicious-host detection or containment;
