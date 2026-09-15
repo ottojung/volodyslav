@@ -223,44 +223,68 @@ After reading the stored database version:
 
 Absence of stored version is treated as fresh only under the genuine fresh-creation rules; it does not erase structured existing state whose metadata is malformed/missing.
 
+For each supported pre-Journal source version the migration table identifies one expected **bootstrap target version/schema**. Canonical bootstrap join is performed at that target before later Journal-aware migrations continue toward the running version.
+
 ### 8.2 Pre-Journal multi-host bootstrap
 
-Replicas expected to synchronize after Journal bootstrap use one canonical semantic bootstrap history as the shared ValueId basis, but a late/divergent legacy host may preserve its local legacy delta on top of that basis.
+Replicas expected to synchronize after Journal bootstrap use one canonical semantic bootstrap history as the shared ValueId basis.
 
-The lifecycle has a configured transport-neutral **cohort bootstrap source**. Before creating or joining bootstrap history, startup obtains exactly one of three outcomes:
+The lifecycle has a configured transport-neutral **cohort bootstrap source**. Its `Exists(...)` result is a frozen `CanonicalBootstrapSnapshot`, not the current database snapshot of whichever host is serving the source.
 
-1. **canonical source exists** -> hold its stable snapshot and `joinCanonicalBootstrap`;
+Before creating or joining bootstrap history, startup obtains exactly one of three outcomes:
+
+1. **canonical artifact exists** -> hold the immutable original bootstrap artifact and `joinCanonicalBootstrap`;
 2. **source definitively does not exist** -> `createCanonicalBootstrap` is allowed;
 3. **query failed or result is indeterminate** -> startup/migration fails and MUST NOT create a competing canonical history.
 
-The cohort bootstrap source is responsible only for the lifecycle decision/canonical snapshot abstraction. Journal 3 does not prescribe how Git or another transport implements it.
+The cohort bootstrap source is responsible only for this lifecycle decision/artifact abstraction. Journal 3 does not prescribe how Git or another transport implements it.
 
-A source may report definite absence only when that answer is suitable for first-creator selection; otherwise it must report indeterminate. Distinct canonical bootstrap histories for one cohort are unsupported and require explicit recovery rather than payload-based merge.
+A source may report definite absence only when that answer is suitable for first-creator selection; otherwise it must report indeterminate. Distinct canonical bootstrap artifacts for one cohort are unsupported and require explicit recovery rather than payload-based merge.
 
-When joining an existing canonical bootstrap, the installation:
+The creator freezes the canonical artifact at the exact frontier immediately after bootstrap and before any ordinary Journal operation. `createCanonicalBootstrap` does not complete until that artifact is durably established.
 
-- retains the canonical semantic records verbatim;
-- preserves its own local writer fingerprint and allocator watermark;
-- compares the canonical projection with its supported local legacy graph;
-- authors only the minimal `reason="bootstrap"` Value/Delete/Validate/Invalidate delta needed to reach that local legacy graph.
+A late join validates before authoring anything:
 
-Nodes whose immutable semantic occurrence fields match the canonical projection retain the canonical ValueIds. Local legacy changes therefore survive without forcing every unaffected node to acquire a host-local bootstrap identity.
+```text
+canonical.databaseVersion  == expectedBootstrapTargetVersion
+canonical.graphSchemeString == expectedBootstrapTargetGraphSchemeString
+```
 
-No other host needs to reconcile, acknowledge, or return merely for this installation to complete bootstrap.
+Mismatch is `JournalVersionCompatibilityError`.
+
+The join uses **only** records through the artifact's frozen `bootstrapFrontier`. Post-bootstrap values, creations, invalidations, deletes, or migrations from a currently running cohort are not part of bootstrap join.
+
+A divergent legacy value is not automatically made causally later than the canonical value merely because its host upgraded later. Instead the join:
+
+- reuses the canonical ValueId for equal occurrences;
+- converts local-only/different legacy occurrences into historical bootstrap ValueEvents concurrent with canonical value occurrences and seeded by their own legacy `modifiedAt`;
+- uses normal Journal conflict authority to decide conflicting occurrences;
+- does not author a DeleteEvent merely because a materialization is absent on one legacy side;
+- establishes proof/freshness metadata after value occurrences are represented;
+- preserves the joining host's own writer fingerprint and allocator watermark.
+
+Therefore a local legacy difference survives only when it is non-conflicting or wins the normal conflict policy. Upgrade time is not a conflict-precedence signal.
+
+After the bootstrap-target Journal/projection pair is installed, startup resumes the ordinary migration gate from that target version. If current software/cohort state is newer, supported Journal-aware migrations run in sequence before graph APIs are exposed. Only then may ordinary compatible synchronization import post-bootstrap cohort history.
+
+No particular remote host needs to reconcile, acknowledge, or return merely for this installation to complete bootstrap; only the immutable canonical artifact must be obtainable from the configured cohort source.
 
 ### 8.3 Journal-aware migration
 
 A Journal-aware migration:
 
 1. validates source Journal/projection under source version;
-2. deterministically rewrites retained records into target representation, preserving old IDs/meaning;
-3. computes target graph under isolated target storage;
-4. preserves existing ValueIds for semantic occurrences kept by `keep`, `override`, `invalidate`, or equivalent occurrence-preserving migration decisions;
-5. treats `override()` as a representation rewrite of the same occurrence, not as a new ValueEvent;
-6. creates new ValueEvents only for actual new/replaced semantic occurrences;
-7. uses validation/invalidation records for proof/freshness changes without replacing values unnecessarily;
-8. verifies target replay;
-9. atomically cuts over.
+2. deterministically rewrites every retained record into target representation, preserving IDs/meaning;
+3. applies one pure per-record payload rewrite to every affected retained ValueEvent regardless of whether it is currently selected;
+4. computes target graph under isolated target storage;
+5. preserves existing ValueIds for semantic occurrences kept by `keep`, `override`, `invalidate`, or equivalent occurrence-preserving migration decisions;
+6. treats `override()` as an assertion that the selected rewritten payload equals the canonical per-record rewrite result, not as replica-local record bytes;
+7. creates new ValueEvents only for actual new/replaced semantic occurrences;
+8. uses validation/invalidation records for proof/freshness changes without replacing values unnecessarily;
+9. verifies target replay;
+10. atomically cuts over.
+
+A Journal-aware `override()` result that disagrees with the canonical per-record rewrite fails migration before cutover.
 
 Journal-aware migration does not require one canonical migration participant. Independently migrated replicas may author different ValueIds for genuinely replaced occurrences. When those histories later synchronize, ordinary conflict/certificate rules may make affected dependents stale and require later recomputation/revalidation; that consequence is accepted.
 
@@ -313,6 +337,8 @@ Reset preserves an already-selected value occurrence when its immutable semantic
 An unseen concurrent event may later affect ordinary synchronization normally.
 
 A completely absent installation does not use reset; it uses §4 receiver-less restoration.
+
+Pre-Journal canonical bootstrap join is also **not reset**: bootstrap value conflicts represent pre-existing legacy facts and must not inherit reset's rule that target repairs are causally after the complete observed frontier.
 
 ## 11. Projection rebuild
 
@@ -375,7 +401,10 @@ Unsupported operations include:
 - manually editing graph sublevels away from Journal replay;
 - bypassing required version migration;
 - forcing ordinary sync/reset across incompatible snapshot metadata;
-- independently creating a second canonical pre-Journal bootstrap after a canonical source already exists;
+- using an arbitrary current Journal snapshot in place of the frozen canonical bootstrap artifact;
+- independently creating a second canonical pre-Journal bootstrap after a canonical artifact already exists;
+- making a late legacy value causally later solely because bootstrap code observed the canonical artifact;
+- using replica-local `override()` output to rewrite an immutable retained Journal record differently from the canonical version codec;
 - treating semantic-changing `override()` as a representation-only rewrite;
 - treating a checkpoint as replacement authority for missing history.
 
