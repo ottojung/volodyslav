@@ -208,7 +208,9 @@ ValueId preservation happens only when the graph operation semantically preserve
 
 Synchronization, reset, bootstrap, and migration have separate authoring rules because they operate over retained histories/source targets rather than ordinary computor transitions.
 
-They still obey the same core event rules:
+Those maintenance rules decide whether a semantic value occurrence is preserved or replaced. In particular, reset/migration do not create a new ValueEvent merely because proof, freshness, schema, database version, or stored representation changes; semantic-preserving migration `override()` keeps the existing ValueId through target-format representation rewrite. A maintenance ValueEvent is authored only when the corresponding lifecycle rule genuinely creates/replaces the semantic occurrence.
+
+Maintenance still obeys the same core event rules:
 
 - immutable writer identity;
 - contiguous sequences;
