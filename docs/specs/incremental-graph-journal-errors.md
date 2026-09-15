@@ -112,18 +112,31 @@ Required behavior:
 
 Meaning:
 
-> Each side may be valid independently, but ordinary synchronization/reset cannot interpret them under one compatible current database/schema/record model.
+> The source snapshot and receiver may each be valid independently, but ordinary synchronization/reset cannot interpret them under one compatible current database/schema/record model.
+
+Compatibility is determined from the **held `JournalSnapshot` itself**:
+
+```text
+snapshot.databaseVersion
+snapshot.graphSchemeString
+```
+
+These fields are the exact source `global/version` value and exact persisted `global/graph_scheme` string from the same committed source state as the snapshot's journal frontier/records.
 
 Examples:
 
-- source current database version differs and requires migration first;
-- source schema is not compatible with the receiver's current replay interpretation.
+- source snapshot `databaseVersion` differs from the receiver's active `global/version` and requires migration first;
+- source snapshot `graphSchemeString` differs exactly from the receiver's active `global/graph_scheme` string;
+- a caller previously observed compatible source metadata, but the source migrated before `openSnapshot()` and the held snapshot now exposes different version/schema metadata.
 
 This is incompatibility, not corruption.
 
 Required behavior:
 
-- do not attempt per-record upcast/downcast or implicit migration inside ordinary sync;
+- compare compatibility metadata from the held source snapshot before interpreting/importing its records or deriving a reset target;
+- do not trust a compatibility check performed against a different mutable source state before `openSnapshot()`;
+- do not attempt per-record upcast/downcast or implicit migration inside ordinary sync/reset;
+- do not activate any staged source history when the check fails;
 - lifecycle may migrate one/both sides through the supported whole-database migration path, then retry.
 
 ## JournalProjectionError
@@ -182,10 +195,11 @@ A failed ordinary transaction consumes no durable journal sequence position.
 
 Meaning:
 
-> A stable synchronization/reset source could not be read completely for operational reasons.
+> A stable synchronization/reset source snapshot could not be opened or read completely for operational reasons.
 
 Examples:
 
+- I/O error while opening/reading the snapshot's compatibility metadata;
 - I/O error while streaming an otherwise valid suffix;
 - source snapshot unexpectedly unavailable before required ranges are read.
 
@@ -194,6 +208,8 @@ Required behavior:
 - staged partial records are not activated;
 - existing receiver remains supported;
 - retry may resume/restart according to implementation-specific staging behavior, but semantics are unchanged.
+
+A source which is readable but exposes incompatible `databaseVersion`/`graphSchemeString` uses `JournalVersionCompatibilityError`, not `JournalSourceReadError`.
 
 ## Invalid local writer continuation
 
@@ -218,6 +234,6 @@ vs rebuildable derived-state mismatch
 vs authoritative corruption/fork
 ```
 
-Error messages should identify the relevant writer/sequence/node/database version where possible.
+Error messages should identify the relevant writer/sequence/node/database version or schema mismatch where possible.
 
 They must not claim a graph conflict when the actual problem is immutable writer-history disagreement.
