@@ -27,7 +27,7 @@ Before replay, the retained journal must satisfy:
 - stream identity/prefix contiguity;
 - decoding under the one canonical journal format selected by the replica's current `global/version`;
 - timestamp/authority invariants;
-- causal closure; and
+- transitively closed causal contexts; and
 - the cross-record rules in `incremental-graph-journal-well-formedness.md`.
 
 Replay never performs per-record version dispatch, upcasting, or downcasting. If the database version changes, the migration path must first rewrite the complete retained journal into the target current representation.
@@ -140,6 +140,13 @@ uncoveredValueInvalidation(K,C) iff
         and not happenedBefore(I,C)
 ```
 
+Define:
+
+```text
+coversValueInvalidations(K,C) iff
+    not uncoveredValueInvalidation(K,C)
+```
+
 Node-scoped invalidation remains relevant across value changes until a later validation causally covers it.
 
 Value-scoped invalidation applies only to the named ValueId and stops affecting projection when another ValueId becomes current.
@@ -173,7 +180,7 @@ certificateInputs(C) == currentInputs(K)
 
 Because basis input NodeKeys are explicit, order changes alone do not invalidate a certificate; input-set changes do.
 
-A supported Journal-3-aware schema migration creates new migration ValueIds/certificates for target-present nodes, so an old-schema certificate is not expected to be the only certificate for a selected current migration ValueId.
+A supported Journal-3-aware schema migration establishes proof state compatible with the target schema. It may preserve an existing current ValueId when the migration preserves the semantic value occurrence; schema change alone does not require manufacturing a new value occurrence.
 
 A validation for the current ValueId with a different historical input set remains inspectable history but is not current structural proof.
 
@@ -219,25 +226,27 @@ basisMatchCount(K,C) =
 
 ## Certificate selection
 
-Journal 3 retains all certificates, so it may preserve the strongest sound partial proof available after histories converge.
+Journal 3 retains all certificates, so replay chooses the strongest sound current proof rather than letting a concurrent clock tie-break hide a causally later revalidation.
 
 Choose exactly one certificate:
 
 ```text
 certificate(K) = eligible C maximizing lexicographically:
     1. basisMatchCount(K,C)
-    2. authorityCompare(C, ...)
+    2. coversValueInvalidations(K,C)
+       where true > false
+    3. authorityCompare(C, ...)
 ```
 
 If there is no eligible certificate, K has no current certificate.
 
-This deliberately differs from Journal 2's compaction-oriented “greatest certificate only” rule. Journal 3 does not need to discard a better-matching concurrent historical proof merely so lower certificates can be compacted away.
+The second key is essential. Suppose C2 causally follows and covers a value-scoped invalidation of the current ValueId, while concurrent C1 has the same full basis but a greater clock-derived authority. C2 must win because it contains strictly stronger causal proof about the current occurrence. A concurrent validation must not make a covered invalidation reappear merely through the total-order tie-break.
 
-Authority is the deterministic tie-break among equally applicable certificates.
+Authority remains the deterministic tie-break only among certificates with equal basis applicability and equal current-value-invalidation coverage.
 
 Replay never synthesizes a certificate by combining basis entries from different validations.
 
-For ordinary single-writer evolution, the latest successful validation normally has the complete current input basis and therefore wins naturally.
+For ordinary single-writer evolution, the latest successful validation normally has the complete current input basis, covers all prior invalidations, and therefore wins naturally.
 
 ## Incoming validity edge
 
@@ -273,13 +282,13 @@ fresh(K) iff
     certificate(K) exists
     and basisMatchCount(K, certificate(K))
         == currentInputEdges(K).length
-    and not uncoveredValueInvalidation(K, certificate(K))
+    and coversValueInvalidations(K, certificate(K))
     and for every D in currentInputEdges(K):
         present(D)
         and fresh(D)
 ```
 
-For a zero-input node, the full-basis/input condition is vacuous; it still requires an eligible certificate and no uncovered current-value invalidation.
+For a zero-input node, the full-basis/input condition is vacuous; it still requires an eligible certificate that covers all current-value invalidations.
 
 The legacy freshness projection is:
 
@@ -356,7 +365,7 @@ Structural dependencies are derived from the current application/schema interpre
 
 The persisted current `graph_scheme` representation is the lowering of that current schema/version contract. Journal history does not treat mutable `graph_scheme` bytes as conflict authority.
 
-Schema migration is responsible for creating a new current baseline compatible with the target schema before that target becomes active.
+Schema migration is responsible for establishing a current proof/freshness state compatible with the target schema before that target becomes active.
 
 ## Host-local allocation watermark
 
@@ -437,6 +446,8 @@ Replay/import rejects rather than guesses when it encounters, among other things
 - conflicting canonical meaning for one JournalRecordId;
 - journal bytes/body not valid for the current replica's `global/version` format;
 - an event whose claimed causal context is not retained;
+- an event context which includes an event but omits one of that event's causal predecessors;
+- a semantic event whose own-writer context is not exactly its preceding local stream coordinate;
 - a ValueId reference which is not causally prior to the referencing event;
 - a validation target naming a non-ValueEvent or another semantic node;
 - duplicate input NodeKeys in one validation basis;
