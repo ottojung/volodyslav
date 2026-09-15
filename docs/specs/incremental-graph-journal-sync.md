@@ -10,6 +10,7 @@ The core operation is always:
 
 ```text
 open one stable source journal snapshot
+verify source compatibility metadata from that same snapshot
 copy every missing immutable writer suffix
 normalize the resulting history when required by IncrementalGraph semantics
 project the final causally closed journal
@@ -36,12 +37,36 @@ Synchronization requires:
 
 - an exact compatible Journal 3 record interpretation;
 - compatible database version and graph schema for the histories being projected;
-- a stable, causally closed source snapshot;
+- a stable, causally closed source snapshot whose compatibility metadata and journal records belong to the same committed source state;
 - a valid receiver journal/projection pair;
 - exclusive receiver maintenance ownership for the final import/replay/cutover;
 - no conflicting content under one `JournalRecordId`.
 
 Participating state is non-adversarial but may be old, interrupted, partially replicated, or offline for arbitrarily long periods.
+
+## Snapshot compatibility cut
+
+The source snapshot carries the exact durable compatibility metadata defined by `incremental-graph-journal-api.md`:
+
+```text
+S.databaseVersion
+S.graphSchemeString
+```
+
+These are the source snapshot's exact `global/version` value and exact persisted `global/graph_scheme` string.
+
+The receiver compares them against its own active committed metadata before interpreting/importing source journal records:
+
+```text
+S.databaseVersion == R.databaseVersion
+S.graphSchemeString == R.graphSchemeString
+```
+
+Both comparisons are exact. In particular, graph-scheme JSON which parses to an equivalent object but differs textually is not compatible because the existing database contract treats the persisted scheme string itself as durable versioned metadata.
+
+The compatibility metadata is frozen together with the snapshot frontier and records. It must not be read before `openSnapshot()` from some independently mutable source state. This prevents a source migration between a compatibility check and the later journal reads from causing the receiver to interpret one database version's journal under another version/schema decision.
+
+A mismatch fails with `JournalVersionCompatibilityError` before active import/cutover. Ordinary synchronization does not migrate or rewrite the source representation.
 
 ## Source and receiver frontiers
 
@@ -170,16 +195,6 @@ This is a strong simplification over state-summary synchronization: receiving th
 
 However, `J0` may still need receiver-authored semantic normalization before it is a publishable IncrementalGraph state. Journal union and graph normalization are therefore distinct phases.
 
-## Pre-synchronization projection
-
-Before import, record the receiver's committed projection:
-
-```text
-Pbefore = project(JR)
-```
-
-This projection is used only to determine which persistent receiver-side freshness transitions synchronization itself causes. It is not a second authority source; it is derived from JR.
-
 ## Normalization phase 1: dependency closure
 
 First select the value/delete heads of J0 using ordinary Journal 3 authority.
@@ -228,31 +243,44 @@ Compute:
 P1 = project(J1)
 ```
 
-At this point structural presence is valid, but synchronization must still make receiver-side propagated staleness durable where ordinary IncrementalGraph semantics require it.
+At this point structural presence is valid, but synchronization must still make propagated staleness durable where ordinary IncrementalGraph semantics require it.
 
-## Normalization phase 2: persistent fresh-to-stale transitions
+## Normalization phase 2: persist staleness caused by stale inputs
 
 The flag-based IncrementalGraph has an important property:
 
-> Once a cached node is propagated from fresh to stale, it stays stale until that node itself is cache-revalidated or recomputed, even if an upstream stale input later revalidates unchanged.
+> Once a cached node is propagated from fresh to stale because a direct input is stale, it stays stale until that node itself is cache-revalidated or recomputed, even if the upstream input later revalidates unchanged.
 
-Raw replay already makes a dependent tentatively stale when its current validation basis no longer matches selected inputs or when a direct input is stale. But for a receiver-only dependent, the imported source may contain no historical propagated invalidation record for that dependent.
+Raw replay by itself is recursive. A current occurrence can therefore be tentatively stale solely because a direct input is stale, and then become fresh automatically if that input later becomes fresh again. That is not sufficient to reproduce the existing persistent flag transition.
 
-Therefore, for every semantic node K satisfying all of:
+This rule applies to the **selected current occurrence after union/closure**, regardless of whether that `ValueId` was selected on the receiver before synchronization or was newly selected from imported history.
+
+For a present K in P1, let C be its selected current certificate. Define:
 
 ```text
-K is present in Pbefore
-K is present in P1
-Pbefore.valueId(K) == P1.valueId(K)
-Pbefore.freshness(K) == "up-to-date"
-P1.freshness(K) == "potentially-outdated"
+selfProofReady(K) iff
+    C exists
+    and C is eligible under the current schema
+    and for every direct input D:
+        basisValue(C,D) == P1.valueId(D)
+    and there is no uncovered value-scoped invalidation
+        for P1.valueId(K) relative to C
 ```
 
-synchronization must ensure that K's fresh-to-stale transition is durably represented.
+Certificate eligibility already requires node-scoped invalidations to be causally covered. The exact-basis condition means K is not stale because of a basis mismatch. The no-current-value-invalidation condition means its own history does not already make this occurrence persistently stale.
 
-If J1 already contains an uncovered current-K invalidation which itself keeps K stale, no duplicate local marker is required.
+Synchronization must author a persistent marker for every K satisfying:
 
-Otherwise the receiver authors:
+```text
+K is present in P1
+selfProofReady(K)
+there exists a direct input D with
+    P1.freshness(D) == "potentially-outdated"
+```
+
+Such a K is stale **solely through recursive input freshness**. If no explicit marker were added, a later unchanged revalidation of those inputs could make K fresh without K itself being pulled.
+
+The receiver therefore authors:
 
 ```text
 InvalidateEvent {
@@ -265,19 +293,21 @@ InvalidateEvent {
 }
 ```
 
-This event records the same freshness-only propagation meaning as ordinary local invalidation propagation: it keeps the current cached occurrence stale without removing its incoming validity edges merely because an upstream node is stale.
+The rule is independent of `Pbefore` and independent of whether `P1.valueId(K)` changed during synchronization.
 
-Apply this rule to the complete transitive receiver affected set. In practice an implementation may discover it through a derived reverse structural-edge index rather than scanning every node; issue #1607 owns the future end-to-end time bound.
+This directly covers, for example, a newly imported remote B occurrence whose certificate exactly names the receiver's current A occurrence while A is stale on the receiver. B must receive a value-scoped sync invalidation so that a later `Unchanged` validation of A does not make B fresh automatically.
+
+No duplicate marker is authored when current K already has an uncovered applicable value-scoped invalidation: in that case `selfProofReady(K)` is false because the occurrence is already persistently stale in history.
+
+No marker is required merely because K is stale from a basis mismatch or uncovered node-scoped invalidation. Those causes do not disappear merely because an input becomes fresh without K itself validating.
+
+Apply the rule to the complete transitive affected set. P1 already computes freshness recursively, so a stale input may cause each otherwise-self-ready dependent along the current validity/basis chain to require its own marker. In practice an implementation may discover this set through a derived reverse structural-edge index rather than scanning every node; issue #1607 owns the future end-to-end time bound.
 
 Let the resulting history be:
 
 ```text
 Jfinal
 ```
-
-No sync invalidation is authored solely because a node was already stale before synchronization.
-
-No sync invalidation is needed merely because K's selected `ValueId` changed: the selected foreign/local value occurrence and its own validation/invalidation history directly determine the new cached occurrence's state.
 
 ## Final replay and validation
 
@@ -289,6 +319,7 @@ Pfinal = project(Jfinal)
 
 Before cutover, verify at least:
 
+- source snapshot compatibility metadata exactly matched the receiver's current `global/version` and `global/graph_scheme` values;
 - retained writer streams are contiguous;
 - all overlapping IDs have one meaning;
 - every event context is covered by the final frontier;
@@ -297,6 +328,7 @@ Before cutover, verify at least:
 - every retained record satisfies cross-record/reference-causality rules;
 - every validation basis has unique explicit input NodeKeys in canonical NodeKey order;
 - every certificate selected as current proof has exactly the current direct-input NodeKey set;
+- every selected current occurrence which would otherwise be stale solely through recursive direct-input freshness has an applicable persistent current-value invalidation in Jfinal;
 - all legacy graph invariants required by the IncrementalGraph specs hold in Pfinal;
 - `oldValue` safety is not weakened;
 - local writer state is at least as advanced as every retained local-writer record requires.
@@ -358,7 +390,7 @@ FS[B] = 905
 
 means transfer `B:901..905`.
 
-Everything after record acquisition—validation, normalization, replay, and atomic publication—is the same algorithm.
+Everything after record acquisition—compatibility validation, record validation, normalization, replay, and atomic publication—is the same algorithm.
 
 Correctness therefore does not depend on an incremental cursor theorem distinct from full synchronization. The retained journal frontier itself is the progress state.
 
@@ -384,13 +416,14 @@ be a successful synchronization result including required receiver-authored norm
 
 Then:
 
-1. it retains every immutable record retained by R or S;
-2. it never changes the body of an imported record;
-3. any additional semantic records are receiver-authored normalization justified by the rules above;
-4. its materialized graph equals `project(resultJournal)`;
-5. repeating synchronization against the same unchanged source after success is a semantic no-op unless another local/remote operation intervened.
+1. the source compatibility metadata came from the same stable snapshot as the imported source records and exactly matched the receiver's active database version/schema metadata;
+2. it retains every immutable record retained by R or S;
+3. it never changes the body of an imported record;
+4. any additional semantic records are receiver-authored normalization justified by the rules above;
+5. its materialized graph equals `project(resultJournal)`;
+6. repeating synchronization against the same unchanged source after success is a semantic no-op unless another local/remote operation intervened.
 
-The fifth law follows because all source suffixes are already retained and the normalization obligations produced by their first incorporation are already represented in history.
+The sixth law follows because all source suffixes are already retained and the normalization obligations produced by their first incorporation are already represented in history.
 
 ## Convergence and termination
 
@@ -423,10 +456,10 @@ For structural deletion:
 
 For persistent staleness:
 
-- a sync invalidation names one exact current ValueId;
+- a sync invalidation names one exact current ValueId, whether that occurrence was previously local or newly selected from imported history;
 - once an uncovered value-scoped invalidation for that ValueId is retained, learning only normalization history cannot make that occurrence fresh again;
 - clearing it requires a causally later `ValidateEvent`, and normalization never authors validations;
-- therefore the same already-observed stale transition cannot generate an acknowledgement/invalidation chain.
+- therefore the same already-observed stale-through-inputs condition cannot generate an acknowledgement/invalidation chain for that occurrence.
 
 Each newly learned finite ordinary record may expose a finite dependent closure in the finite current schema DAG. Consequently only finitely many normalization records can be required after quiescence.
 
@@ -454,8 +487,8 @@ This distinction is intentional and matches the existing IncrementalGraph rule t
 
 ## Version boundary
 
-Core Journal 3 synchronization operates only when both histories are interpretable under a compatible current database/schema version.
+Core Journal 3 synchronization operates only when the source snapshot and receiver active database carry exactly compatible `global/version` and `global/graph_scheme` metadata as defined above.
 
 Cross-version synchronization is not a hidden migration operation. Journal-aware migration is specified separately by `incremental-graph-journal-migrations.md`.
 
-A version mismatch is an incompatibility error for this synchronization attempt, not permission to reinterpret records using the receiver's schema.
+A version/schema mismatch is `JournalVersionCompatibilityError` for this synchronization attempt, not permission to reinterpret records using the receiver's schema.
