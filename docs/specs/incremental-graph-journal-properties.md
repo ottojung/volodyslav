@@ -2,16 +2,17 @@
 
 ## Purpose
 
-Journal 3 deliberately separates two layers which have different algebraic behavior:
+Journal 3 deliberately separates three layers which have different algebraic behavior:
 
-1. immutable retained-information union; and
-2. the graph projection/normalization built over that information.
+1. retained-information union within one compatible current database format;
+2. the graph projection/normalization built over that information; and
+3. whole-database format migration, which deterministically re-encodes retained history while preserving journal identities and historical meaning.
 
-This distinction prevents implementation code from assuming that because raw history union is a simple semilattice-like operation, every projected graph transition is automatically a CRDT merge.
+This distinction prevents implementation code from assuming that because raw same-version history union is a simple semilattice-like operation, every projected graph transition or cross-version migration is automatically the same kind of merge.
 
-## Retained-information partial order
+## Same-version retained-information partial order
 
-For two compatible retained journals J and K, define:
+For two compatible retained journals J and K already encoded under the same current `global/version`, define:
 
 ```text
 J <= K
@@ -23,15 +24,17 @@ iff for every writer A:
 frontierJ[A] <= frontierK[A]
 ```
 
-and every record retained by J has exactly the same canonical meaning in K.
+and every record retained by J has exactly the same canonical current-format meaning in K.
 
 Thus K extends J only by retaining later immutable writer suffixes.
 
 If overlapping record content differs, J and K are not comparable/compatible under this relation; that is a writer fork/corruption condition.
 
+This relation is intentionally not used directly to compare the physical source and target replicas of a database-format migration, because those replicas use different canonical representations.
+
 ## Information join
 
-For compatible causally closed prefix journals J and K:
+For compatible causally closed prefix journals J and K at one current database version:
 
 ```text
 J join K = immutable prefix union
@@ -55,7 +58,7 @@ J join K = K join J
 
 for mutually compatible histories.
 
-The join never rewrites a record.
+The join never rewrites a record. Cross-version peers migrate first; ordinary synchronization does not define a join between different persisted record formats.
 
 ## Replay is deterministic, not a join-homomorphism requirement
 
@@ -87,13 +90,15 @@ These are resolved by Journal 3 semantic replay/normalization, not by combining 
 
 ## Monotonicity of retained information
 
-Normal synchronization, ordinary local authoring, reset, and migration are monotone in retained history:
+Within one current database version, normal synchronization, ordinary local authoring, and reset are monotone in retained history:
 
 ```text
 Jbefore <= Jafter
 ```
 
-They append/import history; they do not remove authoritative records.
+They append/import history; they do not remove authoritative historical facts.
+
+A semantic migration also retains all historical facts, but a format-changing database migration first maps their physical representation into the target version. Therefore source-format Jbefore and target-format Jconverted are related by the migration-preservation law rather than by the same-version `<=` relation.
 
 Projection is not monotone in graph presence/value terms:
 
@@ -105,7 +110,7 @@ This is expected. Information growth can describe semantic deletion/change.
 
 ## Event authority versus information order
 
-The retained-information order says whether one replica knows a superset of history.
+The retained-information order says whether one same-version replica knows a superset of history.
 
 `authorityCompare` says which competing semantic event wins for a node.
 
@@ -148,7 +153,7 @@ Core normalization records are:
 - `DeleteEvent(reason="sync")` for structural dependency-closure removal; and
 - value-scoped `InvalidateEvent(reason="sync")` for persistent fresh-to-stale propagation.
 
-These are ordinary immutable events after commit. They are not temporary merge annotations and are not retracted when later unseen concurrent history arrives.
+These are ordinary immutable historical events after commit. They are not temporary merge annotations and are not retracted when later unseen concurrent history arrives.
 
 Therefore define normalization operationally over one actual receiver execution rather than pretending it is a pure mathematical function only of an eventual raw history set.
 
@@ -206,7 +211,7 @@ Instead:
 Jafter = union(Jreceiver, Jsource) + reset baseline
 ```
 
-so:
+so, within the compatible current format:
 
 ```text
 Jreceiver <= Jafter
@@ -217,24 +222,38 @@ while projection intentionally becomes source-target-equivalent relative to obse
 
 Reset is itself a non-normalization graph-changing operation for the convergence/quiescence statement above.
 
-## Migration is not history rewriting
+## Migration preserves history while rewriting representation
 
-Similarly:
+A Journal-3-aware database-format migration has two stages:
 
 ```text
-Jafter = Jbefore + migration baseline
+Jconverted = rewriteJournalFormat(Jbefore, sourceVersion, targetVersion)
+Jafter = Jconverted + migration baseline
 ```
 
-and the current target schema interprets the new baseline as current state.
+The representation rewrite is a deterministic bijection over the retained record identities of Jbefore: every old `(author,sequence)` remains exactly that identity in Jconverted, with the same historical semantic/causal/reference meaning, but represented in the target version's canonical format.
 
-Old events remain immutable historical facts even when a new schema no longer selects/materializes their old semantic nodes.
+Consequently:
 
-Migration is also outside post-quiescence synchronization normalization.
+```text
+frontier(Jconverted) == frontier(Jbefore)
+historicalMeaning(Jconverted) == historicalMeaning(Jbefore)
+```
+
+although their physical record bodies need not be byte-equal and the same-version `<=` relation is not applied across those two representations.
+
+The semantic migration baseline then appends new target-state facts. Old historical facts remain retained even when a new schema no longer selects/materializes their old semantic nodes.
+
+Independently migrating the same old record through the same version transition must produce the same canonical target record so later same-version overlap comparison remains meaningful.
+
+Whole-journal time/I/O for this transformation is an accepted trade-off. Migration is outside post-quiescence synchronization normalization.
 
 ## Checkpoint/index state is outside this algebra
 
 Derived checkpoints, indexes, materialized legacy graph sublevels, staging targets, and transport cursors are not elements of the authoritative retained-history order.
 
-They may be created/deleted/rebuilt without changing J.
+They may be created/deleted/rebuilt without changing journal historical meaning.
 
-Correctness always reduces back to retained immutable history plus deterministic current interpretation.
+A format-changing migration may rewrite or discard/rebuild their representation as part of constructing the target-version replica.
+
+Correctness always reduces back to retained historical journal facts plus deterministic current interpretation.
