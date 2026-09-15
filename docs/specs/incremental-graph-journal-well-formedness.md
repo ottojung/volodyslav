@@ -1,140 +1,96 @@
-# IncrementalGraph Journal 3 Record Well-Formedness
+# IncrementalGraph Journal 3 Well-Formedness
 
 ## Purpose
 
-This document defines cross-record validity rules which are stronger than syntactic decoding.
+This document defines record-level and cross-record validity conditions required before retained Journal history may be treated as supported replay input.
 
-A record can have a valid object shape yet still be impossible Journal 3 history—for example, a validation which names a value occurrence the validating writer had not observed yet.
+Replay conflict resolution applies only after these structural/causal checks. Malformed history is not converted into a normal graph conflict merely because deterministic replay could otherwise choose some winner.
 
-Supported retained history must satisfy these rules before replay or synchronization may treat the records as semantic evidence.
+## Record identity
 
-All records considered here have already been decoded according to the replica's one current `global/version` format. There is no per-record version dispatch during ordinary well-formedness checking.
+For every retained record R:
 
-## Reference causality
+```text
+R.id = (author, sequence)
+sequence >= 1
+```
 
-For semantic events E and F, `happenedBefore(E,F)` is defined by `incremental-graph-journal-types.md`.
+For each writer A with retained frontier q, records exist exactly at:
 
-Whenever one semantic event contains a `ValueId` reference to a historical value occurrence V, that reference is admissible only when V actually happened before the referencing event.
+```text
+A:1 .. A:q
+```
 
-An earlier record in the same atomic publication satisfies this through same-writer sequence order.
+with no durable hole.
 
-Thus Journal 3 never permits an event to claim knowledge of a concurrent or future value occurrence merely because that occurrence happens to be retained in the same eventual journal union.
+Two records with one `JournalRecordId` must have identical canonical current-format meaning. Disagreement is a writer fork/corruption condition.
+
+## Current-format record validity
+
+Every retained record is valid under the one record representation selected by the database's current `global/version`.
+
+There is no ordinary mixed-version/per-record-upcast path.
+
+For ValueEvent at least:
+
+- NodeKey is canonical/valid;
+- NodeIdentifier is valid;
+- payload is valid current-version `ComputedValue`;
+- timestamps are valid canonical instants;
+- `createdAt <= modifiedAt`;
+- reason is valid.
+
+Other event/record variants likewise validate all enum/body fields for the current version.
 
 ## ValidateEvent target rule
 
 For:
 
 ```text
-C = ValidateEvent {
+ValidateEvent C {
     node: K,
     value: V,
     ...
 }
 ```
 
-let `event(V)` be the ValueEvent named by V.
-
-C is well formed only when:
+require:
 
 ```text
+event(V) is a retained ValueEvent
 event(V).node == K
 happenedBefore(event(V), C)
 ```
 
-A validation cannot target a concurrent value, a later same-writer value, or a value from another semantic node.
+A validation cannot certify a value occurrence which it had not causally observed.
 
-## Self-describing ValidateEvent basis rules
+## Validation basis rules
 
-A validation basis is an array of explicit semantic-input claims:
+For validation C of node K:
 
-```text
-{
-    input: NodeKey,
-    value: ValueId | "unknown"
-}
-```
+1. every basis entry has one explicit semantic input NodeKey;
+2. no input NodeKey appears more than once;
+3. entries are serialized in canonical persisted NodeKeyString order for the current database version;
+4. each non-`"unknown"` value names a retained ValueEvent for that exact input NodeKey;
+5. each such input ValueEvent happened-before C;
+6. `"unknown"` is permitted only for the controlled baseline reasons allowed by the migration/reset/bootstrap specifications.
 
-The basis must not contain two entries with the same `input` NodeKey.
+A normal `compute`, `unchanged`, or `cache-revalidate` validation uses no `"unknown"` and has exactly the current direct input-key set.
 
-Entries must be serialized by the current format's canonical persisted `NodeKeyString` lexicographic order defined in the types spec. This ordering is independent of the graph-schema input order which existed when the validation was authored, so current software can validate/canonicalize the retained record without requiring that historical schema.
-
-For each entry B:
-
-### Known value
-
-If:
-
-```text
-B.value = V
-```
-
-then V must name a retained ValueEvent E satisfying:
-
-```text
-E.node == B.input
-happenedBefore(E, C)
-```
-
-The certificate therefore proves exactly which semantic input node and which historical occurrence it claims to validate against.
-
-### Unknown value
-
-If:
-
-```text
-B.value == "unknown"
-```
-
-then `C.reason` must be one of the controlled baseline reasons for which the type specification permits unknown proof provenance:
-
-```text
-bootstrap
-reset
-migration
-```
-
-An ordinary `compute`, `unchanged`, or `cache-revalidate` validation must not contain `"unknown"`.
-
-### Current-schema completeness
-
-When C is authored by an ordinary operation under the current schema, its basis input-key set must equal the current distinct direct structural input set:
-
-```text
-set(C.basis.input) == set(inputEdges(C.node))
-```
-
-A controlled bootstrap/reset/migration baseline likewise records one basis entry for every direct input in its target schema interpretation, with `"unknown"` where the target legacy validity edge is intentionally absent.
-
-In all cases the resulting entries are serialized by canonical current NodeKey order after that set has been constructed.
-
-An old historical certificate remains intelligible after a later schema migration because its basis records its own semantic input NodeKeys explicitly. Database migration rewrites its representation into the target current format while preserving that historical claim. It is not retroactively malformed merely because the current schema now gives that node a different input set; semantic migration creates the target proof state required by the migration specification.
-
-For current replay, such an old certificate is eligible only if its explicit basis input-key set equals the current direct-input set for its node, as defined by the replay specification.
-
-## No partial salvage of malformed certificates
-
-A malformed certificate is rejected as retained historical state.
-
-Replay/import must not:
-
-- drop one impossible basis entry and keep the others;
-- substitute the currently selected ValueId for the named historical one;
-- use payload equality to find a replacement occurrence; or
-- reinterpret an explicit old input NodeKey as a different current input.
+A historical certificate whose explicit input set no longer equals the current schema's input set remains structurally intelligible history; it simply is not current-shape-compatible proof.
 
 ## Value-scoped InvalidateEvent rule
 
 For:
 
 ```text
-I = InvalidateEvent {
+InvalidateEvent I {
     node: K,
-    scope: { kind: "value", value: V },
-    ...
+    scope: { kind: "value", value: V }
 }
 ```
 
-I is well formed only when:
+require:
 
 ```text
 event(V) is a retained ValueEvent
@@ -184,7 +140,7 @@ Every record claimed by the context therefore exists in the retained journal.
 
 ### Complete local prefix
 
-The writer necessarily observed its complete local stream before allocating F, including earlier records in the same serialized publication:
+The writer stream represented by F includes its complete own prefix before F:
 
 ```text
 F.context[W] == q - 1
@@ -225,6 +181,22 @@ Although every coordinate is individually retained, C:1's context is not causall
 
 These rules ensure that the `happenedBefore` relation defined in the types specification is transitive. A later validation therefore cannot accidentally treat a genuinely transitive causal predecessor as concurrent merely because an intermediate context omitted it.
 
+### Historical bootstrap conversion is not physical-read causality
+
+The normal authoring rule constructs context from semantic history observed by the operation. The one-time pre-Journal conversion has a narrower rule for legacy `ValueEvent(reason="bootstrap")` records.
+
+A joining migration may physically read the frozen canonical bootstrap artifact while converting a local legacy value that historically did **not** observe the canonical conflicting value. Merely reading the artifact during upgrade does not make that old legacy occurrence causally later.
+
+Therefore `incremental-graph-journal-migrations.md` may specify a joining legacy ValueEvent whose cross-writer context omits canonical bootstrap coordinates. Such an event is well formed when:
+
+- its own-writer context is exactly `q-1`;
+- every coordinate it does include is retained;
+- its actual context is transitively closed;
+- it contains no reference requiring the omitted canonical event;
+- its authority extends every event it actually claims happened-before.
+
+This is not permission for arbitrary context omission. Ordinary graph operations, synchronization, reset, Journal-aware migration, and bootstrap proof/freshness records use their normal complete semantic-observation contexts.
+
 ### Authority consistency
 
 For every semantic event E such that `happenedBefore(E,F)`:
@@ -245,7 +217,7 @@ At serialized finalization:
 2. referencing records receive later positions;
 3. every semantic event receives an exact own-writer context coordinate equal to its sequence minus one;
 4. symbolic references resolve to those exact IDs;
-5. cross-writer context is copied from the complete causally closed frontier observed by the publication and monotonically extended by any earlier same-publication semantic observations;
+5. cross-writer context is copied from the complete causally closed frontier semantically observed by the publication and monotonically extended by any earlier same-publication semantic observations;
 6. the resulting persisted records satisfy `happenedBefore` and authority monotonicity.
 
 No persisted forward ValueId reference within one writer publication is permitted.
