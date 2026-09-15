@@ -67,10 +67,22 @@ synchronizeFrom(source)
 
 is an administrative operation, not a computor call.
 
-Ordinary synchronization requires source and receiver to already use one compatible current database/schema representation. It does not migrate or convert individual journal records on the fly.
+The operation opens one stable `JournalSnapshot`. The source's compatibility decision comes from that snapshot itself:
+
+```text
+snapshot.databaseVersion
+snapshot.graphSchemeString
+```
+
+These are compared exactly with the receiver's active `global/version` and exact persisted `global/graph_scheme` string before source journal records are interpreted/imported.
+
+Ordinary synchronization therefore requires source and receiver to already use one compatible current database/schema representation. It does not migrate or convert individual journal records on the fly.
+
+A caller or transport may have separately observed source metadata earlier, but Journal 3 synchronization does not rely on that earlier mutable observation. If the source migrated before `openSnapshot()`, the held snapshot's compatibility metadata governs the operation.
 
 After a successful pairwise synchronization:
 
+- the compatibility metadata and imported journal history came from one stable source snapshot;
 - the receiver retains every compatible source historical record through the captured source frontier;
 - any required receiver normalization history is committed;
 - the active graph equals replay of the active journal;
@@ -93,7 +105,11 @@ These changes arise from replayed/normalized history, not from running applicati
 A synchronization may itself create a real graph transition required by the ordinary IncrementalGraph contract, for example:
 
 - deleting a cached dependent whose required input is now absent; or
-- recording a receiver-only cached value's propagated fresh->stale transition.
+- persistently marking the **selected current cached occurrence** stale when its own certificate exactly matches the selected input ValueIds but a direct input is stale.
+
+The second case applies even when synchronization has just selected a new remote ValueId for the dependent. It is not limited to dependents whose ValueId was already selected on the receiver.
+
+For example, with `A -> B`, if the receiver has stale `A=a1` and the source contributes fresh `B=b2` validated exactly against `A=a1`, the synchronized receiver selects `b2` but must persistently invalidate that `b2` occurrence. If A later becomes fresh through `Unchanged` without changing its ValueId, B remains stale until B itself is pulled/revalidated/recomputed.
 
 Those transitions are committed as ordinary receiver-authored Journal 3 events. They are not temporary acknowledgements or merge scratch metadata.
 
@@ -111,11 +127,11 @@ An outer operation processing multiple sources may have committed earlier source
 
 Failures distinguish incompatibility, writer fork/corruption, malformed history, projection failure, and ordinary publication/I/O failure sufficiently for lifecycle code to respond appropriately.
 
-A database-version mismatch is a migrate-first incompatibility rather than permission for synchronization to upcast/downcast records.
+A snapshot database-version or exact graph-scheme mismatch is a `JournalVersionCompatibilityError` / migrate-first incompatibility rather than permission for synchronization to upcast/downcast records.
 
 ## Same-writer restoration
 
-A controlled installation which has an exact prefix of its own writer history may recover a longer exact suffix at the same compatible current database version.
+A controlled installation which has an exact prefix of its own writer history may recover a longer exact suffix at the same compatible current database version/schema.
 
 After successful recovery:
 
@@ -136,6 +152,8 @@ resetTo(source)
 ```
 
 requests the source's projected graph state relative to all history reset currently observes.
+
+Reset uses one held `JournalSnapshot`. Its exact `databaseVersion` and `graphSchemeString` must match the receiver's active metadata, and that same snapshot supplies the source journal and target projection. Reset does not accept an independently checked earlier compatibility result if the source may have changed before snapshot acquisition.
 
 After success:
 
