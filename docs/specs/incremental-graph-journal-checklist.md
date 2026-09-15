@@ -10,7 +10,7 @@ Implement durable current-version representations for `JournalRecordId`, `Journa
 
 Acceptance:
 
-- `global/version` is the only persisted format selector;
+- `global/version` is the only persisted format selector for an active replica;
 - no per-record version discriminator;
 - ordered per-writer range iteration;
 - canonical current-format codec;
@@ -26,13 +26,16 @@ Acceptance:
 - if F includes semantic E, every coordinate of E.context is <= F.context;
 - malformed transitive omission is rejected;
 - `happenedBefore` is transitive in generated supported histories;
-- happened-before always implies increasing authority.
+- happened-before always implies increasing authority;
+- bootstrap historical-value conversion may omit canonical foreign coordinates only under its explicit lifecycle rule and the resulting actual context remains closed.
 
 ## 3. Journal snapshot
 
 Implement `JournalSnapshot` with exact source `databaseVersion`, exact `graphSchemeString`, `localWriter`, immutable frontier, and stable range reads.
 
 Compatibility metadata/frontier/records belong to one immutable committed source cut.
+
+Do not reuse `JournalSnapshot` as the canonical-bootstrap artifact; §8 has the separate frozen artifact contract.
 
 ## 4. Local publication finalization
 
@@ -82,18 +85,27 @@ Acceptance:
 Acceptance:
 
 - a configured transport-neutral **cohort bootstrap source** returns exactly exists / definitely absent / indeterminate-or-error;
-- exists -> join canonical bootstrap;
+- exists -> returns immutable `CanonicalBootstrapSnapshot`, not an arbitrary current Journal snapshot;
 - definitely absent -> create canonical bootstrap;
 - indeterminate/error -> migration fails and MUST NOT create competing canonical history;
-- the source's definite-absence semantics arbitrate first creation; competing canonical histories are unsupported;
-- creator bootstrap represents payloads/timestamps/identifiers/freshness/validity exactly;
-- joining installations retain canonical semantic records verbatim and preserve their own local writer fingerprint/watermark;
-- join computes `Pc = project(canonicalJournal, localWriter=joiningFingerprint)` and applies minimal reset-style Pass 1–3 rules to target local `Glegacy` with reason `"bootstrap"`;
-- unaffected equal occurrences keep canonical ValueIds;
-- locally changed occurrences get only the required joining-writer ValueEvents;
-- local presence/absence and validity/freshness deltas use minimal Delete/Validate/Invalidate records;
+- the source's definite-absence semantics arbitrate first creation; competing canonical artifacts are unsupported;
+- creator bootstrap represents its accepted legacy payloads/timestamps/identifiers/freshness/validity exactly;
+- creator freezes `bootstrapFrontier` immediately after bootstrap and before ordinary Journal authoring;
+- artifact exposes exactly records through that frontier and retains exact bootstrap-target version/schema;
+- artifact remains available/immutable after ordinary cohort history or later migrations;
+- joining artifact version/schema must exactly equal the configured bootstrap target or fail with `JournalVersionCompatibilityError` before authoring history;
+- joining installation retains canonical records verbatim and preserves its own local writer fingerprint/watermark;
+- bootstrap join is not reset and does not force projection equality with the local legacy cache;
+- exact equal legacy occurrences keep canonical ValueIds;
+- locally different/local-only occurrences get historical joining-writer bootstrap ValueEvents;
+- divergent legacy values do not observe canonical conflicting values solely because bootstrap code read the artifact;
+- joining bootstrap ValueEvent authority is seeded from that occurrence's own legacy `modifiedAt`;
+- normal Journal authority resolves conflicting legacy occurrences;
+- canonical-present/local-absent does not create a bootstrap DeleteEvent;
+- proof/freshness baseline records are authored after values using normal closed contexts;
 - stale partial validity uses controlled `"unknown"`;
-- cutover is atomic.
+- cutover is atomic at the bootstrap target version;
+- ordinary supported Journal-aware migrations then advance to running version before ordinary compatible synchronization imports post-bootstrap history.
 
 ## 9. Pairwise synchronization
 
@@ -135,7 +147,8 @@ Acceptance:
 - exactly one reset delete iff current union present and target absent;
 - repeated satisfied reset may no-op;
 - receiver allocator remains local;
-- replayed result equals target semantic graph.
+- replayed result equals target semantic graph;
+- this causally-later target-repair algorithm is never reused as bootstrap legacy-conflict resolution.
 
 ## 12. Journal-aware migration
 
@@ -143,10 +156,12 @@ Acceptance:
 
 - complete retained old history is deterministically rewritten into target format preserving IDs/meaning;
 - target has one format only;
+- every affected retained ValueEvent uses one pure per-record payload codec independent of selected/non-selected status and replica-local state;
+- replicas retaining the same historical record produce the same target-format body;
 - `keep` preserves selected ValueId;
 - `override()` preserves selected ValueId and semantic value even when target-version payload representation changes;
-- whole-history representation rewrite provides deterministic target-format payload conversion for retained ValueEvents affected by representation changes;
-- selected override record after rewrite agrees with migration's override result;
+- `override()` result is checked against the canonical codec output for the selected record and mismatch fails before cutover;
+- a record is rewritten identically even on a replica where it is historical rather than selected;
 - `invalidate` preserves cached occurrence ValueId;
 - schema/proof/freshness change alone does not create ValueEvent;
 - target proof may be re-established with ValidateEvent targeting preserved ValueId;
@@ -163,7 +178,8 @@ Acceptance:
 
 Acceptance:
 
-- one current format;
+- one current format per active replica;
+- frozen bootstrap artifact may separately remain at its original bootstrap target format;
 - known graph/journal mismatch not exposed;
 - valid history can rebuild damaged projection;
 - invalid authoritative history rejected;
@@ -171,7 +187,7 @@ Acceptance:
 
 ## 14. Error model
 
-Provide actionable categories for writer fork, stream gap, transitive causal-context closure failure, ValueId reference causality failure, current-format record validation, snapshot version/schema incompatibility, projection invariant failure, and publication/source-read failure.
+Provide actionable categories for writer fork, stream gap, transitive causal-context closure failure, ValueId reference causality failure, current-format record validation, ordinary snapshot/bootstrap-artifact version/schema incompatibility, projection invariant failure, migration-decision mismatch, and publication/source-read failure.
 
 ## 15. Reference model / property verification
 
@@ -187,8 +203,13 @@ Priority properties:
 - repeat-sync no-op;
 - normalization convergence;
 - absent restore vs fresh creation;
-- canonical bootstrap source decision and join-with-delta;
-- occurrence-preserving `override()` and migration;
+- frozen canonical bootstrap source decision and original-cut preservation;
+- late bootstrap cannot replay stale local values as causally newer writes;
+- concurrent legacy conflict uses legacy `modifiedAt` authority;
+- legacy absence does not fabricate deletion;
+- bootstrap-target join followed by ordinary migration chain;
+- pure per-record format rewrite independent of replica selection;
+- occurrence-preserving `override()` assertion against canonical codec;
 - accepted independent-replacement migration staleness;
 - minimal deterministic reset;
 - deterministic whole-journal representation migration.
