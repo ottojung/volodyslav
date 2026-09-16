@@ -302,13 +302,18 @@ A newly computed changed value normally authors its ValueEvent before this Valid
 InvalidateScope =
     | { kind: "node" }
     | { kind: "value", value: ValueId }
+    | { kind: "proof", value: ValueId }
 ```
+
+The three scopes deliberately represent different semantic facts.
 
 ### Node scope
 
 Node-scoped invalidation is independent of the selected value occurrence.
 
 It represents direct/explicit invalidation of the node's incoming cache proof. A validation clears its effect only when the validation causally observes/covers that invalidation.
+
+Because the invalidation is node-wide, a concurrent certificate for another value occurrence which did not observe it is also ineligible. This is intentional for true explicit invalidation and is why maintenance-only proof weakening must not use node scope.
 
 ### Value scope
 
@@ -317,6 +322,20 @@ Value-scoped invalidation marks one exact cached occurrence stale without removi
 It represents persistent freshness transitions such as propagated invalidation, synchronization propagation, or stale baseline state.
 
 It stops applying when another ValueId becomes the selected current occurrence.
+
+### Proof scope
+
+Proof-scoped invalidation is an occurrence-specific **certificate barrier**:
+
+```text
+{ kind: "proof", value: V }
+```
+
+It makes certificates targeting V which did not causally observe the barrier ineligible. A causally later validation targeting V may establish a weaker/different proof after the barrier.
+
+Proof scope does **not** by itself mean that V carries a persistent stale flag independent of proof. Persistent freshness uses value scope. Proof scope also does not affect certificates for another ValueId selected later or concurrently.
+
+Core Journal 3 uses proof scope for maintenance-only proof weakening in reset/migration. Ordinary explicit invalidation remains node-scoped.
 
 ## InvalidateEvent
 
@@ -330,7 +349,7 @@ InvalidateEvent = SemanticEventBase & {
 
 `reason` is historical/debugging classification. Replay behavior comes from scope, causality, selected value, and certificates.
 
-A value-scoped invalidation must name a causally prior retained ValueEvent for the same semantic node.
+A value-scoped or proof-scoped invalidation must name a causally prior retained ValueEvent for the same semantic node.
 
 ## WriterStateRecord
 
