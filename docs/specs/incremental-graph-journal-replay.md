@@ -130,6 +130,16 @@ uncoveredNodeInvalidation(K,C) iff
         and not happenedBefore(I,C)
 ```
 
+For validation C targeting one exact ValueId:
+
+```text
+uncoveredProofBarrier(K,C) iff
+    exists InvalidateEvent I in History(K) such that
+        I.scope.kind == "proof"
+        and I.scope.value == C.value
+        and not happenedBefore(I,C)
+```
+
 For current value V(K) and validation C:
 
 ```text
@@ -147,9 +157,11 @@ coversValueInvalidations(K,C) iff
     not uncoveredValueInvalidation(K,C)
 ```
 
-Node-scoped invalidation remains relevant across value changes until later validation causally covers it.
+The scopes are intentionally different:
 
-Value-scoped invalidation applies only to named ValueId and stops affecting projection when another ValueId becomes current.
+- node-scoped invalidation remains relevant across value changes until a validation causally covers it;
+- proof-scoped invalidation affects certificate eligibility only for its named ValueId and does not taint another occurrence;
+- value-scoped invalidation affects persistent freshness only for its named ValueId and does not remove incoming validity proof by itself.
 
 ## Current validation candidates
 
@@ -208,11 +220,12 @@ eligibleCertificate(K,C) iff
     C in Validations(K)
     and current-shape-compatible(C,K)
     and not uncoveredNodeInvalidation(K,C)
+    and not uncoveredProofBarrier(K,C)
 ```
 
-Thus node-scoped invalidation destroys applicability of every certificate which did not causally observe it.
+Thus true node invalidation rejects every certificate which did not causally observe it, regardless of occurrence. A proof barrier rejects only older/concurrent certificates targeting the exact occurrence named by the barrier.
 
-This eligibility rule is also the mechanism used by reset/migration **proof barriers**: when maintenance must weaken proof for a preserved ValueId, it authors node-scoped invalidation before target validation. Older stronger certificates remain retained but become ineligible, so their greater `basisMatchCount` cannot reintroduce removed validity.
+Reset/migration use proof barriers when maintenance must weaken proof for a preserved ValueId without semantically invalidating the node itself. Older stronger certificates remain retained but become ineligible, so their greater `basisMatchCount` cannot reintroduce removed validity. A later/concurrent replacement ValueId is unaffected by that occurrence-specific barrier.
 
 ## Current basis-match count
 
@@ -248,7 +261,7 @@ Authority remains deterministic tie-break only among certificates with equal bas
 
 Replay never synthesizes certificate by combining entries from different validations.
 
-For ordinary single-writer evolution, latest successful validation normally has complete current input basis, covers prior invalidations, and wins naturally.
+For ordinary single-writer evolution, latest successful validation normally has complete current input basis, covers prior invalidations/barriers, and wins naturally.
 
 ## Incoming validity edge
 
@@ -314,10 +327,13 @@ Every authoring path which intentionally creates/reproduces a persistent fresh-t
 
 - ordinary emission for runtime propagated invalidation;
 - synchronization normalization for merged-input staleness;
+- pre-Journal bootstrap join when combined canonical/joining evidence makes a selected occurrence stale solely through a stale input;
 - reset when source target stores persistent stale state;
 - migration when migration target stores persistent propagated stale state.
 
-A node currently stale for a different persistent own-state reason—basis mismatch, uncovered node invalidation, or already-uncovered current-value invalidation—does not require duplicate value marker merely because replay says stale.
+Bootstrap additionally treats an **exact shared occurrence** conservatively: if either canonical or joining legacy copy was stale, the joined shared ValueId retains an uncovered value-scoped bootstrap invalidation. A fresh joining copy cannot causally validate away canonical stale evidence merely by upgrading later.
+
+A node currently stale for a different persistent own-state reason—basis mismatch, uncovered node invalidation, uncovered proof barrier without sufficient replacement proof, or already-uncovered current-value invalidation—does not require duplicate value marker merely because replay says stale.
 
 ## Lowering to existing graph storage
 
