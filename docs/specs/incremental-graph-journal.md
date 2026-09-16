@@ -150,9 +150,11 @@ A semantic-preserving `override()` is occurrence-preserving: target-version repr
 
 ## Validation and invalidation
 
-Node-scoped invalidation is cleared only by causal observation in a validation.
+Journal distinguishes three invalidation scopes:
 
-Value-scoped invalidation applies only to one exact selected occurrence.
+- node scope — genuine direct/explicit invalidation of the node's proof;
+- value scope — persistent stale freshness for one selected ValueId;
+- proof scope — maintenance-only certificate eligibility barrier for one ValueId.
 
 Among eligible validations for selected occurrence, replay chooses one certificate maximizing:
 
@@ -164,9 +166,9 @@ Among eligible validations for selected occurrence, replay chooses one certifica
 
 This means maintenance which needs to **weaken** proof cannot merely append a later weaker certificate: an older stronger certificate could still win by greater `basisMatchCount`.
 
-Reset/migration therefore use a node-scoped **proof barrier** before removing currently-valid incoming edges from a preserved occurrence. Older certificates predating that barrier become ineligible; a later target certificate can then establish exact weaker proof.
+Reset/migration therefore use an occurrence-scoped `proof(V)` barrier before removing currently-valid incoming edges from preserved occurrence V, unless the operation independently performs real explicit node invalidation. Older V certificates predating the barrier become ineligible; certificates for unrelated V2 do not.
 
-Likewise, recursive input staleness is not by itself persistent stale history. If reset/migration target stores K stale while K's own selected proof is otherwise complete, maintenance ensures an uncovered value-scoped invalidation targets final K occurrence even if K is already stale because an input is stale. A later upstream `Unchanged` must not freshen K automatically.
+Likewise, recursive input staleness is not by itself persistent stale history. Ordinary propagation, synchronization, bootstrap join, reset, and migration must persist a value-scoped marker whenever they intentionally create/reproduce a stale flag for an occurrence whose own proof is otherwise complete. A later upstream `Unchanged` must not freshen that occurrence automatically.
 
 ## Synchronization model
 
@@ -216,9 +218,17 @@ Indeterminate/error fails rather than authorizing competing canonical history.
 
 The canonical artifact is frozen at creator's exact frontier immediately after bootstrap, with bootstrap target version/schema, before ordinary Journal authoring. A later current `JournalSnapshot` is not a substitute.
 
-A release may use artifact only when its configured expected bootstrap target exactly matches artifact version/schema. Journal 3 does not require future releases to preserve arbitrary historical legacy-bootstrap compatibility.
+### Bootstrap target is semantic identity
 
-If artifact exists and `artifact.creatorWriter` equals the still-pre-Journal local fingerprint, startup uses **creator resume**: it verifies local legacy target still equals artifact projection, installs exactly artifact history, reconstructs writer state, and authors no duplicate bootstrap records. Disagreement is `JournalBootstrapForkError`.
+The supported pre-Journal -> Journal bootstrap journals the already-persisted legacy graph. It does **not** first run an ordinary legacy semantic migration.
+
+The bootstrap target preserves the persisted graph interpretation and exact materialized state: NodeKeys, NodeIdentifiers, payloads, timestamps, freshness, validity, and allocator watermark. A source/target pair requiring `create`/`override`/`invalidate`/`delete` or another semantic migration before Journalization is not an automatic bootstrap path and fails `JournalVersionCompatibilityError` before bootstrap history is authored.
+
+This prevents bootstrap identity, creator resume, and conflict authority from depending on upgrade-time wall clock or host-local allocator output.
+
+A release may use an artifact only when its configured expected bootstrap target exactly matches artifact version/schema and that target is a supported semantic-identity Journalization target. Journal 3 does not require future releases to preserve arbitrary historical legacy-bootstrap compatibility.
+
+If artifact exists and `artifact.creatorWriter` equals the still-pre-Journal local fingerprint, startup uses **creator resume**: it compares the artifact projection directly with the persisted legacy graph under the identity-bootstrap interpretation, without rerunning migration callbacks or regenerating timestamps/identifiers. Equality installs exact artifact history and reconstructs writer state; disagreement is `JournalBootstrapForkError`.
 
 A different fingerprint performs ordinary join relative to the historical cut only:
 
@@ -226,14 +236,17 @@ A different fingerprint performs ordinary join relative to the historical cut on
 - local-only/different occurrence becomes joining-writer historical bootstrap ValueEvent;
 - divergent legacy value does not become causally later merely because bootstrap code observed artifact;
 - concurrent legacy value conflict uses authority seeded from legacy `modifiedAt`;
-- canonical presence plus joining-host cache absence does not create DeleteEvent;
-- proof/freshness evidence is added after value occurrences are represented.
+- canonical presence plus joining-host cache absence does not create DeleteEvent.
+
+For an exact shared occurrence, canonical proof remains the proof basis; join does not author a causally-later validation merely to strengthen the joining host's proof. Shared freshness is conservative: stale on either legacy side means the shared ValueId remains persistently stale.
+
+After direct legacy evidence is represented, bootstrap join persists recursive-only stale state through the selected dependency DAG. If selected K's own proof is complete but a direct input is stale, K receives/retains a value-scoped bootstrap invalidation so a later input `Unchanged` cannot silently freshen K.
 
 Canonical identity guarantee is intentionally limited to occurrences equal to canonical cut. Two independent late joiners carrying same non-canonical occurrence may assign distinct bootstrap ValueIds; later conflict may stale dependents naming losing occurrence. This is accepted by `$id-1635227135166767` rather than adding another pre-Journal identity protocol.
 
 Bootstrap join is not reset and does not promise to reproduce joining cache at conflicting values. Normal conflict authority decides.
 
-After bootstrap-target database is installed, startup may continue through migration steps this running release explicitly supports. Post-bootstrap cohort history is imported only through later ordinary compatible synchronization.
+After bootstrap-target database is installed, startup may continue through Journal-aware migration steps this running release explicitly supports. Post-bootstrap cohort history is imported only through later ordinary compatible synchronization.
 
 ## Migration model
 
@@ -245,7 +258,7 @@ Semantic migration preserves existing selected ValueIds for occurrence-preservin
 
 For Journal-aware `override()`, callback output is an assertion that selected record's canonical rewritten payload is correct. Callback cannot independently produce another body for same immutable historical ID; mismatch fails before cutover.
 
-Proof weakening uses node-scoped migration barrier. Persistent propagated target staleness uses current-value migration invalidation under same `selfProofReady` principle as synchronization.
+Proof weakening for preserved occurrence V uses `proof(V)` barrier. A genuine migration `invalidate(K)` remains node-scoped and is not replaced by that maintenance barrier. Persistent propagated target staleness uses current-value migration invalidation under the `selfProofReady` principle.
 
 New ValueEvents are created only for actual semantic create/replace occurrence changes.
 
@@ -255,7 +268,7 @@ Journal-aware migrations do not require one canonical migration participant. Ind
 
 Reset retains history and targets one compatible source projection relative to observed history.
 
-It preserves selected current ValueId when union already has requested occurrence, creates new ValueEvent only when occurrence must change, uses proof barrier when target removes validity, and uses validation/value-scoped invalidation for exact target proof/freshness.
+It preserves selected current ValueId when union already has requested occurrence, creates new ValueEvent only when occurrence must change, uses `proof(V)` barrier when target weakens validity for preserved V, and uses validation/value-scoped invalidation for exact target proof/freshness.
 
 Reset events intentionally causally follow observed union they repair. That semantics is not used for pre-Journal bootstrap value conflict conversion.
 
