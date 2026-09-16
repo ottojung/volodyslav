@@ -105,7 +105,7 @@ Failed operations consume no durable Journal coordinate.
 
 ## Context construction is semantic
 
-A persisted event context is semantic history, not merely “writers explicitly referenced by this event.” If a publication observed B:7 and B:7 observed A:11, the new event context includes A through at least 11 even if the new event directly references only B.
+A persisted event context is semantic history, not merely “writers explicitly referenced by this event.” If a publication observed B:7 and B:7 observed A:11, the new event context includes A through at least 11 even if the new event body directly references only B.
 
 The only controlled exception is pre-Journal legacy-value conversion described by `incremental-graph-journal-migrations.md`: a bootstrap ValueEvent represents a historical legacy occurrence and deliberately does not claim causal observation of canonical bootstrap values merely because migration code read the canonical artifact. This exception is not available to ordinary publication.
 
@@ -162,7 +162,12 @@ If querying/opening known synchronized installation state fails, startup fails. 
 resetTo(source: JournalSyncSource) -> Promise<ResetResult>
 ```
 
-Reset requires an already-established writable receiver and uses one held compatible source snapshot plus the minimal deterministic rules in `incremental-graph-journal-reset.md`.
+Reset requires an already-established writable receiver and uses one held compatible source snapshot plus the deterministic rules in `incremental-graph-journal-reset.md`.
+
+Those rules include two maintenance-specific operations which implementations must expose internally even if not as public methods:
+
+- a node-scoped **proof barrier** before reset removes currently-valid incoming proof for a preserved ValueId; and
+- a value-scoped stale marker when reset target freshness is persistently stale while the occurrence's own proof is otherwise complete.
 
 ## Bootstrap/migration API boundary
 
@@ -187,16 +192,16 @@ CanonicalBootstrapSnapshot {
 
 Laws:
 
-1. `bootstrapFrontier` is exactly the creator frontier at the end of the canonical bootstrap publication;
+1. `bootstrapFrontier` is exactly the creator frontier at the end of canonical bootstrap publication;
 2. reads expose exactly records through that frontier and never post-bootstrap records;
-3. the artifact stays immutable even when the cohort later authors Journal history or migrates active databases;
-4. `databaseVersion` / `graphSchemeString` are the original bootstrap target compatibility metadata;
-5. the artifact is not interchangeable with a later `JournalSnapshot` which merely contains the bootstrap records as a prefix;
-6. the configured cohort bootstrap source keeps this artifact durably obtainable for supported late legacy joins. The mechanism providing that durability is outside Journal semantics.
+3. the artifact is immutable while a software release claims support for that bootstrap target;
+4. `databaseVersion` / `graphSchemeString` are the bootstrap target compatibility metadata;
+5. the artifact is not interchangeable with a later `JournalSnapshot` containing it as a prefix;
+6. Journal 3 does not require every future release to keep this old artifact format or legacy entry path supported forever.
 
 ### Cohort bootstrap source decision
 
-Conceptually the lifecycle has:
+Conceptually:
 
 ```text
 CohortBootstrapSource {
@@ -207,39 +212,48 @@ CohortBootstrapSource {
 }
 ```
 
-The source-discovery/carry mechanism is outside Journal semantics. The decision semantics are normative:
+Decision semantics:
 
-- `Exists(snapshot)` -> validate exact bootstrap-target version/schema, then `joinCanonicalBootstrap(legacyState, snapshot)`;
+- `Exists(B)` -> first require B version/schema to equal this release's expected bootstrap target; then if `B.creatorWriter == localFingerprint` and local state is pre-Journal, run creator-resume; otherwise run ordinary join;
 - `DefinitelyAbsent` -> `createCanonicalBootstrap(legacyState)`;
 - `IndeterminateOrError` -> fail; MUST NOT create.
 
 A source may return `DefinitelyAbsent` only when that result is suitable for first-creator arbitration. Competing canonical artifacts are unsupported.
 
-`createCanonicalBootstrap` does not complete until the immutable canonical artifact is durably established. Ordinary post-bootstrap Journal authoring begins only afterward.
+`createCanonicalBootstrap` durably establishes the immutable artifact before success is reported and before ordinary post-bootstrap Journal authoring begins.
 
 ### Canonical bootstrap operations
 
+Conceptually:
+
 ```text
 createCanonicalBootstrap(legacyState)
+resumeCanonicalBootstrapCreator(legacyState, canonicalBootstrapSnapshot)
 joinCanonicalBootstrap(legacyState, canonicalBootstrapSnapshot)
 ```
 
 `createCanonicalBootstrap` authors the shared semantic basis once and freezes its final frontier as the canonical artifact.
 
+`resumeCanonicalBootstrapCreator` is valid only when the local pre-Journal `DatabaseFingerprint` equals `artifact.creatorWriter`. It installs exactly the artifact's stream, verifies the artifact projection equals the locally interpreted legacy target, reconstructs local writer head/allocator/high-water/projection, and atomically cuts over. Semantic disagreement is `JournalBootstrapForkError`. It authors no new semantic history merely to resume.
+
+A different fingerprint cannot use creator-resume.
+
 `joinCanonicalBootstrap` is **not reset**. It:
 
-1. requires the artifact's exact `databaseVersion` / `graphSchemeString` to equal the supported legacy->Journal bootstrap target; mismatch throws/returns `JournalVersionCompatibilityError` before history is authored;
+1. requires artifact version/schema to equal the running release's expected bootstrap target; mismatch is `JournalVersionCompatibilityError` before history is authored;
 2. retains exactly the canonical records through `bootstrapFrontier`;
 3. preserves the joining installation's own writer fingerprint/allocator state;
 4. reuses canonical ValueIds for equal legacy occurrences;
 5. converts local-only/different legacy occurrences into joining-writer `ValueEvent(reason="bootstrap")` records with authority seeded from their own legacy `modifiedAt` and without synthetic causal observation of canonical value events;
 6. lets normal Journal authority resolve conflicting concurrent legacy occurrences;
-7. establishes required bootstrap proof/freshness metadata only after the value occurrences exist;
+7. establishes bootstrap proof/freshness metadata only after value occurrences exist;
 8. does not author a DeleteEvent merely because a node is absent from one legacy replica while present in the canonical basis.
 
-The result need not equal the joining legacy graph at conflicting values: conflict authority decides. Upgrade time never overrides the legacy modifiedAt policy.
+Two independent joiners may assign different ValueIds to the same non-canonical legacy occurrence. That accepted trade-off is `$id-1635227135166767`; later conflict/certificate rules may stale dependents naming the losing occurrence.
 
-After installing the bootstrap-target database, lifecycle code runs the ordinary supported Journal-aware migration chain to the running version. Post-bootstrap cohort history is imported later only through ordinary compatible synchronization.
+The result need not equal the joining legacy graph at conflicting values. Upgrade time never overrides legacy `modifiedAt` conflict authority.
+
+After bootstrap, lifecycle continues only through migration steps the running release explicitly supports. The API does not promise indefinite compatibility with an old bootstrap target.
 
 ### Journal-aware migration operations
 
@@ -253,7 +267,12 @@ The representation rewrite is a canonical per-record transform. If ValueEvent pa
 
 The semantic phase preserves existing ValueIds for occurrence-preserving decisions and appends only semantic records needed for the target state.
 
-`override()` is occurrence-preserving, but its callback is not authoritative record-rewrite input for Journal-aware history. Its selected-record result must equal the canonical per-record codec output; otherwise migration fails with the migration framework's invalid-decision error before cutover.
+Maintenance proof/freshness has explicit internal semantics:
+
+- when migration removes any currently-valid incoming edge for a preserved occurrence, author a node-scoped proof barrier before the target validation so older stronger certificates become ineligible;
+- when target state stores K stale while K's own selected proof is otherwise complete and covers its own value invalidations, ensure an uncovered value-scoped migration invalidation exists even if K is already recursively stale through an input.
+
+`override()` is occurrence-preserving, but its callback is not authoritative record-rewrite input. Its selected-record result must equal canonical per-record codec output; otherwise migration fails with `InvalidMigrationDecisionError` before cutover.
 
 Journal-aware migration does not require one canonical migration participant. Replicas may independently author distinct new ValueIds for genuine created/replaced occurrences; later synchronization may stale dependents whose certificates name a losing replacement occurrence.
 
@@ -265,6 +284,7 @@ Lifecycle/admin callers must distinguish at least:
 
 ```text
 JournalForkError
+JournalBootstrapForkError
 JournalGapError
 JournalCausalClosureError
 JournalReferenceCausalityError
@@ -275,9 +295,9 @@ JournalPublicationError
 JournalSourceReadError
 ```
 
-Migration may additionally surface the existing `InvalidMigrationDecisionError` when a Journal-aware `override()` disagrees with the canonical per-record rewrite.
+Migration may additionally surface the existing `InvalidMigrationDecisionError` when a Journal-aware `override()` disagrees with canonical per-record rewrite.
 
-The exact class names may differ except where an existing migration error type is referenced; the semantic distinctions are normative.
+The exact class names may differ except where a named lifecycle/migration category is referenced normatively; the semantic distinctions are normative.
 
 ## Locking ownership
 
