@@ -52,7 +52,7 @@ happenedBefore(E,F) => authorityCompare(E,F) < 0
 
 ## Law 7: reference causality
 
-Every ValueId reference denotes historical evidence in referencing event's causal past. Validation target/basis references and value-scoped invalidation references satisfy happened-before and expected node identity.
+Every ValueId reference denotes historical evidence in the referencing event's causal past. Validation target/basis references, value-scoped invalidation references, and proof-scoped invalidation references satisfy happened-before and expected node identity.
 
 ## Law 8: compatible prefix union
 
@@ -117,11 +117,16 @@ Every current validity edge comes from one selected current certificate; replay 
 
 ## Law 18: node invalidation clearing is causal
 
-A node-scoped invalidation remains effective unless a validation causally follows it. Total authority alone never clears an invalidation.
+A node-scoped invalidation is genuine direct/explicit node invalidation. It remains effective unless a validation causally follows it. Total authority alone never clears it, and its effect is not limited to one ValueId.
 
-## Law 19: value-scoped invalidation follows one occurrence
+## Law 19: occurrence-scoped invalidations have distinct meanings
 
-A value-scoped invalidation affects only its named ValueId while that occurrence is selected. Changing selected ValueId ends its current effect but does not delete history.
+For selected occurrence V of K:
+
+- `scope=value(V)` records persistent stale freshness for V and does not by itself remove incoming proof;
+- `scope=proof(V)` is a maintenance eligibility barrier for certificates targeting V and does not by itself mark V stale.
+
+Both stop affecting current projection when another ValueId becomes selected. Neither is interchangeable with node-scoped explicit invalidation.
 
 ## Law 20: persistent input-staleness normalization
 
@@ -129,7 +134,7 @@ After raw sync union/dependency closure, if selected K has a certificate whose b
 
 This applies whether K's ValueId was already local or newly selected from source.
 
-## Law 21: maintenance proof weakening requires an eligibility barrier
+## Law 21: maintenance proof weakening requires an occurrence barrier
 
 Let a maintenance transition preserve current ValueId V of K while changing target incoming validity from `CurrentValid(K)` to `TargetValid(K)`.
 
@@ -141,11 +146,23 @@ CurrentValid(K) - TargetValid(K) != empty
 
 then appending only a weaker ValidateEvent is insufficient because certificate selection prefers greater `basisMatchCount` before authority.
 
-Reset/migration MUST first author a node-scoped invalidation for K, then author target proof after it as needed.
+For proof weakening which is not itself a semantic explicit invalidation, reset/migration MUST first author:
 
-Every older certificate predating that barrier is ineligible. Therefore a later partial/all-unknown target certificate can establish exactly the weakened target validity relation.
+```text
+InvalidateEvent {
+    node: K,
+    scope: { kind: "proof", value: V },
+    reason: "reset" | "migration"
+}
+```
 
-This law is required for migration `invalidate`, stale `keep`/`override` proof loss, and reset targets with fewer validity edges.
+and then author target proof after it as needed.
+
+Every older certificate for V predating that barrier is ineligible. Certificates for another occurrence V2 are unaffected.
+
+If the migration operation is genuinely `invalidate(K)`, it also authors/retains the real node-scoped invalidation required by that operation. The proof barrier and explicit node invalidation are separate semantics even when both are needed in one migration.
+
+This law covers stale `keep`/`override` proof loss, reset targets with fewer validity edges, and any occurrence-preserving schema/proof transition that weakens validity.
 
 ## Law 22: maintenance persistent staleness survives upstream Unchanged
 
@@ -188,28 +205,76 @@ Later ordinary Journal events do not enter that artifact. A current JournalSnaps
 
 The artifact must remain immutable for software releases which claim support for that bootstrap target, but Journal 3 does not require all future releases to retain historical artifact compatibility forever.
 
-## Law 25: bootstrap creator resume is exact and non-authoring
+## Law 25: bootstrap is semantic identity over persisted legacy state
 
-If pre-Journal local fingerprint W equals artifact.creatorWriter and artifact target is supported, creator-resume is allowed only when:
+The supported pre-Journal -> Journal bootstrap does not run an ordinary legacy semantic migration before authoring the initial Journal history.
+
+Its bootstrap target must represent the same persisted graph interpretation and preserve exactly the already-stored semantic state:
+
+- materialized NodeKeys;
+- NodeIdentifiers;
+- payloads;
+- createdAt/modifiedAt;
+- freshness;
+- validity;
+- local allocation watermark.
+
+Therefore bootstrap identity and creator-resume are deterministic functions of persisted legacy state rather than migration execution time, wall-clock-generated `create()` timestamps, or host-local allocation performed during upgrade.
+
+If reaching a proposed bootstrap target would require `create`/`override`/`invalidate`/`delete` or another semantic legacy migration, that source/target pair is not an automatic bootstrap path and fails `JournalVersionCompatibilityError` before authoring bootstrap history. Such graph/schema migration occurs before entering the supported bootstrap source state or afterward as Journal-aware migration.
+
+## Law 26: bootstrap creator resume is exact and non-authoring
+
+If pre-Journal local fingerprint W equals `artifact.creatorWriter` and artifact target is supported, creator-resume compares:
 
 ```text
 semanticGraph(project(artifact,W))
-    == semanticGraph(local legacy graph interpreted at artifact target)
+    == semanticGraph(persistedLocalLegacyGraph)
 ```
+
+under the semantic-identity bootstrap interpretation.
+
+It MUST NOT rerun an ordinary migration callback or regenerate timestamps/identifiers to perform that comparison.
 
 On equality it installs exactly artifact records, reconstructs W head/watermark/high-water/projection, and cuts over without authoring another semantic record.
 
-On inequality it fails `JournalBootstrapForkError` and changes no active state.
+On inequality it fails `JournalBootstrapForkError` and changes no active state. A different fingerprint may not use creator-resume.
 
-A different fingerprint may not use creator-resume.
-
-## Law 26: bootstrap join does not invent causal succession
+## Law 27: bootstrap join does not invent causal succession
 
 Let Vc be canonical bootstrap ValueEvent for K and Vl a different legacy occurrence on a joining installation which did not observe Vc in legacy time.
 
-Converted Vl must not include Vc solely because migration code read artifact. Therefore absent genuine pre-Journal causal evidence Vc and Vl are concurrent and conflict authority is seeded by legacy `modifiedAt`, not upgrade time.
+Converted Vl must not include Vc solely because bootstrap code read the artifact. Therefore absent genuine pre-Journal causal evidence Vc and Vl are concurrent and conflict authority is seeded by legacy `modifiedAt`, not upgrade time.
 
-## Law 27: canonical identity guarantee is limited to canonical-equal occurrences
+## Law 28: exact shared occurrence freshness is conservative
+
+For an exact occurrence V shared by canonical artifact and joining legacy state, the join reuses canonical ValueId and does not author a causally-later validation merely to strengthen the joining host's proof.
+
+The final shared occurrence is persistently stale iff either legacy side stored that occurrence stale:
+
+```text
+joinedStale(V) = canonicalStale(V) OR joiningStale(V)
+```
+
+If necessary the join authors an uncovered value-scoped bootstrap invalidation after all bootstrap proof records. A fresh joining copy can therefore never clear canonical stale evidence merely by upgrading later.
+
+## Law 29: bootstrap join persists recursive-only staleness
+
+After direct shared/local bootstrap evidence is encoded, replay the combined history. For every present selected K whose own proof is complete/current and which is stale solely because at least one direct input is stale, bootstrap join ensures an uncovered:
+
+```text
+InvalidateEvent {
+    node: K,
+    scope: { kind: "value", value: valueId(K) },
+    reason: "bootstrap"
+}
+```
+
+unless an applicable current-value marker already exists.
+
+Therefore later `Unchanged` revalidation of that input cannot freshen K without K itself validating/recomputing.
+
+## Law 30: canonical identity guarantee is limited to canonical-equal occurrences
 
 For an exact equal legacy occurrence on canonical and joining state, join reuses canonical ValueId and creates no joining ValueEvent.
 
@@ -217,7 +282,7 @@ A local-only materialization may be represented by joining bootstrap ValueEvent.
 
 Two independent joiners carrying the same occurrence which differs from canonical cut may author distinct bootstrap ValueIds. Later synchronization may stale dependents naming losing occurrence. This is accepted by `$id-1635227135166767`.
 
-## Law 28: bootstrap compatibility is bounded by running release
+## Law 31: bootstrap compatibility is bounded by running release
 
 Canonical artifact may be used only when:
 
@@ -226,31 +291,31 @@ artifact.databaseVersion   == expectedBootstrapTargetVersion
 artifact.graphSchemeString == expectedBootstrapTargetGraphSchemeString
 ```
 
-for running release.
+for the running release, and that target is a semantic-identity Journalization target for the supported persisted legacy source state.
 
-Mismatch fails `JournalVersionCompatibilityError` before history is authored.
+Mismatch or a target requiring pre-bootstrap semantic migration fails `JournalVersionCompatibilityError` before history is authored.
 
-Journal 3 does not require arbitrary future releases to preserve old bootstrap artifact decoder, old legacy conversion, or complete migration chain from historical target. Operator recovery may first use software which explicitly supports that target.
+Journal 3 does not require arbitrary future releases to preserve old bootstrap artifact decoder or bootstrap entry path. Operator recovery may first use software which explicitly supports that target.
 
-## Law 29: bootstrap creator projection equivalence
+## Law 32: bootstrap creator projection equivalence
 
-For canonical accepted legacy graph G:
+For canonical accepted persisted legacy graph G:
 
 ```text
 semanticGraph(project(bootstrap(G))) == semanticGraph(G)
 ```
 
-including materialization, identifiers, payloads, timestamps, freshness, and validity.
+including materialization, identifiers, payloads, timestamps, freshness, validity, and allocator meaning.
 
 Creator freezes resulting frontier before ordinary Journal authoring begins.
 
-## Law 30: migration preserves occurrence identity for occurrence-preserving decisions
+## Law 33: migration preserves occurrence identity for occurrence-preserving decisions
 
 For Journal-aware migration, `keep`, `invalidate`, schema/proof/freshness-only change, and semantic-preserving `override()` preserve selected ValueId when semantic occurrence survives.
 
 A new ValueEvent is reserved for actual semantic create/replace occurrence changes.
 
-## Law 31: record-format rewrite is replica-independent
+## Law 34: record-format rewrite is replica-independent
 
 For every retained source record R and one source->target migration definition:
 
@@ -262,13 +327,13 @@ is deterministic function of R and migration definition, independent of whether 
 
 Thus replicas retaining same historical JournalRecordId produce same target-format body.
 
-## Law 32: `override()` preserves ValueId but cannot redefine immutable history locally
+## Law 35: `override()` preserves ValueId but cannot redefine immutable history locally
 
 Suppose selected occurrence V represents semantic x and canonical per-record codec maps V to target representation `newEncoding(x)`.
 
 A valid Journal-aware `override(K, ...)` asserts agreement with that rewrite. Target keeps ValueId V and semantic x. Callback disagreement fails before cutover; it never activates a different body for V.
 
-## Law 33: independent genuine replacement migrations are allowed
+## Law 36: independent genuine replacement migrations are allowed
 
 If migration genuinely creates/replaces occurrence, replicas may independently author different new ValueIds.
 
@@ -276,7 +341,7 @@ After later synchronization ordinary authority selects current occurrence. Depen
 
 This is accepted and does not require one canonical migration participant.
 
-## Law 34: migration equivalence and representation preservation
+## Law 37: migration equivalence and representation preservation
 
 For:
 
@@ -295,7 +360,7 @@ The equality includes exact target validity and freshness persistence, not merel
 
 Future replay does not run historical migration callbacks.
 
-## Law 35: reset is minimal semantic rebaselining
+## Law 38: reset is minimal semantic rebaselining
 
 Let `J0 = union(receiver,source)`, `P0 = project(J0)`, and `PS = project(sourceSnapshot)`.
 
@@ -313,21 +378,21 @@ and a target-stale dependent does not become fresh merely because an upstream in
 
 This causal-later target-repair law applies to reset and MUST NOT be reused for pre-Journal bootstrap value conflict conversion.
 
-## Law 36: writer sequence contiguity and writer-state monotonicity
+## Law 39: writer sequence contiguity and writer-state monotonicity
 
 For writer A with head q, records are exactly A:1..q with no durable holes. Failed transactions consume no durable coordinate. Local writer-state watermark is nondecreasing; foreign writer-state records never replace local allocator watermark.
 
-## Law 37: replay rebuild safety
+## Law 40: replay rebuild safety
 
 Valid authoritative Journal rebuilds observationally equivalent derived state without changing history. Invalid authoritative history causes rebuild failure rather than mutation to match damaged graph bytes.
 
-## Law 38: one current format per active replica
+## Law 41: one current format per active replica
 
 Every active replica contains only representation selected by current `global/version`. Format migration deterministically rewrites old records preserving ID/meaning before target cutover. Ordinary replay/sync performs no mixed-version conversion.
 
 A bootstrap artifact is lifecycle source state rather than active replica; its historical representation is relevant only while running software explicitly supports that bootstrap target.
 
-## Law 39: fair-execution synchronization convergence
+## Law 42: fair-execution synchronization convergence
 
 For finitely many supported replicas and finite schema DAG, after non-normalization graph-changing operations stop, fair synchronization eventually reaches finite normalization fixed point, disseminates all actually authored records, yields equivalent projections, and makes further sync semantic no-op.
 
@@ -341,7 +406,8 @@ At minimum exercise/model:
 - context transitivity, own-prefix closure, authority extension;
 - concurrent values and causal overwrite;
 - invalidation-aware certificate selection;
-- maintenance proof weakening with old stronger certificates;
+- proof-scoped maintenance weakening with old stronger certificates and no taint of a different ValueId;
+- true explicit node invalidation remaining node-scoped;
 - maintenance propagated staleness followed by upstream `Unchanged`;
 - selected-remote stale persistence;
 - dependency deletion closure and repeat sync;
@@ -349,10 +415,13 @@ At minimum exercise/model:
 - exact same-writer recovery and fork rejection;
 - absent-state restore vs fresh creation;
 - canonical bootstrap three-way decision;
-- creator crash after artifact publication and exact resume;
+- creator crash after artifact publication and exact resume without rerunning migration callbacks;
 - creator-resume mismatch rejection;
 - frozen bootstrap cut excluding later creator history;
+- rejection of a bootstrap target requiring wall-clock/allocator-dependent legacy semantic migration;
 - late bootstrap conflict using legacy `modifiedAt` without synthetic causality;
+- canonical stale + joining fresh exact shared occurrence remains stale;
+- joining stale input makes canonical dependent persistently stale through later input `Unchanged`;
 - independent joiners splitting identical non-canonical occurrence identity;
 - bounded bootstrap-version incompatibility;
 - pure per-record rewrite independent of selected/non-selected status;
