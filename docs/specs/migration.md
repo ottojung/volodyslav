@@ -47,7 +47,7 @@ All methods are `async`.
 |--------|-------------|
 | `get(nodeIdentifier)` | Return the previous-version value. |
 | `keep(nodeIdentifier)` | Preserve node as-is in the new version. |
-| `override(nodeIdentifier, value)` | Rewrite an existing cached value with the result of `value(nodeIdentifier)` (a `NodeIdentifier => Promise<ComputedValue>`), while preserving its cache-state proof envelope. |
+| `override(nodeIdentifier, value)` | Rewrite an existing cached value with the result of `value(nodeIdentifier)` (a `NodeIdentifier => Promise<ComputedValue>`), while preserving its cache-state proof envelope. This is a **pre-Journal migration operation**; Journal-aware representation rewriting is automatic and uses `keep` plus the canonical Journal codec. |
 | `invalidate(nodeIdentifier)` | Mark the node for recomputation. |
 | `delete(nodeIdentifier)` | Remove the node from the new version entirely. |
 | `create(nodeKeyString, value, freshness)` | Create a new cached node (not in the previous version) in the new schema with the result of `value(nodeIdentifier)` (a `NodeIdentifier => Promise<ComputedValue>`) as its initial value. `freshness` must be `"up-to-date"` or `"potentially-outdated"`. `nodeKeyString` is a `NodeKeyString` — the semantic key by which the node will be identified in the new schema. A fresh `NodeIdentifier` is allocated automatically. |
@@ -89,30 +89,25 @@ Within a **preexisting stale `keep`/`override` region**, every stale node loses 
 
 **Migration-time propagated invalidation** is different: the migration callback explicitly calls `invalidate()` on a node, and the propagation runs in memory with full provenance. In that case outgoing proofs survive and freshness-only propagation preserves validity edges.
 
-`override` is a **semantic-preserving representation rewrite**. It changes the stored representation (e.g. on-disk format) while preserving the semantic value as seen by dependents. Because the value is semantically unchanged, `override()` does not propagate invalidation — it inherits freshness, timestamps, and validity from the old record. The same stale-node rule applies: a stale node carried through `override` loses its incoming proofs.
+`override` is a **semantic-preserving representation rewrite** for pre-Journal migrations. It changes the stored representation (e.g. on-disk format) while preserving the semantic value as seen by dependents. Because the value is semantically unchanged, `override()` does not propagate invalidation — it inherits freshness, timestamps, and validity from the old record. The same stale-node rule applies: a stale node carried through `override` loses its incoming proofs.
 
 `override()` MUST NOT be used when the migration changes the meaning or value of a node. If the value itself changes, use `invalidate()` instead, which triggers downstream recomputation so that dependents observe the new value.
 
-The intended use case is format migration: the database version changes the serialization format but the represented value is still meaningfully the same value. In that scenario missing invalidation in `override()` is correct by design — not a bug.
+The intended pre-Journal use case is format migration: the database version changes the serialization format but the represented value is still meaningfully the same value. In that scenario missing invalidation in `override()` is correct by design — not a bug.
 
-### Journal-aware `override()` constraint
+### Journal-aware representation rewrite
 
-When the source database already contains Journal history, one historical `JournalRecordId` may be retained on many replicas even when that occurrence is selected on only some of them. Its target-version record body therefore cannot depend on replica-local selection or on arbitrary callback state.
+Once the source database already contains Journal history, `override(nodeIdentifier, value)` is **not** part of the Journal-aware migration decision vocabulary.
 
-For a Journal-aware migration, the version migration defines one pure per-record payload codec for retained `ValueEvent`s whose representation changes. The codec is applied identically to every affected retained ValueEvent, selected or historical.
+One historical `JournalRecordId` may be retained on many replicas even when that occurrence is selected on only some of them. Its target-version record body therefore cannot depend on replica-local selection, callback order, or a second migration callback implementation.
 
-`override(nodeIdentifier, value)` remains the migration author's semantic-preserving decision for the selected cached occurrence, but its callback result is an **assertion** about the canonical rewritten payload, not the source of bytes for that immutable historical record:
+For a Journal-aware migration, the version migration defines one pure per-record payload codec for retained `ValueEvent`s whose representation changes. The codec is the **single source of target payload bytes** and is applied identically to every affected retained ValueEvent, selected or historical.
 
-```text
-overrideResult(selected V)
-    == rewriteValuePayload(sourceVersion, targetVersion, V)
-```
+A Journal-aware migration author uses `keep(nodeIdentifier)` for an occurrence-preserving node. The automatic whole-Journal rewrite changes the retained representation where required while preserving the same semantic occurrence and `ValueId`.
 
-If the values differ, migration fails with `InvalidMigrationDecisionError` before cutover.
+If a Journal-aware migration needs a semantic value change, it uses `invalidate()`/recomputation or another explicit semantic create/replace decision. It does not express that change through `override()`.
 
-The callback may still be asynchronous and may inspect migration state, but replica-local differences can only cause the migration to fail this assertion; they cannot cause the same `JournalRecordId` to acquire different target bodies on different replicas.
-
-This additional constraint applies only once Journal history exists. It does not retroactively change how a supported pre-Journal database is interpreted during its one-time bootstrap conversion.
+The legacy/pre-Journal `override(nodeIdentifier, value)` API remains available for migrations whose source has no Journal history. Journal-aware execution MUST reject use of that value-producing override path rather than evaluate a second representation transform.
 
 `invalidate` preserves the cached value if it exists, marks nodes as `"potentially-outdated"`, and preserves `modifiedAt`.
 
@@ -146,7 +141,7 @@ This preserves the materialization invariant that every materialized node has al
 | `CreateExistingNodeError` | `create()` called for a node that already exists in the previous version. |
 | `UndecidedNodesError` | Some nodes in `S` have no decision after the callback. |
 | `SchemaCompatibilityError` | `keep`/`override`/`invalidate`/`create` on a node absent from the new schema. |
-| `InvalidMigrationDecisionError` | `override` or `create` violates the semantic/cache-state contract, including a Journal-aware override result which disagrees with the canonical per-record rewrite. |
+| `InvalidMigrationDecisionError` | `override` or `create` violates the semantic/cache-state contract; Journal-aware migrations also reject the legacy value-producing `override()` path because retained representation is owned by the canonical Journal codec. |
 | `GetMissingNodeError` | `get()`/traversal called for a node not in `S`. |
 | `MissingDependencyMetadataError` | A materialized node has missing or corrupted dependency metadata. |
 
