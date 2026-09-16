@@ -21,9 +21,9 @@ That rule includes `MigrationStorage.override()`: override is a semantic-preserv
 
 ## Relationship to the existing migration framework
 
-The existing migration framework decides the target IncrementalGraph state using `keep`, `override`, `invalidate`, `delete`, and `create` as specified by `migration.md`.
+The existing migration framework decides later Journal-aware target IncrementalGraph state using `keep`, `override`, `invalidate`, `delete`, and `create` as specified by `migration.md`.
 
-Journal adds three responsibilities:
+Journal-aware migration adds three responsibilities:
 
 ```text
 source replica
@@ -34,6 +34,8 @@ source replica
     -> verify target replay
     -> atomically cut over
 ```
+
+The **initial pre-Journal bootstrap is deliberately narrower**. It is a semantic-identity transition which records the already-persisted legacy graph as Journal history. It does not run an ordinary graph migration callback before the canonical bootstrap cut is established. Any actual graph/schema migration happens only after Journal bootstrap through Part II.
 
 Representation migration changes how an already-existing historical fact is encoded, not which historical fact its `JournalRecordId` denotes.
 
@@ -129,6 +131,25 @@ A pre-Journal installation enters one shared Journal identity basis without turn
 
 A late installation may carry legacy state which differs from the canonical bootstrap state. Such differences are converted as historical legacy evidence and merged with the canonical basis under the normal concurrent-value authority policy; they are not reset-style writes causally after the canonical state.
 
+## Bootstrap is a semantic-identity transition
+
+The pre-Journal -> first-Journal bootstrap records the already-persisted supported legacy graph. It is not also a graph/schema migration.
+
+For every supported pre-Journal source version, its configured Journal bootstrap target MAY have a new database version because Journal storage is being introduced, but the graph semantics at that cut are identical to the source legacy graph:
+
+- the same materialized semantic NodeKeys are present;
+- every materialization keeps its exact legacy `NodeIdentifier`;
+- payload, `createdAt`, and `modifiedAt` are copied exactly;
+- freshness and validity are copied exactly;
+- `last_node_index` is copied exactly; and
+- the bootstrap target `graphSchemeString` is the same graph interpretation accepted for that legacy state.
+
+Bootstrap therefore does **not** execute `MigrationStorage.create()`, `override()`, `invalidate()`, `delete()`, or another ordinary migration decision before creating/joining the canonical cut. It does not consult wall clock, randomness, a fresh allocator decision, or callback-local state to manufacture target graph facts.
+
+This restriction is deliberate. The existing legacy `create()` machinery allocates host-local identifiers and execution-time timestamps, so using it before bootstrap would make creator-resume and cross-host occurrence comparison depend on when/where conversion ran.
+
+If a legacy database would require an actual graph/schema semantic migration before it could reach the configured Journal bootstrap target, that source/target pair is **not a supported automatic bootstrap transition**. Startup fails with `JournalVersionCompatibilityError` before authoring bootstrap history. The operator must first reach a supported pre-Journal source state using software which owns that legacy migration, or bootstrap a supported identity target and perform the semantic migration afterward as a Journal-aware migration.
+
 ## What the canonical basis guarantees
 
 Pre-Journal replicas have no `ValueId`s. If replicas independently converted every shared cache occurrence, equal legacy state would gratuitously become unrelated Journal identities.
@@ -208,7 +229,9 @@ canonical.graphSchemeString == expectedBootstrapTargetGraphSchemeString
 
 and the running release must explicitly support that target as its legacy->Journal bootstrap target.
 
-Mismatch is `JournalVersionCompatibilityError` and authors no history.
+The local pre-Journal database must also satisfy the semantic-identity bootstrap rule above. In particular, its supported graph interpretation must already be the bootstrap target graph interpretation; no ordinary migration callback is run to create target nodes, identifiers, timestamps, proof, or freshness before bootstrap.
+
+Mismatch or a source/target pair requiring a semantic legacy migration is `JournalVersionCompatibilityError` and authors no history.
 
 Bootstrap join itself does not define a permanent cross-version compatibility ladder. After a successful bootstrap cutover, the ordinary migration gate may run whatever later migrations the running release actually supports.
 
@@ -247,7 +270,7 @@ No ordinary pull, sync, reset, or later Journal-aware migration may use this exc
 
 ### Pass C1: value occurrences
 
-For every materialized node K in the canonical bootstrap-target graph, author:
+For every materialized node K in the validated legacy graph, author:
 
 ```text
 ValueEvent {
@@ -329,8 +352,8 @@ performs:
 
 1. read exactly the artifact records through `bootstrapFrontier`;
 2. project them with `localWriter = artifact.creatorWriter`;
-3. independently interpret the still-local legacy database into the same bootstrap-target semantic graph;
-4. require semantic equality between that graph and the artifact projection, including presence, payloads, NodeIdentifiers, timestamps, freshness, and validity;
+3. validate the still-local pre-Journal database directly under the supported semantic-identity bootstrap interpretation; do not rerun a migration callback;
+4. require semantic equality between that legacy graph and the artifact projection, including presence, payloads, NodeIdentifiers, timestamps, freshness, and validity;
 5. if they differ, fail with `JournalBootstrapForkError` and author/cut over nothing;
 6. if they agree, install exactly the artifact records as the local Journal stream without allocating any new semantic record;
 7. reconstruct local writer head, `last_node_index`, authority high-water, projection, and derived indexes from the artifact;
@@ -338,6 +361,8 @@ performs:
 9. continue the ordinary migration gate from that installed version if the running release has another supported step.
 
 This path is valid only for the artifact's own `creatorWriter`. A different fingerprint uses the ordinary joining path below.
+
+Because bootstrap itself is graph-semantic identity, creator resume never regenerates execution-time timestamps, fresh NodeIdentifiers, or `create()` output merely to perform this equality check.
 
 The equality check prevents a local legacy database which changed after artifact publication from silently continuing the creator's writer history as if it were the same bootstrap state.
 
@@ -353,9 +378,10 @@ Let:
 B  = held CanonicalBootstrapSnapshot
 Jc = records(B) exactly through B.bootstrapFrontier
 Pc = project(Jc, localWriter=joiningFingerprint)
-Gl = joining installation's supported legacy graph interpreted for
-     B.databaseVersion / B.graphSchemeString
+Gl = joining installation's validated supported pre-Journal graph
 ```
+
+`Gl` is read directly from supported persisted legacy state under the semantic-identity bootstrap rule. It is not produced by rerunning a legacy graph migration to B's target version.
 
 The join is a merge of two legacy snapshots, not a reset to `Gl`.
 
@@ -389,9 +415,11 @@ Upgrade time is never used to make the joining legacy occurrence causally newer.
 
 Two different joiners which happen to carry the same non-canonical occurrence may create distinct ValueIds for it. That is the accepted bootstrap identity trade-off `$id-1635227135166767`; no extra deduplication by payload/timestamp equality is performed across independent joining writers.
 
-### Pass J2: encode local proof/freshness evidence
+### Pass J2: encode direct local proof and stale evidence
 
 After the canonical cut and all joining legacy ValueEvents are retained, author the joining host's bootstrap proof/freshness records under ordinary closed-context/HLC rules.
+
+#### Locally authored occurrences
 
 For each locally authored occurrence K, author a `ValidateEvent(reason="bootstrap")` whose basis represents the joining legacy graph's validity evidence:
 
@@ -403,9 +431,61 @@ when legacy `valid[D]` contains K, otherwise `"unknown"`.
 
 If that local occurrence was stale, follow with a value-scoped `InvalidateEvent(reason="bootstrap")` for that local ValueId.
 
-For an occurrence shared exactly with the canonical basis, do not author a second ValueEvent. If the joining legacy copy is stale while the canonical copy is fresh, author a value-scoped bootstrap invalidation for the shared canonical ValueId so same-occurrence stale evidence is conservative. Proof-only differences may add bootstrap proof history but do not change the occurrence's ValueId.
+#### Exact shared occurrences
 
-Proof/freshness records may causally observe the canonical cut because they do not decide which conflicting legacy value occurrence wins.
+For an occurrence shared exactly with the canonical basis, do not author a second ValueEvent **and do not author a joining-side ValidateEvent merely to strengthen or replace the canonical proof**.
+
+The canonical certificate remains the retained proof basis for that shared occurrence. This is deliberately conservative: pre-Journal joining proof has no durable cross-host causal coordinate, and turning it into a causally-later bootstrap validation could otherwise cover canonical stale history simply because migration ran later.
+
+Freshness merge for the exact shared occurrence is symmetric and conservative:
+
+```text
+joinedSharedStale(K) iff
+    canonical projection Pc says K stale
+    or joining legacy graph Gl says K stale
+```
+
+After all J2 proof records, if `joinedSharedStale(K)` is true, history MUST contain an **uncovered** value-scoped `InvalidateEvent(reason="bootstrap")` for the shared canonical ValueId. A fresh joining copy never clears canonical stale evidence; a stale joining copy makes a canonical-fresh shared occurrence stale without changing its ValueId.
+
+Proof/freshness records may causally observe the canonical cut because they do not decide which conflicting legacy value occurrence wins. The stale marker is deliberately placed after any J2 proof record which could otherwise cover an earlier stale marker.
+
+### Pass J2b: persist recursive-only staleness
+
+J2 establishes direct stale roots. Bootstrap must also persist propagated stale flags created by the **combined** canonical/joining state.
+
+Process present nodes in deterministic dependency-topological order after J2. For each K, replay history including any bootstrap stale markers already authored for its inputs. Let C be the replay-selected certificate for current `valueId(K)` and define the same predicate used by synchronization normalization:
+
+```text
+selfProofReady(K) iff
+    C exists
+    and basisMatchCount(K,C) == numberOfDirectInputs(K)
+    and coversValueInvalidations(K,C)
+```
+
+Certificate eligibility already accounts for node/proof barriers.
+
+If:
+
+```text
+selfProofReady(K)
+and some direct input D is stale
+```
+
+then K is stale solely through recursive input freshness. Bootstrap MUST ensure history contains an uncovered current-occurrence marker:
+
+```text
+InvalidateEvent {
+    node: K,
+    scope: { kind: "value", value: valueId(K) },
+    reason: "bootstrap"
+}
+```
+
+unless such a marker already applies.
+
+Continue forward through dependents using the replay state after each required marker. Because the schema is acyclic, one input-to-dependent topological pass reaches the required fixed point.
+
+This rule applies regardless of whether K's selected occurrence came from the canonical cut or the joining host. In particular, a canonical-only dependent which becomes stale because the joiner made one of its shared inputs stale receives its own persistent marker. A later `Unchanged` revalidation of that input cannot silently make the dependent fresh.
 
 ### Pass J3: writer state and projection
 
@@ -426,7 +506,9 @@ Instead:
 - local-only materializations survive;
 - canonical-only materializations survive;
 - conflicting occurrences are selected by normal Journal authority, principally legacy `modifiedAt`;
-- proof/freshness follows replay of retained evidence and conservative same-occurrence stale handling.
+- exact shared stale state is conservative across both legacy sides;
+- every selected occurrence stale solely because a direct input is stale has a persistent current-value bootstrap invalidation; and
+- proof/freshness follows replay of retained evidence under those rules.
 
 Thus a late host's local difference survives when it is non-conflicting or wins normal conflict authority; an older legacy value does not roll back a newer canonical value merely because its host upgraded later.
 
@@ -491,6 +573,8 @@ If the callback result differs from the canonical codec output, migration fails 
 ### `invalidate`
 
 `invalidate` preserves the cached semantic occurrence and ValueId, marks it stale, and removes its incoming proof according to the migration framework. It does not itself create a new ValueEvent.
+
+Unlike maintenance-only proof weakening, explicit migration `invalidate()` is a true node invalidation. Journal represents that semantic decision with a node-scoped `InvalidateEvent(reason="migration")`.
 
 ### `delete`
 
@@ -557,17 +641,15 @@ TargetValid(K) = {
 }
 ```
 
-### Proof weakening barrier
+### Explicit `invalidate()` and proof weakening barriers
 
-Replay intentionally selects the certificate with greatest `basisMatchCount` before authority. A later partial certificate therefore cannot by itself remove validity supplied by an older stronger certificate.
+Replay intentionally selects the eligible certificate with greatest `basisMatchCount` before authority. A later partial certificate therefore cannot by itself remove validity supplied by an older stronger certificate.
 
-Whenever migration must remove at least one currently-valid incoming edge:
+There are two semantically different reasons to make older proof inapplicable.
 
-```text
-CurrentValid(K) - TargetValid(K) != empty
-```
+#### Explicit migration invalidation
 
-migration MUST first author:
+If the migration decision for K is explicit `invalidate(K)`, migration first authors:
 
 ```text
 InvalidateEvent {
@@ -577,17 +659,35 @@ InvalidateEvent {
 }
 ```
 
-This is the **migration proof barrier**. Every certificate predating the barrier becomes ineligible. A later migration validation can then establish the exact weaker/partial target proof.
+regardless of whether K currently has any incoming validity edges.
 
-The barrier is required for proof weakening/removal, including:
+This is a real node invalidation, not merely a certificate-selection trick. As with ordinary explicit invalidation, a concurrent certificate for K which did not observe this event does not clear it.
 
-- explicit `invalidate(K)`, whose target removes K's incoming validity;
-- stale `keep`/`override` regions where the existing migration contract discards incoming proofs; and
-- any schema/target proof transition which removes a current validity edge while preserving K's ValueId.
+#### Maintenance-only proof weakening
+
+Otherwise, whenever migration must remove at least one currently-valid incoming edge while preserving the occurrence:
+
+```text
+CurrentValid(K) - TargetValid(K) != empty
+```
+
+migration authors an occurrence-scoped **proof barrier**:
+
+```text
+InvalidateEvent {
+    node: K,
+    scope: { kind: "proof", value: targetValueId(K) },
+    reason: "migration"
+}
+```
+
+A proof barrier makes only certificates targeting that exact ValueId and predating the barrier ineligible. It does not node-invalidate a later/concurrent replacement occurrence and does not itself substitute for a persistent stale marker.
+
+This barrier is used for stale `keep`/`override` regions where the existing migration contract discards incoming proofs and for schema/target proof transitions which remove current validity while preserving K's occurrence.
 
 If migration only adds validity, no barrier is required solely for that addition because the later certificate has at least as strong a basis and wins normally.
 
-After any required barrier, migration MAY reuse an existing eligible current-shape certificate only when replay already yields exactly `TargetValid(K)` and the certificate has the causal coverage required for target freshness.
+After any required node invalidation/proof barrier, inspect replay under the target schema. If replay already yields exactly `TargetValid(K)` and target freshness does not require a new certificate, migration need not manufacture one.
 
 Otherwise author one causally-later migration `ValidateEvent` targeting `targetValueId(K)`:
 
@@ -622,7 +722,7 @@ selfProofReady(K) iff
     and coversValueInvalidations(K,C)
 ```
 
-Node-scoped invalidation coverage is already part of certificate eligibility.
+Node-scoped invalidation and occurrence-scoped proof-barrier coverage are already part of certificate eligibility.
 
 For target-fresh K, final replay must make K fresh; any observed invalidation that would prevent this is covered by the causally later target validation rather than by replacing K's ValueId.
 
@@ -641,7 +741,7 @@ InvalidateEvent {
 
 This rule is intentionally stronger than “only if replay would otherwise be fresh.” If K's own proof is ready but K is currently stale only because a direct input is stale, the value-scoped marker is still required whenever `Gtarget` stores K as stale. Otherwise a later `Unchanged` revalidation of that input could make K fresh automatically, losing the migration framework's persistent propagated-stale flag.
 
-If `selfProofReady(K)` is false, K already has a persistent own-state reason for staleness (basis mismatch, node invalidation, or current-value invalidation), so no extra marker is required merely to duplicate it.
+If `selfProofReady(K)` is false, K already has a persistent own-state reason for staleness (basis mismatch, node invalidation, proof barrier without sufficient replacement proof, or current-value invalidation), so no extra marker is required merely to duplicate that reason.
 
 Thus migration reproduces both target proof edges and the persistence behavior of target freshness without manufacturing a replacement ValueEvent.
 
@@ -692,7 +792,7 @@ Current replay uses an old certificate only when:
 - its explicit input-key set equals the current target input set;
 - ordinary invalidation/certificate-selection rules accept it.
 
-When migration needs weaker proof, the proof barrier above intentionally makes stronger pre-migration certificates ineligible before the target certificate is authored.
+When migration needs weaker proof for a preserved occurrence, the occurrence-scoped proof barrier above intentionally makes stronger pre-migration certificates for that ValueId ineligible before the target certificate is authored. Explicit `invalidate()` instead retains its true node-scoped meaning.
 
 ## Atomic publication
 
@@ -719,11 +819,14 @@ At minimum cover:
 - competing canonical artifacts are rejected;
 - artifact exposes exactly the original bootstrap cut and never post-bootstrap records;
 - artifact version/schema mismatch with the running release's expected bootstrap target fails with `JournalVersionCompatibilityError` before authoring history;
+- a would-be legacy->bootstrap transition which requires `MigrationStorage.create()` or another semantic/time/allocator-dependent migration decision is rejected as unsupported before bootstrap history is authored;
 - future releases are not required to retain an unsupported historical bootstrap target;
-- creator crash after artifact publication but before local cutover resumes from the exact artifact when `creatorWriter` equals the local fingerprint and legacy state still matches;
+- creator crash after artifact publication but before local cutover resumes from the exact artifact when `creatorWriter` equals the local fingerprint and unchanged legacy state still matches directly, without rerunning migration callbacks;
 - creator-resume semantic mismatch fails with `JournalBootstrapForkError` and authors nothing;
 - a different fingerprint cannot use creator-resume;
 - late host whose local occurrence equals canonical occurrence reuses canonical ValueId;
+- exact shared occurrence remains persistently stale if either canonical or joining legacy copy is stale; a fresh joining copy cannot clear canonical stale state;
+- canonical fresh `D -> K`, joining shared D stale and K absent/different: bootstrap persists D stale, then J2b persists selected K stale so later D `Unchanged` cannot freshen K;
 - local conflicting legacy occurrence is concurrent with canonical occurrence and later `modifiedAt` wins independent of upgrade time;
 - canonical newer `modifiedAt` beats an older late-host occurrence;
 - local-only and canonical-only materializations both survive bootstrap merge;
@@ -736,9 +839,10 @@ At minimum cover:
 - `keep` preserves ValueId;
 - pure per-record format rewrite is identical regardless of selected/non-selected status;
 - `override()` preserves ValueId and mismatch with canonical codec fails before cutover;
-- `invalidate()` preserves cached ValueId while removing incoming target validity;
-- old full certificate followed by target weaker/no proof uses a node-scoped proof barrier and the old certificate cannot win replay;
-- stale `keep`/`override` proof weakening likewise removes unwanted old validity;
+- explicit `invalidate()` preserves cached ValueId and uses true node-scoped invalidation;
+- old full certificate followed by maintenance target weaker/no proof uses an occurrence-scoped proof barrier and the old certificate cannot win replay;
+- a proof barrier for V does not invalidate certificates for a concurrent/later replacement ValueId V2;
+- stale `keep`/`override` proof weakening likewise removes unwanted old validity without node-wide taint;
 - proof-only/freshness-only/schema-only changes do not create ValueEvent;
 - migration `A -> B`, both fresh, then `invalidate(A)` persists propagated stale B so revalidating A `Unchanged` does not freshen B;
 - `create()` or true semantic replacement creates a new ValueId;
