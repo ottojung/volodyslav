@@ -130,13 +130,14 @@ uncoveredNodeInvalidation(K,C) iff
         and not happenedBefore(I,C)
 ```
 
-For validation C targeting one exact ValueId:
+For validation C targeting one exact ValueId and one direct input D:
 
 ```text
-uncoveredProofBarrier(K,C) iff
+uncoveredProofBarrier(K,D,C) iff
     exists InvalidateEvent I in History(K) such that
         I.scope.kind == "proof"
         and I.scope.value == C.value
+        and I.scope.input == D
         and not happenedBefore(I,C)
 ```
 
@@ -160,8 +161,10 @@ coversValueInvalidations(K,C) iff
 The scopes are intentionally different:
 
 - node-scoped invalidation remains relevant across value changes until a validation causally covers it;
-- proof-scoped invalidation affects certificate eligibility only for its named ValueId and does not taint another occurrence;
+- proof-scoped invalidation removes one incoming proof edge for one exact ValueId until a validation causally covers that edge barrier and re-proves the edge;
 - value-scoped invalidation affects persistent freshness only for its named ValueId and does not remove incoming validity proof by itself.
+
+Proof barriers are **negative edge evidence**, not whole-certificate invalidations. This is essential for independent maintenance: concurrent barriers for the same V can remove different edges without making every independently authored target certificate unusable.
 
 ## Current validation candidates
 
@@ -220,24 +223,33 @@ eligibleCertificate(K,C) iff
     C in Validations(K)
     and current-shape-compatible(C,K)
     and not uncoveredNodeInvalidation(K,C)
-    and not uncoveredProofBarrier(K,C)
 ```
 
-Thus true node invalidation rejects every certificate which did not causally observe it, regardless of occurrence. A proof barrier rejects only older/concurrent certificates targeting the exact occurrence named by the barrier.
+Thus true node invalidation rejects every certificate which did not causally observe it, regardless of occurrence.
 
-Reset/migration use proof barriers when maintenance must weaken proof for a preserved ValueId without semantically invalidating the node itself. Older stronger certificates remain retained but become ineligible, so their greater `basisMatchCount` cannot reintroduce removed validity. A later/concurrent replacement ValueId is unaffected by that occurrence-specific barrier.
+Proof barriers do **not** make the whole certificate ineligible. They are applied to individual basis edges below. This lets one certificate continue to prove unaffected inputs while maintenance retires only the exact incoming edges it intended to weaken.
 
-## Current basis-match count
+## Effective basis match
 
-For eligible C:
+For eligible C and direct input D:
 
 ```text
-basisMatchCount(K,C) =
+basisEntryEffective(K,C,D) iff
+    basisValue(C,D) == valueId(D)
+    and not uncoveredProofBarrier(K,D,C)
+```
+
+Then:
+
+```text
+effectiveBasisMatchCount(K,C) =
     number of D in currentInputEdges(K) such that
-        basisValue(C,D) == valueId(D)
+        basisEntryEffective(K,C,D)
 ```
 
 `"unknown"` contributes no match.
+
+A proof barrier for `(V,D)` is cleared for one certificate only when that certificate causally observes the barrier. A concurrent certificate may still prove other inputs, but it cannot re-establish D merely by having greater clock authority.
 
 ## Certificate selection
 
@@ -247,7 +259,7 @@ Choose exactly one certificate:
 
 ```text
 certificate(K) = eligible C maximizing lexicographically:
-    1. basisMatchCount(K,C)
+    1. effectiveBasisMatchCount(K,C)
     2. coversValueInvalidations(K,C)
        where true > false
     3. authorityCompare(C, ...)
@@ -255,11 +267,11 @@ certificate(K) = eligible C maximizing lexicographically:
 
 If no eligible certificate, K has no current certificate.
 
-Second key is essential. Suppose C2 causally follows/covers value-scoped invalidation of current ValueId, while concurrent C1 has same full basis but greater clock-derived authority. C2 must win because it contains stronger causal proof about current occurrence.
+Second key is essential. Suppose C2 causally follows/covers value-scoped invalidation of current ValueId, while concurrent C1 has the same effective basis strength but greater clock-derived authority. C2 must win because it contains stronger causal proof about current occurrence.
 
-Authority remains deterministic tie-break only among certificates with equal basis applicability and equal current-value-invalidation coverage.
+Authority remains deterministic tie-break only among certificates with equal effective basis applicability and equal current-value-invalidation coverage.
 
-Replay never synthesizes certificate by combining entries from different validations.
+Replay never synthesizes positive proof by combining entries from different validations. Multiple proof barriers may, however, independently remove edges from the selected certificate; that is accumulation of negative evidence, not certificate mixing.
 
 For ordinary single-writer evolution, latest successful validation normally has complete current input basis, covers prior invalidations/barriers, and wins naturally.
 
@@ -272,7 +284,7 @@ edgeValid(D,K) iff
     present(D)
     and present(K)
     and certificate(K) exists
-    and basisValue(certificate(K), D) == valueId(D)
+    and basisEntryEffective(K, certificate(K), D)
 ```
 
 A value-scoped invalidation does not by itself remove incoming validity proof. This preserves distinction between proof validity and persistent stale freshness.
@@ -284,7 +296,7 @@ nodeIdentifier(K) in valid[nodeIdentifier(D)]
     iff edgeValid(D,K)
 ```
 
-All validity edges for K come from one selected certificate.
+All positive validity edges for K come from one selected certificate. Proof barriers may only remove edges from that certificate.
 
 ## Freshness
 
@@ -295,7 +307,7 @@ For present K:
 ```text
 fresh(K) iff
     certificate(K) exists
-    and basisMatchCount(K, certificate(K))
+    and effectiveBasisMatchCount(K, certificate(K))
         == currentInputEdges(K).length
     and coversValueInvalidations(K, certificate(K))
     and for every D in currentInputEdges(K):
@@ -333,7 +345,7 @@ Every authoring path which intentionally creates/reproduces a persistent fresh-t
 
 Bootstrap additionally treats an **exact shared occurrence** conservatively: if either canonical or joining legacy copy was stale, the joined shared ValueId retains an uncovered value-scoped bootstrap invalidation. A fresh joining copy cannot causally validate away canonical stale evidence merely by upgrading later.
 
-A node currently stale for a different persistent own-state reason—basis mismatch, uncovered node invalidation, uncovered proof barrier without sufficient replacement proof, or already-uncovered current-value invalidation—does not require duplicate value marker merely because replay says stale.
+A node currently stale for a different persistent own-state reason—basis mismatch, uncovered node invalidation, an effective-basis deficit caused by proof barriers, or already-uncovered current-value invalidation—does not require duplicate value marker merely because replay says stale.
 
 ## Lowering to existing graph storage
 
