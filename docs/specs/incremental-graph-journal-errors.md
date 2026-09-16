@@ -4,7 +4,7 @@
 
 Journal 3 failures have different operational meanings. Implementations must not collapse them into one generic synchronization/corruption error when lifecycle code needs to distinguish incompatibility, forked identity, malformed history, projection failure, or ordinary storage failure.
 
-Exact JavaScript class names may differ, but the categories below are normative.
+Exact JavaScript class names may differ except where a named category is referenced normatively; the semantic distinctions below are required.
 
 ## JournalForkError
 
@@ -17,16 +17,44 @@ Examples:
 - receiver and source disagree on `A:42` body;
 - body/context/authority differs for one ID;
 - same-writer restoration discovers divergent overlapping prefixes;
-- two correctly migrated replicas produce different target bodies for the same historical ID because an implementation incorrectly used replica-local state instead of the canonical per-record migration codec.
+- two incorrectly migrated replicas produce different target bodies for the same historical ID because replica-local state was used instead of the canonical per-record migration codec.
 
 Required behavior:
 
 - do not merge by conflict authority;
 - do not compare payloads to choose one;
 - do not rewrite either record ID during ordinary sync/recovery;
-- fail the operation before active cutover.
+- fail before active cutover.
 
-A supported database migration may deterministically rewrite the representation of both copies from one whole-database version to another while preserving the same ID/historical meaning. That controlled format migration is not a fork.
+A supported database migration may deterministically rewrite representation of both copies from one whole-database version to another while preserving the same ID/historical meaning. That controlled format migration is not a fork.
+
+## JournalBootstrapForkError
+
+Meaning:
+
+> The canonical bootstrap artifact is owned by this installation's continuing writer identity, but the still-local pre-Journal database no longer describes the semantic state from which that artifact was created.
+
+This error exists for the crash window where the canonical artifact became durable but the creator's local Journal cutover did not.
+
+Creator-resume requires:
+
+```text
+artifact.creatorWriter == local DatabaseFingerprint
+semanticGraph(project(artifact, localWriter))
+    == semanticGraph(local legacy state interpreted at artifact target)
+```
+
+If writer identity matches but semantic equality does not, the lifecycle cannot safely decide that the local legacy state and artifact are one continuing history.
+
+Required behavior:
+
+- do not append another bootstrap record;
+- do not create a second canonical artifact;
+- do not treat the local legacy graph as a foreign joining replica;
+- do not overwrite the canonical artifact from mutable local graph bytes;
+- fail before active cutover and require explicit recovery/operator choice.
+
+A different local fingerprint never uses creator-resume; it follows ordinary bootstrap join instead.
 
 ## JournalGapError
 
@@ -111,7 +139,7 @@ Meaning:
 
 Examples:
 
-- bytes/body shape not valid for the current database version;
+- bytes/body shape not valid for current database version;
 - malformed fields;
 - invalid timestamps;
 - duplicate validation-basis input NodeKeys;
@@ -136,42 +164,42 @@ Meaning:
 
 > A held source/lifecycle artifact and the requested receiver or migration transition may each be valid independently, but they cannot be interpreted under the compatibility contract required by that operation.
 
-For ordinary synchronization/reset, compatibility is determined from the **held `JournalSnapshot` itself**:
+For ordinary synchronization/reset, compatibility is determined from the held `JournalSnapshot` itself:
 
 ```text
 snapshot.databaseVersion
 snapshot.graphSchemeString
 ```
 
-These fields are the exact source `global/version` value and exact persisted `global/graph_scheme` string from the same committed source state as the snapshot's journal frontier/records.
-
-For pre-Journal canonical bootstrap join, compatibility is determined from the frozen `CanonicalBootstrapSnapshot`:
+For pre-Journal canonical bootstrap, compatibility is determined from the frozen `CanonicalBootstrapSnapshot`:
 
 ```text
 canonical.databaseVersion
 canonical.graphSchemeString
 ```
 
-and those fields must equal the configured legacy transition's expected **bootstrap target** version/schema. A later current cohort version is not an acceptable substitute.
+and those fields must equal the running release's configured expected bootstrap target version/schema before creator-resume or ordinary join may interpret the artifact.
 
 Examples:
 
-- ordinary source snapshot `databaseVersion` differs from the receiver's active `global/version` and requires migration first;
-- ordinary source snapshot `graphSchemeString` differs exactly from the receiver's active `global/graph_scheme` string;
-- a caller previously observed compatible source metadata, but the source migrated before `openSnapshot()` and the held snapshot now exposes different version/schema metadata;
-- a cohort bootstrap source returns an artifact encoded for a database version/schema other than the supported bootstrap target;
-- an implementation tries to use a current post-migration Journal snapshot as canonical bootstrap input instead of the original frozen bootstrap artifact.
+- source snapshot `databaseVersion` differs from receiver active `global/version`;
+- source snapshot `graphSchemeString` differs from receiver active `global/graph_scheme`;
+- an earlier mutable metadata check passed but the held snapshot now exposes another version/schema;
+- a cohort bootstrap artifact is encoded for a version/schema other than the running release's expected bootstrap target;
+- current software no longer supports the historical bootstrap target used by an old artifact;
+- an implementation tries to use a current post-bootstrap Journal snapshot as canonical bootstrap input instead of the frozen bootstrap artifact.
 
 This is incompatibility, not corruption.
 
 Required behavior:
 
-- compare compatibility metadata from the held ordinary source snapshot before interpreting/importing its records or deriving a reset target;
-- compare canonical bootstrap artifact metadata before interpreting the cut or authoring bootstrap history;
+- compare compatibility metadata from the held ordinary source snapshot before interpreting/importing records or deriving reset target;
+- compare canonical bootstrap artifact metadata before interpreting the cut or authoring/resuming bootstrap history;
 - do not trust a compatibility check performed against a different mutable source state;
 - do not attempt per-record upcast/downcast or implicit migration inside ordinary sync/reset/bootstrap join;
-- do not activate staged source/bootstrap history when the check fails;
-- lifecycle may run the supported whole-database migration chain after successful bootstrap at its original target version.
+- do not activate staged source/bootstrap history when the check fails.
+
+Journal 3 does not require future releases to preserve arbitrary historical bootstrap-target decoders and migration chains forever. An operator may need to run software which explicitly supports the historical target before upgrading further.
 
 ## JournalProjectionError
 
@@ -187,7 +215,7 @@ Examples:
 
 Required behavior:
 
-- fail the candidate operation/rebuild/cutover;
+- fail candidate operation/rebuild/cutover;
 - do not repair by treating mutable graph bytes as additional authority.
 
 ## JournalProjectionMismatchError
@@ -196,14 +224,14 @@ Meaning:
 
 > Existing materialized graph bytes are known to disagree with `project(retainedJournal)`.
 
-This differs from JournalProjectionError: authoritative history may be perfectly valid, while derived graph state is damaged/stale.
+This differs from JournalProjectionError: authoritative history may be valid while derived graph state is damaged/stale.
 
 Required behavior:
 
 - ordinary graph exposure must not proceed while mismatch is known;
-- lifecycle may invoke the supported projection-rebuild path;
+- lifecycle may invoke projection rebuild;
 - if rebuild succeeds, journal history is unchanged;
-- if replay itself then fails, surface the underlying projection/journal error instead.
+- if replay itself then fails, surface underlying projection/journal error instead.
 
 ## JournalPublicationError
 
@@ -216,15 +244,17 @@ Examples:
 - LevelDB batch/write failure;
 - inactive-target flush failure;
 - atomic active-pointer/cutover failure;
-- canonical bootstrap cut could not be durably established before the creator would begin ordinary Journal authoring.
+- canonical bootstrap cut could not be durably established before creator would begin ordinary Journal authoring.
 
-Required behavior depends on the publication boundary, but must preserve this invariant:
+Required behavior depends on publication boundary, but must preserve:
 
 ```text
 no supported active state exposes only one side of graph/journal publication
 ```
 
 A failed ordinary transaction consumes no durable journal sequence position.
+
+If canonical artifact publication succeeds but creator local cutover fails, retry follows the creator-resume path rather than publishing a second bootstrap history.
 
 ## JournalSourceReadError
 
@@ -250,23 +280,25 @@ A readable source/artifact with incompatible version/schema uses `JournalVersion
 
 ## Invalid migration decision
 
-The existing migration framework may reject a Journal-aware `override()` whose callback result differs from the canonical per-record target payload rewrite.
+The existing migration framework may reject a Journal-aware `override()` whose callback result differs from canonical per-record target payload rewrite.
 
-This is a migration-definition/decision error, not a writer fork: no divergent target record becomes active. Implementations may surface the existing `InvalidMigrationDecisionError` from `migration.md`.
+This is a migration-definition/decision error, not a writer fork: no divergent target record becomes active. Implementations may surface existing `InvalidMigrationDecisionError` from `migration.md`.
 
 ## Invalid local writer continuation
 
-A special lifecycle condition occurs when a writable database attempts new authoring while a longer surviving exact prefix of its own writer stream is known to exist elsewhere.
+A special lifecycle condition occurs when a writable Journal database attempts new authoring while a longer surviving exact prefix of its own writer stream is known elsewhere.
 
-The supported response is to perform same-writer prefix recovery under maintenance before new local allocation.
+The supported response is same-writer prefix recovery under maintenance before new local allocation.
 
 If exact prefix recovery is impossible because overlap differs, surface `JournalForkError`.
 
-Implementations may expose a dedicated `JournalWriterBehindError` before recovery is attempted, but such a category is optional; the underlying semantic distinction is exact-prefix-behind versus forked-history.
+This is distinct from pre-Journal creator-resume, where local Journal history has not yet become active.
+
+Implementations may expose a dedicated `JournalWriterBehindError` before recovery is attempted, but such a category is optional.
 
 ## User-facing error expectations
 
-Ordinary application `pull()`/`invalidate()` need not expose the full internal journal taxonomy unless the failure crosses their transaction boundary.
+Ordinary application `pull()`/`invalidate()` need not expose the full internal journal taxonomy unless failure crosses their transaction boundary.
 
 Lifecycle/administrative synchronization, reset, migration, startup, and rebuild should preserve enough category information that callers can distinguish:
 
@@ -277,6 +309,6 @@ vs rebuildable derived-state mismatch
 vs authoritative corruption/fork
 ```
 
-Error messages should identify the relevant writer/sequence/node/database version or schema mismatch where possible.
+Error messages should identify relevant writer/sequence/node/database version or schema mismatch where possible.
 
-They must not claim a graph conflict when the actual problem is immutable writer-history disagreement.
+They must not claim a graph conflict when actual problem is immutable writer-history disagreement.
