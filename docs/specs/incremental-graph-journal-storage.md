@@ -60,6 +60,16 @@ ValidateEvent basis encoding is self-describing:
 
 with unique input keys serialized by canonical persisted NodeKeyString order.
 
+InvalidateEvent scope encoding distinguishes:
+
+```text
+{ kind: "node" }
+{ kind: "value", value: ValueId }
+{ kind: "proof", value: ValueId }
+```
+
+The three scopes have different replay meanings and must not be collapsed in storage.
+
 ## Causal-context validation support
 
 Storage/import/open validation verifies semantic-event contexts are genuine closed cuts.
@@ -126,15 +136,27 @@ Local Journal storage must support maintenance authoring patterns required to re
 
 ### Proof weakening barrier
 
-When reset/migration preserves ValueId but target validity removes a currently-valid incoming edge, maintenance writes a node-scoped `InvalidateEvent` before target validation.
+When reset/migration preserves ValueId V but target validity removes a currently-valid incoming edge for that occurrence, maintenance writes:
 
-This barrier is semantic history, not derived metadata. Older stronger certificates remain retained but become ineligible because they did not observe barrier.
+```text
+InvalidateEvent {
+    node: K,
+    scope: { kind: "proof", value: V },
+    reason: "reset" | "migration"
+}
+```
+
+before the target validation.
+
+This barrier is semantic history, not derived metadata. Older stronger certificates targeting V remain retained but become ineligible because they did not observe the barrier. Certificates for another occurrence V2 are not affected merely because they belong to the same node.
+
+A real explicit `invalidate(K)` remains node-scoped. Storage must preserve the distinction between direct node invalidation and maintenance-only proof weakening.
 
 ### Persistent stale marker
 
 When reset/migration target stores K stale while K's own selected proof is otherwise complete, storage retains an uncovered value-scoped invalidation for final K ValueId even if K is already recursively stale through an input.
 
-This prevents later upstream `Unchanged` from erasing persisted stale flag.
+Bootstrap join has the same persistence obligation after merging legacy evidence: if a selected occurrence has complete own proof but is stale through a direct input, an uncovered `reason="bootstrap"` value-scoped marker is retained/authored so a later upstream `Unchanged` cannot erase the stored stale transition.
 
 ## Semantic migration identity
 
@@ -146,7 +168,11 @@ Storage does not require canonical remote migration author.
 
 ## Canonical pre-Journal bootstrap artifact
 
-For initial legacy->Journal transition, one canonical semantic bootstrap cut supplies shared ValueId basis for occurrences equal to canonical cut.
+The first supported pre-Journal -> Journal transition is a semantic-identity Journalization of an already-persisted legacy graph. It does not first run ordinary legacy semantic migration callbacks.
+
+The bootstrap target therefore preserves the persisted source's graph interpretation and exact materialized semantic state, including NodeIdentifiers, payloads, timestamps, freshness, validity, and allocator watermark. A source/target pair which would require wall-clock/allocator-dependent `create()` or another semantic migration before Journalization is not an automatic bootstrap path and fails compatibility before bootstrap history is authored.
+
+One canonical semantic bootstrap cut supplies shared ValueId basis for occurrences equal to canonical cut.
 
 Configured cohort bootstrap source may return immutable `CanonicalBootstrapSnapshot` containing:
 
@@ -164,7 +190,9 @@ Artifact storage/transport mechanism is unspecified.
 
 ### Creator resume storage
 
-If artifact publication succeeded but creator local cutover failed, a restart with matching `creatorWriter` and semantically matching pre-Journal legacy state installs **exactly** artifact records as local stream and reconstructs writer head, `last_node_index`, authority high-water, projection, and indexes. No duplicate bootstrap records are allocated.
+If artifact publication succeeded but creator local cutover failed, a restart with matching `creatorWriter` compares the artifact projection directly with the still-persisted legacy graph under the semantic-identity bootstrap interpretation. It does not rerun a migration callback or regenerate timestamps/identifiers.
+
+On equality it installs **exactly** artifact records as local stream and reconstructs writer head, `last_node_index`, authority high-water, projection, and indexes. No duplicate bootstrap records are allocated.
 
 Semantic mismatch is `JournalBootstrapForkError` and changes no active state.
 
@@ -176,7 +204,11 @@ A joining host retains canonical cut verbatim and may additionally persist:
 - bootstrap proof/freshness records derived from legacy evidence;
 - local WriterStateRecord preserving allocator watermark.
 
-Equal occurrences continue to reference canonical ValueIds. Local absence does not create bootstrap DeleteEvent against canonical materialization.
+Equal occurrences continue to reference canonical ValueIds. For an exact shared occurrence, canonical proof is not replaced by a causally-later joining validation merely to strengthen proof. If either canonical or joining copy is stale, the shared occurrence remains persistently stale and an uncovered value-scoped bootstrap marker is retained/authored when necessary.
+
+After direct bootstrap stale evidence is represented, join propagates persistent staleness through the selected dependency DAG: a selected occurrence with complete own proof and a stale direct input receives/retains a value-scoped bootstrap marker unless one already applies.
+
+Local absence does not create bootstrap DeleteEvent against canonical materialization.
 
 Joining historical ValueEvents may omit canonical foreign coordinates so conflicts remain concurrent; authority is seeded from legacy `modifiedAt`.
 
