@@ -174,11 +174,49 @@ Again, this is explicit reset targeting. It is not the rule for comparing two pr
 
 After Pass 1 every source-present node has a final target occurrence `resetValueId(K)`, either preserved or newly authored.
 
-For each source-present K, evaluate the selected eligible certificate that would apply after Pass 1 under the current schema.
+Let `P1` be replay after Pass 1. For each source-present K define:
 
-Reuse it only if it yields exactly PS's incoming validity relation for K and has the causal coverage required for PS's target freshness.
+```text
+CurrentValid(K) = {
+    D | P1 contains semantic validity edge D -> K
+}
 
-Otherwise author one:
+TargetValid(K) = {
+    D | PS contains semantic validity edge D -> K
+}
+```
+
+### Proof weakening requires a barrier
+
+Replay intentionally prefers certificates with greater `basisMatchCount` before authority. Therefore merely appending a later certificate with more `"unknown"` entries cannot remove validity supplied by an older stronger certificate.
+
+If reset must remove at least one currently-valid incoming edge:
+
+```text
+CurrentValid(K) - TargetValid(K) != empty
+```
+
+reset MUST first author:
+
+```text
+InvalidateEvent {
+    node: K,
+    scope: { kind: "node" },
+    reason: "reset"
+}
+```
+
+Call this a **reset proof barrier**.
+
+Every certificate authored before that barrier becomes ineligible because it did not causally observe the node-scoped invalidation. A later reset validation can therefore establish a weaker or differently-shaped target proof without competing forever with an older stronger certificate.
+
+The barrier is required only for proof weakening/removal. If reset merely adds validity edges, the later stronger certificate naturally wins by basis-match count and no barrier is needed solely for that addition.
+
+After any required barrier, evaluate the selected eligible certificate which would apply under the current schema.
+
+Reuse it only if it yields exactly `TargetValid(K)` and has the causal coverage required for PS's target freshness.
+
+Otherwise author one causally-later:
 
 ```text
 ValidateEvent {
@@ -203,19 +241,33 @@ Use:
 resetValueId(D)
 ```
 
-exactly when PS contains validity edge `D -> K`; otherwise use `"unknown"`.
+exactly when D is in `TargetValid(K)`; otherwise use `"unknown"`.
 
-This rule naturally repairs dependents whose own value occurrence was preserved but whose certificate would otherwise name an input ValueId replaced in Pass 1.
+When a proof barrier was authored, this validation occurs after it and therefore may become eligible even though all older certificates are not. This includes the all-`"unknown"` case where the target has no incoming validity edges.
 
-A new dependent ValueEvent is not needed merely to update that proof.
+This rule also repairs dependents whose own value occurrence was preserved but whose certificate would otherwise name an input ValueId replaced in Pass 1.
+
+A new dependent ValueEvent is not needed merely to update or weaken proof.
 
 ## Pass 3: establish target freshness
 
-After Pass 2, compare replayed freshness with PS.
+After Pass 2 compute replay `P2`. For each present K let C be the replay-selected certificate in P2 and define the same own-proof predicate used by synchronization normalization:
 
-For target-fresh K, the selected certificate must make K fresh; if an old invalidation would prevent this, Pass 2 must have authored a causally later validation rather than replacing K's value occurrence solely for freshness.
+```text
+selfProofReady(K) iff
+    C exists
+    and basisMatchCount(K,C) == numberOfDirectInputs(K)
+    and coversValueInvalidations(K,C)
+```
 
-For target-stale K, if replay is not already persistently stale as required, author:
+Node-scoped invalidation coverage is already part of certificate eligibility. Thus `selfProofReady(K)` means K is not persistently stale because of its own proof deficiency, node invalidation, or current-value invalidation. It may nevertheless be recursively stale because a direct input is stale.
+
+For target-fresh K, final replay must make K fresh. If an observed invalidation prevents that, Pass 2 must establish a causally later complete validation rather than replacing K's value occurrence solely for freshness.
+
+For target-stale K:
+
+- if an uncovered value-scoped invalidation already targets `resetValueId(K)`, do not duplicate it;
+- otherwise, if `selfProofReady(K)` is true, author:
 
 ```text
 InvalidateEvent {
@@ -228,9 +280,11 @@ InvalidateEvent {
 }
 ```
 
-Do not duplicate an already-uncovered current-value invalidation which already establishes the requested stale state.
+This rule applies even when P2 already reports K stale **solely because a direct input is stale**. Recursive staleness at the reset cut is not itself a persistent marker. Without the value-scoped event, a later `Unchanged` revalidation of the input could incorrectly make K fresh even though the reset target's stored stale flag must remain stale until K itself validates/recomputes.
 
-Thus reset freshness changes are represented as freshness/proof history, not gratuitous value replacement.
+If `selfProofReady(K)` is false, K already has a persistent own-state reason for staleness such as basis mismatch, an uncovered node invalidation, or an uncovered current-value invalidation; no additional marker is required merely to duplicate that reason.
+
+Thus reset freshness changes are represented as persistent freshness/proof history, not gratuitous value replacement.
 
 ## Resulting projection
 
@@ -257,6 +311,8 @@ for:
 - semantic validity edges.
 
 ValueIds may differ only where reset had to create a new semantic value occurrence.
+
+The equivalence is stable under later ordinary `Unchanged` revalidation of an upstream input: a dependent which reset established as persistently stale does not become fresh unless that dependent itself later validates/recomputes.
 
 ## Allocation watermark
 
