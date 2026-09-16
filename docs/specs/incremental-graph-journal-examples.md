@@ -125,7 +125,7 @@ Old B/C ValueEvents remain historical but cannot silently reappear.
 
 ## Trace 11: repeat synchronization
 
-After all source history and required normalization are incorporated, syncing the unchanged source again produces `changed=false`, no new semantic records, and the same projection.
+After all source history and required normalization are incorporated, syncing unchanged source again produces `changed=false`, no new semantic records, and same projection.
 
 ## Trace 12: exact same-writer prefix recovery
 
@@ -135,7 +135,7 @@ Local A has `A:1..100`; controlled source has agreeing `A:1..120`. Import `A:101
 
 Current K occurrence is V. R2 authors value invalidation I then complete validation C2 causally after I. Concurrent R1 authors equally matching C1 with greater total authority but without observing I.
 
-Because C2 covers the invalidation and C1 does not, C2 wins before authority is consulted.
+Because C2 covers invalidation and C1 does not, C2 wins before authority is consulted.
 
 ## Trace 14: competing partial certificates never combine
 
@@ -152,203 +152,170 @@ Each matches one input. Replay chooses one certificate and never fabricates `{A:
 
 Old K inputs A/B with certificate `{A:A1,B:B1}`. New schema uses A/C. Old certificate remains historical evidence but is not current-shape-compatible; migration may preserve K's ValueId while authoring a new A/C validation for that same occurrence.
 
-## Trace 16: value-scoped invalidation dies with the occurrence
+## Trace 16: value-scoped invalidation dies with occurrence
 
-K1 is stale due to `Invalidate(value=K1)`. Later new K2 wins. The old K1 marker remains history but does not stale K2.
+K1 is stale due to `Invalidate(value=K1)`. Later new K2 wins. Old K1 marker remains history but does not stale K2.
 
 ## Trace 17: receiver-less absent-state restore
 
-No local database exists. The configured installation recovery source yields snapshot S with localWriter A. Startup restores A's history/allocator/projection and then runs migration gate if needed. Query failure does not generate a fresh fingerprint B.
+No local database exists. Configured installation recovery source yields snapshot S with localWriter A. Startup restores A's history/allocator/projection and then runs migration gate if needed. Query failure does not generate a fresh fingerprint B.
 
 ## Trace 18: canonical bootstrap source decision
 
-Legacy host X reaches the Journal bootstrap gate.
+Legacy host X reaches Journal bootstrap gate.
 
-- if cohort bootstrap source returns `Exists(B)`, B is an immutable `CanonicalBootstrapSnapshot` and X must join B;
-- if it returns `DefinitelyAbsent`, X may create canonical bootstrap;
-- if it returns indeterminate/error, X fails without creating history.
+- `DefinitelyAbsent` -> X may create canonical bootstrap;
+- `IndeterminateOrError` -> X fails without creating history;
+- `Exists(B)` -> if B is incompatible with this release's expected bootstrap target, fail compatibility; otherwise choose creator-resume when `B.creatorWriter == localFingerprint`, ordinary join otherwise.
 
 A source which cannot safely distinguish concurrent first creators must not return definite absence to both.
 
-The creator freezes B at the exact frontier after bootstrap before any ordinary Journal operation.
-
 ## Trace 19: frozen bootstrap cut prevents stale-host rollback
 
-At T0 canonical creator C bootstraps:
+At T0 canonical creator C bootstraps `K=v1` and freezes artifact B.
 
-```text
-K = v1
-```
+Later C authors `K=v2` and new node N. Legacy J was offline and still has K=v1, N absent.
 
-and freezes canonical artifact B at that frontier.
-
-Later ordinary Journal history on C contains:
-
-```text
-C:x Value(K,v2)   // replaces v1
-C:y Value(N,n1)   // new node N
-```
-
-Legacy host J has been offline since before T0 and still has:
-
-```text
-K = v1
-N absent
-```
-
-J's bootstrap source returns B, **not C's current Journal snapshot**.
-
-Therefore:
-
-```text
-Pc = K=v1
-Gl = K=v1
-```
-
-J reuses canonical K's ValueId and authors no replacement for K. N is not in B, so J authors no delete for N.
-
-J completes bootstrap at B's target version, runs any required Journal-aware migrations, and later ordinary synchronization imports C:x/C:y.
-
-Final result selects K=v2 and N=n1. The offline host did not turn stale v1 into a causally newer write and did not delete a node created after bootstrap.
+J's bootstrap source returns B, not C's current Journal snapshot. J reuses canonical K=v1 ValueId and authors no delete for N. Post-bootstrap v2/N can enter only later through ordinary compatible synchronization. Upgrade timing cannot turn stale v1 into a causally newer write.
 
 ## Trace 20: divergent legacy values remain concurrent
 
-Canonical bootstrap cut contains:
+Canonical cut contains `K=c2, modifiedAt=T2`. Late legacy J has different `K=j1, modifiedAt=T1`.
 
-```text
-C:K = c2, modifiedAt=T2
-```
+J's bootstrap ValueEvent omits synthetic canonical causality and uses physical authority T1. Canonical and J values are concurrent, so c2 wins because T2>T1.
 
-Late legacy J contains a genuinely different occurrence:
-
-```text
-J legacy K = j1, modifiedAt=T1
-T1 < T2
-```
-
-J must preserve the fact that j1 did not observe C:K. It authors historical bootstrap ValueEvent J:K with:
-
-```text
-context[C] = 0
-physical authority = T1
-```
-
-while C:K has authority seeded from T2.
-
-The two occurrences are concurrent, so normal authority selects c2. J's later upgrade time does not make j1 win.
-
-If instead J's legacy occurrence has `modifiedAt=T3 > T2`, the same concurrent construction lets J's value win for the ordinary timestamp-based reason.
+If J instead has T3>T2, J wins for the normal legacy timestamp reason—not because migration ran later.
 
 ## Trace 21: canonical presence is not deleted by legacy absence
 
-Canonical bootstrap cut contains materialized K. Late legacy J does not have K materialized.
+Canonical cut has materialized K. Late legacy J lacks K. J authors no DeleteEvent merely to reproduce its old cache; pre-Journal absence is not timestamped deletion evidence. K survives.
 
-J authors no DeleteEvent for K merely to make the Journal projection equal its old cache. Pre-Journal absence is not timestamped deletion evidence. K remains materialized from the canonical side.
+Conversely, local-only materialized K receives a J-authored historical bootstrap ValueEvent.
 
-Conversely, a local-only materialized K receives a J-authored historical bootstrap ValueEvent and survives the join.
+## Trace 22: bootstrap compatibility is bounded
 
-## Trace 22: late host joins old bootstrap version then migrates
+Canonical artifact B was created at bootstrap target N. A later software release no longer declares N/schemaN as its supported legacy bootstrap target.
 
-Canonical bootstrap artifact B was created at database version N. The active cohort later migrated to N+1.
+A still-legacy host using that later release receives B but fails with `JournalVersionCompatibilityError` before authoring history.
 
-A legacy host joining years later still receives B encoded at N:
+Journal 3 does not require the later release to carry N's artifact decoder and complete N->current migration chain forever. The operator must first use software which explicitly supports N's bootstrap transition, then upgrade normally.
 
-```text
-B.databaseVersion = N
-```
+## Trace 23: creator resumes after artifact-publication crash
 
-It joins B at N, then runs the supported N->N+1 Journal-aware migration locally. Only after reaching N+1 does it synchronize against current cohort snapshots.
+Legacy creator C receives `DefinitelyAbsent` and builds canonical artifact B. B becomes durable, then C crashes before local Journal cutover.
 
-A current N+1 JournalSnapshot is not substituted for B. If the supplied canonical artifact does not match the expected bootstrap target version/schema, join fails before authoring history.
+On restart C is still pre-Journal and has the same fingerprint as `B.creatorWriter`.
 
-## Trace 23: representation-only override preserves ValueId without record fork
+If interpreting C's local legacy database at B's target yields the same semantic graph as `project(B)`, creator-resume installs exactly B, reconstructs writer head/watermark/high-water/projection, and cuts over with **no duplicate bootstrap events**.
 
-Replicas X and Y both retain historical ValueEvent:
+If local legacy semantics differ, creator-resume fails `JournalBootstrapForkError` and authors nothing.
 
-```text
-V=(A,5)
-payload=oldEncoding(x)
-```
+## Trace 24: identical non-canonical late joiners may split ValueId
 
-X currently selects V. Y has a later replacement for K, so V is historical there.
+Canonical C has older K. Late joiners J1 and J2 previously synchronized with each other and both hold the same newer legacy K occurrence, identical in NodeIdentifier/payload/timestamps, but different from canonical K.
 
-The version migration defines pure codec:
+Each independently joins canonical artifact and authors its own historical bootstrap ValueEvent:
 
 ```text
-rewriteValuePayload(V) = newEncoding(x)
+J1:k != J2:k
 ```
 
-Both replicas rewrite V identically whether or not V is selected.
+although both represent the same legacy materialization.
 
-On X, migration callback may call:
+Later synchronization selects one by normal authority/tie-break. A dependent certificate naming the losing bootstrap ValueId may stop matching and become stale.
+
+This is accepted by `$id-1635227135166767`; canonical bootstrap guarantees shared identity for occurrences equal to canonical cut, not universal deduplication of all independently converted non-canonical legacy state.
+
+## Trace 25: representation-only override preserves ValueId without record fork
+
+Replicas X and Y both retain historical V=(A,5), but only X currently selects V. Version migration defines a pure per-record codec rewriting V's payload representation.
+
+Both replicas rewrite V identically whether selected or historical. X's `override(K, ...)` only asserts its callback result equals codec output; it does not independently supply V's immutable bytes.
+
+After migration X/Y retain same target body for V. A replica-local callback mismatch fails before cutover.
+
+## Trace 26: independent genuine replacement migration may stale dependent
+
+Before migration two replicas share A=A1 and B=B1 validated against A1. A semantic migration genuinely replaces A independently as A2x/A2y.
+
+After synchronization one replacement wins. A dependent certificate naming losing A occurrence may become stale and later revalidate/recompute. This is accepted; no canonical migration participant is required.
+
+## Trace 27: occurrence-preserving migration
+
+A version bump changes schema/proof/freshness but keeps semantic A/B occurrences. Migration preserves A1/B1 and may append validation/invalidation records targeting those same ValueIds.
+
+## Trace 28: migration proof barrier removes stronger old proof
 
 ```text
-override(K, () => newEncoding(x))
+A -> B
+before:
+    A=a1
+    B=b1
+    C_old(B)={A:a1}
 ```
 
-but this only asserts that the selected result equals the codec output. It does not supply V's bytes independently.
+Migration explicitly invalidates B while preserving b1. Target has no A->B validity.
 
-After migration X and Y still retain the same target body for JournalRecordId V. Later synchronization cannot fail with a fork for V.
-
-If X's callback returned some replica-dependent `otherEncoding(x)` unequal to the codec output, X's migration would fail before cutover.
-
-## Trace 24: independent genuine replacement migration may stale dependent
-
-Before migration two replicas share:
+Appending only `{A:"unknown"}` would fail because old certificate has basisMatchCount 1 and new has 0. Therefore migration authors:
 
 ```text
-A=A1
-B=B1, certificate [{A:A1}]
+M:n   Invalidate(B,scope=node,reason=migration)
+M:n+1 Validate(B,value=b1,basis=[{A:"unknown"}],reason=migration)
 ```
 
-A semantic migration genuinely replaces A. Replicas migrate independently:
+C_old did not observe M:n and is now ineligible. New partial certificate establishes zero A->B validity exactly.
+
+## Trace 29: migration persists propagated staleness
 
 ```text
-X creates A2x
-Y creates A2y
+A -> B
+initial: A fresh; B fresh, certificate {A:a1}
+migration: invalidate(A)
 ```
 
-After X/Y synchronize, ordinary authority selects one A2 occurrence, say A2y. A certificate authored on X against A2x no longer matches the selected input. B may therefore become stale and later revalidate/recompute.
+Target migration graph stores A stale and B stale by propagated flag while B retains complete `{A:a1}` proof.
 
-This is accepted. No canonical migration participant is required.
+After target proof repair, B's own proof is ready but replay is already stale recursively because A is stale. Migration still authors:
 
-## Trace 25: occurrence-preserving migration
+```text
+Invalidate(B,scope=value(b1),reason=migration)
+```
 
-A version bump changes schema/proof/freshness but keeps semantic A/B occurrences. Migration preserves A1/B1 and may append new validation/invalidation records targeting those same ValueIds.
+Later `pull(A) -> Unchanged` may freshen A, but B remains stale until B validates/recomputes.
 
-Two independently migrated replicas therefore keep the shared occurrence identities.
+## Trace 30: reset proof barrier removes receiver-only proof
 
-## Trace 26: minimal reset preserves unaffected occurrences
+Receiver/source union selects same A/B occurrences, but receiver has full A->B validity while reset target has no A->B validity.
 
-Receiver/source union already selects A1/B1 and target has same value occurrences but different B proof/freshness. Reset preserves A1/B1 and authors only required B validation/invalidation.
+Reset authors node-scoped B proof barrier before target partial/all-unknown validation. Old full certificate becomes ineligible and final reset projection really removes A->B.
 
-If target requires a different A occurrence, reset creates new A ValueEvent; B may still keep B1 with a new certificate if B itself is unchanged.
+## Trace 31: reset persists target propagated staleness
 
-## Trace 27: reset deletion is deterministic
+Reset target stores A stale and B stale with B's full proof intact. After Pass 2 B's own proof is complete, so reset ensures an uncovered value-scoped invalidation targets final B ValueId even if B is currently recursively stale through A.
+
+Later `A -> Unchanged` does not freshen B.
+
+## Trace 32: minimal reset preserves unaffected occurrences
+
+Receiver/source union already selects A1/B1 and target has same value occurrences but different B proof/freshness. Reset preserves A1/B1 and authors only required barrier/validation/invalidation records.
+
+If target requires different A occurrence, reset creates new A ValueEvent; B may keep B1 with new proof if B itself unchanged.
+
+## Trace 33: reset deletion is deterministic
 
 If union has K present and target requires K absent, reset authors exactly one `Delete(K,reason=reset)`. If union already selects absence, no delete is authored.
 
 This trace deliberately does not apply to pre-Journal bootstrap join.
 
-## Trace 28: bootstrap stale node with partial proof
+## Trace 34: bootstrap stale node with partial proof
 
-Legacy K has inputs A/B, is stale, and only A->K validity remains. Bootstrap records:
+Legacy K has inputs A/B, is stale, and only A->K validity remains. Bootstrap records partial certificate with A known/B unknown followed by value-scoped bootstrap invalidation. Replay reproduces stale K with partial validity without inventing provenance.
 
-```text
-Validate(K,value=K0,basis=[
-  {input:A,value:A0},
-  {input:B,value:"unknown"}
-],reason=bootstrap)
-Invalidate(K,scope=value(K0),reason=bootstrap)
-```
+## Trace 35: projection rebuild
 
-Replay reproduces stale K with partial validity without inventing provenance.
+Authoritative Journal is valid but derived freshness record is damaged. Maintenance rebuilds graph from Journal. No semantic event is authored merely to repair derived state.
 
-## Trace 29: projection rebuild
-
-Authoritative Journal is valid but a derived freshness record is damaged. Maintenance rebuilds graph from Journal. No semantic event is authored merely to repair derived state.
-
-## Trace 30: synchronization normalization is real history
+## Trace 36: synchronization normalization is real history
 
 Receiver has fresh A/B. Source Y supplies winning delete of A; source Z has unseen concurrent higher-authority A2. If receiver synchronizes Y first it may correctly author `Delete(B,reason=sync)`. That delete remains real history even if Z later makes A present again.
 
