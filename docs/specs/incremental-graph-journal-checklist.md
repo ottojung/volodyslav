@@ -84,28 +84,33 @@ Acceptance:
 
 Acceptance:
 
-- a configured transport-neutral **cohort bootstrap source** returns exactly exists / definitely absent / indeterminate-or-error;
-- exists -> returns immutable `CanonicalBootstrapSnapshot`, not an arbitrary current Journal snapshot;
+- configured cohort bootstrap source returns exactly exists / definitely absent / indeterminate-or-error;
+- exists -> returns immutable `CanonicalBootstrapSnapshot`, not arbitrary current Journal snapshot;
 - definitely absent -> create canonical bootstrap;
-- indeterminate/error -> migration fails and MUST NOT create competing canonical history;
-- the source's definite-absence semantics arbitrate first creation; competing canonical artifacts are unsupported;
-- creator bootstrap represents its accepted legacy payloads/timestamps/identifiers/freshness/validity exactly;
-- creator freezes `bootstrapFrontier` immediately after bootstrap and before ordinary Journal authoring;
-- artifact exposes exactly records through that frontier and retains exact bootstrap-target version/schema;
-- artifact remains available/immutable after ordinary cohort history or later migrations;
-- joining artifact version/schema must exactly equal the configured bootstrap target or fail with `JournalVersionCompatibilityError` before authoring history;
-- joining installation retains canonical records verbatim and preserves its own local writer fingerprint/watermark;
-- bootstrap join is not reset and does not force projection equality with the local legacy cache;
-- exact equal legacy occurrences keep canonical ValueIds;
-- locally different/local-only occurrences get historical joining-writer bootstrap ValueEvents;
-- divergent legacy values do not observe canonical conflicting values solely because bootstrap code read the artifact;
-- joining bootstrap ValueEvent authority is seeded from that occurrence's own legacy `modifiedAt`;
+- indeterminate/error -> fail and MUST NOT create competing canonical history;
+- definite-absence semantics arbitrate first creation; competing canonical artifacts are unsupported;
+- artifact exposes exactly records through the original `bootstrapFrontier` and bootstrap target version/schema;
+- artifact is immutable while this release claims support for that bootstrap target;
+- artifact version/schema must exactly equal the running release's expected bootstrap target or fail with `JournalVersionCompatibilityError` before authoring;
+- future releases are not required to keep unsupported historical bootstrap targets, artifact codecs, or migration chains forever;
+- creator publishes/finalizes artifact before ordinary post-bootstrap Journal authoring;
+- if artifact creatorWriter equals local pre-Journal fingerprint, use creator-resume rather than ordinary join;
+- creator-resume installs exactly artifact history, verifies artifact projection equals local legacy target, reconstructs head/watermark/high-water/projection, and authors no duplicate semantic history;
+- creator-resume mismatch fails `JournalBootstrapForkError` before cutover;
+- another fingerprint cannot use creator-resume;
+- ordinary join preserves its own writer fingerprint/watermark;
+- bootstrap join is not reset and does not force projection equality with local legacy cache;
+- exact equal legacy occurrences reuse canonical ValueIds;
+- local-only/different occurrences get historical joining-writer bootstrap ValueEvents;
+- divergent legacy values remain concurrent with canonical conflicts unless genuine legacy causality exists;
+- bootstrap value authority is seeded from the occurrence's own legacy `modifiedAt`;
 - normal Journal authority resolves conflicting legacy occurrences;
-- canonical-present/local-absent does not create a bootstrap DeleteEvent;
+- canonical-present/local-absent does not fabricate bootstrap DeleteEvent;
+- two independent joiners holding the same non-canonical occurrence may assign distinct bootstrap ValueIds, with downstream staleness accepted by `$id-1635227135166767`;
 - proof/freshness baseline records are authored after values using normal closed contexts;
 - stale partial validity uses controlled `"unknown"`;
-- cutover is atomic at the bootstrap target version;
-- ordinary supported Journal-aware migrations then advance to running version before ordinary compatible synchronization imports post-bootstrap history.
+- cutover is atomic at bootstrap target;
+- any later migration occurs only through steps this running release explicitly supports before ordinary compatible synchronization.
 
 ## 9. Pairwise synchronization
 
@@ -128,7 +133,7 @@ An absent installation does not enter through this receiver-required operation; 
 Acceptance:
 
 - structural closure authors explicit sync deletes;
-- every selected occurrence stale solely because a direct input is stale gets/retains a current-value sync invalidation;
+- every selected occurrence stale solely because a direct input is stale gets/retains current-value sync invalidation;
 - this applies to newly selected remote ValueIds;
 - basis mismatch/node invalidation/already-uncovered value invalidation do not create unnecessary markers;
 - repeat sync is no-op;
@@ -142,13 +147,18 @@ Acceptance:
 - source+receiver history retained;
 - already-selected target semantic occurrence preserves ValueId;
 - new ValueEvent only when semantic occurrence must actually change;
-- validity/freshness-only changes use Validate/Invalidate;
+- when target validity removes any currently-valid incoming edge, author node-scoped reset proof barrier before target validation;
+- old stronger certificates before the barrier are ineligible and cannot reintroduce removed validity;
+- proof additions that need no weakening do not require a barrier solely for being newer;
+- target proof uses exact target edge set with ValueIds/`"unknown"`;
+- if target stores K stale and K's own selected proof is otherwise complete, ensure uncovered value-scoped reset invalidation for final K ValueId even when K is already recursively stale through input;
+- later upstream `Unchanged` does not accidentally freshen such reset-stale K;
 - dependents may retain own ValueId while certificates update for changed input ValueIds;
 - exactly one reset delete iff current union present and target absent;
 - repeated satisfied reset may no-op;
 - receiver allocator remains local;
 - replayed result equals target semantic graph;
-- this causally-later target-repair algorithm is never reused as bootstrap legacy-conflict resolution.
+- causally-later target-repair algorithm is never reused as bootstrap legacy-conflict resolution.
 
 ## 12. Journal-aware migration
 
@@ -157,20 +167,23 @@ Acceptance:
 - complete retained old history is deterministically rewritten into target format preserving IDs/meaning;
 - target has one format only;
 - every affected retained ValueEvent uses one pure per-record payload codec independent of selected/non-selected status and replica-local state;
-- replicas retaining the same historical record produce the same target-format body;
+- replicas retaining same historical record produce same target-format body;
 - `keep` preserves selected ValueId;
 - `override()` preserves selected ValueId and semantic value even when target-version payload representation changes;
-- `override()` result is checked against the canonical codec output for the selected record and mismatch fails before cutover;
-- a record is rewritten identically even on a replica where it is historical rather than selected;
+- `override()` result is checked against canonical codec output and mismatch fails before cutover;
 - `invalidate` preserves cached occurrence ValueId;
 - schema/proof/freshness change alone does not create ValueEvent;
+- when migration target removes any currently-valid incoming edge, author node-scoped migration proof barrier before target validation;
+- old stronger certificates before barrier cannot re-win by larger `basisMatchCount`;
+- stale `keep`/`override` proof loss and explicit `invalidate` are covered by this barrier rule;
 - target proof may be re-established with ValidateEvent targeting preserved ValueId;
-- target stale state may use value-scoped migration invalidation on preserved ValueId;
+- if target stores K stale and K's own proof is otherwise complete, ensure uncovered value-scoped migration invalidation even when recursive input staleness already makes replay stale;
+- later upstream `Unchanged` does not accidentally freshen migration-propagated stale dependents;
 - new ValueEvent only for actual create/replace semantic occurrence change;
 - replicas may independently author distinct new ValueIds for genuine replacements;
 - later sync of distinct replacement occurrences may stale dependents and that is accepted;
 - no particular peer is required to participate in migration;
-- target replay equals migration target;
+- target replay equals migration target including validity and stale-flag persistence;
 - historical migration callbacks are not needed for replay;
 - whole-journal rewrite may be O(history) and streamable.
 
@@ -179,7 +192,7 @@ Acceptance:
 Acceptance:
 
 - one current format per active replica;
-- frozen bootstrap artifact may separately remain at its original bootstrap target format;
+- bootstrap artifact is lifecycle source state and is interpreted only while running software explicitly supports its target format;
 - known graph/journal mismatch not exposed;
 - valid history can rebuild damaged projection;
 - invalid authoritative history rejected;
@@ -187,7 +200,7 @@ Acceptance:
 
 ## 14. Error model
 
-Provide actionable categories for writer fork, stream gap, transitive causal-context closure failure, ValueId reference causality failure, current-format record validation, ordinary snapshot/bootstrap-artifact version/schema incompatibility, projection invariant failure, migration-decision mismatch, and publication/source-read failure.
+Provide actionable categories for writer fork, `JournalBootstrapForkError`, stream gap, transitive causal-context closure failure, ValueId reference causality failure, current-format record validation, ordinary snapshot/bootstrap-artifact version/schema incompatibility, projection invariant failure, migration-decision mismatch, and publication/source-read failure.
 
 ## 15. Reference model / property verification
 
@@ -198,16 +211,21 @@ Priority properties:
 - prefix-union algebra;
 - local emission preservation;
 - invalidation-aware certificate selection;
+- maintenance proof barriers can weaken validity despite older stronger certificates;
+- maintenance target staleness persists through later upstream `Unchanged`;
 - stable snapshot compatibility;
 - selected-remote stale persistence;
 - repeat-sync no-op;
 - normalization convergence;
 - absent restore vs fresh creation;
-- frozen canonical bootstrap source decision and original-cut preservation;
+- frozen canonical bootstrap source decision/original-cut preservation;
+- creator crash after artifact publication resumes exactly without duplicate history;
+- creator-resume mismatch fails bootstrap fork;
 - late bootstrap cannot replay stale local values as causally newer writes;
 - concurrent legacy conflict uses legacy `modifiedAt` authority;
 - legacy absence does not fabricate deletion;
-- bootstrap-target join followed by ordinary migration chain;
+- independent late joiners may split identical non-canonical occurrence identity as accepted;
+- unsupported historical bootstrap target fails compatibility rather than requiring permanent migration machinery;
 - pure per-record format rewrite independent of replica selection;
 - occurrence-preserving `override()` assertion against canonical codec;
 - accepted independent-replacement migration staleness;
@@ -228,4 +246,4 @@ Journal 3 implementation is complete only when ordinary operations, startup/rest
 persistedGraph == project(retainedJournal)
 ```
 
-and all causal, identity-preservation, compatibility, and regression laws above are covered by implementation tests/models.
+and all causal, identity-preservation, compatibility, proof/freshness persistence, and regression laws above are covered by implementation tests/models.
