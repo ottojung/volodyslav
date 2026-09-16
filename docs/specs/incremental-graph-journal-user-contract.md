@@ -18,7 +18,7 @@ inspection/read operations
 
 ### `pull()`
 
-A successful pull has the same semantic result required by the existing IncrementalGraph contract.
+A successful pull has the semantic result required by existing IncrementalGraph contract.
 
 If persisted graph state changes, replay-complete Journal history describing that state is committed atomically before success is observable.
 
@@ -32,13 +32,13 @@ Cases include:
 
 ### `invalidate()`
 
-A successful explicit invalidation does not run the target computor.
+A successful explicit invalidation does not run target computor.
 
-It records enough history to reproduce target invalidation and actual propagated fresh->stale transitions while retaining safe cached `oldValue` state as required by the existing graph contract.
+It records enough history to reproduce target invalidation and actual propagated fresh->stale transitions while retaining safe cached `oldValue` state as required by existing graph contract.
 
 ### Inspection
 
-Inspection reads the current materialized projection. It does not execute computors or author semantic Journal records merely because data was inspected.
+Inspection reads current materialized projection. It does not execute computors or author semantic Journal records merely because data was inspected.
 
 ## Synchronization
 
@@ -52,17 +52,17 @@ requires an already-established writable receiver.
 
 A successful pairwise synchronization means:
 
-- source version/schema compatibility came from the same held stable snapshot as imported history;
-- every imported writer record retains its original identity/body;
+- source version/schema compatibility came from same held stable snapshot as imported history;
+- every imported writer record retains original identity/body;
 - all retained semantic-event contexts are valid causally closed cuts;
 - required receiver normalization is committed;
-- the active graph equals replay of active Journal history;
+- active graph equals replay of active Journal history;
 - no computor ran;
-- repeating against the unchanged incorporated source is a semantic no-op.
+- repeating against unchanged incorporated source is semantic no-op.
 
 Synchronization may change current values, identifiers, presence, freshness, and validity through replay/normalization.
 
-When the selected current occurrence is stale solely because a direct input is stale, synchronization persists that exact occurrence's staleness even when the occurrence was newly imported/selected.
+When selected current occurrence is stale solely because a direct input is stale, synchronization persists that exact occurrence's staleness even when occurrence was newly imported/selected.
 
 Synchronization does not migrate record formats or infer provenance from payload equality.
 
@@ -75,113 +75,137 @@ Synchronization may author real receiver events, principally:
 
 Those are not temporary acknowledgements. Once committed, they remain historical facts and synchronize normally.
 
-Convergence is therefore required per actual fair execution rather than between counterfactual executions which actually authored different normalization events.
+Convergence is required per actual fair execution rather than between counterfactual executions which actually authored different normalization events.
 
 ## Synchronization failures
 
-Failure before pairwise cutover leaves the previous active Journal/projection pair supported.
+Failure before pairwise cutover leaves previous active Journal/projection pair supported.
 
 An outer operation may process several sources independently, so earlier successful pairwise commits may remain when a later source fails.
 
-Lifecycle callers must be able to distinguish operational failure, compatibility failure, writer fork, malformed causal/reference history, and projection failure.
+Lifecycle callers must be able to distinguish operational failure, compatibility failure, writer/bootstrap fork, malformed causal/reference history, and projection failure.
 
 ## Absent-installation startup
 
-A machine with **no local database/writer identity** does not begin by creating a fresh fingerprint and then ordinary-syncing.
+A machine with **no local database/writer identity** does not begin by creating a fresh fingerprint and ordinary-syncing.
 
-Startup first queries the configured recovery source for synchronized state belonging to this installation.
+Startup first queries configured recovery source for synchronized state belonging to this installation.
 
-If it exists, receiver-less restoration conceptually performs `restoreAbsentFrom(source)`, adopts the held snapshot's `localWriter`, restores retained history/projection/allocator state, and then runs the normal migration gate if needed.
+If it exists, receiver-less restoration performs `restoreAbsentFrom(source)`, adopts held snapshot's `localWriter`, restores retained history/projection/allocator state, and then runs normal migration gate if needed.
 
-If the recovery-source query/read fails, startup fails. Only definite absence permits genuine fresh creation.
+If recovery-source query/read fails, startup fails. Only definite absence permits genuine fresh creation.
 
-## Same-writer restoration of an existing database
+## Same-writer Journal restoration
 
-An existing local database which is merely behind its own writer history may import a longer agreeing exact prefix under exclusive maintenance.
+An existing Journal database merely behind its own writer history may import a longer agreeing exact prefix under exclusive maintenance.
 
-After recovery, allocation continues strictly after the recovered head. Any overlapping disagreement is a writer fork.
+After recovery, allocation continues strictly after recovered head. Any overlapping disagreement is writer fork.
+
+This is distinct from bootstrap creator-resume, where local state is still pre-Journal and canonical artifact exists remotely/durably.
 
 ## Initial Journal bootstrap from legacy state
 
-Pre-Journal replicas expected to synchronize after transition use one canonical semantic bootstrap **cut** as their shared ValueId basis.
+Pre-Journal replicas expected to synchronize after transition use one canonical semantic bootstrap **cut** as shared ValueId basis for occurrences equal to that cut.
 
-Before choosing create versus join, startup queries the configured transport-neutral cohort bootstrap source:
+Startup queries configured transport-neutral cohort bootstrap source:
 
-1. immutable canonical bootstrap artifact exists -> join it;
-2. source definitively absent -> create canonical bootstrap and freeze the artifact before ordinary Journal authoring;
+1. compatible immutable artifact exists -> creator-resume or ordinary join depending on local fingerprint;
+2. source definitively absent -> create canonical bootstrap and freeze artifact before ordinary Journal authoring;
 3. query failed/indeterminate -> startup fails and does not create competing history.
 
-The artifact is the original bootstrap target version/schema plus exactly the records through the creator's frontier immediately after bootstrap. It does not advance with current cohort state.
+Artifact is original bootstrap target version/schema plus exactly records through creator frontier immediately after bootstrap. It does not advance with current cohort state.
 
-The configured cohort source must keep that immutable artifact obtainable for supported late legacy joins. Journal 3 does not prescribe whether the existing transport stores/carries it as a file, branch state, or another mechanism.
+A running release may join artifact only when its expected bootstrap target exactly matches artifact version/schema. Journal 3 does not promise that arbitrary future releases retain historical bootstrap decoders or complete migration chains forever. For an unsupported old target, startup fails `JournalVersionCompatibilityError` before authoring; operator recovery uses software which explicitly supports that target first.
 
-A late legacy host therefore never interprets months of post-bootstrap history as part of its bootstrap comparison.
+### Creator resume after interrupted first bootstrap
+
+If artifact exists, local database is still pre-Journal, and:
+
+```text
+artifact.creatorWriter == local DatabaseFingerprint
+```
+
+this is an interrupted canonical creator, not an ordinary joining host.
+
+Startup verifies `project(artifact)` equals local legacy graph interpreted at artifact target. If equal, it installs exactly artifact records, rebuilds writer head/allocator/high-water/projection, and atomically cuts over without creating duplicate bootstrap history.
+
+If they differ, startup fails `JournalBootstrapForkError`. A different fingerprint cannot use creator-resume.
 
 ### Equal legacy occurrences
 
-If the joining legacy host has the same semantic occurrence as the canonical cut, it reuses the canonical ValueId and authors no local replacement.
+If ordinary joining host has same semantic occurrence as canonical cut, it reuses canonical ValueId and authors no local replacement.
 
 ### Divergent legacy occurrences
 
-If the joining host has a genuinely different legacy occurrence, bootstrap converts it into historical Journal evidence rather than a new write performed “now.”
+If joining host has genuinely different legacy occurrence, bootstrap converts it into historical Journal evidence rather than a new write performed “now.”
 
-The local bootstrap ValueEvent:
+Local bootstrap ValueEvent:
 
-- uses the legacy occurrence's own `modifiedAt` to seed authority;
-- does not claim that the canonical conflicting occurrence happened before it merely because migration code read the canonical artifact;
-- therefore competes with the canonical occurrence through normal concurrent-value Journal authority.
+- uses legacy occurrence's own `modifiedAt` to seed authority;
+- does not claim canonical conflicting occurrence happened before it merely because migration code read artifact;
+- competes with canonical occurrence through normal concurrent-value Journal authority.
 
-A newer canonical legacy occurrence beats an older late-host occurrence; a newer late-host occurrence may beat the canonical one. Upgrade time itself gives no precedence.
+A newer canonical legacy occurrence beats older late-host occurrence; newer late-host occurrence may beat canonical one. Upgrade time gives no precedence.
+
+Two independent late joiners may hold the same occurrence which differs from canonical cut and nevertheless create different bootstrap ValueIds for it. Later synchronization may stale dependents naming losing occurrence. This is accepted by `$id-1635227135166767`; bootstrap does not add another pre-Journal identity-reconciliation protocol.
 
 ### Legacy absence/presence
 
-A node present in the canonical bootstrap cut but absent from one legacy host is not deleted merely to recreate that host's old cache. Pre-Journal absence is not deletion evidence.
+A node present in canonical cut but absent from one legacy host is not deleted merely to recreate that host's old cache. Pre-Journal absence is not deletion evidence.
 
-A node present only on the late legacy host may be converted into a local historical bootstrap occurrence.
+A node present only on late legacy host may be converted into local historical bootstrap occurrence.
 
-### After the bootstrap join
+### After bootstrap
 
-The installed database is at the canonical artifact's bootstrap target version. If running software is newer, startup runs the ordinary supported Journal-aware migration chain first. Only after reaching a compatible current version does ordinary synchronization import post-bootstrap cohort history.
+Installed database is at artifact's bootstrap target version. Startup may continue through whatever Journal-aware migration steps running release explicitly supports. Only after reaching compatible current version may ordinary synchronization import post-bootstrap cohort history.
 
-Thus, for example, if canonical K=v1 later became K=v2 while a host was offline with v1, the late host reuses canonical v1 at bootstrap and later learns v2 by ordinary sync. It does not roll the cohort back by re-authoring v1 as a newer write.
+Thus if canonical K=v1 later became K=v2 while host was offline with v1, supported late host reuses canonical v1 at bootstrap and later learns v2 through ordinary sync; it does not roll cohort back by re-authoring v1 as causally newer.
 
 ## Journal-aware migration
 
-A database migration may rewrite the physical representation of every retained Journal record into the target current format while preserving record IDs and historical meaning.
+A database migration may rewrite physical representation of every retained Journal record into target current format while preserving record IDs and historical meaning.
 
 Semantic migration then applies only target changes actually required.
 
 ### Canonical representation rewrite
 
-When retained `ComputedValue` representation changes, one pure per-record version codec determines the target representation of every affected historical ValueEvent.
+When retained `ComputedValue` representation changes, one pure per-record version codec determines target representation of every affected historical ValueEvent.
 
-The same old JournalRecordId is rewritten identically on every replica regardless of whether that occurrence is currently selected there.
+Same old JournalRecordId is rewritten identically on every replica regardless of whether occurrence is currently selected there.
 
 ### `keep`
 
-`keep` preserves the semantic occurrence and selected ValueId.
+`keep` preserves semantic occurrence and selected ValueId.
 
 ### `override()`
 
-`override()` is a semantic-preserving representation decision. It preserves the selected ValueId even when the target-version stored representation changes.
+`override()` is semantic-preserving representation decision. It preserves selected ValueId even when target-version stored representation changes.
 
-For Journal-aware migration, the callback does not independently determine the bytes of the retained historical ValueEvent. Instead its result must equal the canonical per-record rewrite of that selected record. If it does not, migration fails before cutover.
+For Journal-aware migration, callback does not independently determine bytes of retained historical ValueEvent. Its result must equal canonical per-record rewrite of selected record. If not, migration fails before cutover.
 
-This prevents two correctly migrating replicas from producing different bodies for the same immutable JournalRecordId just because only one currently selects that occurrence or because callback-local state differs.
+`override()` must not be used when semantic value changes.
 
-`override()` must not be used when the semantic value changes; the existing migration contract requires invalidation/recomputation or another explicit semantic replacement for that case.
+### Proof weakening
 
-### Proof/freshness changes
+Migration can preserve a ValueId while intentionally removing incoming validity proof—for example explicit `invalidate(K)` or stale `keep`/`override` behavior.
 
-Schema/proof/freshness changes alone do not manufacture a replacement value occurrence. Migration may append Validate/Invalidate records targeting a preserved ValueId.
+A later partial certificate alone cannot necessarily remove old proof because replay prefers greater `basisMatchCount` before authority.
+
+Therefore migration first authors a node-scoped proof barrier when target validity removes any currently-valid incoming edge. Older certificates predating barrier become ineligible; target validation after barrier can establish exact weaker proof.
+
+### Persistent target staleness
+
+If target stores K stale while K's own selected proof is otherwise complete and covers its current-value invalidations, migration ensures an uncovered value-scoped invalidation targets final K ValueId even when K is already stale recursively because an input is stale.
+
+This keeps migration-propagated stale flag persistent: later upstream `Unchanged` does not freshen K until K itself validates/recomputes.
 
 ### Genuine new/replaced occurrences
 
-A new migration ValueEvent is authored only when migration actually creates/replaces the semantic occurrence.
+New migration ValueEvent is authored only when migration actually creates/replaces semantic occurrence.
 
-Journal-aware migrations may run independently on different replicas. If two replicas independently create distinct ValueIds for a genuine replacement, ordinary synchronization later chooses by conflict authority; dependents whose certificates name a losing replacement may become stale and recompute/revalidate. This is accepted rather than requiring a particular peer to coordinate migration.
+Journal-aware migrations may run independently on different replicas. If two replicas independently create distinct ValueIds for genuine replacement, ordinary synchronization later chooses by conflict authority; dependents whose certificates name losing replacement may become stale/recompute. This is accepted rather than requiring particular peer coordination.
 
-Future replay never reruns the historical migration callback.
+Future replay never reruns historical migration callback.
 
 ## Reset
 
@@ -191,22 +215,25 @@ Conceptually:
 resetTo(source)
 ```
 
-requires an established writable receiver and one held compatible source snapshot.
+requires established writable receiver and one held compatible source snapshot.
 
-Reset retains receiver/source history and makes the receiver projection source-target-equivalent relative to all observed history.
+Reset retains receiver/source history and makes receiver projection source-target-equivalent relative to all observed history.
 
 Reset is minimal by semantic layer:
 
-- if the union already selects the requested immutable value occurrence, preserve its ValueId;
-- if value state actually differs, author a new reset ValueEvent;
-- if only proof differs, author the required ValidateEvent;
-- if only freshness differs, use the required value-scoped InvalidateEvent or later validation;
-- if target requires absence while union selects a value, author exactly one reset DeleteEvent;
-- if target absence is already selected, author no redundant delete.
+- if union already selects requested immutable value occurrence, preserve its ValueId;
+- if value state differs, author new reset ValueEvent;
+- if target validity removes any current edge, first author node-scoped reset proof barrier, then establish exact target certificate;
+- if target adds/changes proof without weakening, author required validation without unnecessary ValueEvent;
+- if target stores K stale while K's own proof is complete, ensure an uncovered value-scoped reset invalidation for final K ValueId even if recursive replay is already stale through input;
+- if target requires absence while union selects value, author exactly one reset DeleteEvent;
+- if target absence already selected, author no redundant delete.
 
-Reset records are intentionally causally later than the observed union they repair. This semantic is **not** used to import divergent pre-Journal legacy values during bootstrap.
+Consequently a reset-stale dependent does not become fresh merely because upstream input later returns `Unchanged`.
 
-Repeated reset to an unchanged already-satisfied target may return `changed=false` and author nothing.
+Reset records are intentionally causally later than observed union they repair. This semantic is **not** used to import divergent pre-Journal legacy values during bootstrap.
+
+Repeated reset to unchanged already-satisfied target may return `changed=false` and author nothing.
 
 No computor runs during reset.
 
@@ -216,7 +243,7 @@ An administrative rebuild may discard/reconstruct derived graph/index state from
 
 For valid history, successful rebuild is semantically invisible to ordinary callers.
 
-If authoritative Journal history itself is malformed—such as a writer fork, non-transitively-closed event context, or impossible ValueId reference—rebuild fails instead of changing history to match graph bytes.
+If authoritative Journal history itself is malformed—writer fork, non-transitively-closed context, impossible ValueId reference—rebuild fails instead of changing history to match graph bytes.
 
 ## No destructive compaction expectation
 
