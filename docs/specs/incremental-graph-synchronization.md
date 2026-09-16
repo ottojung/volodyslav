@@ -44,16 +44,16 @@ snapshot.graphSchemeString == receiver.graphSchemeString
 
 A completely absent installation is not an ordinary synchronization receiver. It first uses receiver-less restoration/fresh-creation lifecycle.
 
-A pre-Journal legacy installation likewise does not ordinary-sync directly against current Journal state; it first completes the canonical-bootstrap lifecycle at the frozen bootstrap target and runs required migrations.
+A pre-Journal legacy installation likewise does not ordinary-sync directly against current Journal state. It first completes whatever bootstrap/migration lifecycle the running software explicitly supports. An old canonical artifact whose target is unsupported by current software fails lifecycle compatibility rather than being implicitly upcast by synchronization.
 
 ## Pairwise synchronization sequence
 
 A successful pairwise synchronization conceptually:
 
-1. acquires/enters the required maintenance publication boundary;
+1. acquires/enters required maintenance publication boundary;
 2. opens one stable source snapshot;
 3. verifies exact version/schema compatibility from that snapshot;
-4. transfers every missing immutable writer suffix needed through the captured frontier;
+4. transfers every missing immutable writer suffix needed through captured frontier;
 5. validates overlap, contiguity, transitive causal closure, authority extension, and references;
 6. computes raw replay;
 7. authors only required receiver semantic normalization;
@@ -65,60 +65,52 @@ Imported records retain original writer identity/body. Receipt itself creates no
 
 ## Full synchronization
 
-An already-established receiver with frontier zero uses the same suffix-transfer/validation/normalization/replay algorithm. There is no distinct semantic full-sync merge algorithm.
+An already-established receiver with frontier zero uses same suffix-transfer/validation/normalization/replay algorithm. There is no distinct semantic full-sync merge algorithm.
 
 ## Same-writer recovery
 
-If the source contains an exact longer copy of the receiver's own writer prefix, controlled recovery may import that suffix and continue authoring strictly after the recovered head.
+If source contains exact longer copy of receiver's own **Journal** writer prefix, controlled recovery may import suffix and continue authoring strictly after recovered head.
 
-Any overlap disagreement is a writer fork/corruption condition.
+Any overlap disagreement is writer fork/corruption.
+
+This does not cover interrupted canonical bootstrap before local Journal cutover; creator-resume is a separate lifecycle transition.
 
 ## Projection rather than fieldwise merge
 
 Synchronization does not separately merge `values`, `freshness`, `timestamps`, `valid`, or identifier maps as independent authorities.
 
-The active graph after synchronization is the materialized projection of final retained Journal history.
+Active graph after synchronization is materialized projection of final retained Journal history.
 
 ## Dependency closure
 
-A supported published graph is dependency-closed under the current schema.
+A supported published graph is dependency-closed under current schema.
 
-If imported history selects absence for an input while a dependent remains selected, synchronization authors explicit `DeleteEvent(reason="sync")` over the required dependent closure rather than merely hiding the dependent as latent state.
+If imported history selects absence for input while dependent remains selected, synchronization authors explicit `DeleteEvent(reason="sync")` over required dependent closure rather than hiding dependent as latent state.
 
 ## Persistent propagated staleness
 
-After union/structural normalization, if selected current occurrence K has a selected certificate which:
+After union/structural normalization, if selected current occurrence K has selected certificate which:
 
 - exactly matches every selected direct input ValueId;
 - covers current-value invalidations;
 - would otherwise establish freshness;
 - but at least one direct input is stale;
 
-then synchronization ensures K has an uncovered value-scoped `InvalidateEvent(reason="sync")` for its current ValueId.
+then synchronization ensures K has uncovered value-scoped `InvalidateEvent(reason="sync")` for current ValueId.
 
-This applies even when the selected occurrence was newly imported/selected during this synchronization.
+This applies even when selected occurrence was newly imported/selected.
 
 ## Atomic publication
 
-Synchronization never exposes:
+Synchronization never exposes new Journal + old graph or old Journal + new graph.
 
-```text
-new Journal + old graph
-```
-
-or:
-
-```text
-old Journal + new graph
-```
-
-Staging/derived scratch state may be incomplete off to the side, but one supported cutover publishes the matching pair.
+Staging/derived scratch state may be incomplete off to side, but one supported cutover publishes matching pair.
 
 ## Streamability
 
-Missing writer suffixes are streamable by writer range without loading the whole history/suffix into RAM.
+Missing writer suffixes are streamable by writer range without loading whole history/suffix into RAM.
 
-Normalization may currently require graph-sized derived/scratch work. #1607 owns a future end-to-end change-sensitive time theorem.
+Normalization may currently require graph-sized derived/scratch work. #1607 owns future end-to-end change-sensitive time theorem.
 
 ## Delayed replicas and convergence
 
@@ -126,25 +118,27 @@ Correctness does not require every peer to acknowledge or return.
 
 A delayed replica can later obtain missing immutable suffixes.
 
-After non-normalization graph changes stop, synchronization can author only finite negative normalization consequences over finite positive history/schema. Under fair dissemination all participating replicas in that actual execution eventually reach equivalent projections and repeated sync becomes a no-op.
+After non-normalization graph changes stop, synchronization can author only finite negative normalization consequences over finite positive history/schema. Under fair dissemination all participating replicas in that actual execution eventually reach equivalent projections and repeated sync becomes no-op.
 
-Different counterfactual source schedules may have authored different real normalization history; Journal 3 does not claim counterfactual confluence across those different executions.
+Different counterfactual source schedules may have authored different real normalization history; Journal 3 does not claim counterfactual confluence across those executions.
 
 ## Multi-source partial success
 
-An outer procedure may process source snapshots sequentially. Each successful pairwise source commit may remain even if a later source fails, unless the outer API explicitly promises a stronger all-sources transaction.
+An outer procedure may process source snapshots sequentially. Each successful pairwise source commit may remain even if later source fails, unless outer API explicitly promises stronger all-sources transaction.
 
 ## Reset, restore, bootstrap, migration
 
 These are separate lifecycle transitions:
 
 - **absent restore** — recovers this installation's continuing writer identity/history before ordinary sync;
-- **reset** — minimally rebaselines an established receiver to a source projection while retaining history; its repair events intentionally causally follow the observed source/receiver union;
-- **pre-Journal bootstrap** — joins one frozen canonical bootstrap cut at its original target version; equal legacy occurrences reuse canonical ValueIds, genuinely different legacy occurrences are represented as concurrent historical values using legacy `modifiedAt` authority, and local absence does not become deletion evidence;
-- **Journal-aware migration** — rewrites every retained record through one canonical per-record format transformation, preserves ValueIds for `keep`/`override`/`invalidate` and other occurrence-preserving changes, and may independently author new ValueIds for genuine replacement occurrences.
+- **reset** — rebaselines established receiver to source projection relative to observed history; proof weakening uses node-scoped barrier and persistent target stale flags use current-value invalidation;
+- **pre-Journal bootstrap** — uses one frozen canonical cut for a supported bootstrap target; creator may resume an interrupted first cutover; equal occurrences reuse canonical ValueIds, divergent values are concurrent historical facts using legacy `modifiedAt`, and local absence is not deletion evidence;
+- **Journal-aware migration** — rewrites retained records through canonical per-record format transformation, preserves ValueIds for occurrence-preserving changes, uses proof barriers/persistent stale markers when graph flags require them, and may independently author new ValueIds for genuine replacements.
 
-The bootstrap lifecycle does not reuse reset semantics and does not import post-bootstrap current history. After bootstrap and required migrations, ordinary synchronization imports compatible later history.
+Two independent late bootstrap joiners may assign distinct ValueIds to same non-canonical legacy occurrence; this accepted trade-off may later stale dependents naming losing occurrence.
 
-Independent genuine replacement migrations may later make dependents stale after synchronization when certificates name a losing replacement ValueId. This is accepted; no canonical migration participant is required.
+Bootstrap lifecycle does not reuse reset semantics or import post-bootstrap current history. Ordinary synchronization begins only after local lifecycle reaches a current version exactly compatible with source snapshot.
+
+Independent genuine replacement migrations may later stale dependents after synchronization when certificates name losing replacement ValueId. This is accepted; no canonical migration participant is required.
 
 Ordinary synchronization itself never performs these lifecycle transitions implicitly.
