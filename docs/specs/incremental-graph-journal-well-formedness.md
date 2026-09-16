@@ -79,14 +79,23 @@ A normal `compute`, `unchanged`, or `cache-revalidate` validation uses no `"unkn
 
 A historical certificate whose explicit input set no longer equals the current schema's input set remains structurally intelligible history; it simply is not current-shape-compatible proof.
 
-## Value-scoped InvalidateEvent rule
+## Value/proof-scoped InvalidateEvent rule
 
-For:
+For either occurrence-referencing scope:
 
 ```text
 InvalidateEvent I {
     node: K,
     scope: { kind: "value", value: V }
+}
+```
+
+or:
+
+```text
+InvalidateEvent I {
+    node: K,
+    scope: { kind: "proof", value: V }
 }
 ```
 
@@ -99,6 +108,10 @@ happenedBefore(event(V), I)
 ```
 
 A value-scoped invalidation cannot stale a value occurrence which did not yet exist in the invalidating event's causal history.
+
+A proof-scoped barrier likewise cannot invalidate certificate history for an occurrence which the barrier had not causally observed.
+
+Proof scope is reserved for the occurrence-specific maintenance semantics defined by reset/migration. It is not a substitute encoding for ordinary explicit node invalidation.
 
 ## Node-scoped InvalidateEvent rule
 
