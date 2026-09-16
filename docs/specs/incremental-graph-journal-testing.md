@@ -17,16 +17,16 @@ For each ordinary graph operation:
 1. begin from a supported graph+journal pair;
 2. execute the existing graph transition;
 3. capture emitted journal records;
-4. independently replay the resulting journal;
+4. independently replay resulting journal;
 5. compare replay projection with committed graph state.
 
 Cover first materialization, changed value, `Unchanged`, cache revalidation, explicit invalidation, transitive stale propagation, deletion, and concurrent transaction finalization.
 
-Every ordinary ValidateEvent test asserts that the basis contains exactly one entry per current distinct direct input NodeKey, uses no `"unknown"`, names finalized current input ValueIds, and is serialized in canonical persisted NodeKeyString order.
+Every ordinary ValidateEvent test asserts the basis contains exactly one entry per current distinct direct input NodeKey, uses no `"unknown"`, names finalized current input ValueIds, and is serialized in canonical persisted NodeKeyString order.
 
 ## Causal-context closure tests
 
-Reject this malformed chain:
+Reject:
 
 ```text
 A:1
@@ -34,14 +34,14 @@ B:1 context={A:1}
 C:1 context={B:1,A:0}
 ```
 
-Also reject same-writer omission:
+and same-writer omission:
 
 ```text
 A:1 context={X:1}
 A:2 context={A:0,X:0}
 ```
 
-Generated tests assert transitivity of `happenedBefore` and that happened-before implies increasing authority.
+Generated tests assert transitivity of `happenedBefore` and happened-before implies increasing authority.
 
 The bootstrap historical-conversion exception is tested separately: a joining legacy ValueEvent may omit canonical foreign coordinates, but its actual context must still have exact own-prefix and be transitively closed over every coordinate it includes.
 
@@ -101,7 +101,9 @@ For 2–4 replicas, generate disconnected local changes, stop non-normalization 
 
 ## Same-writer recovery tests
 
-Cover exact empty->prefix restoration of an already-known writer, shorter->longer exact catch-up, allocator/high-water reconstruction, continued authoring after recovered head, overlap disagreement failure, and no re-authored duplicates.
+Cover exact empty->prefix restoration of an already-known Journal writer, shorter->longer exact catch-up, allocator/high-water reconstruction, continued authoring after recovered head, overlap disagreement failure, and no re-authored duplicates.
+
+This suite does not substitute for canonical-bootstrap creator-resume, where local state is still pre-Journal and no active Journal prefix exists.
 
 ## Absent-installation restoration tests
 
@@ -115,55 +117,107 @@ Startup with no local database tests:
 
 For generated receiver/source projections assert compatibility from one held snapshot, old history retention, repeated no-op behavior, ValueId preservation when occurrence is unchanged, proof/freshness-only repair without ValueEvent, exact target absence deletion, stale/partial validity reconstruction, and normal treatment of unseen later concurrent history.
 
-Also assert reset remains causally-later target repair; bootstrap join must never call/reset-reuse this rule for pre-existing divergent legacy values.
+### Reset proof-weakening regression
+
+Fixture:
+
+```text
+A -> B
+receiver/current:
+    A=a1
+    B=b1
+    selected B certificate = {A:a1}
+
+source target:
+    same A and B occurrences
+    no A->B validity edge
+    B stale
+```
+
+Expected:
+
+- B keeps its ValueId;
+- reset authors node-scoped `Invalidate(B,reason=reset)` before target proof;
+- target partial/all-unknown ValidateEvent is after that barrier;
+- the old full certificate is ineligible despite greater `basisMatchCount`;
+- final replay contains no A->B validity edge.
+
+### Reset persistent propagated-staleness regression
+
+Fixture source target has A stale and B stale with full B proof `{A:a1}`. Receiver reset must preserve B as persistently stale even if B is replaced during Pass 1 and the source's own B marker therefore names another ValueId.
+
+After reset:
+
+1. B has complete own proof;
+2. B has an uncovered value-scoped reset invalidation for its final `resetValueId(B)`;
+3. later `pull(A) -> Unchanged` may freshen A but MUST NOT freshen B;
+4. B becomes fresh only after B validates/recomputes.
+
+Reset remains causally-later target repair; bootstrap join must never reuse this rule for pre-existing divergent legacy values.
 
 ## Canonical bootstrap source decision tests
 
-Test the three outcomes of the configured transport-neutral cohort bootstrap source:
+Test three outcomes of configured cohort bootstrap source:
 
-1. immutable canonical bootstrap artifact exists -> join;
-2. source definitively absent -> create canonical bootstrap and freeze the artifact before ordinary authoring;
+1. immutable compatible artifact exists -> creator-resume or join depending on local fingerprint;
+2. source definitely absent -> create canonical bootstrap and freeze artifact before ordinary authoring;
 3. query/read failed or indeterminate -> migration fails and authors no canonical history.
 
-A source which cannot arbitrate concurrent first creation must return indeterminate rather than definite absence. If two distinct canonical artifacts are presented for the same cohort, reject the state as unsupported instead of payload-merging them.
+A source which cannot arbitrate concurrent first creation must return indeterminate rather than definite absence. Distinct canonical artifacts for one cohort are unsupported.
 
 ## Canonical bootstrap artifact tests
 
 For a created artifact assert:
 
-- `bootstrapFrontier` is exactly the creator frontier immediately after bootstrap publication;
+- `bootstrapFrontier` is exactly creator frontier immediately after bootstrap publication;
 - reads are bounded to that frontier and do not expose later records;
-- `databaseVersion` and `graphSchemeString` are the original bootstrap target compatibility metadata;
-- ordinary Journal authoring cannot begin before the artifact is durably established;
-- the configured cohort source can still retrieve exactly that artifact after the creator has authored later Journal history and after active cohort replicas have migrated to newer versions;
-- artifact bytes/meaning do not change as active cohort state advances.
+- `databaseVersion` and `graphSchemeString` are bootstrap target compatibility metadata;
+- ordinary Journal authoring cannot begin before artifact is durably established;
+- artifact bytes/meaning are immutable while this software release claims support for that target;
+- a normal current `JournalSnapshot` containing the prefix is rejected as substitute.
 
-A normal current `JournalSnapshot` containing the bootstrap prefix must be rejected as a substitute for the canonical artifact.
+The spec does **not** require a future release to retain this old bootstrap target indefinitely. If artifact version/schema differs from the running release's configured expected bootstrap target, startup fails with `JournalVersionCompatibilityError` before authoring history.
+
+### Creator-resume crash regression
+
+Fixture:
+
+1. legacy creator C receives `DefinitelyAbsent`;
+2. C publishes canonical artifact durably;
+3. C crashes before local Journal cutover;
+4. restart still sees C's pre-Journal database and source now returns `Exists(artifact)`.
+
+Expected when `artifact.creatorWriter == C.fingerprint` and semantic legacy target still equals artifact projection:
+
+- install exactly artifact records as C's local Journal stream;
+- author no duplicate bootstrap records;
+- reconstruct writer head, `last_node_index`, authority high-water, projection/indexes;
+- atomically cut over successfully.
+
+If local legacy target differs, fail `JournalBootstrapForkError` and author nothing. A different fingerprint cannot use creator-resume.
 
 ### Post-bootstrap rollback regression
 
 Fixture:
 
 ```text
-T0 canonical artifact:
+canonical artifact:
     K=v1
-
-later on creator C:
+creator later:
     K=v2
     create N
-
 late legacy J:
     K=v1
     N absent
 ```
 
-Expected bootstrap join:
+Expected join against supported frozen artifact:
 
-- J sees only the frozen T0 artifact;
-- J reuses canonical ValueId for K=v1 and authors no replacement for K;
-- J authors no delete for N because N is not in the bootstrap cut at all;
-- after J reaches the current compatible version, ordinary synchronization imports C's post-bootstrap K=v2 and N;
-- v2 remains selected; the late host cannot roll the cohort back to v1.
+- J sees only bootstrap cut;
+- J reuses canonical ValueId for K=v1;
+- J does not create deletion evidence for N;
+- post-bootstrap v2/N can enter only through later ordinary compatible synchronization;
+- stale upgrade time never makes v1 causally newer than v2.
 
 ## Canonical bootstrap legacy-conflict tests
 
@@ -174,53 +228,45 @@ Case 1 — canonical newer value wins:
 ```text
 canonical K: modifiedAt=T2, value=c2
 late local K: modifiedAt=T1, value=l1
-T2 > T1
 ```
 
-Expected:
-
-- J authors a local historical bootstrap ValueEvent for l1;
-- the local ValueEvent context does **not** include canonical K merely because migration read the artifact;
-- canonical and local K occurrences are concurrent;
-- authority is seeded from their respective legacy modifiedAt values;
-- canonical c2 remains selected.
+Expected local historical ValueEvent is concurrent with canonical K and canonical c2 remains selected.
 
 Case 2 — late local newer value wins:
 
 ```text
 canonical K: modifiedAt=T1
 late local K: modifiedAt=T2
-T2 > T1
 ```
 
-Expected the local historical occurrence wins normally; it does not win merely because bootstrap happened later.
+Expected local historical occurrence wins normally.
 
-Case 3 — equal occurrence:
+Case 3 — equal occurrence: no local ValueEvent; canonical ValueId reused.
 
-Expected no local ValueEvent and canonical ValueId is reused.
+Case 4 — canonical present/local absent: no bootstrap DeleteEvent; canonical materialization survives.
 
-Case 4 — canonical present / local absent:
+Case 5 — local present/canonical absent: one local historical ValueEvent; local-only materialization survives.
 
-Expected no bootstrap DeleteEvent; the canonical materialization survives.
+For a shared exact occurrence stale on either legacy side, test conservative stale preservation without manufacturing another ValueId.
 
-Case 5 — local present / canonical absent:
+### Non-canonical identity-split trade-off
 
-Expected one local historical ValueEvent; the local-only materialization survives.
-
-For a shared exact occurrence which is stale on either legacy side, test conservative stale preservation without manufacturing another ValueId.
-
-## Canonical bootstrap version-chain tests
-
-Let the canonical artifact be at bootstrap target version N while the running cohort/software is at N+1 or later.
+Canonical C has older K. Late joiners J1 and J2 previously synchronized with each other and both hold the same newer legacy K occurrence, identical in NodeIdentifier/payload/timestamps, but different from canonical K.
 
 Expected:
 
-1. late legacy host joins the frozen artifact at N;
-2. artifact version/schema mismatch with the configured bootstrap target fails with `JournalVersionCompatibilityError` before history is authored;
-3. after successful join, ordinary supported Journal-aware migrations N->...->current run locally;
-4. only after reaching a compatible current version may ordinary synchronization import current cohort history.
+- J1 and J2 may independently author distinct bootstrap ValueIds for that non-canonical K;
+- after their histories synchronize, normal authority chooses one;
+- dependent certificates naming the losing bootstrap ValueId may stop matching and those dependents may become stale/recompute;
+- this is accepted by `$id-1635227135166767`, not repaired by payload-derived identity or mandatory joiner coordination.
 
-The implementation must not reinterpret a current N+1 snapshot as the N bootstrap artifact and must not mix N/N+1 record formats in one active replica.
+## Bounded bootstrap compatibility tests
+
+A canonical artifact is joinable only if its version/schema exactly equals the running release's configured expected bootstrap target.
+
+Test mismatch fails with `JournalVersionCompatibilityError` before any bootstrap history is authored.
+
+There is no test requiring arbitrary future software to retain an old artifact format or migration chain forever. Recovery of an unsupported historical target belongs to explicitly compatible software/operator lifecycle, not implicit current-version upcasting.
 
 ## Migration tests
 
@@ -237,35 +283,58 @@ Identity-specific tests:
 - `keep` preserves selected ValueId;
 - `invalidate` preserves selected cached occurrence ValueId while changing freshness/proof as specified;
 - schema/proof/freshness-only migration preserves selected ValueId;
-- `create` or genuine semantic replacement creates a new ValueEvent/ValueId;
-- two replicas may independently create different ValueIds for a genuine replacement; after later sync one wins and dependents naming a losing replacement may become stale/recompute.
+- `create` or genuine semantic replacement creates new ValueEvent/ValueId;
+- independently created replacement ValueIds may later stale dependents naming losing occurrence.
+
+### Migration proof-weakening barrier regressions
+
+Case 1:
+
+```text
+A -> B
+before: B=b1, selected certificate {A:a1}
+migration: invalidate(B)
+target: B keeps b1, stale, no A->B validity
+```
+
+Expected migration authors node-scoped B proof barrier before target partial/all-unknown certificate. Old full certificate becomes ineligible and final replay removes A->B.
+
+Case 2: stale `keep` or `override` whose existing migration semantics discard incoming proofs. The old full certificate must not survive merely because it has larger `basisMatchCount`.
+
+Generated proof-weakening cases assert every removed target validity edge is actually absent from replay.
+
+### Migration propagated-staleness regression
+
+```text
+A -> B
+initial: A fresh; B fresh with complete {A:a1}
+migration: invalidate(A)
+target: A stale; B stale by propagated persistent flag; B retains {A:a1}
+```
+
+Expected migration authors persistent value-scoped invalidation for B because B's own proof is complete even though replay at migration cut is already stale recursively through A.
+
+After migration, `pull(A) -> Unchanged` freshens A but B MUST remain stale until B validates/recomputes.
 
 ## Canonical per-record rewrite and `override()` regressions
 
-Start two replicas X and Y which both retain historical ValueEvent:
+Start replicas X and Y which both retain historical V=(A,5) for K, but only X currently selects V; Y has a later replacement.
 
-```text
-V=(A,5) for K
-payload=oldEncoding(x)
-```
-
-but only X currently selects V; Y has a later replacement for K.
-
-Run the same Journal-aware migration on both.
+Run same Journal-aware migration on both.
 
 Expected:
 
-- the pure per-record codec rewrites V to exactly the same target body on X and Y;
-- selection of V on X and non-selection on Y does not affect V's rewritten payload;
-- if X calls `override(K, ...)`, its callback result must equal the codec output for V;
-- Y need not call override for historical V for V still to be rewritten identically;
-- after later synchronization there is no `JournalForkError` for V.
+- pure per-record codec rewrites V identically on X and Y;
+- selection/non-selection does not affect V's rewritten payload;
+- if X calls `override(K, ...)`, callback result equals codec output;
+- Y need not call override for historical V for V to be rewritten identically;
+- later synchronization produces no `JournalForkError` for V.
 
-Also test two synchronized replicas both selecting V and independently performing the same valid representation-only `override()`: both retain ValueId V and no dependent becomes stale merely because representation changed.
+Also test two synchronized replicas both selecting V and performing same valid representation-only `override()`: both retain ValueId V and no dependent becomes stale merely because representation changed.
 
-Test an `override()` callback which depends on differing replica-local state and returns a value unequal to the pure codec output: migration fails on that replica before cutover; it does **not** activate a divergent body for V.
+An override callback returning value unequal to pure codec output fails before cutover and never activates divergent V body.
 
-Test semantic-changing use of `override()` is rejected rather than silently preserving identity.
+Semantic-changing use of `override()` is rejected.
 
 ## Current-format codec tests
 
@@ -280,6 +349,8 @@ A historical certificate whose explicit input set differs from current schema is
 ## Transaction failure tests
 
 Inject failures before/during publication and assert no half graph/journal commit, no durable sequence consumed by failed operation, volatile allocator/cache state does not advance past disk, and failed sync/reset/migration/bootstrap before cutover leaves old active pair selected.
+
+Include the special bootstrap case where artifact publication succeeds but local cutover fails; retry must use creator-resume rather than duplicate canonical creation.
 
 ## Performance tests are separate from correctness
 
