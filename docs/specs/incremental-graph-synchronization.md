@@ -131,8 +131,8 @@ An outer procedure may process source snapshots sequentially. Each successful pa
 These are separate lifecycle transitions:
 
 - **absent restore** — recovers this installation's continuing writer identity/history before ordinary sync;
-- **reset** — rebaselines established receiver to source projection relative to observed history; proof weakening uses node-scoped barrier and persistent target stale flags use current-value invalidation;
-- **pre-Journal bootstrap** — uses one frozen canonical cut for a supported bootstrap target; creator may resume an interrupted first cutover; equal occurrences reuse canonical ValueIds, divergent values are concurrent historical facts using legacy `modifiedAt`, and local absence is not deletion evidence;
+- **reset** — rebaselines established receiver to source projection relative to observed history; proof weakening for preserved V uses occurrence-scoped `proof(V)` barrier, while persistent target stale flags use current-value invalidation;
+- **pre-Journal bootstrap** — uses one frozen canonical cut for a supported semantic-identity bootstrap target; creator may resume an interrupted first cutover; equal occurrences reuse canonical ValueIds, divergent values are concurrent historical facts using legacy `modifiedAt`, stale shared/recursive state is preserved conservatively, and local absence is not deletion evidence;
 - **Journal-aware migration** — rewrites retained records through canonical per-record format transformation, preserves ValueIds for occurrence-preserving changes, uses proof barriers/persistent stale markers when graph flags require them, and may independently author new ValueIds for genuine replacements.
 
 Two independent late bootstrap joiners may assign distinct ValueIds to same non-canonical legacy occurrence; this accepted trade-off may later stale dependents naming losing occurrence.
