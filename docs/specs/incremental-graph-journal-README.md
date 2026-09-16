@@ -12,8 +12,8 @@ For a first implementation pass, read in this order:
 6. `incremental-graph-journal-locking.md` — finalization and atomic Journal/projection publication.
 7. `incremental-graph-journal-api.md` — current stable snapshots, bootstrap artifacts, restore, import/publication boundaries.
 8. `incremental-graph-journal-sync.md` — suffix replication, normalization, convergence.
-9. `incremental-graph-journal-reset.md` — controlled semantic rebaseline, proof weakening, persistent target staleness.
-10. `incremental-graph-journal-migrations.md` — canonical legacy bootstrap, creator resume, Journal-aware migration.
+9. `incremental-graph-journal-reset.md` — controlled semantic rebaseline, occurrence-scoped proof weakening, persistent target staleness.
+10. `incremental-graph-journal-migrations.md` — semantic-identity legacy bootstrap, creator resume, Journal-aware migration.
 11. `incremental-graph-journal-properties.md` — retained-history algebra and lifecycle distinctions.
 12. `incremental-graph-journal-theorems.md` — proof obligations.
 13. `incremental-graph-journal-examples.md` — worked traces/counterexamples.
@@ -26,7 +26,7 @@ For a first implementation pass, read in this order:
 Surrounding lifecycle specifications:
 
 - `incremental-graph-synchronization.md` — IncrementalGraph-facing synchronization shell;
-- `database-lifecycle.md` — startup/restore/open/migrate/sync/reset/rebuild lifecycle.
+- `database-lifecycle.md` — startup/restore/open/bootstrap/migrate/sync/reset/rebuild lifecycle.
 
 ## One-sentence model
 
@@ -44,19 +44,23 @@ Within Journal 3 scope the specification defines:
 - causality-respecting total conflict authority;
 - replay-complete ValueEvents and self-describing validation certificates;
 - certificate selection by basis applicability, then current-value invalidation coverage, then authority;
-- node-scoped maintenance proof barriers when reset/migration must remove currently-valid edges from a preserved occurrence;
-- persistent maintenance stale markers when a target-stale occurrence's own proof is otherwise complete, even if current replay is already stale recursively through an input;
+- three separate invalidation meanings: node invalidation, occurrence freshness invalidation, and occurrence-specific proof barrier;
+- occurrence-scoped `proof(ValueId)` maintenance barriers when reset/migration must weaken proof without actually invalidating the node;
+- persistent stale markers when an occurrence's own proof is ready but stored stale state must survive later upstream `Unchanged`;
 - ordinary event emission with commit-time IDs/contexts/HLC allocation;
 - stable ordinary source snapshots whose compatibility metadata and records belong to one source cut;
 - receiver-less restoration before fresh identity generation for absent installation;
 - exact same-writer prefix recovery for an existing behind Journal receiver;
 - suffix synchronization and persistent normalization;
 - one immutable canonical bootstrap artifact per supported legacy synchronization cohort, frozen at original bootstrap frontier/target version-schema;
-- exact creator-resume after artifact-publication/local-cutover crash, with semantic mismatch rejected as `JournalBootstrapForkError`;
-- late bootstrap joining as historical legacy-state merge rather than reset: equal occurrences share canonical ValueIds, divergent values remain concurrent, legacy modifiedAt drives normal conflict preference, and cache absence does not become deletion evidence;
-- accepted identity split for independently converted identical **non-canonical** legacy occurrences (`$id-1635227135166767`);
+- **bootstrap as graph-semantic identity** over already-persisted legacy state: no ordinary semantic migration callback, wall-clock-created value, or allocator-dependent new graph identity is allowed before the canonical Journal cut;
+- exact creator-resume after artifact-publication/local-cutover crash by comparing persisted legacy state directly, without rerunning migration callbacks;
+- late bootstrap joining as historical legacy-state merge rather than reset;
+- exact shared occurrences retain canonical proof identity and remain stale if either legacy side was stale;
+- bootstrap join persists recursive-only stale dependents over the selected DAG, so upstream `Unchanged` cannot silently freshen them;
+- accepted identity split for independently converted identical non-canonical legacy occurrences (`$id-1635227135166767`);
 - bootstrap support bounded by the running release's explicitly supported bootstrap target rather than permanent compatibility with every historical artifact;
-- preservation of ValueIds across `keep`, `override`, `invalidate`, proof-only, freshness-only, and other occurrence-preserving migration changes;
+- preservation of ValueIds across `keep`, `override`, `invalidate`, proof-only, freshness-only, and other occurrence-preserving Journal-aware migration changes;
 - one pure per-record database-format rewrite for retained history, independent of selected/non-selected status;
 - `override()` as assertion against canonical rewrite rather than replica-local immutable-record mutation;
 - independent Journal-aware migration for genuine replacement occurrences, accepting possible downstream staleness after later synchronization;
@@ -73,14 +77,16 @@ The worked examples/tests intentionally include these non-obvious failures which
 
 - A observes B which observed C, but A's persisted context omits C -> malformed non-transitive history;
 - two equally matching validations compete, but only one causally covers current-value invalidation -> covering certificate wins before clock authority;
-- a later weaker maintenance certificate is intended to remove an old validity edge -> without node-scoped proof barrier, older stronger certificate would keep winning;
+- maintenance wants a weaker proof for V -> without `proof(V)` barrier, older stronger V certificate keeps winning; with a node barrier, unrelated V2 would be tainted;
 - a migration/reset dependent is target-stale only because an input is stale -> without current-value marker, later upstream `Unchanged` could freshen dependent incorrectly;
 - a newly selected remote dependent is stale only because direct input is stale -> synchronization persists that occurrence's staleness;
-- creator publishes bootstrap artifact and crashes before local cutover -> restart resumes exact artifact rather than getting stuck or duplicating history;
-- creator-resume artifact projection disagrees with local legacy state -> bootstrap fork, not silent continuation;
+- pre-Journal bootstrap target would require legacy `create()` -> reject compatibility because execution-time timestamps/host-local allocation would make canonical interpretation nondeterministic;
+- creator publishes bootstrap artifact and crashes before local cutover -> restart compares persisted legacy graph directly and resumes exact artifact without rerunning migration callbacks;
+- canonical exact shared occurrence is stale while joining copy is fresh -> joining host must not author a causally-later validation which clears canonical stale evidence;
+- joining host makes a shared input stale while canonical dependent stays selected -> bootstrap propagation must persist dependent stale state too;
 - a late host receives current post-bootstrap snapshot instead of frozen bootstrap cut -> stale legacy state could overwrite newer Journal history;
-- a late divergent legacy value is authored causally after canonical value merely because migration read it -> upgrade time would incorrectly beat legacy modifiedAt conflict semantics;
-- two late joiners carry same non-canonical legacy occurrence -> they may receive distinct ValueIds and later stale dependents; this is explicit accepted trade-off, not hidden guarantee;
+- a late divergent legacy value is authored causally after canonical value merely because bootstrap code read it -> upgrade time would incorrectly beat legacy modifiedAt conflict semantics;
+- two late joiners carry same non-canonical legacy occurrence -> they may receive distinct ValueIds and later stale dependents; explicit trade-off, not hidden guarantee;
 - a canonical materialization is absent from one legacy cache -> bootstrap must not manufacture deletion;
 - old bootstrap artifact no longer matches running release's supported target -> compatibility failure instead of permanent historical compatibility machinery;
 - same historical ValueEvent is selected on one replica but not another during format migration -> both rewrite it identically;
