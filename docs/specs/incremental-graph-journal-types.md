@@ -64,6 +64,8 @@ A version migration which changes journal representation rewrites every retained
 - causal context/authority meaning;
 - ValueId and other cross-record reference identity.
 
+The rewrite contract is total over the **retained source-version record domain**, not merely over nodes which still exist in the target schema. Historical ValueEvents, NodeKeys, validation bases, and other records for a node family removed from the target graph must still have one deterministic target-format representation. Target-schema membership is not a prerequisite for preserving historical bytes/meaning. If a source->target migration cannot define such a total deterministic rewrite, that database-version migration is unsupported and must fail before cutover.
+
 The old active replica and the inactive migration target may temporarily use different whole-database formats while migration is in progress. Each replica itself remains homogeneous.
 
 ## Record classes
@@ -181,7 +183,7 @@ Deletion ends that materialization lineage. Later materialization from semantic 
 
 Synchronization copies a foreign ValueEvent unchanged. Receipt does not create another local ValueEvent.
 
-Reset/bootstrap/migration may create a new ValueEvent carrying an already-existing physical NodeIdentifier only when the applicable lifecycle rule genuinely creates or replaces the semantic value occurrence. The new event ID is then a distinct ValueId. Proof/freshness-only changes and semantic-preserving migration `override()` do not create a new ValueEvent; `override()` changes target-version representation through the whole-history format rewrite while preserving the existing ValueId.
+Reset/bootstrap/migration may create a new ValueEvent carrying an already-existing physical NodeIdentifier only when the applicable lifecycle rule genuinely creates or replaces the semantic value occurrence. The new event ID is then a distinct ValueId. Proof/freshness-only changes and whole-Journal representation rewriting preserve the existing ValueId.
 
 ## NodeIdentifier uniqueness basis
 
@@ -302,7 +304,7 @@ A newly computed changed value normally authors its ValueEvent before this Valid
 InvalidateScope =
     | { kind: "node" }
     | { kind: "value", value: ValueId }
-    | { kind: "proof", value: ValueId }
+    | { kind: "proof", value: ValueId, input: NodeKey }
 ```
 
 The three scopes deliberately represent different semantic facts.
@@ -325,17 +327,19 @@ It stops applying when another ValueId becomes the selected current occurrence.
 
 ### Proof scope
 
-Proof-scoped invalidation is an occurrence-specific **certificate barrier**:
+Proof-scoped invalidation is an occurrence-and-input-specific **proof-edge barrier**:
 
 ```text
-{ kind: "proof", value: V }
+{ kind: "proof", value: V, input: D }
 ```
 
-It makes certificates targeting V which did not causally observe the barrier ineligible. A causally later validation targeting V may establish a weaker/different proof after the barrier.
+It means that the incoming proof edge `D -> K` for exact occurrence V no longer counts unless a validation which causally observes the barrier explicitly re-establishes that edge.
 
-Proof scope does **not** by itself mean that V carries a persistent stale flag independent of proof. Persistent freshness uses value scope. Proof scope also does not affect certificates for another ValueId selected later or concurrently.
+The barrier is evaluated per basis entry rather than making the whole certificate ineligible. Thus concurrent maintenance on the same V composes monotonically: barriers for different inputs remove the union of those proof edges, while an unrelated retained edge remains usable. Two replicas which independently remove the same input proof do not invalidate each other's otherwise identical target certificates merely because the barriers are concurrent.
 
-Core Journal 3 uses proof scope for maintenance-only proof weakening in reset/migration. Ordinary explicit invalidation remains node-scoped.
+A proof-edge barrier does **not** by itself mean V carries a persistent stale flag independent of proof. Persistent freshness uses value scope. It also does not affect certificates for another ValueId selected later or concurrently.
+
+Core Journal 3 uses proof scope for maintenance-only proof weakening in bootstrap/reset/migration. Ordinary explicit invalidation remains node-scoped.
 
 ## InvalidateEvent
 
@@ -347,9 +351,9 @@ InvalidateEvent = SemanticEventBase & {
 }
 ```
 
-`reason` is historical/debugging classification. Replay behavior comes from scope, causality, selected value, and certificates.
+`reason` is historical/debugging classification. Replay behavior comes from scope, causality, selected value, input edge, and certificates.
 
-A value-scoped or proof-scoped invalidation must name a causally prior retained ValueEvent for the same semantic node.
+A value-scoped or proof-scoped invalidation must name a causally prior retained ValueEvent for the same semantic node. A proof scope's `input` is a semantic NodeKey naming the incoming proof edge being retired; it need not name a currently selected input occurrence.
 
 ## WriterStateRecord
 
