@@ -105,11 +105,13 @@ Historical B/C values remain retained but cannot silently reappear.
 
 After source history and normalization are incorporated, syncing unchanged source again produces no records and no projection change.
 
-## Trace 12: exact same-writer prefix recovery
+## Trace 12: continuation-safe same-writer recovery
 
-Local A has A:1..100. A continuation-safe recovery source has agreeing A:1..120 and guarantees 120 is at least the greatest A coordinate ever durably published. Import 101..120, rebuild writer state, continue after 120. Overlap disagreement is a fork.
+Local A has A:1..100. `InstallationRecoverySource` returns agreeing A:1..120 and guarantees that after recovery no previously-authored `A:q`, `q > 120`, can later enter supported retained history. Import 101..120, rebuild writer/allocator/high-water state, continue after 120. Overlap disagreement is a fork.
 
-A generic peer snapshot is insufficient to authorize continuation if it cannot guarantee no longer A prefix exists elsewhere.
+A generic peer snapshot containing A:1..120 is insufficient because it does not carry this continuation-safe guarantee.
+
+If A:121..125 existed only on an irretrievably lost old disk and cannot re-enter supported history, their former local existence does not by itself make recovery from 120 unsafe.
 
 ## Trace 13: certificate selection prefers invalidation coverage
 
@@ -134,7 +136,7 @@ K1 is stale due to `Invalidate(value=K1)`. Later K2 wins. K1 marker remains hist
 
 ## Trace 17: receiver-less absent-state restore
 
-No local database exists. Recovery source yields continuation-safe snapshot S with localWriter A. Startup restores A history/allocator/projection. Query failure or inability to guarantee the complete published A stream does not generate fresh writer B and does not resume A from a stale prefix.
+No local database exists. Recovery source yields continuation-safe snapshot S with localWriter A. Startup restores A history/allocator/projection. Query failure or inability to establish continuation safety does not generate fresh writer B and does not resume A from a stale prefix.
 
 ## Trace 18: canonical bootstrap source decision
 
@@ -159,7 +161,7 @@ validity=...
 
 Canonical bootstrap journals those exact facts. It does not invoke an ordinary migration callback first.
 
-Suppose a proposed legacy -> bootstrap-target path would call current `MigrationStorage.create()` for N. That operation would allocate a host-local identifier and execution-time timestamps. Such a path is rejected with `JournalVersionCompatibilityError` before bootstrap history is authored.
+Suppose a proposed legacy -> bootstrap-target path would create N with a fresh host-local identifier and execution-time timestamps. Such a path is rejected with `JournalVersionCompatibilityError` before bootstrap history is authored.
 
 If N genuinely belongs in a later schema, bootstrap first establishes Journal identity for the persisted legacy graph; then Journal-aware migration may create N as a real migration occurrence.
 
@@ -269,7 +271,7 @@ A future release which no longer supports artifact B's bootstrap target rejects 
 
 X/Y retain historical V, selected only on X. The total pure format codec rewrites V identically on both, including if V's node family is no longer present in the current target schema.
 
-X's selected semantic occurrence uses `keep`; there is no second Journal-aware `override(valueCallback)` implementation. Later sync therefore cannot discover two different target bodies for V merely because selection differed across replicas.
+X's selected semantic occurrence uses `keep`. The canonical codec is the only representation rewrite, so later synchronization cannot discover two different target bodies for V merely because selection differed across replicas.
 
 ## Trace 30: independent genuine replacement migration may stale dependent
 
@@ -338,14 +340,22 @@ Legacy K has inputs A/B, is stale, with only A->K validity. Canonical bootstrap 
 
 ## Trace 40: stale recovery source cannot resume writer
 
-A previously published through A:905 and another replica retained it. A loses local state. A recovery source can only provide A:1..900 and cannot prove that 900 is the complete published A stream.
+A recovery source offers A:1..900, but supported surviving state can later reintroduce A:901..905. Head 900 is therefore not continuation-safe.
 
-It must report indeterminate/error. Restoring and continuing at A:901 would fork immutable writer IDs and could reuse NodeIdentifier allocation indices represented only in A:901..905.
+The recovery source must return indeterminate/error. Restoring and continuing at A:901 would fork immutable writer IDs and could reuse NodeIdentifier allocation indices represented by the recoverable higher prefix.
 
-## Trace 41: projection rebuild
+By contrast, if A:901..905 existed only on an irretrievably lost disk and cannot re-enter supported history, their former local existence does not by itself make head 900 unsafe.
+
+## Trace 41: reset cannot recover writer inline
+
+Receiver local writer A is at A:1..900. Held reset `JournalSyncSource` contains agreeing A:1..905.
+
+`resetTo()` fails `JournalWriterBehindError` before importing any source record or authoring a reset event. The active receiver remains unchanged. Lifecycle first runs `recoverExistingWriterFrom(InstallationRecoverySource)`; only after that source establishes a continuation-safe head may reset be retried.
+
+## Trace 42: projection rebuild
 
 Authoritative Journal is valid but derived graph bytes are damaged. Maintenance rebuilds projection without semantic event.
 
-## Trace 42: synchronization normalization is real history
+## Trace 43: synchronization normalization is real history
 
 Receiver sees winning delete A from Y and authors dependent delete B; unseen concurrent A2 from Z arrives later. The B deletion remains real history. Different counterfactual schedules may author different normalization history while each fair execution converges.
