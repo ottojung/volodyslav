@@ -30,17 +30,19 @@ require a special `rendered/_meta/` scan path for this feature.
 The fingerprint is generated with `random.basicString(capabilities)` using
 the project's seeded PRNG. It is generated exactly once:
 
-1. **Fresh first boot**: No `r/global/fingerprint` exists and no `r/`
-   snapshot data is available. A new fingerprint is generated.
+1. **Fresh first boot**: No `r/global/fingerprint` exists and the
+   `InstallationRecoverySource` has definitively established that there is no
+   continuing state for this installation. A new fingerprint is generated.
 
 2. **First-boot restore from snapshot**: No live database exists. The
-   snapshot's `r/global/fingerprint` becomes the live database fingerprint —
-   it is imported alongside the rest of the replica data via the standard
-   scan-from-filesystem path.
+   `InstallationRecoverySource` returns a continuation-safe snapshot as defined
+   by `database-lifecycle.md` §4.1–4.2. Only then does the snapshot's
+   `r/global/fingerprint` become the live database fingerprint, imported
+   alongside the rest of the replica data.
 
-   This path exists for a host recovering its **own** previously-synchronized
-   state (see `database-lifecycle.md` §4.2). The fingerprint is preserved
-   because the host is resuming its own allocation namespace.
+   An indeterminate recovery result fails startup and MUST NOT fall back to
+   generating a fresh fingerprint. The fingerprint is preserved because the
+   installation is resuming its own allocation namespace.
 
 3. **Reset/import into an existing live database**: The live database already
    has a local fingerprint. The pre-import local fingerprint is explicitly
@@ -51,11 +53,10 @@ the project's seeded PRNG. It is generated exactly once:
 
 Taking a rendered snapshot from one host and using it to bootstrap a second,
 concurrently-writing host is outside the supported lifecycle model (see
-`database-lifecycle.md` §10). If performed anyway, the two hosts would share
-a fingerprint and could allocate colliding identifiers. Sync merge would
-detect this as an `IdentifierLookupConflictError` (the same identifier
-mapped to different semantic keys) and fail cleanly for the affected host
-without corrupting either side.
+`database-lifecycle.md` §14). If performed anyway, both installations may
+author under the same Journal writer identity. Journal synchronization detects
+this as `JournalForkError` when the same `JournalRecordId` has different
+content and fails without reconciling the two writer histories as one.
 
 New hosts obtain a distinct fingerprint through the fresh-creation path
 (`database-lifecycle.md` §4.3). There is no supported "clone this database
@@ -78,8 +79,9 @@ fail hard instead of being silently accepted or replaced.
   (from the currently active replica).
 - Available to all identifier allocation code paths through `_computed`.
 - Never overwritten by sync, reset, or import once a live DB exists.
-- On first boot from a downloaded/restored snapshot, the snapshot's
-  `r/global/fingerprint` becomes the local allocation fingerprint.
+- On first boot from restored state, the snapshot fingerprint is adopted only
+  when `InstallationRecoverySource` has returned a continuation-safe snapshot
+  for that continuing installation; an indeterminate result fails startup.
 - On non-first-boot reset, the pre-import local fingerprint is written back
   to the target replica's global sublevel before the replica switch.
 
@@ -106,10 +108,10 @@ remote hosts during sync/reset. However:
   local fingerprint by explicitly writing it back to the target replica
   before the replica pointer switch.
 
-- **First-boot restore**: There is no existing local fingerprint. The
-  snapshot's `r/global/fingerprint` becomes the local allocation fingerprint.
-  This is the supported path for a host recovering its own prior synchronized
-  state. Cross-host snapshot cloning is unsupported (see Generation above).
+- **First-boot restore**: There is no existing local fingerprint. A snapshot
+  fingerprint is adopted only through the continuation-safe receiver-less
+  recovery path in `database-lifecycle.md` §4.1–4.2. Cross-host snapshot
+  cloning is unsupported (see Generation above).
 
 Through the supported lifecycle transitions, each independently-created host
 obtains a distinct fingerprint. This is what makes node identifiers globally
