@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document defines the software-facing semantic boundaries required by Journal 3. Names may vary in implementation, but ownership, snapshot, recovery, causal, compatibility, streaming, and atomicity rules are normative.
+This document defines the software-facing semantic boundaries required by Journal 3. Names may vary in implementation, but ownership, snapshot, restore, causal, compatibility, streaming, and atomicity rules are normative.
 
 This API does not define or replace a Git/backend protocol.
 
@@ -50,7 +50,7 @@ Snapshot laws:
 6. retained history is contiguous and contexts are transitively closed;
 7. reads never invoke computors or mutate state.
 
-A generic `JournalSnapshot` says nothing about whether its `localWriter` head is safe to **resume authoring that writer after local history loss**.
+A generic `JournalSnapshot` says nothing about whether it is suitable for restoring a completely absent installation and safely resuming the restored local writer.
 
 ## JournalSyncSource
 
@@ -62,7 +62,7 @@ JournalSyncSource {
 
 Synchronization/reset obtain compatibility metadata from the returned held snapshot itself. Earlier mutable metadata is insufficient.
 
-A generic sync source is not continuation authority for the receiver's own writer.
+A generic sync source does not repair or redefine the receiver's own local-writer history.
 
 ## JournalPublication
 
@@ -131,13 +131,13 @@ synchronizeFrom(source: JournalSyncSource) -> Promise<SyncResult>
 
 Success means source compatibility came from the held snapshot, imported records were retained unchanged, normalization was complete, and active graph equals Journal replay.
 
-If the source exposes a longer prefix of the receiver's **own** writer, this operation does not recover that writer. It fails with `JournalWriterBehindError` before receiver-authored normalization/cutover and requires authoritative recovery first.
+If the source exposes a longer prefix of the receiver's **own** writer, synchronization fails with `JournalWriterBehindError` before receiver-authored normalization/cutover. Under the lifecycle fault model this is evidence of corrupted/unsupported state—such as partial local rollback/loss or unsupported cloning—not a normal same-writer recovery case.
 
 A fully absent installation cannot call this operation because no receiver writer identity exists yet.
 
 ## InstallationRecoverySource
 
-Writer continuation after local absence/rollback uses a stronger source:
+`InstallationRecoverySource` is used only when the local IncrementalGraph database is completely absent and startup must decide whether to restore this installation's synchronized state or create a fresh identity:
 
 ```text
 InstallationRecoverySource {
@@ -152,13 +152,15 @@ This semantic interface intentionally contains no hostname, Git branch name, rep
 
 `InstallationRecoverySource` does not imply a single server, branch, authority, or storage location. An implementation may consult one source, several sources, replicated metadata, a transport-specific publication path, or another backend protocol. Journal code only consumes the semantic answer.
 
-`ContinuationSafeSnapshot` contains an ordinary stable Journal snapshot plus the guarantee defined by `database-lifecycle.md` §4.1. For its `localWriter = A` and `frontier[A] = q`, no previously authored A record with sequence greater than q may later enter supported retained history after recovery.
+`ContinuationSafeSnapshot` contains an ordinary stable Journal snapshot plus the absent-restoration guarantee defined by `database-lifecycle.md` §4.1. For its `localWriter = A` and `frontier[A] = q`, after restoring the completely absent installation no previously authored A record with sequence greater than q may later enter supported retained history.
 
-How that guarantee is established belongs to the supported backend model. Recovery may rely on backend invariants which make some hypothetical histories impossible; it is not required to discover or defend against copies which cannot exist or later re-enter under that model. A source may return `Exists(ContinuationSafeSnapshot)` only when its backend-specific guarantees establish the property.
+How that guarantee is established belongs to the supported backend model. Restoration may rely on backend invariants which make some hypothetical histories impossible; it is not required to discover or defend against copies which cannot exist or later re-enter under that model. A source may return `Exists(ContinuationSafeSnapshot)` only when its backend-specific guarantees establish the property.
 
-Records authored only on local storage and then irretrievably lost do not make q unsafe when the backend model guarantees that no surviving copy can later reintroduce them. A generic readable peer copy is not sufficient merely because it appears newest. If continuation safety cannot be established, the source returns `IndeterminateOrError`.
+Records authored only on the completely lost local storage do not make q unsafe when the backend model guarantees that no surviving copy can later reintroduce them. If continuation safety cannot be established, the source returns `IndeterminateOrError`.
 
-The current Git-backed flow is one possible implementation of this abstraction; `database-lifecycle.md` §4.1 explains why its normal publication model can establish continuation safety without storing transport locators in the database. That transport shape is not part of this API contract.
+This source is **not** an API for repairing an existing local database that is truncated, rolled back, partially restored, or otherwise missing some of its own writer history. Those states are outside the supported lifecycle model under `$id-6158827469032147`.
+
+The current Git-backed flow is one possible implementation of this abstraction; `database-lifecycle.md` §4.1 explains why its normal publication model can establish absent-restoration safety without storing transport locators in the database. That transport shape is not part of this API contract.
 
 ## Receiver-less absent restore
 
@@ -166,6 +168,8 @@ The current Git-backed flow is one possible implementation of this abstraction; 
 restoreAbsentFrom(source: InstallationRecoverySource)
     -> Promise<RestoredDatabase>
 ```
+
+Precondition: no local IncrementalGraph database/writer identity exists. An existing local database, even if damaged or older, MUST NOT be routed through this API as though it were absent.
 
 On `Exists(S)`:
 
@@ -177,30 +181,6 @@ On `Exists(S)`:
 
 `DefinitelyAbsent` permits fresh identity creation. Query/read/continuation-safety uncertainty does not.
 
-## Existing-writer authoritative recovery
-
-```text
-recoverExistingWriterFrom(source: InstallationRecoverySource)
-    -> Promise<RecoveredDatabase>
-```
-
-Preconditions:
-
-- local database already has writer A;
-- source returns `Exists(S)` with `S.localWriter == A` and a continuation-safe A head;
-- local A prefix is an exact prefix of S's A stream;
-- any imported foreign history required by retained event contexts is available.
-
-Recovery:
-
-1. imports missing A suffix and required causal history;
-2. rejects divergent overlap as `JournalForkError`;
-3. reconstructs A head, allocator watermark, authority high-water, projection/indexes;
-4. atomically publishes the recovered state; and
-5. only then permits another A-authored record, strictly after the continuation-safe recovered head.
-
-If continuation safety cannot be established, recovery fails; Journal 3 does not guess a sequence or silently roll over writer identity.
-
 ## Reset API
 
 ```text
@@ -209,7 +189,7 @@ resetTo(source: JournalSyncSource) -> Promise<ResetResult>
 
 Reset requires an established writable receiver and one held compatible snapshot.
 
-If that snapshot reveals a longer receiver-local writer prefix, reset fails `JournalWriterBehindError` before importing records or authoring events. A `JournalSyncSource` cannot authorize continuation; lifecycle must complete `recoverExistingWriterFrom(InstallationRecoverySource)` first, then retry reset.
+If that snapshot reveals a longer receiver-local writer prefix, reset fails `JournalWriterBehindError` before importing records or authoring events. This indicates corrupted/unsupported receiver lifecycle state; reset does not repair it and there is no supported existing-writer rollback-recovery API.
 
 Reset maintenance semantics include:
 
@@ -330,6 +310,8 @@ JournalSourceReadError
 InvalidMigrationDecisionError
 ```
 
+`JournalWriterBehindError` is a corruption/unsupported-lifecycle diagnostic for an established receiver whose own writer history is demonstrably shorter than surviving supported history. It is not a request to run an existing-writer recovery protocol.
+
 ## Locking ownership
 
-Ordinary publications use the existing graph finalization/darkroom boundary. Synchronization, reset, recovery, restore, bootstrap/migration, and rebuild use the existing exclusive maintenance lifecycle for inactive construction/final cutover. Journal 3 adds no independent lock hierarchy.
+Ordinary publications use the existing graph finalization/darkroom boundary. Synchronization, reset, absent restore, bootstrap/migration, and rebuild use the existing exclusive maintenance lifecycle for inactive construction/final cutover. Journal 3 adds no independent lock hierarchy.
