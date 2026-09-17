@@ -55,17 +55,19 @@ If a selected occurrence has complete **effective** own proof but is stale becau
 
 If an ordinary source contains a longer prefix of the receiver's **own** local writer, ordinary sync does not adopt that suffix and continue authoring.
 
-It fails `JournalWriterBehindError` and requires authoritative same-writer recovery through the configured `InstallationRecoverySource`. A generic peer may prove that the receiver is behind, but it cannot establish that the observed head is continuation-safe under `database-lifecycle.md` §4.1.
+It fails `JournalWriterBehindError` and requires same-writer recovery through an `InstallationRecoverySource` which can establish a continuation-safe head. A generic peer may prove that the receiver is behind, but merely appearing newest does not itself prove that no older higher record can later re-enter under the supported backend model.
 
 ## Absent-installation startup
 
-A machine with no local database/writer identity queries the installation recovery source **before** generating a fresh fingerprint.
+A machine with no local database/writer identity queries an installation recovery source **before** generating a fresh fingerprint.
 
 - continuation-safe synchronized state exists -> restore that writer/history/projection/allocator state;
 - definite absence -> fresh identity may be created;
 - read/query/continuation-safety uncertainty -> fail, no fresh fallback.
 
-For writer A at recovered head q, continuation-safe means that after recovery no previously authored `A:r` with `r > q` can later enter supported retained history. Records lost only with the old local disk and unable to re-enter do not make q unsafe. The guarantee comes from the recovery authority's transport/storage contract; Journal 3 does not require discovering/contacting every peer.
+For writer A at recovered head q, continuation-safe means that after recovery no previously authored `A:r` with `r > q` can later enter supported retained history. The persistence/recovery implementation may rely on guarantees of its supported backend model to establish this and need not account for hypothetical copies that cannot arise or later re-enter under that model. Records lost only with local storage and unable to re-enter do not make q unsafe.
+
+The recovery source abstraction does not require one server, one branch, one authority, or one storage topology. Transport locators such as hostnames or branch names remain outside IncrementalGraph-owned persisted state and semantic recovery APIs.
 
 ## Existing-writer recovery
 
