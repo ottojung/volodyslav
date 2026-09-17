@@ -33,7 +33,7 @@ A replica may retain prefixes from many writers. Foreign records keep their orig
 
 Journal records have no per-record version tag. Format-changing migration rewrites the complete retained source-version history into one canonical target representation before cutover while preserving record IDs and historical meaning.
 
-That transform is total over retained history, including records for node families absent from the target schema. If some retained record has no deterministic target representation, the migration is unsupported.
+That transform is total over retained history, including records for node families absent from the target schema. If some retained record has no deterministic target representation, migration fails `JournalVersionCompatibilityError` before cutover.
 
 ## Core invariants
 
@@ -78,7 +78,7 @@ A `ValueId` is the JournalRecordId of one semantic value occurrence. Equal paylo
 
 `Unchanged` and cache revalidation preserve the current ValueId and add proof history as needed.
 
-Reset/migration likewise preserve ValueId whenever the semantic occurrence survives. Representation-only Journal migration preserves the occurrence through the whole-history codec; selected preserved state uses `keep`, not legacy value-producing `override()`.
+Reset/migration likewise preserve ValueId whenever the semantic occurrence survives. Representation-only Journal migration preserves the occurrence through the canonical whole-history codec; selected preserved state uses `keep`.
 
 ## Validation and invalidation
 
@@ -146,9 +146,11 @@ No computor runs during sync.
 
 A generic peer snapshot is insufficient to resume a writer after local history loss.
 
-The configured `InstallationRecoverySource` must guarantee that its continuation-safe snapshot contains the complete local-writer stream through the greatest coordinate durably published by supported lifecycle state and capable of re-entering history.
+For writer A at recovered head q, `InstallationRecoverySource` must establish the `database-lifecycle.md` §4.1 continuation-safe guarantee:
 
-If that completeness is indeterminate, writer continuation fails rather than guessing a sequence. The same source governs both absent-installation restore and recovery of a behind existing writer.
+> after recovery, no previously authored A record with sequence greater than q can later enter supported retained history for writer A.
+
+This is about future admissible history, not every record once committed to a lost local disk. If continuation safety is indeterminate, writer continuation fails rather than guessing a sequence. The same recovery source governs absent-installation restore and recovery of a behind existing writer.
 
 ## Canonical pre-Journal bootstrap
 
@@ -186,7 +188,7 @@ Journal-aware migration has two layers:
 1. total deterministic whole-history format rewrite;
 2. semantic target repair.
 
-Representation-only change uses the codec plus `keep`; Journal-aware evaluation of legacy `override(nodeIdentifier,value)` is invalid.
+Representation-only change uses the canonical codec plus `keep`.
 
 Semantic migration:
 
@@ -203,7 +205,9 @@ Independent genuine replacements may create different ValueIds on different repl
 
 Reset retains observed receiver/source history and establishes the requested source projection relative to that observed history.
 
-It preserves an already-matching occurrence, creates/replaces only when semantic occurrence state differs, uses `proof(V,D)` per removed incoming edge, persists target stale flags with `value(V)`, and authors DeleteEvent for target absence when necessary.
+If the held reset source is ahead for the receiver's own local writer, reset fails `JournalWriterBehindError` before source import or reset authoring; lifecycle writer recovery must complete first.
+
+Otherwise reset preserves an already-matching occurrence, creates/replaces only when semantic occurrence state differs, uses `proof(V,D)` per removed incoming edge, persists target stale flags with `value(V)`, and authors DeleteEvent for target absence when necessary.
 
 Reset repair is intentionally causally later than all history it observed. That rule is not reused for pre-Journal bootstrap conflict conversion.
 
