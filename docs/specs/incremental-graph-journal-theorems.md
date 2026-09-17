@@ -58,11 +58,13 @@ Every ValueId reference names a ValueEvent in the referencing event's causal pas
 
 For mutually compatible same-version causally closed prefix Journals, immutable prefix union is idempotent, commutative, and associative. Same-ID disagreement is a fork.
 
-## Law 9: writer continuation requires authoritative completeness
+## Law 9: writer continuation requires a continuation-safe head
 
-A longer agreeing prefix of writer A may be **retained** as information whenever valid, but it authorizes continued allocation under A only when the configured `InstallationRecoverySource` establishes that its recovered A head is the complete durable A stream capable of later re-entering supported history.
+For writer A and recovered head q, continued allocation under A is allowed only when the configured `InstallationRecoverySource` establishes the §4.1 lifecycle guarantee:
 
-An arbitrary sync peer exposing a longer A prefix is insufficient. If a writable receiver discovers `source.frontier[A] > local.frontier[A]` for its own local writer through ordinary sync/reset, it must stop with `JournalWriterBehindError` before new A authoring and perform authoritative recovery first.
+> after recovery, no previously authored A record with sequence greater than q can later enter supported retained history for writer A.
+
+This predicate is about future admissible history, not every record once committed to a lost local disk. An arbitrary sync/reset source exposing a longer A prefix is insufficient. If a writable receiver discovers `source.frontier[A] > local.frontier[A]` for its own local writer through ordinary sync/reset, it must stop with `JournalWriterBehindError` before import/authorship and perform authoritative recovery first.
 
 Overlap disagreement is `JournalForkError`.
 
@@ -76,7 +78,7 @@ localWriter_after_restore == S.localWriter
 
 The writer head, allocator watermark, authority high-water, Journal, and projection are restored before new authoring.
 
-Definite absence alone permits fresh identity generation. Read/completeness uncertainty must not fall back to fresh creation.
+Definite absence alone permits fresh identity generation. Read/continuation-safety uncertainty must not fall back to fresh creation.
 
 ## Law 11: synchronization compatibility comes from one held snapshot
 
@@ -258,13 +260,11 @@ rewriteJournalRecord(R)
 
 is deterministic from R and the migration definition, independent of selection, callback traversal, mutable replica state, or which other records happen to be retained.
 
-The rewrite domain is **all retained source-version history**, including records for node families absent from target schema. If no deterministic target representation exists for some retained record, migration is unsupported and fails before cutover.
+The rewrite domain is **all retained source-version history**, including records for node families absent from target schema. If no deterministic target representation exists for some retained record, migration fails `JournalVersionCompatibilityError` before cutover.
 
 ## Law 34: Journal-aware representation-only change uses codec + keep
 
-Once Journal history exists, legacy value-producing `override(nodeIdentifier,value)` is not a semantic Journal-aware migration operation.
-
-The whole-history codec is the sole source of target representation bytes. A selected occurrence whose semantic meaning survives uses `keep`, preserving ValueId. Journal-aware use of legacy `override()` is rejected rather than evaluated as a second rewrite path.
+The whole-history codec is the sole source of target representation bytes. A selected occurrence whose semantic meaning survives uses `keep`, preserving ValueId. No second value-producing representation decision exists in the Journal-aware migration vocabulary.
 
 ## Law 35: migration preserves occurrence identity when occurrence survives
 
@@ -298,6 +298,8 @@ including exact target validity and persistent freshness behavior.
 Let `J0 = union(receiver,source)`, `P0 = project(J0)`, and `PS = project(sourceSnapshot)`.
 
 Reset preserves P0 ValueId when the requested occurrence already matches, creates ValueEvent only when the occurrence itself must change, uses DeleteEvent exactly when target requires absence, repairs removed validity with `proof(V,D)`, and persists target stale flags according to Law 22.
+
+If the held reset source is ahead for the receiver's own local writer, reset authors/imports nothing and fails `JournalWriterBehindError`; authoritative recovery must happen first.
 
 After reset:
 
@@ -334,6 +336,7 @@ At minimum model/test:
 - reference causality;
 - immutable prefix union/fork rejection;
 - continuation-safe writer recovery and stale-peer rejection;
+- reset own-writer-behind rejection before import/authorship;
 - node/value/proof-edge invalidation semantics;
 - concurrent same-ValueId proof-edge barriers;
 - selected-remote stale persistence;
@@ -342,7 +345,7 @@ At minimum model/test:
 - exact-shared bootstrap proof intersection and symmetric stale merge;
 - bootstrap recursive stale persistence;
 - total replica-independent format rewrite including target-removed node families;
-- rejection of Journal-aware legacy `override()`;
+- representation migration through codec + `keep`;
 - independent replacement-migration trade-off;
 - minimal reset; and
 - fair synchronization convergence.
