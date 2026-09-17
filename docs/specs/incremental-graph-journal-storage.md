@@ -88,19 +88,15 @@ Same-ID body disagreement is a fork. Representation migration is permitted only 
 
 ## Total whole-history format rewrite
 
-A source->target Journal format migration defines a deterministic target representation for **every retained source-format record**, not merely records whose node families remain in target schema.
+The normative source->target `JournalFormatCodec` contract and rewrite pipeline are defined in `migration.md` §Journal format codec.
 
-Historical ValueEvents, validation-basis NodeKeys, invalidations, and other records for target-removed families remain retained and require deterministic target encodings. If the transform is not total over retained source history, migration fails `JournalVersionCompatibilityError` before cutover.
+Storage must support applying that pipeline to **every retained source-format record**, not merely records whose node families remain in target schema. This includes non-selected ValueEvents, historical validation-basis NodeKeys, proof-scope input NodeKeys, and history for target-removed families.
 
-When payload representation changes, one pure per-record codec rewrites every affected retained ValueEvent independent of:
+The rewrite decodes the source record, applies the transition's pure NodeKey/value transforms, re-canonicalizes target structures, and encodes the target current format while preserving Journal identity and historical meaning. In particular, ValidationBasis entries are re-sorted by the target canonical persisted NodeKeyString order after NodeKey rewriting.
 
-- selected/non-selected status;
-- target current-schema membership;
-- replica-local mutable state;
-- callback traversal; or
-- which other records the replica retains.
+If the codec cannot produce a deterministic valid target semantic record for any retained source record, migration fails `JournalVersionCompatibilityError` before cutover.
 
-Thus two replicas retaining one historical ID produce the same target-format body.
+Thus two replicas retaining one historical ID and applying the same version transition produce the same target-format body.
 
 A selected occurrence whose semantic meaning survives uses `keep`; the canonical whole-history codec is the only representation-rewrite mechanism.
 
@@ -158,7 +154,7 @@ The artifact is immutable while a release claims support for that bootstrap targ
 
 Creator-resume installs exactly artifact history only after direct persisted-legacy equality validation.
 
-Ordinary joining retains the canonical cut verbatim and may add joining-writer historical values, `proof(V,D)` barriers for exact-shared canonical proof edges missing on the joining side, `value(V)` stale markers, and local WriterState history.
+Ordinary joining retains the canonical cut verbatim and may add joining-writer historical values, truthful locally-authored validation bases naming the joining host's own legacy input occurrences, `proof(V,D)` barriers for exact-shared canonical proof edges missing on the joining side, `value(V)` stale markers, and local WriterState history.
 
 Legacy absence does not manufacture DeleteEvent. Joining historical values may use the controlled non-causal bootstrap context rule and legacy `modifiedAt` authority.
 
