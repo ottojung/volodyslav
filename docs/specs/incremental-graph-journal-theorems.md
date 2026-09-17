@@ -16,7 +16,7 @@ At every supported committed boundary:
 semanticGraph(database.graph) == semanticGraph(project(database.journal))
 ```
 
-including ordinary operations, sync, reset, bootstrap/migration, recovery, and rebuild.
+including ordinary operations, sync, reset, bootstrap/migration, absent restoration, and rebuild.
 
 ## Law 3: local emission preservation
 
@@ -58,25 +58,31 @@ Every ValueId reference names a ValueEvent in the referencing event's causal pas
 
 For mutually compatible same-version causally closed prefix Journals, immutable prefix union is idempotent, commutative, and associative. Same-ID disagreement is a fork.
 
-## Law 9: writer continuation requires a continuation-safe head
+## Law 9: established local writer history does not roll back
 
-For writer A and recovered head q, continued allocation under A is allowed only when the configured `InstallationRecoverySource` establishes the §4.1 lifecycle guarantee:
+For an established supported database with local writer A at head q, supported lifecycle transitions do not replace its own writer stream with a proper prefix or otherwise decrease the local writer head/allocator state.
 
-> after recovery, no previously authored A record with sequence greater than q can later enter supported retained history for writer A.
+If ordinary synchronization or reset observes:
 
-This predicate is about future admissible history, not every record once committed to a lost local disk. An arbitrary sync/reset source exposing a longer A prefix is insufficient. If a writable receiver discovers `source.frontier[A] > local.frontier[A]` for its own local writer through ordinary sync/reset, it must stop with `JournalWriterBehindError` before import/authorship and perform authoritative recovery first.
+```text
+source.frontier[A] > local.frontier[A]
+```
+
+for the receiver's own local writer, the receiver is outside the supported lifecycle state space. The operation fails `JournalWriterBehindError` before importing source history or authoring local history and leaves the active receiver unchanged. It does not invoke a same-writer recovery transition.
 
 Overlap disagreement is `JournalForkError`.
 
 ## Law 10: absent-state restore preserves continuing writer identity safely
 
-When no local database exists and the installation recovery source returns continuation-safe snapshot S:
+When the local database is completely absent and the installation recovery source returns continuation-safe snapshot S:
 
 ```text
 localWriter_after_restore == S.localWriter
 ```
 
 The writer head, allocator watermark, authority high-water, Journal, and projection are restored before new authoring.
+
+For `S.localWriter = A` and `S.frontier[A] = q`, continuation safety means no previously-authored `A:r`, `r > q`, can later enter supported retained history after the restore. Records lost only with the completely destroyed local database do not violate this when the supported backend model guarantees that no surviving copy can later reintroduce them.
 
 Definite absence alone permits fresh identity generation. Read/continuation-safety uncertainty must not fall back to fresh creation.
 
@@ -101,7 +107,7 @@ With no intervening state change, synchronization against an already incorporate
 
 ## Law 14: zero-frontier sync is not absent restore
 
-An already-established receiver with frontier zero may use ordinary synchronization for foreign histories. A fully absent installation uses the receiver-less recovery lifecycle instead.
+An already-established receiver with frontier zero may use ordinary synchronization for foreign histories. A fully absent installation uses the receiver-less restoration lifecycle instead.
 
 ## Law 15: dependency-closure normalization
 
@@ -299,7 +305,7 @@ Let `J0 = union(receiver,source)`, `P0 = project(J0)`, and `PS = project(sourceS
 
 Reset preserves P0 ValueId when the requested occurrence already matches, creates ValueEvent only when the occurrence itself must change, uses DeleteEvent exactly when target requires absence, repairs removed validity with `proof(V,D)`, and persists target stale flags according to Law 22.
 
-If the held reset source is ahead for the receiver's own local writer, reset authors/imports nothing and fails `JournalWriterBehindError`; authoritative recovery must happen first.
+If the held reset source is ahead for the receiver's own local writer, reset authors/imports nothing and fails `JournalWriterBehindError`; the existing receiver is unsupported and no normal same-writer recovery is attempted.
 
 After reset:
 
@@ -311,7 +317,7 @@ relative to the history reset observed.
 
 ## Law 39: writer stream and writer-state monotonicity
 
-For writer A with head q, committed records are exactly `A:1..q`. Failed transactions consume no durable coordinate. Local writer-state watermark never decreases; foreign writer-state records never replace local allocator state.
+For writer A with head q, committed records are exactly `A:1..q`. Failed transactions consume no durable coordinate. Local writer-state watermark never decreases through supported lifecycle transitions; foreign writer-state records never replace local allocator state.
 
 ## Law 40: replay rebuild safety
 
@@ -335,7 +341,8 @@ At minimum model/test:
 - context transitivity and authority extension;
 - reference causality;
 - immutable prefix union/fork rejection;
-- continuation-safe writer recovery and stale-peer rejection;
+- lifecycle-owned writer monotonicity and unsupported own-writer-behind rejection;
+- continuation-safe complete-absence restoration;
 - reset own-writer-behind rejection before import/authorship;
 - node/value/proof-edge invalidation semantics;
 - concurrent same-ValueId proof-edge barriers;
