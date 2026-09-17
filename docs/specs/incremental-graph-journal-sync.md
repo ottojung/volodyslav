@@ -85,7 +85,7 @@ FS[W] > FR[W]
 
 then the receiver is demonstrably behind a surviving longer prefix of **its own writer stream**.
 
-Ordinary synchronization MUST NOT simply import that suffix and continue authoring W. A peer that happens to retain `W:1..q` does not prove that q is the greatest durable W record which can later re-enter supported history. Continuing W after incomplete recovery could allocate an ID already used by an escaped record.
+Ordinary synchronization MUST NOT simply import that suffix and continue authoring W. A peer that happens to retain `W:1..q` does not establish that q is a **continuation-safe head** under `database-lifecycle.md` §4.1. Continuing W without that guarantee could reuse a coordinate belonging to a higher W record that can later re-enter supported history.
 
 Therefore pairwise synchronization fails before publication or local normalization with:
 
@@ -95,9 +95,9 @@ JournalWriterBehindError
 
 and requires the lifecycle's authoritative same-writer recovery transition first.
 
-The authoritative recovery source is the configured `InstallationRecoverySource` from `database-lifecycle.md` / `incremental-graph-journal-api.md`. It may authorize continuation only when it can provide a stable snapshot whose W head is complete for the continuing installation under that source's contract. If completeness is indeterminate, recovery fails rather than guessing a continuation point.
+The authoritative recovery source is the configured `InstallationRecoverySource` from `database-lifecycle.md` / `incremental-graph-journal-api.md`. It may authorize continuation only when its held W head is continuation-safe: after recovery, no higher previously-authored W record can later enter supported retained history. If that guarantee is indeterminate, recovery fails rather than guessing a continuation point.
 
-After authoritative recovery advances the receiver to the complete recovered W head and reconstructs allocator/high-water/projection state, ordinary synchronization may be retried.
+After authoritative recovery advances the receiver to the continuation-safe recovered W head and reconstructs allocator/high-water/projection state, ordinary synchronization may be retried.
 
 This is distinct from:
 
@@ -283,7 +283,7 @@ Successful `Sync(R,S)`:
 
 1. checked compatibility from the held snapshot;
 2. retained every compatible imported foreign record unchanged;
-3. did not infer own-writer completeness from an ordinary peer snapshot;
+3. did not infer own-writer continuation safety from an ordinary peer snapshot;
 4. added only justified receiver normalization;
 5. committed `receiverGraph = project(receiverJournal)`; and
 6. becomes a semantic no-op when repeated against the same incorporated source without intervening changes.
