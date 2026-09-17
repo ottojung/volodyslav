@@ -123,9 +123,22 @@ A different/local-only legacy occurrence becomes historical concurrent bootstrap
 
 Canonical-present/local-absent does not manufacture a deletion. Two independent late joiners may assign different ValueIds to the same non-canonical legacy occurrence; `$id-1635227135166767` accepts the resulting possible downstream recomputation.
 
+### Locally-authored dependent proof keeps legacy provenance
+
+For a locally-authored joining occurrence K, bootstrap records each legacy-valid input edge against the input occurrence that the **joining host actually had**, not whichever input occurrence wins the later conflict merge.
+
+For an input D, that proof ValueId is:
+
+- the canonical ValueId when the joining D occurrence was exactly canonical-equal; otherwise
+- the joining writer's historical bootstrap ValueId for its own D occurrence, even when that D occurrence loses conflict selection.
+
+Therefore a mixed-winner merge cannot manufacture a never-observed combination such as canonical `D0 -> joining K1`. If K1 was historically validated against joining D1 but D0 wins selection, K1's basis still names D1; replay sees the mismatch and K1 is hard stale until revalidated/recomputed.
+
 ### Recursive bootstrap staleness
 
 After direct proof/stale evidence is represented, bootstrap walks the selected DAG. If selected K's effective own proof is complete but an input is stale, it persists `value(currentValueId(K))` stale history so later upstream `Unchanged` cannot silently freshen K.
+
+A validation authored after the frozen canonical cut but unseen by the late join is concurrent with late-join negative proof/stale evidence and therefore does not erase it until a causally later validation observes/re-proves that evidence. `$id-4465456703882268` accepts the resulting conservative revalidation/recomputation cost.
 
 ## Journal-aware migration
 
@@ -136,13 +149,15 @@ Migration has two distinct parts:
 
 ### Representation rewrite
 
-One canonical transform rewrites **every retained source-format record**, including history for node families absent from the target schema. If no deterministic target representation exists for some retained record, migration fails `JournalVersionCompatibilityError` before cutover.
+Each directed database-version transition uses the pure `JournalFormatCodec` defined by `migration.md`: deterministic `rewriteNodeKey(sourceKey)` and `rewriteComputedValue(sourceKey, payload)` functions, identity by default, followed by target-format re-canonicalization such as ValidationBasis re-sorting.
 
-When ValueEvent payload representation changes, one pure per-record codec is the sole source of target bytes across all replicas and all selected/historical occurrences. A selected semantic occurrence whose meaning survives uses `keep`.
+The transform rewrites **every retained source-format record**, including history for node families absent from the target schema. If no deterministic target representation exists for some retained record, migration fails `JournalVersionCompatibilityError` before cutover.
+
+When ValueEvent payload representation changes, this codec is the sole source of target bytes across all replicas and all selected/historical occurrences. A selected semantic occurrence whose meaning survives uses `keep`.
 
 ### Semantic occurrence identity
 
-Occurrence-preserving decisions (`keep`, `invalidate`, proof/freshness/schema-only changes, representation-only format rewrite) preserve the ValueId. A new ValueEvent is reserved for actual create/replace occurrence changes.
+Occurrence-preserving decisions (`keep`, `invalidate`, proof/freshness/schema-only changes, representation-only format rewrite) preserve the ValueId. `keep` also preserves target-shape-compatible source replay proof and freshness even when the occurrence is recursively stale. A new ValueEvent is reserved for actual create/replace occurrence changes.
 
 Independent genuine replacement migrations may create different replacement ValueIds; later synchronization selects normally and may stale dependents naming a losing replacement. This is accepted.
 
