@@ -88,11 +88,17 @@ Startup obtains exactly one of:
 
 Failure to query or obtain known synchronized state MUST NOT fall back to fresh creation.
 
-A recovery source may report **source exists** for writer A only when it can guarantee that the held snapshot contains the complete A-authored stream through the greatest A coordinate ever durably published by the supported lifecycle. In other words, the source is authoritative enough for writer continuation, not merely an arbitrary readable/lagging copy.
+For writer A, call a held recovery snapshot with `frontier[A] = q` **continuation-safe at q** iff the configured `InstallationRecoverySource` guarantees that, after recovery from that snapshot, no previously authored A record with sequence greater than q can later enter supported retained history for writer A.
 
-If the source cannot establish that completeness guarantee, including when another supported location may contain a longer already-published A prefix, it MUST report the result as indeterminate/error rather than permit restoration followed by new A authoring.
+This is the sole continuation-completeness predicate. It is deliberately about **future admissible history**, not about every record ever committed to a local disk. An A record which existed only on storage that has been irretrievably lost and which no supported source can later reintroduce does not make q unsafe. Conversely, if a higher A record survives anywhere from which supported lifecycle state may later reintroduce it, q is not continuation-safe.
 
-This rule prevents restoration from an old `A:1..900` snapshot from later reusing `A:901` when `A:901..905` had already escaped to another replica. It also protects the monotone NodeIdentifier allocation watermark carried by that missing prefix.
+The recovery source may report **source exists** only when it can establish that continuation-safe guarantee for the held snapshot. A merely readable or apparently newest peer snapshot is insufficient. If continuation safety is indeterminate, the result is `IndeterminateOrError` rather than permission to restore and resume A.
+
+Journal 3 does not prescribe how a transport/storage layer establishes this guarantee. In particular, correctness does **not** require contacting or discovering every possible peer; the recovery authority's contract/invariants establish the answer, consistent with `$id-4719065396881648`.
+
+Example: a snapshot at `A:1..900` is unsafe if `A:901..905` survive in supported state that can later re-enter history. If `A:901..905` were committed only to the now-lost local disk and no supported state can reintroduce them, their loss does not by itself prevent continuation from 900.
+
+This rule also protects the monotone NodeIdentifier allocation watermark carried by any recoverable missing prefix.
 
 ### 4.2 Receiver-less restore
 
@@ -110,7 +116,7 @@ The held source snapshot supplies the continuing installation identity:
 localWriter = snapshot.localWriter
 ```
 
-and MUST satisfy the complete-own-stream continuation guarantee from §4.1 before this installation may ever author another record under that writer.
+and MUST establish a continuation-safe head under §4.1 before this installation may author another record under that writer.
 
 Restore retains the source history and reconstructs:
 
@@ -145,13 +151,13 @@ project(empty journal) = empty graph
 
 ## 5. Same-writer Journal restoration and recovery
 
-A behind but existing **Journal** installation may recover a longer exact prefix of its own writer stream only through a continuation-safe recovery source.
+A behind but existing **Journal** installation may recover a longer exact prefix of its own writer stream only through `InstallationRecoverySource`.
 
-If local A retains `A:1..p` and such a source contains agreeing `A:1..q`, `q >= p`, maintenance may retain `A:(p+1)..q` together with causally required foreign history and reconstruct allocator/high-water/projection before authoring again.
+If local A retains `A:1..p` and the recovery source returns agreeing `A:1..q`, `q >= p`, maintenance may retain `A:(p+1)..q` together with causally required foreign history and reconstruct allocator/high-water/projection before authoring again **only if q is continuation-safe under §4.1**.
 
-Before new A records are allocated, the recovery source MUST guarantee that q is at least the greatest A coordinate ever durably published by the supported lifecycle. A generic peer/source snapshot which merely happens to contain a longer prefix is insufficient if it cannot make that guarantee.
+A generic peer/source snapshot which merely happens to contain a longer prefix is not continuation authority. If the recovery source cannot establish continuation safety, recovery is indeterminate and no new A record may be allocated.
 
-New A records begin strictly after q. Any overlap disagreement is a writer fork. A source which cannot prove continuation completeness yields an indeterminate/recovery failure rather than permission to continue A.
+New A records begin strictly after q. Any overlap disagreement is a writer fork.
 
 Two independently live installations intentionally authoring under one fingerprint are unsupported.
 
@@ -209,9 +215,11 @@ For every supported pre-Journal source version, the release identifies one expec
 
 That bootstrap transition is a **graph-semantic identity transition**. It may change whole-database representation to introduce Journal storage, but before the canonical cut it does not execute an ordinary graph migration. The persisted pre-Journal graph already supplies the bootstrap semantic state: materialized NodeKeys, NodeIdentifiers, payloads, timestamps, freshness, validity, `last_node_index`, and graph interpretation are preserved exactly.
 
-Therefore a source/target pair which would require `MigrationStorage.create()`, `override()`, `invalidate()`, `delete()`, a schema-semantic rewrite, wall-clock output, fresh allocator-dependent graph identity, randomness, or another migration callback result **before Journal identity exists** is not a supported automatic bootstrap path. Startup fails `JournalVersionCompatibilityError` before authoring history.
+Therefore a source/target pair which would require `MigrationStorage.create()`, `invalidate()`, `delete()`, a schema-semantic rewrite, wall-clock output, fresh allocator-dependent graph identity, randomness, or another semantic migration callback result **before Journal identity exists** is not a supported automatic bootstrap path. Startup fails `JournalVersionCompatibilityError` before authoring history.
 
-Actual graph/schema migration runs only after Journal bootstrap as an ordinary Journal-aware migration. The running release is not required to retain legacy bootstrap support forever. An artifact whose target version/schema is not exactly the release's expected bootstrap target fails compatibility before history is authored.
+Representation-only change is not a separate pre-Journal decision in this lifecycle. Actual graph/schema/representation migration runs only after Journal bootstrap as an ordinary Journal-aware migration using the canonical whole-history codec and semantic decisions such as `keep`.
+
+The running release is not required to retain legacy bootstrap support forever. An artifact whose target version/schema is not exactly the release's expected bootstrap target fails compatibility before history is authored.
 
 ### 8.2 Pre-Journal multi-host bootstrap
 
@@ -306,14 +314,15 @@ A Journal-aware migration:
 2. deterministically rewrites **every retained record**, including history for node families removed from the target schema, into target representation while preserving IDs/meaning;
 3. applies one pure per-record payload rewrite to every affected retained ValueEvent regardless of selected status;
 4. computes target graph under isolated target storage;
-5. preserves ValueIds for occurrence-preserving semantic decisions such as `keep` and `invalidate`; representation-only change is handled by the codec rather than `override()`;
-6. rejects the legacy value-producing `override()` path when the source already contains Journal history;
-7. creates new ValueEvents only for actual new/replaced semantic occurrences;
-8. preserves true explicit `invalidate(K)` as a node-scoped invalidation;
-9. when maintenance merely weakens proof for preserved occurrence V, authors one occurrence-and-input-specific `scope={kind:"proof",value:V,input:D}` barrier for every removed incoming edge D rather than a node-wide or whole-certificate invalidation;
-10. persists target propagated-stale state with value-scoped invalidation whenever a target-stale occurrence's own effective proof is otherwise complete, even when it is already recursively stale through an input;
-11. verifies target replay;
-12. atomically cuts over.
+5. preserves ValueIds for occurrence-preserving semantic decisions such as `keep` and `invalidate`; representation-only change is handled by the canonical whole-history codec;
+6. creates new ValueEvents only for actual new/replaced semantic occurrences;
+7. preserves true explicit `invalidate(K)` as a node-scoped invalidation;
+8. when maintenance merely weakens proof for preserved occurrence V, authors one occurrence-and-input-specific `scope={kind:"proof",value:V,input:D}` barrier for every removed incoming edge D rather than a node-wide or whole-certificate invalidation;
+9. persists target propagated-stale state with value-scoped invalidation whenever a target-stale occurrence's own effective proof is otherwise complete, even when it is already recursively stale through an input;
+10. verifies target replay;
+11. atomically cuts over.
+
+The representation codec MUST be total over retained source-version history. If any retained record—including one for a node family absent from the target schema—has no deterministic target representation, migration fails `JournalVersionCompatibilityError` before cutover.
 
 Proof-edge barriers affect only the named input edge of the named ValueId. Concurrent barriers for the same V compose by removing the union of the edges they name; they do not destroy unrelated proof entries or proof for another replacement ValueId.
 
@@ -335,11 +344,12 @@ A pairwise sync:
 1. enters required maintenance ownership;
 2. opens one stable source snapshot;
 3. checks compatibility from that snapshot;
-4. streams missing immutable writer suffixes;
-5. validates overlap, contiguity, causal closure, authority, and references;
-6. performs required receiver-authored semantic normalization;
-7. replays/validates final projection;
-8. atomically publishes Journal + projection.
+4. if the source has a longer prefix of the receiver's own local writer, fails `JournalWriterBehindError` and requires §5 recovery first;
+5. streams missing immutable foreign-writer suffixes;
+6. validates overlap, contiguity, causal closure, authority, and references;
+7. performs required receiver-authored semantic normalization;
+8. replays/validates final projection;
+9. atomically publishes Journal + projection.
 
 No computor executes during sync.
 
@@ -354,6 +364,8 @@ It means:
 > make the receiver's projected graph equal to a chosen compatible source projection relative to all history currently observed
 
 without deleting retained history.
+
+If the held reset source is ahead for the receiver's own local writer, reset fails `JournalWriterBehindError` before importing/authorship and requires §5 recovery before retry. `resetTo()` does not perform same-writer recovery inline.
 
 Reset preserves an already-selected value occurrence when immutable semantic occurrence state already matches target. It authors new ValueEvents only where occurrence itself must change.
 
@@ -416,7 +428,7 @@ Unsupported operations include:
 - mixed record formats in one active replica;
 - destructive authoritative-history truncation followed by continued same-writer authoring;
 - independently cloning one writer identity into multiple live writers;
-- resuming a writer from a recovery snapshot which cannot guarantee the complete own-writer stream ever published;
+- resuming a writer from a recovery snapshot which is not continuation-safe under §4.1;
 - manually editing graph sublevels away from Journal replay;
 - bypassing required Journal-aware version migration;
 - forcing ordinary sync/reset across incompatible snapshot metadata;
@@ -430,7 +442,6 @@ Unsupported operations include:
 - continuing creator-resume when artifact projection and persisted legacy semantic state disagree;
 - using a maintenance proof barrier with node scope when no actual node invalidation occurred;
 - using a whole-ValueId proof barrier when only specific incoming proof edges are being retired;
-- evaluating the legacy value-producing `override()` path after Journal history exists;
 - using a non-total format codec which cannot rewrite retained history for target-removed node families;
 - treating a checkpoint as replacement authority for missing history.
 
@@ -452,6 +463,9 @@ Corruption/unsupported evidence includes:
 - graph known to disagree with replay without successful rebuild;
 - local allocator state which could reuse a retired index.
 
-Incompatibility includes a pre-Journal source/target bootstrap pair which cannot preserve persisted graph semantics exactly without running semantic/time/allocator-dependent migration logic before Journal identity exists.
+Incompatibility includes:
+
+- a pre-Journal source/target bootstrap pair which cannot preserve persisted graph semantics exactly without running semantic/time/allocator-dependent migration logic before Journal identity exists; and
+- a Journal-aware source/target version pair whose canonical codec is not total over retained source history.
 
 Operations fail where such evidence becomes relevant. They must not silently convert corruption/incompatibility into a fresh database or ordinary graph conflict.
