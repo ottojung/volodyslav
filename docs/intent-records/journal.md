@@ -245,16 +245,40 @@ An implementation may avoid physically rewriting bytes when equality is already 
 ---
 
 $id-4373538486707762
-title: Transport-independent journal semantics
+title: Transport-independent persistent database and journal semantics
 date: 2026/09/06
 source: @ottojung
 kind: requirement
 
-The IncrementalGraph journal is transport-independent.
+The IncrementalGraph implementation and Journal are transport-independent.
 
-Journal identity, event semantics, replay, synchronization, and conflict authority must not depend on Git hashes, commits, branches, ancestry, repository revisions, Supabase-specific identifiers, or other transport-specific identities. Transport mechanisms may carry or persist journal records, but they do not participate in journal semantics.
+Journal identity, event semantics, replay, synchronization, conflict authority, recovery identity, and other IncrementalGraph semantics must not depend on Git hashes, commits, branches, ancestry, repository revisions, hostnames, Supabase-specific identifiers, or other transport/deployment-specific identities.
 
-Journal 3 does not require changing the existing Git transport protocol; such transport changes, if ever desired, are separate work.
+Implementation-owned persistent IncrementalGraph state MUST NOT store or reference hostnames, Git branch names, repository identities, or other transport locators. This prohibition applies to Journal records, graph metadata, indexes, recovery metadata, staging metadata, and other implementation-owned persisted database sublevels. Transport/lifecycle code may use such information externally to locate or implement a synchronization or recovery source, but that information must not cross into persisted IncrementalGraph state or its semantic APIs.
+
+This does not prohibit application/computor-defined graph data from containing a hostname or other transport-looking string when user code deliberately chooses to store one. Such keys and payloads are opaque application data and are outside IncrementalGraph's control.
+
+Transport mechanisms may carry or persist Journal/database snapshots without their own identities participating in database meaning. Journal 3 does not require changing the existing Git transport protocol; such transport changes, if ever desired, are separate work.
+
+---
+
+$id-6158827469032147
+title: Installation recovery uses one monotonic external authority
+date: 2026/09/16
+source: @ottojung
+kind: requirement
+
+Each installation has one logical, externally configured installation recovery authority for determining the durable recoverable state of that installation. The IncrementalGraph database does not persist how that authority is located. A transport adapter may use deployment information such as a hostname, branch convention, repository, service endpoint, or filesystem path to locate it, subject to `$id-4373538486707762`.
+
+For local writer A, successful publication of writer history through coordinate `A:q` to the recovery authority is monotonic. After the authority has accepted that published prefix, supported operation must never later present a proper prefix of `A:1..q`, or conflicting content at any coordinate through q, as the authoritative recoverable A history.
+
+Any supported durable copy of A-authored history outside the local installation which can survive loss of the local database and later re-enter supported retained history must derive from A history that was first successfully published to this recovery authority. Supported propagation therefore cannot create a surviving hidden higher A prefix which bypassed the authority.
+
+Consequently, when the recovery authority returns a stable snapshot with `localWriter = A` and `frontier[A] = q`, q is continuation-safe: no previously authored `A:r`, `r > q`, may later enter supported retained history. A record authored only on local storage after q and lost before successful publication may be lost permanently and its coordinate may be reused after recovery, because no supported surviving copy can later reintroduce it.
+
+If the authority is unavailable, unreadable, or cannot establish a definite answer, recovery is indeterminate and must fail rather than silently continue A or create a fresh writer identity. Silent rollback, corruption, or external rewriting of already-published authoritative writer history is outside the normal supported recovery model and requires explicit disaster recovery rather than ordinary synchronization/recovery semantics.
+
+This is a logical authority contract, not a requirement for any particular Git branch, hostname, remote storage product, or transport implementation.
 
 ---
 
