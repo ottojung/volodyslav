@@ -122,6 +122,8 @@ J0 = Jreceiver join Jsource
 Jafter = J0 + required reset events
 ```
 
+Reset first requires that an ordinary reset source is not ahead for the receiver's own local writer. If it is, reset fails `JournalWriterBehindError`; lifecycle recovery must establish a continuation-safe head before reset is retried.
+
 Reset preserves an occurrence when target immutable occurrence state already matches. For every incoming edge removed from preserved V, reset authors `proof(V,D)` negative evidence; it does not invalidate the whole occurrence proof. Target persistent stale state gets `value(V)` marker when own effective proof is otherwise complete. Target absence gets DeleteEvent only when J0 selects a value.
 
 Reset repairs causally follow the complete history it observed.
@@ -169,9 +171,11 @@ The artifact is the original frozen bootstrap cut. A running release joins it on
 
 ## Writer continuation requires stronger authority than ordinary union
 
-A generic sync peer may prove that local writer A is behind by exposing a longer agreeing A prefix. It does **not** thereby prove the observed head is the greatest A coordinate that can later re-enter supported history.
+A generic sync peer may prove that local writer A is behind by exposing a longer agreeing A prefix. It does **not** thereby establish that the observed head is continuation-safe.
 
-Therefore ordinary information join cannot by itself authorize continued A sequence allocation. Same-writer continuation after local loss requires the authoritative `InstallationRecoverySource` completeness contract. If completeness is indeterminate, authoring A remains forbidden.
+Continuation-safe is defined by `database-lifecycle.md` §4.1: after recovery from head q, no previously authored A record with sequence greater than q may later enter supported retained history. This concerns future admissible history, not every local record ever committed before storage loss.
+
+Therefore ordinary information join cannot authorize continued A sequence allocation. Same-writer continuation after local loss requires `InstallationRecoverySource`; if continuation safety is indeterminate, authoring A remains forbidden.
 
 ## Journal-aware migration representation is a total record transform
 
@@ -183,15 +187,15 @@ Jconverted = rewriteJournalFormat(Jbefore, sourceVersion, targetVersion)
 
 maps every retained source-format record to exactly one target-format representation while preserving ID, historical semantic fact, causal meaning, and references.
 
-The transform is total over retained history, including records for node families absent from target schema. If no deterministic target representation exists for some retained record, the migration is unsupported.
+The transform is total over retained history, including records for node families absent from target schema. If no deterministic target representation exists for some retained record, migration fails `JournalVersionCompatibilityError` before cutover.
 
 One pure payload codec rewrites every affected retained ValueEvent independent of selected status or replica-local state.
 
 ## Representation-only Journal migration uses codec + keep
 
-Once Journal history exists, legacy value-producing `override(nodeIdentifier,value)` is not a Journal-aware semantic decision. Representation-only change is performed by the canonical whole-history codec; a selected occurrence whose semantic meaning survives uses `keep`.
+Representation-only change is performed by the canonical whole-history codec. A selected occurrence whose semantic meaning survives uses `keep`; there is no second value-producing representation decision.
 
-Journal-aware semantic changes use `invalidate`, `delete`, `create`, or another explicit semantic transition; they do not redefine immutable historical bytes through `override()`.
+Journal-aware semantic changes use `invalidate`, `delete`, `create`, or another explicit semantic transition rather than redefining immutable historical bytes.
 
 ## Migration preserves occurrence identity when occurrence survives
 
