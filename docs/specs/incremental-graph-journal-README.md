@@ -48,7 +48,9 @@ Journal 3 specifies:
 - stable ordinary source snapshots whose compatibility metadata and records belong to one cut;
 - continuation-safe installation recovery before fresh identity generation or resumed same-writer authoring;
 - continuation safety defined by future admissible history: no higher record for the continuing writer may later re-enter supported history after recovery;
-- ordinary synchronization importing foreign-writer suffixes, while a longer receiver-local writer prefix triggers `JournalWriterBehindError` and authoritative recovery;
+- recovery allowed to rely on the supported backend model to rule out histories which cannot arise or later re-enter under that model;
+- transport locators such as hostnames and branch names excluded from IncrementalGraph-owned persistent state and semantic recovery APIs;
+- ordinary synchronization importing foreign-writer suffixes, while a longer receiver-local writer prefix triggers `JournalWriterBehindError` and recovery;
 - reset likewise refusing to recover the writer inline;
 - exact structural deletion only when a selected dependent loses a required materialized input; mixed input versions otherwise keep the cached value as legitimate `oldValue` and express hard/soft stale state through proof/freshness;
 - a frozen canonical bootstrap artifact for the original pre-Journal cut;
@@ -88,6 +90,7 @@ The tests/examples intentionally cover at least:
 - ordinary peer revealing a longer receiver-local writer prefix causing `JournalWriterBehindError`, not unsafe continuation;
 - continuation-safe recovery rejecting a head when a higher local-writer record can later re-enter supported history;
 - local-only lost writer records that cannot re-enter not unnecessarily blocking continuation;
+- recovery models which exclude impossible hidden higher prefixes not being forced to discover such nonexistent copies;
 - reset source ahead for local writer failing before import/authoring and requiring recovery first;
 - pre-Journal bootstrap path requiring execution-time semantic/allocator transformation being rejected;
 - creator crash after artifact publication resuming exact frozen history;
@@ -98,7 +101,7 @@ The tests/examples intentionally cover at least:
 - exact shared canonical proof edge absent from joining proof being removed with `proof(V,D)`;
 - joining stale input persistently staling a canonical dependent;
 - unseen post-bootstrap validation not erasing a late join's concurrent negative proof/stale evidence until causally revalidated;
-- divergent legacy value authority depending on persisted `modifiedAt`, not upgrade time;
+- divergent legacy value authority depending on persisted legacy `modifiedAt`, not upgrade time;
 - legacy cache absence not manufacturing deletion;
 - identical non-canonical late joiners possibly splitting ValueId as an explicit accepted trade-off;
 - recursively stale `keep` preserving current-shape-compatible source replay proof;
@@ -112,7 +115,7 @@ The tests/examples intentionally cover at least:
 
 Journal 3 stops at semantic stable-snapshot/lifecycle boundaries. It does not prescribe Git branch/file mechanics, a hosted backend, SQL/HTTP/RPC schemas, authentication, or deployment topology.
 
-A transport can remain unchanged if its adapter can provide the required stable ordinary snapshots, continuation-safe installation recovery, and canonical-bootstrap source semantics. Journal 3 does **not** require every Journal record to be disseminated through the recovery source; it requires that the configured recovery authority can establish the continuation-safe predicate when writer recovery is attempted.
+A transport can remain unchanged if its adapter can provide the required stable ordinary snapshots, continuation-safe installation recovery, and canonical-bootstrap source semantics. How continuation safety is established is backend-specific; Journal 3 requires only the resulting guarantee and does not prescribe a single recovery authority, source count, storage topology, or publication protocol.
 
 Also outside core correctness:
 
