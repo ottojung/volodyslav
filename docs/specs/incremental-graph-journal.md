@@ -144,13 +144,13 @@ No computor runs during sync.
 
 ## Safe writer restoration
 
-A generic peer snapshot is insufficient to resume a writer after local history loss.
+After local history loss, continuing writer A from recovered head q is safe only if no previously-authored `A:r`, `r > q`, can later re-enter supported retained history and collide with newly-authored coordinates.
 
-For writer A at recovered head q, `InstallationRecoverySource` must establish the `database-lifecycle.md` §4.1 continuation-safe guarantee:
+`InstallationRecoverySource` packages exactly that guarantee as a `ContinuationSafeSnapshot`. How the source establishes it belongs to the supported backend model, not to Journal semantics. The backend may use one storage location, several locations, Git publication rules, replicated metadata, consensus, or another protocol. Recovery may rely on backend invariants which make some hypothetical histories impossible.
 
-> after recovery, no previously authored A record with sequence greater than q can later enter supported retained history for writer A.
+A generic peer snapshot is therefore not automatically sufficient merely because it appears newest, but neither does Journal require surveying every imaginable peer or storage location. If the supported recovery layer can establish continuation safety, writer A may continue strictly after q. If it cannot, same-writer continuation fails rather than guessing a sequence.
 
-This is about future admissible history, not every record once committed to a lost local disk. If continuation safety is indeterminate, writer continuation fails rather than guessing a sequence. The same recovery source governs absent-installation restore and recovery of a behind existing writer.
+Transport locators such as hostnames or branch names remain outside persisted IncrementalGraph state and outside the recovery semantic interface. `database-lifecycle.md` §4.1 gives the abstract rule and explains how the current Git-backed flow can satisfy it without making that transport topology normative.
 
 ## Canonical pre-Journal bootstrap
 
