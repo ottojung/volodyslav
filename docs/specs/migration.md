@@ -8,13 +8,14 @@ This document describes the **migration system** for upgrading incremental-graph
 
 ## Overview
 
-When the application version changes, any computed values stored in the previous version's namespace may become stale or structurally incompatible with the new schema.  The migration system provides a strict, fail-fast API—`MigrationStorage`—that lets migration authors:
+When the application version changes, any computed values stored in the previous version's namespace may become stale or structurally incompatible with the new schema. The migration system provides a strict, fail-fast API—`MigrationStorage`—that lets migration authors:
 
 * **read** old values,
-* **decide** what happens to each previously-materialized node (keep, override, invalidate, or delete),
+* **decide** what happens to each previously-materialized node (keep, invalidate, or delete),
+* **create** new materialized nodes when the target schema requires them, and
 * **traverse** the previous version's dependency graph.
 
-A failed migration never activates the target replica.  Failures before unification leave the target replica untouched.  Failures after unification may leave the inactive replica written, but the active replica remains unchanged.
+A failed migration never activates the target replica. Failures before unification leave the target replica untouched. Failures after unification may leave the inactive replica written, but the active replica remains unchanged.
 
 ---
 
@@ -24,7 +25,7 @@ A failed migration never activates the target replica.  Failures before unificat
 
 `S` is the set of all nodes materialized in the previous version. A node is materialized if and only if its identifier exists in `identifiers_keys_map`, `values`, `freshness`, and `timestamps`. A fresh node has freshness `"up-to-date"`; a stale node has freshness `"potentially-outdated"`.
 
-After the user-supplied migration callback returns, **every node in `S` must have exactly one decision**.  Missing decisions cause `UndecidedNodesError`.
+After the user-supplied migration callback returns, **every node in `S` must have exactly one decision**. Missing decisions cause `UndecidedNodesError`.
 
 ### Previous-version graph edges
 
@@ -47,7 +48,6 @@ All methods are `async`.
 |--------|-------------|
 | `get(nodeIdentifier)` | Return the previous-version value. |
 | `keep(nodeIdentifier)` | Preserve node as-is in the new version. |
-| `override(nodeIdentifier, value)` | Rewrite an existing cached value with the result of `value(nodeIdentifier)` (a `NodeIdentifier => Promise<ComputedValue>`), while preserving its cache-state proof envelope. This is a **pre-Journal migration operation**; Journal-aware representation rewriting is automatic and uses `keep` plus the canonical Journal codec. |
 | `invalidate(nodeIdentifier)` | Mark the node for recomputation. |
 | `delete(nodeIdentifier)` | Remove the node from the new version entirely. |
 | `create(nodeKeyString, value, freshness)` | Create a new cached node (not in the previous version) in the new schema with the result of `value(nodeIdentifier)` (a `NodeIdentifier => Promise<ComputedValue>`) as its initial value. `freshness` must be `"up-to-date"` or `"potentially-outdated"`. `nodeKeyString` is a `NodeKeyString` — the semantic key by which the node will be identified in the new schema. A fresh `NodeIdentifier` is allocated automatically. |
@@ -68,46 +68,33 @@ All methods are `async`.
 
 ### Idempotency
 
-Calling the same decision twice (except for `override` and `create`) is allowed and has no effect.
+Calling the same decision twice is allowed and has no effect, except that `create()` twice for the same target node is a conflict.
 
 ### Conflict detection
 
 * Calling **different** decisions on the same node throws `DecisionConflictError`.
-* Calling `override()` more than once on the same node throws `OverrideConflictError`.
 * Calling `create()` twice on the same node throws `DecisionConflictError`.
 * Calling `create()` on a node that exists in the previous version throws `CreateExistingNodeError`.
 
 ### Schema compatibility
 
-`keep`, `override`, `invalidate`, and `create` check that the node's functor and arity exist in the new schema.  Incompatible nodes must be explicitly `delete`d.  Violation throws `SchemaCompatibilityError`.
+`keep`, `invalidate`, and `create` check that the node's functor and arity exist in the new schema. Incompatible nodes must be explicitly `delete`d. Violation throws `SchemaCompatibilityError`.
 
 ### Operation semantics
 
-`keep` preserves the value, freshness, timestamps, and — for up-to-date nodes — compatible incoming validity. A stale node carried through `keep` loses its incoming proofs: persisted storage does not encode whether its staleness was explicit or propagated, so it is conservatively treated as a direct invalidation root.
+`keep` preserves the semantic occurrence, freshness, timestamps, and — for up-to-date nodes — compatible incoming validity. A stale node carried through `keep` loses its incoming proofs: persisted storage does not encode whether its preexisting staleness was explicit or propagated, so it is conservatively treated as a direct invalidation root.
 
-Within a **preexisting stale `keep`/`override` region**, every stale node loses incoming proofs, so validity edges inside the region may disappear. A stale B whose dependent C is also stale loses both `A⇝B` and `B⇝C` during migration, and both nodes must recompute.
+Within a **preexisting stale `keep` region**, every stale node loses incoming proofs, so validity edges inside the region may disappear. A stale B whose dependent C is also stale loses both `A⇝B` and `B⇝C` during migration, and both nodes must recompute.
 
 **Migration-time propagated invalidation** is different: the migration callback explicitly calls `invalidate()` on a node, and the propagation runs in memory with full provenance. In that case outgoing proofs survive and freshness-only propagation preserves validity edges.
 
-`override` is a **semantic-preserving representation rewrite** for pre-Journal migrations. It changes the stored representation (e.g. on-disk format) while preserving the semantic value as seen by dependents. Because the value is semantically unchanged, `override()` does not propagate invalidation — it inherits freshness, timestamps, and validity from the old record. The same stale-node rule applies: a stale node carried through `override` loses its incoming proofs.
+### Representation-only changes
 
-`override()` MUST NOT be used when the migration changes the meaning or value of a node. If the value itself changes, use `invalidate()` instead, which triggers downstream recomputation so that dependents observe the new value.
+Representation-only changes use `keep`; retained `ValueEvent`s are rewritten by the version's canonical whole-Journal codec as specified by `incremental-graph-journal-migrations.md`.
 
-The intended pre-Journal use case is format migration: the database version changes the serialization format but the represented value is still meaningfully the same value. In that scenario missing invalidation in `override()` is correct by design — not a bug.
+Once Journal history exists, the codec is the single source of target representation bytes for every retained affected occurrence, selected or historical. There is no second value-producing migration decision for representation rewriting.
 
-### Journal-aware representation rewrite
-
-Once the source database already contains Journal history, `override(nodeIdentifier, value)` is **not** part of the Journal-aware migration decision vocabulary.
-
-One historical `JournalRecordId` may be retained on many replicas even when that occurrence is selected on only some of them. Its target-version record body therefore cannot depend on replica-local selection, callback order, or a second migration callback implementation.
-
-For a Journal-aware migration, the version migration defines one pure per-record payload codec for retained `ValueEvent`s whose representation changes. The codec is the **single source of target payload bytes** and is applied identically to every affected retained ValueEvent, selected or historical.
-
-A Journal-aware migration author uses `keep(nodeIdentifier)` for an occurrence-preserving node. The automatic whole-Journal rewrite changes the retained representation where required while preserving the same semantic occurrence and `ValueId`.
-
-If a Journal-aware migration needs a semantic value change, it uses `invalidate()`/recomputation or another explicit semantic create/replace decision. It does not express that change through `override()`.
-
-The legacy/pre-Journal `override(nodeIdentifier, value)` API remains available for migrations whose source has no Journal history. Journal-aware execution MUST reject use of that value-producing override path rather than evaluate a second representation transform.
+A pre-Journal database that would require a value-producing representation migration before Journal identity can be established is not migrated by the Journal 3 lifecycle. It must first reach a supported pre-Journal source state using software which owns that older transition, or bootstrap a supported identity state and perform the representation transition afterward under the Journal-aware codec.
 
 `invalidate` preserves the cached value if it exists, marks nodes as `"potentially-outdated"`, and preserves `modifiedAt`.
 
@@ -122,13 +109,13 @@ The legacy/pre-Journal `override(nodeIdentifier, value)` API remains available f
 
 #### INVALIDATE → propagate INVALIDATE downstream
 
-When a node is invalidated, all its dependents are automatically marked `INVALIDATE` (recursively), unless they are already `DELETE`d.  If a dependent already has a `KEEP` or `OVERRIDE` decision, `DecisionConflictError` is thrown immediately.
+When a node is invalidated, all its dependents are automatically marked `INVALIDATE` (recursively), unless they are already `DELETE`d. If a dependent already has a `KEEP` decision, `DecisionConflictError` is thrown immediately.
 
 #### DELETE → propagate DELETE downstream (deferred, dependency-closed)
 
 DELETE propagation runs at finalization (after the callback returns), via a BFS over dependents. One deleted input is sufficient to delete an undecided dependent, and that deletion propagates through every transitive materialized dependent.
 
-This preserves the materialization invariant that every materialized node has all of its concrete inputs materialized. If a dependent already has an explicit `KEEP`, `OVERRIDE`, or `INVALIDATE` decision, `DecisionConflictError` is thrown.
+This preserves the materialization invariant that every materialized node has all of its concrete inputs materialized. If a dependent already has an explicit `KEEP` or `INVALIDATE` decision, `DecisionConflictError` is thrown.
 
 ---
 
@@ -137,11 +124,10 @@ This preserves the materialization invariant that every materialized node has al
 | Error class | When thrown |
 |-------------|------------|
 | `DecisionConflictError` | Two different decisions assigned to the same node. |
-| `OverrideConflictError` | `override()` called more than once on the same node. |
 | `CreateExistingNodeError` | `create()` called for a node that already exists in the previous version. |
 | `UndecidedNodesError` | Some nodes in `S` have no decision after the callback. |
-| `SchemaCompatibilityError` | `keep`/`override`/`invalidate`/`create` on a node absent from the new schema. |
-| `InvalidMigrationDecisionError` | `override` or `create` violates the semantic/cache-state contract; Journal-aware migrations also reject the legacy value-producing `override()` path because retained representation is owned by the canonical Journal codec. |
+| `SchemaCompatibilityError` | `keep`/`invalidate`/`create` on a node absent from the new schema. |
+| `InvalidMigrationDecisionError` | `create` violates its semantic/cache-state contract. |
 | `GetMissingNodeError` | `get()`/traversal called for a node not in `S`. |
 | `MissingDependencyMetadataError` | A materialized node has missing or corrupted dependency metadata. |
 
@@ -180,4 +166,4 @@ If no previous version is found, the migration is a no-op.
 
 ## Atomicity guarantee
 
-Decisions are collected in memory during the callback.  The desired state is unified into the target replica's storage, then validated with `assertValidFinalMergeState` before the replica pointer is switched.  A failed migration never activates the target replica.  Failures before unification leave the target replica untouched.  Failures after unification may leave the inactive replica written, but the active replica remains unchanged.
+Decisions are collected in memory during the callback. The desired state is unified into the target replica's storage, then validated with `assertValidFinalMergeState` before the replica pointer is switched. A failed migration never activates the target replica. Failures before unification leave the target replica untouched. Failures after unification may leave the inactive replica written, but the active replica remains unchanged.
