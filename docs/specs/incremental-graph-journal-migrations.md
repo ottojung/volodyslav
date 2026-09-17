@@ -258,10 +258,20 @@ This exception is only for historical pre-Journal value conversion. Later bootst
 
 ### 7.2 Pass J1 — establish value occurrences
 
-For each K materialized in `Gl`:
+For every K materialized in `Gl`, define `joiningOccurrenceValueId(K)` as the Journal identity of the **joining host's own legacy occurrence**:
 
-- if `Pc` contains the same immutable occurrence fields (`NodeIdentifier`, semantic payload, `createdAt`, `modifiedAt`), reuse `Pc.valueId(K)` and author no ValueEvent;
-- otherwise author one joining-writer historical `ValueEvent(reason="bootstrap")` carrying the persisted legacy occurrence fields.
+- if `Pc` contains the same immutable occurrence fields (`NodeIdentifier`, semantic payload, `createdAt`, `modifiedAt`), set `joiningOccurrenceValueId(K) = Pc.valueId(K)` and author no ValueEvent;
+- otherwise author one joining-writer historical `ValueEvent(reason="bootstrap")` carrying the persisted legacy occurrence fields and set `joiningOccurrenceValueId(K)` to that new ValueEvent ID.
+
+All joining historical ValueEvents are allocated in nondecreasing:
+
+```text
+(modifiedAt, canonical NodeKey)
+```
+
+order. This is the same writer-local authority rule as canonical bootstrap and prevents writer sequence from contradicting bootstrap AuthorityTime.
+
+All joining historical ValueEvents are allocated before any joining Validate/Invalidate/WriterState record whose context includes the canonical-writer bootstrap cut. Thus later proof/stale records can causally reference any joining legacy occurrence even when that occurrence is not selected after conflict resolution.
 
 A node present in `Pc` but absent from `Gl` does **not** cause a DeleteEvent. Legacy cache absence is not timestamped deletion evidence.
 
@@ -273,9 +283,18 @@ Different occurrences on both sides are concurrent and selected by ordinary Jour
 
 #### Locally authored occurrences
 
-For each locally authored selected occurrence K, author a bootstrap ValidateEvent whose basis reflects joining legacy validity. Use the selected bootstrap ValueId of input D exactly when joining legacy validity contains `D -> K`; otherwise use `"unknown"`.
+For each locally authored selected occurrence K, author a bootstrap ValidateEvent whose basis records the **historical proof actually present in the joining legacy graph**.
 
-If that local occurrence was stale, follow it with `value(V)` bootstrap invalidation.
+For every direct input D:
+
+- if joining legacy validity contains `D -> K`, use `joiningOccurrenceValueId(D)`;
+- otherwise use `"unknown"`.
+
+Do **not** substitute the currently selected bootstrap ValueId of D merely because another D occurrence won conflict selection.
+
+Consequently, if the joining host's D occurrence loses to a different canonical/current D occurrence, K's basis still names the joining D occurrence it was actually validated against. Replay then observes the basis mismatch against selected D and K is hard stale rather than manufacturing a validity edge for a combination no legacy replica ever possessed.
+
+If that local K occurrence was stale, follow its validation with `value(V)` bootstrap invalidation.
 
 #### Exact shared occurrences
 
@@ -367,6 +386,7 @@ Required result:
 - canonical-equal occurrences share canonical ValueIds;
 - local-only and canonical-only materializations survive;
 - conflicting values are selected by normal authority;
+- local proof names the joining legacy occurrences it actually depended on, so mixed conflict winners cannot manufacture fresh cross-replica combinations;
 - exact-shared validity is the proof intersection;
 - exact-shared stale evidence is conservative across both sides;
 - recursive-only stale transitions are persisted; and
@@ -375,6 +395,14 @@ Required result:
 `Pjoined` need not equal `Gl` when value conflicts exist; local differences survive when non-conflicting or when they win ordinary authority.
 
 The Journal/projection pair is atomically installed at the bootstrap target version.
+
+### 7.6 Late join versus unseen post-bootstrap revalidation
+
+Bootstrap intentionally uses only the frozen canonical cut. A joining host's J2 proof barriers and stale markers therefore cannot observe post-bootstrap cohort validations which occurred after that cut but before the late host upgraded.
+
+When those later cohort records are eventually imported, such a validation is concurrent with the joining proof/stale evidence and does not retroactively cover it. The affected occurrence may therefore become stale again or lose an incoming proof edge until a validation **causally after the late join evidence** re-proves it.
+
+This conservative behavior is intentional. Legacy state does not contain enough causal/timestamp information for invalidation/proof changes to soundly assert that an unseen cohort revalidation happened after the joining host's legacy negative evidence. Preferring freshness would risk discarding a real legacy invalidation; the accepted cost is possible redundant revalidation/recomputation after a late join.
 
 ## 8. Post-bootstrap history is not bootstrap input
 
@@ -398,10 +426,15 @@ Start from:
 Gbefore = project(Jbefore, sourceSchema)
 ```
 
-First rewrite **all retained history** into the target representation:
+First rewrite **all retained history** into the target representation using the directed source->target `JournalFormatCodec` defined in `migration.md`:
 
 ```text
-Jconverted = rewriteJournalFormat(Jbefore, sourceVersion, targetVersion)
+Jconverted = rewriteJournalFormat(
+    Jbefore,
+    sourceVersion,
+    targetVersion,
+    journalFormatCodec
+)
 ```
 
 Then compute semantic target graph `Gtarget` and append only records required so:
@@ -419,20 +452,18 @@ An active source replica is entirely source-format. The inactive target replica 
 
 For every retained source record R with ID `(A,q)`, the source->target migration defines exactly one deterministic target-format record with the **same ID and historical meaning**.
 
-The rewrite preserves:
+The normative codec contract and rewrite pipeline are in `migration.md` §Journal format codec. In summary, the rewrite:
 
-- `JournalRecordId`;
-- writer sequence/contiguity;
-- historical semantic fact;
-- causal/reference meaning;
-- authority meaning; and
-- every cross-record identity reference.
+1. decodes under the source version;
+2. applies deterministic `rewriteNodeKey` to every embedded NodeKey;
+3. applies deterministic `rewriteComputedValue` to every retained ValueEvent payload;
+4. preserves Journal IDs, sequence, causal/reference identity, AuthorityTime meaning, NodeIdentifiers, and timestamps;
+5. re-canonicalizes target structures, including re-sorting ValidationBasis entries by target canonical NodeKey order; and
+6. encodes under the target version.
 
-The codec domain is **all retained source-version history**, including historical records for node families absent from the target schema.
+The codec domain is **all retained source-version history**, including non-selected occurrences and historical records for node families absent from the target schema.
 
-When a ValueEvent payload representation changes, one pure deterministic codec rewrites every affected retained occurrence regardless of selected status, replica-local state, traversal order, or target schema membership.
-
-If any retained source record lacks a deterministic target representation, migration fails:
+If any retained source record lacks a deterministic valid target representation, migration fails:
 
 ```text
 JournalVersionCompatibilityError
@@ -457,7 +488,9 @@ plus whatever explicit future create/replace operation is separately specified.
 
 ### `keep`
 
-Preserves the selected semantic occurrence and therefore its ValueId.
+Preserves the selected semantic occurrence and therefore its ValueId, timestamps, freshness, and every source-replay incoming validity edge whose certificate remains current-shape-compatible under the target input set.
+
+A stale kept occurrence does **not** lose proof merely because it is stale. Journal history already distinguishes node invalidation, value-scoped stale state, proof-edge barriers, and recursive staleness. If target schema removes/changes an input edge, the resulting shape/proof difference is handled explicitly by M2 rather than by a generic stale-node heuristic.
 
 Representation-only changes for that occurrence come from the canonical whole-history codec.
 
@@ -576,6 +609,8 @@ InvalidateEvent {
 A `proof(V,D)` barrier retires only `D -> K` for exact occurrence V until causally re-proved. It does not invalidate unrelated certificate entries or another ValueId.
 
 Concurrent barriers compose by removing the union of their named edges. Therefore independent migrations weakening the same preserved occurrence do not destroy unrelated proof.
+
+A stale `keep` does not enter this path merely because it is stale. M2 authors barriers only for validity edges actually absent from `Gtarget`, such as edges removed by target schema/proof semantics.
 
 If migration only adds validity, no barrier is required solely for the addition.
 
@@ -703,7 +738,9 @@ At minimum cover:
 - creator artifact durable before ordinary authoring;
 - creator crash resumes exact artifact without rerunning callbacks;
 - creator mismatch -> `JournalBootstrapForkError`;
+- canonical and joining bootstrap ValueEvents use nondecreasing `(modifiedAt, canonical NodeKey)` writer order; an out-of-order joining stream is authority-inconsistent and rejected;
 - exact canonical-equal occurrence reuses canonical ValueId;
+- a local dependent whose legacy-valid input loses to another selected occurrence keeps the losing local input ValueId in its basis and is hard stale; bootstrap never manufactures validity against the winner;
 - exact-shared validity intersection via `proof(V,D)` barriers;
 - joining-only proof cannot strengthen shared occurrence;
 - stale on either exact-shared side remains persistently stale;
@@ -712,13 +749,18 @@ At minimum cover:
 - legacy absence does not fabricate delete;
 - local-only and canonical-only materializations survive;
 - joining writer keeps own fingerprint/watermark;
-- accepted non-canonical ValueId split is exercised.
+- accepted non-canonical ValueId split is exercised;
+- a post-bootstrap validation unseen by a late join is concurrent with the join's negative proof/stale evidence and does not clear it until a causally later validation occurs.
 
 ### Journal-aware migration
 
-- `keep` preserves ValueId;
+- `keep` preserves ValueId, freshness, and current-shape-compatible incoming validity even when the node is recursively stale;
+- stale `keep` alone authors no proof barriers;
 - total pure format codec rewrites selected/non-selected/target-removed history identically across replicas;
-- non-total codec fails `JournalVersionCompatibilityError` before cutover;
+- `rewriteNodeKey` applies to every embedded NodeKey and ValidationBasis is re-sorted by target canonical NodeKey order;
+- `rewriteComputedValue` applies to every retained ValueEvent, including non-selected history;
+- codec functions are synchronous, deterministic, and capability-free;
+- non-total/throwing codec fails `JournalVersionCompatibilityError` before cutover;
 - representation-only change uses codec + `keep`;
 - explicit `invalidate()` preserves ValueId and authors node invalidation;
 - per-edge `proof(V,D)` barriers remove exactly target-retired validity;
