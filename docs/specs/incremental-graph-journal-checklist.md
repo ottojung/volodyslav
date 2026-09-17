@@ -139,9 +139,10 @@ Acceptance:
 Acceptance:
 
 - compatibility from held source snapshot;
-- every missing writer suffix imported;
+- every missing **foreign-writer** suffix imported;
 - overlap verified;
-- same-writer exact-prefix recovery is allowed only from a continuation-safe source that guarantees the complete published own stream;
+- a longer agreeing prefix of the receiver's own local writer causes `JournalWriterBehindError` rather than ordinary-sync continuation;
+- same-writer continuation is allowed only through a continuation-safe recovery source which guarantees the complete published own stream;
 - a generic/lagging peer snapshot cannot authorize resumed same-writer allocation;
 - fork rejected;
 - transfer streamable;
@@ -164,7 +165,7 @@ Acceptance:
 Acceptance:
 
 - source target/compatibility from one held snapshot;
-- union history retained;
+- union history retained only after any own-writer-behind condition has been resolved through continuation-safe recovery;
 - unchanged target occurrence preserves ValueId;
 - new ValueEvent only for actual occurrence replacement;
 - for every removed incoming edge `D -> K` of preserved V, reset authors `Invalidate(scope=proof(V,D),reason=reset)`;
@@ -238,6 +239,7 @@ Priority regressions/properties:
 - selected-remote stale persistence;
 - repeat-sync no-op and normalization convergence;
 - absent restore vs fresh creation;
+- ordinary peer revealing a longer local-writer prefix fails `JournalWriterBehindError` before sync publication;
 - stale own-writer recovery source cannot resume a previously published coordinate;
 - canonical bootstrap source decision/original cut;
 - bootstrap graph-semantic identity and rejection of current legacy `create()` path;
