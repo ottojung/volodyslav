@@ -58,17 +58,17 @@ Receiver normalization is finalized after the imported frontier it normalizes. I
 
 An ordinary `JournalSyncSource` may reveal that the receiver is behind its own writer stream. For example, receiver writer A may retain `A:1..900` while the source retains an agreeing `A:1..905`.
 
-That observation is not sufficient authority to resume writer A. The source does not establish that 905 is continuation-safe under `database-lifecycle.md` §4.1.
+Under `$id-6158827469032147`, an existing supported database cannot legitimately have rolled back part of its own committed writer stream. Therefore this observation is evidence of unsupported/corrupt lifecycle state, not a recoverable maintenance condition.
 
-Therefore ordinary synchronization does **not** activate a longer own-writer suffix and continue authoring merely because overlap agrees. It fails with `JournalWriterBehindError` and leaves the active receiver unchanged until `InstallationRecoverySource` establishes a continuation-safe A head. Divergent overlap is `JournalForkError`.
+Ordinary synchronization does **not** activate the longer own-writer suffix and does not author anything. It fails with `JournalWriterBehindError` and leaves the active receiver unchanged. Recovery of a completely absent installation is a different lifecycle path. Divergent overlap is `JournalForkError`.
 
 ## Reset
 
-Reset runs as exclusive maintenance, but it does not perform writer recovery inline.
+Reset runs as exclusive maintenance.
 
-If the held reset source is ahead for the receiver's own writer, reset fails `JournalWriterBehindError` before source import or reset authoring. Lifecycle recovery must establish a continuation-safe head first; reset may then be retried.
+If the held reset source is ahead for the receiver's own writer, reset fails `JournalWriterBehindError` before source import or reset authoring. This is unsupported existing-state rollback; reset is not retried through a same-writer recovery transition.
 
-Once that precondition holds, reset stages only required Value/Delete/Validate/Invalidate records. Preserved ValueIds are not reallocated merely because reset is maintenance.
+Otherwise reset stages only required Value/Delete/Validate/Invalidate records. Preserved ValueIds are not reallocated merely because reset is maintenance.
 
 If target proof is weaker for preserved V, then for every currently effective incoming edge `D -> K` which the target removes, reset stages one edge-specific barrier:
 
@@ -88,7 +88,7 @@ Reset-authored events causally follow the union they intentionally repair.
 
 ## Absent-installation restore
 
-Receiver-less restore authors no semantic history merely to copy already-existing history. It atomically establishes local storage/projection and adopts the continuation-safe snapshot's `localWriter` before ordinary writes.
+Receiver-less restore applies only when the local database is completely absent. It authors no semantic history merely to copy already-existing history; it atomically establishes local storage/projection and adopts the continuation-safe snapshot's `localWriter` before ordinary writes.
 
 ## Pre-Journal canonical bootstrap
 
