@@ -51,11 +51,13 @@ Exercise all three scopes independently:
 
 - `node` scope makes every certificate for K which did not causally observe the invalidation ineligible, regardless of ValueId;
 - `value(V)` affects persistent freshness of V but does not remove V's incoming validity proof;
-- `proof(V)` makes only certificates targeting V which did not causally observe the barrier ineligible.
+- `proof(V,D)` suppresses only the D basis edge of certificates targeting V unless the certificate causally observes that barrier and explicitly re-proves D.
 
-A proof barrier for V MUST NOT make an otherwise-valid certificate for concurrent/later V2 ineligible merely because V2 has the same NodeKey.
+A proof-edge barrier for `(V,D)` MUST NOT suppress another input edge E of the same certificate, and MUST NOT affect an otherwise-valid certificate for concurrent/later V2 merely because V2 has the same NodeKey.
 
-A `value` or `proof` scope which references concurrent/future/wrong-node ValueEvent is rejected.
+Multiple proof-edge barriers for the same V compose negatively: barriers naming different inputs remove the union of those edges from the selected certificate's effective basis.
+
+A `value` or `proof` scope which references concurrent/future/wrong-node ValueEvent is rejected. Proof scope also validates its canonical input NodeKey shape.
 
 ## Certificate-selection regression
 
@@ -72,7 +74,7 @@ Expected C2 wins because `coversValueInvalidations` precedes authority in certif
 
 ## Interleaving/model exploration
 
-Generate small DAGs and short histories across 2–3 writers. Explore concurrent value changes, causal chains, validation/invalidation concurrency, proof barriers, partial bases, delete/value conflicts, propagated staleness, and replacement occurrences.
+Generate small DAGs and short histories across 2–3 writers. Explore concurrent value changes, causal chains, validation/invalidation concurrency, proof-edge barriers, partial bases, delete/value conflicts, propagated staleness, and replacement occurrences.
 
 For every supported generated history assert deterministic replay and the laws in `incremental-graph-journal-theorems.md`.
 
@@ -107,15 +109,28 @@ For 2–4 replicas, stop non-normalization changes, synchronize in varying fair 
 
 Cover shorter->longer agreeing exact prefix, allocator/high-water reconstruction, continued authoring after recovered head, overlap fork rejection, and no duplicate reauthoring.
 
+Continuation is permitted only when the recovery source guarantees that the held snapshot contains the complete own-writer stream ever durably published for that writer.
+
+Critical stale-source regression:
+
+```text
+A previously published A:1..905
+peer B retains through A:905
+installation A loses local state
+recovery source exposes only A:1..900
+```
+
+The recovery source MUST NOT return continuation-safe Exists. Restore/recovery fails indeterminate rather than resuming at A:901. This prevents both writer-ID fork and `last_node_index` rollback/reuse.
+
 This does not substitute for pre-Journal creator-resume.
 
 ## Absent-installation restoration tests
 
 With no local database:
 
-1. installation recovery source exists -> restore/adopt `snapshot.localWriter`;
+1. continuation-safe installation recovery source exists -> restore/adopt `snapshot.localWriter`;
 2. source definitely absent -> only then generate fresh fingerprint;
-3. query/read fails -> fail without fresh fallback.
+3. query/read fails or own-stream completeness cannot be guaranteed -> fail without fresh fallback.
 
 ## Reset tests
 
@@ -132,11 +147,34 @@ source target: same occurrences, no A->B validity, B stale
 Expected:
 
 - B keeps ValueId;
-- reset authors `Invalidate(B,scope=proof(B1),reason=reset)` before target partial/all-unknown validation;
-- old full B1 certificate is ineligible;
+- reset authors `Invalidate(B,scope=proof(B1,A),reason=reset)` for the removed A->B edge;
+- old full B1 certificate's A edge is ineffective;
 - final replay has no A->B validity edge.
 
-Add a concurrent/later B2 certificate not observing the B1 barrier and assert the barrier does **not** make B2 ineligible.
+Add a second input C and assert a barrier for `(B1,A)` does not remove an unrelated valid C->B edge.
+
+Add a concurrent/later B2 certificate not observing the B1 barrier and assert the barrier does **not** affect B2.
+
+### Concurrent same-ValueId proof weakening
+
+Fixture:
+
+```text
+A ----\
+       -> B
+C ----/
+shared V = b1
+old certificate = {A:a1,C:c1}
+```
+
+Two replicas independently migrate/reset to the same partial proof `{A:a1,C:unknown}`. Each authors its own `proof(b1,C)` barrier and target validation. After union:
+
+- at least one target certificate remains selected;
+- A->B remains valid;
+- C->B is invalid;
+- the two concurrent barriers do not erase A proof.
+
+Variant: one replica removes A and the other removes C. After union both edges are invalid: negative edge evidence composes as the union of removed edges.
 
 ### Reset persistent propagated stale
 
@@ -226,6 +264,26 @@ Join sees only frozen cut, reuses K=v1 identity, creates no delete for N, and la
 - canonical-present/local-absent authors no delete;
 - local-present/canonical-absent authors historical joining ValueEvent.
 
+### Exact shared proof intersection
+
+Fixture:
+
+```text
+D -> K
+canonical: exact V fresh, D->K valid
+joining: exact same V but K was explicitly invalidated, so D->K absent and K stale
+```
+
+Expected:
+
+- V is reused;
+- joined validity is `canonicalValid ∩ joiningValid`, so D->K is invalid;
+- join authors `proof(V,D)` bootstrap barrier rather than a strengthening validation;
+- joined V is persistently stale;
+- `pull(K)` cannot take cache-revalidation solely from the canonical proof; K must recompute/revalidate according to the remaining effective proof.
+
+Also test a joining-only proof edge when canonical lacks it: join does not strengthen canonical proof, so the edge remains absent.
+
 ### Exact shared stale is symmetric
 
 Case A:
@@ -237,7 +295,7 @@ joining exact V stale
 
 joined V is persistently stale.
 
-Case B — the previous missing direction:
+Case B:
 
 ```text
 canonical exact V stale
@@ -246,9 +304,9 @@ joining exact V fresh with complete local proof
 
 Expected:
 
-- no joining ValidateEvent is allowed merely to strengthen/replace canonical proof for exact V;
+- joining proof cannot strengthen/replace canonical proof;
 - joined V remains persistently stale;
-- an uncovered value-scoped bootstrap invalidation applies after any bootstrap proof history;
+- an uncovered value-scoped bootstrap invalidation applies after proof-edge barriers;
 - later input revalidation cannot freshen V without V itself validating/recomputing.
 
 Thus stale on **either** legacy side is conservative for an exact shared occurrence.
@@ -266,7 +324,7 @@ joining: same D occurrence stale; K absent or a losing different occurrence
 Expected:
 
 1. J2 makes shared Dc persistently stale;
-2. canonical K remains selected and has complete own proof;
+2. canonical K remains selected and has complete own effective proof;
 3. J2b detects K stale solely through D and authors `Invalidate(K,scope=value(Kc),reason=bootstrap)`;
 4. later `pull(D) -> Unchanged` may freshen D but MUST NOT freshen K;
 5. K becomes fresh only when K validates/recomputes.
@@ -284,7 +342,7 @@ Every migration verifies deterministic whole-history format rewrite, one target 
 Identity-specific cases:
 
 - `keep` preserves selected ValueId;
-- semantic-preserving `override()` preserves ValueId and must agree with canonical per-record codec;
+- representation-only rewrite uses `keep` plus canonical codec; Journal-aware use of legacy value-producing `override()` is rejected;
 - explicit `invalidate()` preserves cached occurrence ValueId and authors a true node-scoped invalidation;
 - schema/proof/freshness-only changes preserve ValueId;
 - `create`/genuine semantic replacement creates new ValueId;
@@ -299,9 +357,9 @@ before: selected full certificate for V
 migration target: same V with fewer/no validity edges
 ```
 
-Expected occurrence-scoped `proof(V)` barrier before target validation. Old stronger V certificate is ineligible. A concurrent/later replacement V2 certificate not observing the V barrier remains eligible according to ordinary rules.
+Expected one `proof(V,D)` barrier for every removed edge D before/with target validation. Old proof may continue to prove unaffected inputs; barriered edges are ineffective. A concurrent/later replacement V2 certificate remains unaffected.
 
-For explicit `invalidate(K)`, expected event remains node-scoped; do not replace actual invalidation semantics with a proof barrier.
+For explicit `invalidate(K)`, expected event remains node-scoped; do not replace actual invalidation semantics with proof barriers.
 
 ### Migration propagated stale
 
@@ -314,11 +372,11 @@ target: A stale; B persistently stale, proof retained
 
 Migration persists value-scoped stale B marker even though replay at cut is already recursively stale. Later `A -> Unchanged` does not freshen B.
 
-## Canonical per-record rewrite and `override()` regressions
+## Canonical per-record rewrite regressions
 
-Replicas X/Y retain historical V, selected only on X. Same migration must rewrite V identically on both. X's `override()` callback is only an assertion against canonical codec; Y need not select/callback V. Later sync must not report JournalForkError for V.
+Replicas X/Y retain historical V, selected only on X. Same migration must rewrite V identically on both without invoking a selected-value `override()` callback. Representation-only migration uses `keep` for selected semantic state and the canonical codec for every retained V. Later sync must not report `JournalForkError` for V.
 
-Replica-local override output differing from codec fails before cutover. Semantic-changing use of override is rejected.
+The codec MUST be total over retained source history. Include a historical ValueEvent and validation-basis NodeKey for a node family removed from target schema; migration still rewrites/retains those historical records deterministically. If the version migration cannot define that rewrite, it fails before cutover rather than dropping or guessing history.
 
 ## Current-format codec tests
 
