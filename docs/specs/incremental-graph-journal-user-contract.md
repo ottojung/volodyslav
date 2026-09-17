@@ -2,33 +2,23 @@
 
 ## Purpose
 
-Journal 3 is persistence/synchronization infrastructure, but callers need stable expectations around ordinary graph and lifecycle operations.
-
-Raw Journal IDs/contexts/HLCs remain internal infrastructure rather than ordinary application API parameters.
+Journal 3 is persistence/synchronization infrastructure. Ordinary callers continue to see IncrementalGraph operations rather than raw Journal IDs, contexts, authority clocks, or writer coordinates.
 
 ## Ordinary graph APIs
 
-Application code continues to use ordinary IncrementalGraph operations:
-
-```text
-pull(nodeName, bindings?)
-invalidate(nodeName, bindings?)
-inspection/read operations
-```
-
 ### `pull()`
 
-A successful pull has the existing IncrementalGraph semantic result. Any persisted graph change is committed together with replay-complete Journal history before success is observable.
+A successful pull has the existing IncrementalGraph result. Any persisted graph transition and its replay-complete Journal history become durable together.
 
-Cases include fresh no-op, first materialization, changed recomputation, `Unchanged`, and cache revalidation.
+Fresh no-op, first materialization, changed recomputation, `Unchanged`, and cache revalidation remain ordinary graph behavior.
 
 ### `invalidate()`
 
-A successful explicit invalidation does not run target computor. It records node invalidation and actual propagated fresh->stale transitions while retaining safe cached `oldValue` state.
+Explicit invalidation runs no target computor. It records genuine node invalidation and the actual persistent fresh->stale propagation while retaining cached values which remain safe as `oldValue`.
 
 ### Inspection
 
-Inspection reads current materialized projection. It does not execute computors or author semantic Journal history merely because data was inspected.
+Inspection reads current materialized projection. It does not execute computors or author semantic history merely because data was read.
 
 ## Synchronization
 
@@ -36,180 +26,147 @@ Inspection reads current materialized projection. It does not execute computors 
 synchronizeFrom(source)
 ```
 
-requires an already-established writable receiver.
+requires an established writable receiver.
 
-Successful pairwise synchronization means:
+Success means:
 
-- compatibility came from same held stable snapshot as imported history;
-- imported writer records keep exact identity/body;
-- retained contexts/references are valid;
+- version/schema compatibility came from the same immutable source snapshot as imported history;
+- imported foreign records kept exact identity/body;
+- causal/reference rules were validated;
 - required receiver normalization committed;
 - active graph equals active Journal replay;
-- no computor ran;
-- repeating unchanged incorporated source is semantic no-op.
+- no computor ran; and
+- repeating the same incorporated source without intervening changes is a semantic no-op.
 
-Synchronization may change selected value, identifier, presence, freshness, and validity through replay/normalization.
+### Keep versus delete under merged dependency state
 
-If selected occurrence is stale solely because a direct input is stale, synchronization persists that occurrence's stale flag even when newly imported/selected.
+Journal 3 no longer uses input-count/arity as a proxy for whether a cached dependent is safe.
 
-## Synchronization normalization is durable history
+- If a selected cached node loses a required materialized input, synchronization explicitly deletes that dependent closure. The node cannot remain materialized under IncrementalGraph structural semantics.
+- If every required input remains present, disagreement between current input ValueIds and the dependent's certificate does **not** by itself delete the cached value. The cache remains a legitimate `oldValue`; replay expresses hard/soft stale state through proof/freshness.
 
-Sync may author real receiver:
+So mixed input histories affect validity/freshness, not cache existence, unless structural dependency closure itself fails.
 
-- `DeleteEvent(reason="sync")` for structural cache removal;
-- `InvalidateEvent(scope=value(V),reason="sync")` for persistent propagated staleness.
+### Persistent propagated stale state
 
-These are not acknowledgements. They remain ordinary semantic history.
+If a selected occurrence has complete **effective** own proof but is stale because an input is stale, sync persists `Invalidate(scope=value(currentValueId), reason="sync")`, including when that occurrence was newly selected from the source. Later upstream `Unchanged` cannot freshen the dependent automatically.
 
-## Synchronization failures
+## Synchronization can reveal unsafe writer rollback
 
-Failure before pairwise cutover leaves previous active pair supported. Multi-source outer operation may retain earlier successful pairwise commits if a later source fails.
+If an ordinary source contains a longer prefix of the receiver's **own** local writer, ordinary sync does not adopt that suffix and continue authoring.
 
-Lifecycle callers can distinguish operational failure, compatibility failure, writer/bootstrap fork, malformed history, and projection failure.
+It fails `JournalWriterBehindError` and requires authoritative same-writer recovery through the configured `InstallationRecoverySource`. A generic peer may prove that the receiver is behind, but it cannot prove that the observed head is the greatest durable local-writer coordinate which can later re-enter history.
 
 ## Absent-installation startup
 
-A machine with **no local database/writer identity** first queries configured installation recovery source.
+A machine with no local database/writer identity queries the installation recovery source **before** generating a fresh fingerprint.
 
-If synchronized state exists, receiver-less restore adopts snapshot `localWriter`, restores history/projection/allocator state, then runs migration gate. Query/read failure does not fall back to fresh identity. Only definite absence permits fresh creation.
+- continuation-safe synchronized state exists -> restore that writer/history/projection/allocator state;
+- definite absence -> fresh identity may be created;
+- read/query/completeness uncertainty -> fail, no fresh fallback.
 
-## Same-writer Journal restoration
+The recovery source is stronger than a generic sync source: it must guarantee that the restored local-writer head is complete for safe continuation.
 
-An existing Journal database behind its own writer history may import a longer agreeing exact prefix under maintenance and continue strictly after recovered head. Overlap disagreement is writer fork.
+## Existing-writer recovery
 
-This differs from bootstrap creator-resume where state is still pre-Journal.
+A behind existing installation may resume its writer only from a continuation-safe recovery snapshot whose local writer is the same writer and whose stream extends the local stream by an exact prefix.
 
-## Initial Journal bootstrap from legacy state
+Recovery imports the missing own-writer suffix plus required causal history, reconstructs allocator/high-water/projection, and only then permits another local record after the complete recovered head. Divergent overlap is a writer fork.
 
-Pre-Journal replicas which will synchronize use one canonical semantic bootstrap cut as shared ValueId basis for occurrences equal to that cut.
+## Initial Journal bootstrap
 
-Startup obtains cohort source result:
+Pre-Journal replicas which will later synchronize use one frozen canonical bootstrap cut as the shared ValueId basis for occurrences equal to that cut.
 
-1. compatible immutable artifact -> creator-resume or ordinary join by fingerprint;
-2. definite absence -> create canonical artifact and freeze before ordinary Journal authoring;
-3. failure/indeterminate -> fail without competing history.
-
-Artifact is original bootstrap target metadata plus records through creator frontier immediately after bootstrap. It does not advance with current cohort state.
-
-A release joins only artifacts matching its expected supported bootstrap target. Old unsupported target -> `JournalVersionCompatibilityError` before authoring; permanent decoder/migration compatibility is not promised.
-
-### Bootstrap does not run a legacy semantic migration first
-
-The supported pre-Journal -> Journal bootstrap is graph-semantic identity over already-persisted legacy state.
-
-At the canonical cut it preserves exact:
+The cohort source yields exactly:
 
 ```text
-materialized NodeKeys
-NodeIdentifiers
-payloads
-createdAt / modifiedAt
-freshness
-validity
-last_node_index
-graph interpretation
+Exists(CanonicalBootstrapSnapshot)
+DefinitelyAbsent
+IndeterminateOrError
 ```
 
-Bootstrap does not first call ordinary migration `create`/`override`/`invalidate`/`delete` or synthesize wall-clock/allocator-dependent graph facts.
+Indeterminate/error does not authorize competing canonical creation.
 
-If a proposed bootstrap target requires such semantic migration, startup reports `JournalVersionCompatibilityError` before history is authored. Actual graph/schema migration occurs before entering a supported legacy source state or after bootstrap as Journal-aware migration.
+The artifact contains exactly the original bootstrap frontier/version/schema, not later cohort history.
 
-### Creator resume after interrupted first bootstrap
+### Bootstrap is semantic identity
 
-If artifact exists and:
+Bootstrap journals the already-persisted supported legacy graph. Before Journal identity exists it does not run ordinary migration `create`/`override`/`invalidate`/`delete`, synthesize new timestamps/identifiers, or perform a schema-semantic migration.
+
+If such a migration is required, the automatic bootstrap transition is incompatible. Actual graph/schema migration happens before entering the supported legacy source state or afterward as Journal-aware migration.
+
+### Creator resume
+
+If the canonical artifact belongs to the still-pre-Journal local fingerprint, startup resumes the interrupted creator transition: direct persisted legacy state must equal artifact projection. On equality install exactly the artifact and reconstruct writer state; on disagreement fail `JournalBootstrapForkError`. No migration callback reruns and no duplicate bootstrap history is authored.
+
+### Exact shared occurrence
+
+If joining legacy host has exactly the canonical occurrence, it reuses the canonical ValueId.
+
+Positive proof merges conservatively:
 
 ```text
-artifact.creatorWriter == local DatabaseFingerprint
+joinedValid = canonicalValid intersect joiningValid
 ```
 
-while local database remains pre-Journal, startup treats this as interrupted canonical creation.
+Canonical certificate remains the positive basis. For every canonical incoming edge missing from joining legacy proof, join authors `proof(V,D)` negative edge evidence. Joining-only proof never strengthens the exact shared occurrence merely because that host upgrades later.
 
-It compares `project(artifact)` directly with persisted local legacy semantic graph under the identity-bootstrap rule. It does **not** rerun a migration callback or regenerate timestamps/identifiers.
-
-Equal -> install exact artifact, rebuild writer head/allocator/high-water/projection, atomically cut over with no duplicate bootstrap history.
-
-Different -> `JournalBootstrapForkError`. Another fingerprint cannot use creator-resume.
-
-### Equal legacy occurrences and proof
-
-If joining host has exact same occurrence as canonical cut, it reuses canonical ValueId and authors no replacement.
-
-For that exact shared occurrence, join also does **not** author a causally-later validation merely to strengthen/replace canonical proof. Canonical proof remains basis.
-
-Freshness is conservative:
+Freshness is likewise conservative:
 
 ```text
-joined shared stale
-    iff canonical stale OR joining stale
+joinedStale = canonicalStale OR joiningStale
 ```
 
-An uncovered value-scoped bootstrap marker is retained/authored when needed. Therefore a fresh joining copy cannot clear canonical stale state merely by upgrading later.
+After proof-edge barriers, an uncovered `value(V)` bootstrap marker is retained/authored whenever either side was stale.
 
-### Divergent legacy occurrences
+### Divergent values and legacy absence
 
-A genuinely different local legacy occurrence becomes historical Journal evidence:
+A different/local-only legacy occurrence becomes historical concurrent bootstrap evidence with authority seeded from persisted legacy `modifiedAt`, not upgrade time.
 
-- authority seeded by persisted legacy `modifiedAt`;
-- no synthetic happened-before from merely reading canonical artifact;
-- normal concurrent-value authority decides conflict.
+Canonical-present/local-absent does not manufacture a deletion. Two independent late joiners may assign different ValueIds to the same non-canonical legacy occurrence; `$id-1635227135166767` accepts the resulting possible downstream recomputation.
 
-Upgrade time gives no precedence.
+### Recursive bootstrap staleness
 
-Two independent late joiners may hold same non-canonical occurrence and still assign different bootstrap ValueIds. Later synchronization may stale dependents naming loser. Accepted by `$id-1635227135166767`.
-
-### Legacy absence/presence
-
-Canonical-present/local-absent does not create deletion evidence. Local-only materialization may become historical joining occurrence.
-
-### Bootstrap propagated stale state
-
-After direct stale roots are represented, join propagates persistent stale markers through selected dependency DAG.
-
-If selected K has complete own proof but a direct input is stale, bootstrap ensures `Invalidate(K,scope=value(currentValueId),reason=bootstrap)` exists unless already covered by an applicable marker.
-
-Thus if joining stale input makes a canonical dependent recursively stale, later input `Unchanged` does not silently freshen dependent.
-
-### After bootstrap
-
-Installed pair is at supported bootstrap target. Startup then runs only Journal-aware migrations explicitly supported by running release. Post-bootstrap cohort history arrives later through ordinary compatible synchronization.
+After direct proof/stale evidence is represented, bootstrap walks the selected DAG. If selected K's effective own proof is complete but an input is stale, it persists `value(currentValueId(K))` stale history so later upstream `Unchanged` cannot silently freshen K.
 
 ## Journal-aware migration
 
-Database migration may rewrite every retained record representation into target current format while preserving IDs/historical meaning, then append only required semantic target changes.
+Migration has two distinct parts:
 
-### Canonical representation rewrite and `override()`
+1. deterministic whole-history format rewrite;
+2. semantic target repair.
 
-One pure per-record codec rewrites every affected retained ValueEvent identically across replicas, regardless of selected status.
+### Representation rewrite
 
-`override()` preserves selected ValueId and only asserts callback result equals canonical rewritten payload. Mismatch fails before cutover. Semantic-changing override is invalid.
+One canonical transform rewrites **every retained source-format record**, including history for node families absent from the target schema. If no deterministic target representation exists for some retained record, that migration is unsupported.
 
-### Proof weakening versus explicit invalidation
+When ValueEvent payload representation changes, one pure per-record codec is the sole source of target bytes across all replicas and all selected/historical occurrences.
 
-A later partial certificate cannot always beat older stronger proof because replay prioritizes `basisMatchCount`.
+Once Journal history exists, representation-only change is **not** expressed through legacy `override(nodeIdentifier,value)`. The selected semantic occurrence uses `keep`; the legacy value-producing override path is rejected in Journal-aware mode.
 
-If maintenance merely weakens proof for preserved occurrence V, migration uses:
+### Semantic occurrence identity
+
+Occurrence-preserving decisions (`keep`, `invalidate`, proof/freshness/schema-only changes, representation-only format rewrite) preserve the ValueId. A new ValueEvent is reserved for actual create/replace occurrence changes.
+
+Independent genuine replacement migrations may create different replacement ValueIds; later synchronization selects normally and may stale dependents naming a losing replacement. This is accepted.
+
+### Proof weakening
+
+True migration `invalidate(K)` remains node-scoped.
+
+If maintenance merely removes incoming validity while preserving V, it authors one:
 
 ```text
-Invalidate(K,scope=proof(V),reason=migration)
+Invalidate(K, scope=proof(V,D), reason=migration)
 ```
 
-before target validation. This makes older V certificates ineligible without invalidating proof for another occurrence V2.
+for each removed edge `D -> K`.
 
-If migration explicitly performs `invalidate(K)`, that remains a real node-scoped invalidation. The two semantics are intentionally different.
+A proof-edge barrier removes only that edge from certificates targeting V until causally re-proved. Concurrent barriers compose by subtracting the union of named edges; they do not destroy unrelated proof or affect V2.
 
-### Persistent target staleness
+### Persistent target stale state
 
-If target stores K stale while K's own selected proof is otherwise complete, migration ensures uncovered value-scoped invalidation targets final K ValueId even when recursive input staleness already makes replay stale.
-
-Later upstream `Unchanged` does not freshen K until K itself validates/recomputes.
-
-### Genuine new/replaced occurrences
-
-New migration ValueEvent only for real create/replace occurrence.
-
-Replicas may independently create different replacement ValueIds; later synchronization chooses normally and may stale dependents naming loser. This is accepted rather than requiring a specific coordinating peer.
-
-Future replay never reruns historical migration callback.
+If the target stores K stale while K's own effective proof is complete, migration persists a `value(V)` stale marker even when K is already recursively stale through an input. Later upstream `Unchanged` does not freshen K until K itself validates/recomputes.
 
 ## Reset
 
@@ -217,28 +174,26 @@ Future replay never reruns historical migration callback.
 resetTo(source)
 ```
 
-requires established writable receiver and one held compatible source snapshot.
+requires an established writable receiver and one held compatible source snapshot.
 
-Reset retains source/receiver history and establishes source-target-equivalent projection relative to observed history.
-
-Rules:
+Reset retains history and establishes the source projection relative to all history it observed.
 
 - matching target occurrence -> preserve ValueId;
-- actual value-state difference -> new reset ValueEvent;
-- weaker target proof for preserved V -> `proof(V)` barrier then exact target validation;
-- proof barrier for V does not taint V2;
-- target persistent stale with own proof complete -> value-scoped reset marker even if recursively stale already;
-- target absence while union selects value -> one reset DeleteEvent;
+- actual occurrence difference -> new reset ValueEvent;
+- each removed proof edge for preserved V -> `proof(V,D)` barrier;
+- exact target proof -> validation as needed;
+- target persistent stale with effective own proof complete -> `value(V)` reset marker;
+- target absence while union selects value -> one DeleteEvent;
 - already-selected absence -> no redundant delete.
 
-Reset records intentionally causally follow observed union. This is not bootstrap conflict semantics.
+If the reset source reveals a longer receiver-local writer prefix, reset must stop and perform authoritative same-writer recovery first; a generic reset source cannot authorize writer continuation.
 
-Repeated already-satisfied reset may return `changed=false`. No computor runs during reset.
+Reset repairs intentionally causally follow observed history. That causal-later semantics is not used for pre-Journal bootstrap conflicts.
 
 ## Projection rebuild
 
-Administrative rebuild reconstructs derived graph/index state from authoritative current-format Journal history. Valid history rebuild is semantically invisible; malformed authoritative history causes failure rather than mutation of Journal to match graph bytes.
+Administrative rebuild reconstructs graph/index state from authoritative current-format Journal history. Valid history rebuild is semantically invisible. Malformed authoritative history causes failure rather than rewriting Journal to match graph bytes.
 
-## No destructive compaction expectation
+## History retention
 
-Journal 3 has no periodic destructive replay-history compaction obligation. Derived checkpoints/indexes may be added independently, but retained history remains authority.
+Journal 3 has no destructive replay-history compaction obligation. Derived indexes/checkpoints may be added independently, but retained Journal history remains semantic authority.
