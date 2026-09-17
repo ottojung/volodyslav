@@ -42,7 +42,7 @@ Reset requires:
 
 Compatibility metadata must come from the same held `JournalSnapshot` used to derive the target and import source records.
 
-If the source contains a longer exact prefix of the receiver's own writer stream, reset first performs the same safe same-writer recovery defined by synchronization. A divergent overlap is a hard fork.
+If the source contains a longer exact prefix of the receiver's own writer stream, reset first performs the same safe same-writer recovery defined by the lifecycle specification. That continuation is allowed only when the recovery source can guarantee that the held snapshot contains the complete own-writer stream ever durably published for that writer. A merely lagging peer snapshot is not sufficient. Divergent overlap is a hard fork.
 
 An installation with no local database/writer identity uses the absent-state restoration lifecycle in `database-lifecycle.md`; `resetTo()` does not invent a local writer identity for an absent receiver.
 
@@ -186,40 +186,41 @@ TargetValid(K) = {
 }
 ```
 
-### Proof weakening requires an occurrence-scoped barrier
+### Proof weakening uses occurrence-and-input barriers
 
-Replay intentionally prefers certificates with greater `basisMatchCount` before authority. Therefore merely appending a later certificate with more `"unknown"` entries cannot remove validity supplied by an older stronger certificate.
+Replay intentionally prefers certificates with greater effective basis applicability before authority. Therefore merely appending a later certificate with more `"unknown"` entries cannot by itself remove validity supplied by older proof.
 
-If reset must remove at least one currently-valid incoming edge while preserving K's selected occurrence:
+For every edge which reset must remove while preserving K's selected occurrence:
 
 ```text
-CurrentValid(K) - TargetValid(K) != empty
+D in CurrentValid(K) - TargetValid(K)
 ```
 
-reset MUST first author:
+reset MUST author one barrier:
 
 ```text
 InvalidateEvent {
     node: K,
     scope: {
         kind: "proof",
-        value: resetValueId(K)
+        value: resetValueId(K),
+        input: D
     },
     reason: "reset"
 }
 ```
 
-Call this a **reset proof barrier**.
+Call this a **reset proof-edge barrier**.
 
-Every certificate for that exact ValueId authored before/concurrently with the barrier becomes ineligible unless it causally observes the barrier. A later reset validation can therefore establish a weaker or differently-shaped target proof without competing forever with an older stronger certificate.
+A proof-edge barrier retires the exact incoming edge `D -> K` for the exact preserved occurrence. A certificate can re-establish that edge only if it causally observes the barrier and explicitly proves D again. The barrier does not invalidate the certificate's unrelated basis entries, so independent reset/migration operations on the same ValueId can compose by accumulating the edges each one intentionally removed.
 
 The barrier is occurrence-scoped on purpose. Reset is weakening proof for the preserved occurrence; it is not semantically issuing an explicit node invalidation which should taint certificates for an unseen concurrent/later replacement ValueId.
 
-The barrier is required only for proof weakening/removal. If reset merely adds validity edges, the later stronger certificate naturally wins by basis-match count and no barrier is needed solely for that addition.
+The barrier is required only for proof weakening/removal. If reset merely adds validity edges, the later stronger certificate naturally wins by effective basis-match count and no barrier is needed solely for that addition.
 
-After any required barrier, evaluate the selected eligible certificate which would apply under the current schema.
+After any required barriers, evaluate replay under the current schema.
 
-Reuse it only if it yields exactly `TargetValid(K)` and has the causal coverage required for PS's target freshness.
+Reuse the selected certificate only if replay already yields exactly `TargetValid(K)` and has the causal coverage required for PS's target freshness.
 
 Otherwise author one causally-later:
 
@@ -248,7 +249,7 @@ resetValueId(D)
 
 exactly when D is in `TargetValid(K)`; otherwise use `"unknown"`.
 
-When a proof barrier was authored, this validation occurs after it and therefore may become eligible even though all older certificates for that ValueId are not. This includes the all-`"unknown"` case where the target has no incoming validity edges.
+When proof-edge barriers were authored, this validation occurs after them and may re-establish only the edges represented by matching ValueIds in its basis. An all-`"unknown"` target certificate therefore represents zero incoming target validity without an old full certificate reintroducing an edge that maintenance retired.
 
 This rule also repairs dependents whose own value occurrence was preserved but whose certificate would otherwise name an input ValueId replaced in Pass 1.
 
@@ -261,11 +262,11 @@ After Pass 2 compute replay `P2`. For each present K let C be the replay-selecte
 ```text
 selfProofReady(K) iff
     C exists
-    and basisMatchCount(K,C) == numberOfDirectInputs(K)
+    and effectiveBasisMatchCount(K,C) == numberOfDirectInputs(K)
     and coversValueInvalidations(K,C)
 ```
 
-Node-scoped invalidations and occurrence-scoped proof barriers are already part of certificate eligibility. Thus `selfProofReady(K)` means K is not persistently stale because of its own proof deficiency, node invalidation/proof barrier, or current-value invalidation. It may nevertheless be recursively stale because a direct input is stale.
+Node-scoped invalidations affect certificate eligibility; proof-edge barriers affect the effective basis edge-by-edge. Thus `selfProofReady(K)` means K is not persistently stale because of its own proof deficiency, explicit node invalidation, proof-edge deficit, or current-value invalidation. It may nevertheless be recursively stale because a direct input is stale.
 
 For target-fresh K, final replay must make K fresh. If an observed invalidation prevents that, Pass 2 must establish a causally later complete validation rather than replacing K's value occurrence solely for freshness.
 
@@ -287,7 +288,7 @@ InvalidateEvent {
 
 This rule applies even when P2 already reports K stale **solely because a direct input is stale**. Recursive staleness at the reset cut is not itself a persistent marker. Without the value-scoped event, a later `Unchanged` revalidation of the input could incorrectly make K fresh even though the reset target's stored stale flag must remain stale until K itself validates/recomputes.
 
-If `selfProofReady(K)` is false, K already has a persistent own-state reason for staleness such as basis mismatch, an uncovered node invalidation, an uncovered proof barrier without sufficient replacement proof, or an uncovered current-value invalidation; no additional marker is required merely to duplicate that reason.
+If `selfProofReady(K)` is false, K already has a persistent own-state reason for staleness such as basis mismatch, an uncovered node invalidation, an effective proof-edge deficit, or an uncovered current-value invalidation; no additional marker is required merely to duplicate that reason.
 
 Thus reset freshness changes are represented as persistent freshness/proof history, not gratuitous value replacement.
 
@@ -335,7 +336,7 @@ Reset-authored records are causally after all history reset observed, so they es
 
 An unseen concurrent event from another replica remains concurrent and may affect a later ordinary synchronization.
 
-An occurrence-scoped reset proof barrier does not invalidate certificate history for such a concurrent replacement occurrence merely because it shares the same NodeKey.
+A reset proof-edge barrier affects only one input edge of one ValueId. It does not invalidate unrelated proof on that occurrence and does not taint certificates for another replacement occurrence merely because it shares the same NodeKey.
 
 Reset therefore means:
 
@@ -347,7 +348,7 @@ not:
 
 ## Same-writer restoration versus reset
 
-If a receiver only lacks an exact suffix of its own writer history, exact-prefix recovery is restoration. No reset baseline is needed.
+If a receiver only lacks an exact suffix of its own writer history, exact-prefix recovery is restoration. No reset baseline is needed. Writer continuation still requires the recovery source's complete-own-stream guarantee from `database-lifecycle.md` before any new local coordinate may be allocated.
 
 `resetTo(source)` is for intentional semantic rebaselining when ordinary retained-history selection would otherwise produce another observable graph state.
 
