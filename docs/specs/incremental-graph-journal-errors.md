@@ -2,9 +2,9 @@
 
 ## Purpose
 
-Journal 3 failures have different operational meanings. Implementations must not collapse incompatibility, forked identity, malformed history, projection failure, or storage failure into one generic error when lifecycle code needs to distinguish them.
+Journal 3 failures have different operational meanings. Lifecycle code must not collapse incompatibility, writer continuation uncertainty, forked identity, malformed history, projection failure, or storage failure into one generic error.
 
-Exact JavaScript class names may differ except where a named category is referenced normatively; the semantic distinctions below are required.
+Exact JavaScript class names may differ except where a category is referenced normatively. The semantic distinctions below are required.
 
 ## JournalForkError
 
@@ -14,47 +14,23 @@ Meaning:
 
 Examples:
 
-- receiver and source disagree on `A:42` body/context/authority;
-- same-writer restoration discovers divergent overlap;
-- two incorrectly migrated replicas produce different target bodies for one historical ID because replica-local state was used instead of canonical per-record rewrite.
+- receiver/source disagree on `A:42`;
+- authoritative same-writer recovery finds divergent overlap;
+- two migrations rewrote one historical ID differently because the format transform depended on replica-local state.
 
-Required behavior:
+Required behavior: do not merge by graph conflict authority or payload equality; fail before cutover.
 
-- do not merge by conflict authority or payload equality;
-- do not rewrite either ID during ordinary sync/recovery;
-- fail before active cutover.
-
-A supported whole-database migration may deterministically rewrite representation while preserving one ID/historical meaning. That is not a fork.
+A deterministic whole-database format rewrite which preserves the ID/historical fact is not a fork.
 
 ## JournalBootstrapForkError
 
 Meaning:
 
-> A canonical bootstrap artifact belongs to this installation's continuing writer identity, but the still-local persisted pre-Journal graph no longer equals the semantic state from which that artifact was created.
+> A canonical bootstrap artifact belongs to this installation's continuing writer identity, but the still-local pre-Journal graph no longer equals the semantic state represented by that artifact.
 
-This category exists for the crash window where canonical artifact publication succeeded but creator local Journal cutover did not.
+Creator-resume requires the local fingerprint to equal `artifact.creatorWriter` and direct persisted-state equality under the semantic-identity bootstrap contract. It does not rerun migration callbacks or regenerate identifiers/timestamps.
 
-Creator-resume requires:
-
-```text
-artifact.creatorWriter == local DatabaseFingerprint
-semanticGraph(project(artifact, localWriter))
-    == semanticGraph(local persisted legacy graph)
-```
-
-under the supported semantic-identity bootstrap interpretation.
-
-The local comparison is direct: creator-resume does **not** rerun an ordinary migration callback or regenerate `create()` timestamps/identifiers.
-
-Required behavior:
-
-- do not append another bootstrap record;
-- do not create another canonical artifact;
-- do not reinterpret the creator as a foreign joiner;
-- do not overwrite artifact history from mutable graph bytes;
-- fail before active cutover and require explicit recovery/operator choice.
-
-A different local fingerprint never uses creator-resume.
+On mismatch: author nothing, do not create another canonical artifact, and require explicit recovery/operator action.
 
 ## JournalGapError
 
@@ -62,28 +38,15 @@ Meaning:
 
 > A claimed committed writer prefix is not contiguous.
 
-Example:
-
-```text
-A:1..40 and A:42 retained, A:41 missing
-```
-
-Staging may temporarily be incomplete, but active supported history may not expose a hole.
+Staging may temporarily be incomplete; active supported history may not expose a hole.
 
 ## JournalCausalClosureError
 
 Meaning:
 
-> A semantic-event context is not a genuine causally closed observed frontier.
+> A semantic-event context is not a genuine causally closed frontier.
 
-Examples include:
-
-```text
-E.context[B] = 100
-retained frontier B = 95
-```
-
-and:
+Invalid examples include:
 
 ```text
 A:1
@@ -91,119 +54,114 @@ B:1 context={A:1}
 C:1 context={B:1,A:0}
 ```
 
-The second is malformed despite all named coordinates existing because C claims B while omitting A which B observed.
+or `F.context[F.author] != F.sequence - 1`.
 
-Also invalid:
+The narrow historical bootstrap-value exception may omit canonical foreign coordinates so upgrade read order does not invent legacy causality; its stored context must still be closed over every coordinate it actually claims.
 
-- `F.context[F.author] != F.sequence - 1`;
-- an included event's context is not componentwise included by F;
-- happened-before does not imply later authority.
-
-The controlled legacy-bootstrap ValueEvent exception may omit canonical foreign coordinates specifically so physical upgrade read order does not invent happened-before between pre-existing legacy values. Its actual stored context must still be closed over every coordinate it claims.
-
-Never repair a malformed imported event by silently expanding its immutable context.
+Never silently expand an immutable imported context to repair it.
 
 ## JournalReferenceCausalityError
 
 Meaning:
 
-> A semantic event references a ValueId which was not in its causal past.
+> An event references a ValueId which was not in its causal past.
 
 Examples:
 
-- validation basis/target references concurrent or future ValueEvent;
-- value-scoped invalidation names concurrent/future occurrence;
-- proof-scoped barrier names concurrent/future occurrence.
+- validation target/basis names a concurrent or future ValueEvent;
+- `value(V)` invalidation names a concurrent/future/wrong-node occurrence;
+- `proof(V,D)` barrier names a concurrent/future/wrong-node occurrence.
 
-Reject rather than substitute another ValueId or salvage only part of the event.
+Reject rather than substituting another ValueId or salvaging only part of the event.
 
 ## JournalRecordValidationError
 
 Meaning:
 
-> A record cannot be decoded/validated under the replica's current `global/version` Journal contract.
+> A record cannot be decoded or validated under the current Journal format contract.
 
 Examples:
 
-- malformed body/enums/timestamps;
+- malformed enums/timestamps/body;
 - duplicate/noncanonical validation-basis inputs;
 - ordinary validation using `"unknown"`;
-- basis ValueId belongs to wrong NodeKey;
+- basis ValueId belongs to the wrong input NodeKey;
 - validation target is not a ValueEvent for the same node;
 - malformed NodeIdentifier;
-- a `value` or `proof` invalidation scope names a non-ValueEvent or a ValueEvent for another node;
-- use of proof scope outside its supported reset/migration maintenance meaning.
+- a `value`/`proof` scope names a non-ValueEvent or another node;
+- a proof scope omits its semantic input NodeKey or uses proof scope outside controlled bootstrap/reset/migration maintenance.
 
-A historical certificate whose explicit input-key set differs from current schema is not corrupt solely for that reason; it is simply not current-shape-compatible proof.
-
-There is no ordinary per-record version fallback.
+A historical certificate whose explicit input-key set differs from current schema is not corrupt merely for that reason; it is simply not current-shape-compatible proof.
 
 ## JournalVersionCompatibilityError
 
 Meaning:
 
-> Source/lifecycle state may be valid independently, but cannot be interpreted under the compatibility contract of the requested operation.
+> Independently valid state cannot be interpreted under the compatibility contract of the requested operation.
 
-For ordinary synchronization/reset the held `JournalSnapshot` itself supplies:
+For sync/reset, compatibility metadata comes from the exact held `JournalSnapshot`. For canonical bootstrap it comes from the frozen canonical artifact.
+
+Examples:
+
+- source version/schema differs from receiver;
+- an earlier mutable metadata read matched but the held snapshot does not;
+- bootstrap artifact version/schema differs from the release's supported bootstrap target;
+- current software no longer supports that historical bootstrap target;
+- a current post-bootstrap snapshot is supplied where the original canonical bootstrap cut is required;
+- pre-Journal bootstrap would require a semantic/time/allocator-dependent migration before Journal identity is established.
+
+Fail before incompatible history is interpreted/authored. Do not fall back to fresh creation.
+
+## JournalWriterBehindError
+
+Meaning:
+
+> A writable receiver discovers evidence that a longer prefix of its **own local writer stream** exists, but the current operation does not have an authoritative continuation-safe recovery source.
+
+Example:
 
 ```text
-snapshot.databaseVersion
-snapshot.graphSchemeString
+receiver localWriter = A
+receiver frontier[A] = 900
+ordinary peer snapshot frontier[A] = 905
 ```
 
-For canonical bootstrap the frozen artifact supplies:
-
-```text
-canonical.databaseVersion
-canonical.graphSchemeString
-```
-
-and these must exactly equal the running release's configured bootstrap target before create-resume/join interpretation.
-
-A supported pre-Journal bootstrap target is additionally **graph-semantic identity** with the persisted source graph. Bootstrap may introduce Journal storage/database representation, but it must not need an ordinary semantic migration callback before occurrence identities are established.
-
-Examples of incompatibility:
-
-- ordinary source version/schema differs from receiver;
-- earlier mutable metadata looked compatible but held snapshot now differs;
-- bootstrap artifact version/schema differs from running release's expected target;
-- current software no longer supports an old artifact target;
-- current post-bootstrap snapshot is supplied instead of frozen canonical artifact;
-- the configured legacy -> bootstrap target would require `MigrationStorage.create()`, `override()`, `invalidate()`, `delete()`, schema-semantic transformation, execution-time timestamps, allocator-dependent new graph identities, randomness, or another non-identity migration result before bootstrap.
-
-The current legacy migration runner's `create()` is therefore not a valid pre-bootstrap conversion mechanism: it allocates a host-local identifier and execution-time timestamps. Such semantic changes may happen only before entering the supported bootstrap source state or after bootstrap as Journal-aware migration.
+The peer proves the receiver is behind, but does **not** prove that 905 is the greatest A sequence which can later re-enter supported history. Continuing from 905 without that proof could reuse an escaped `A:906`.
 
 Required behavior:
 
-- fail before interpreting/importing incompatible ordinary history or authoring bootstrap history;
-- do not silently upcast/downcast individual records;
-- do not rerun an incompatible legacy migration and hope it reproduces canonical state;
-- do not fall back to fresh creation.
+- ordinary synchronization/reset must not author another A record;
+- do not treat the peer's longer prefix as sufficient continuation authority;
+- run the lifecycle's authoritative same-writer recovery through `InstallationRecoverySource`;
+- only after that source establishes a complete own-writer head may A continue.
 
-Journal 3 does not require arbitrary future releases to retain every historical bootstrap decoder/migration ladder forever.
+If the authoritative recovery source cannot establish completeness, recovery remains indeterminate/fails. Journal 3 does not silently roll the writer over to a new identity as part of this specification.
+
+Divergent overlap is instead `JournalForkError`.
 
 ## JournalProjectionError
 
 Meaning:
 
-> Structurally valid retained history cannot produce a supported IncrementalGraph projection, or a maintenance transition claims target equivalence but replay disagrees.
+> Structurally valid retained history cannot produce the required supported IncrementalGraph projection, or a maintenance transition claims target equivalence but replay disagrees.
 
 Examples:
 
-- two selected semantic nodes reuse one incompatible physical NodeIdentifier;
-- normalization should have established dependency closure but did not;
+- selected NodeIdentifier collision;
+- dependency closure normalization missing;
 - reset/migration target replay differs from target;
-- final sync/bootstrap state leaves a selected occurrence stale solely through a stale input without the required persistent marker.
+- bootstrap/sync/reset/migration leaves a persistent stale transition unrecorded;
+- maintenance proof-edge barriers do not reproduce the intended validity-edge set.
 
-Fail candidate cutover rather than treating mutable graph bytes as repair authority.
+Fail candidate cutover; mutable graph bytes are not repair authority.
 
 ## JournalProjectionMismatchError
 
 Meaning:
 
-> Existing derived graph bytes disagree with `project(retainedJournal)` although authoritative history may be valid.
+> Existing derived graph bytes disagree with `project(retainedJournal)` while authoritative history may still be valid.
 
-Ordinary graph exposure must not proceed while mismatch is known. Lifecycle may rebuild derived state; if replay itself fails, surface the underlying error.
+Ordinary graph exposure stops until derived state is rebuilt/validated. If replay itself fails, surface the underlying authoritative error.
 
 ## JournalPublicationError
 
@@ -211,57 +169,43 @@ Meaning:
 
 > Durable graph+Journal publication/cutover failed operationally rather than semantically.
 
-Examples:
+Examples include storage batch/flush/active-pointer failure and failure to durably establish the canonical bootstrap artifact before ordinary post-bootstrap authoring.
 
-- LevelDB batch/write failure;
-- inactive-target flush failure;
-- atomic active-pointer failure;
-- canonical bootstrap artifact could not be durably established before ordinary authoring.
-
-Supported active state never exposes only one side of graph/Journal publication.
-
-If canonical artifact publication succeeds but creator local cutover fails, retry uses creator-resume rather than publishing another bootstrap history.
+If canonical artifact publication succeeded but creator cutover failed, retry uses creator-resume rather than publishing duplicate bootstrap history.
 
 ## JournalSourceReadError
 
 Meaning:
 
-> A required stable synchronization/reset/bootstrap source could not be opened/read completely for operational reasons.
+> A required stable source could not be opened/read completely for operational reasons.
 
 Examples:
 
-- I/O error opening snapshot metadata;
-- I/O error streaming required suffix;
-- stable source becomes unavailable before required range is read;
-- cohort source reports artifact exists but exact frozen cut cannot be read.
+- snapshot metadata/range I/O error;
+- source disappears before required range is read;
+- cohort source says canonical artifact exists but the exact frozen cut cannot be read;
+- installation recovery source cannot deliver the continuation-safe snapshot it claimed.
 
-Staged partial state is not activated. Failure to read known canonical artifact does not authorize another canonical creation.
+Partial staged state is not activated. Failure to read a known canonical artifact does not authorize another canonical creation.
 
-A readable but incompatible source uses `JournalVersionCompatibilityError` instead.
+## InvalidMigrationDecisionError
 
-## Invalid migration decision
+The existing migration framework may reject a migration decision whose semantics are unsupported.
 
-The existing migration framework may reject a Journal-aware `override()` whose callback result differs from canonical per-record target rewrite.
+For Journal-aware migration, the legacy value-producing `override(nodeIdentifier,value)` path is invalid: representation rewrite is owned solely by the canonical whole-Journal codec and occurrence-preserving selected state uses `keep`.
 
-This is a migration-definition/decision failure rather than writer fork because no divergent record body becomes active. Implementations may surface existing `InvalidMigrationDecisionError`.
-
-## Invalid local writer continuation
-
-If a writable Journal database is behind a surviving longer exact prefix of its own writer stream, supported response is same-writer recovery before new local allocation.
-
-Divergent overlap is `JournalForkError`.
-
-This is distinct from pre-Journal creator-resume where no local Journal history has become active yet.
+A source->target format migration whose codec is not total over all retained source-version history—including records for node families absent from the target schema—is likewise unsupported and must fail before cutover (the implementation may surface this as `InvalidMigrationDecisionError`, `JournalVersionCompatibilityError`, or another migration-definition category as appropriate).
 
 ## User-facing error expectations
 
-Ordinary `pull()`/`invalidate()` need not expose every internal category unless failure crosses their transaction boundary.
+Ordinary `pull()`/`invalidate()` need not expose every internal class unless the failure crosses their transaction boundary.
 
 Lifecycle/administrative callers should distinguish at least:
 
 ```text
 retryable operational failure
 vs compatibility / use-supported-version-first
+vs writer-behind / authoritative recovery required
 vs rebuildable derived-state mismatch
 vs authoritative corruption/fork
 ```
