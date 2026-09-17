@@ -148,15 +148,17 @@ InstallationRecoverySource {
 }
 ```
 
-This semantic interface intentionally contains no hostname, Git branch name, repository URL, filesystem path, or other transport locator. The outer transport/lifecycle adapter is responsible for locating the one configured recovery authority for this installation. It may use deployment-specific information externally, but such locators are not persisted in IncrementalGraph state and do not enter Journal semantics, per `$id-4373538486707762`.
+This semantic interface intentionally contains no hostname, Git branch name, repository URL, filesystem path, or other transport locator. Outer transport/lifecycle code constructs the source and keeps those deployment-specific details outside IncrementalGraph persisted state and semantic APIs, per `$id-4373538486707762`.
+
+`InstallationRecoverySource` does not imply a single server, branch, authority, or storage location. An implementation may consult one source, several sources, replicated metadata, a transport-specific publication path, or another backend protocol. Journal code only consumes the semantic answer.
 
 `ContinuationSafeSnapshot` contains an ordinary stable Journal snapshot plus the guarantee defined by `database-lifecycle.md` §4.1. For its `localWriter = A` and `frontier[A] = q`, no previously authored A record with sequence greater than q may later enter supported retained history after recovery.
 
-For the configured installation recovery authority this guarantee is established by `$id-6158827469032147`: successfully published A history is monotonic at the authority, and any supported durable A history outside the installation that can survive local loss and later re-enter supported state must derive from history first published there. The source therefore does not establish continuation safety by discovering every peer.
+How that guarantee is established belongs to the supported backend model. Recovery may rely on backend invariants which make some hypothetical histories impossible; it is not required to discover or defend against copies which cannot exist or later re-enter under that model. A source may return `Exists(ContinuationSafeSnapshot)` only when its backend-specific guarantees establish the property.
 
-Records authored only on local storage after the last successful publication and then irretrievably lost do not make the returned head unsafe. Their coordinates may be reused after recovery because no supported surviving copy can later reintroduce them.
+Records authored only on local storage and then irretrievably lost do not make q unsafe when the backend model guarantees that no surviving copy can later reintroduce them. A generic readable peer copy is not sufficient merely because it appears newest. If continuation safety cannot be established, the source returns `IndeterminateOrError`.
 
-A source which cannot uphold the recovery-authority contract, or whose read is unavailable/indeterminate, MUST return `IndeterminateOrError`. A merely readable peer copy is insufficient. Silent rollback or corruption of already-published authoritative history is outside ordinary recovery semantics and requires explicit disaster recovery.
+The current Git-backed flow is one possible implementation of this abstraction; `database-lifecycle.md` §4.1 explains why its normal publication model can establish continuation safety without storing transport locators in the database. That transport shape is not part of this API contract.
 
 ## Receiver-less absent restore
 
