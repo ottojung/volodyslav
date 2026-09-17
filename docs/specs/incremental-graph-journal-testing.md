@@ -109,18 +109,20 @@ For 2–4 replicas, stop non-normalization changes, synchronize in varying fair 
 
 Cover shorter->longer agreeing exact prefix, allocator/high-water reconstruction, continued authoring after recovered head, overlap fork rejection, and no duplicate reauthoring.
 
-Continuation is permitted only when the recovery source guarantees that the held snapshot contains the complete own-writer stream ever durably published for that writer.
+Continuation is permitted only when `InstallationRecoverySource` establishes a continuation-safe head as defined by `database-lifecycle.md` §4.1: no higher record for that writer can later re-enter supported history after recovery.
 
 Critical stale-source regression:
 
 ```text
-A previously published A:1..905
-peer B retains through A:905
-installation A loses local state
-recovery source exposes only A:1..900
+A recovery snapshot contains A:1..900
+some supported surviving state can later reintroduce A:901..905
 ```
 
-The recovery source MUST NOT return continuation-safe Exists. Restore/recovery fails indeterminate rather than resuming at A:901. This prevents both writer-ID fork and `last_node_index` rollback/reuse.
+The recovery source MUST NOT return continuation-safe `Exists`; restore/recovery fails indeterminate rather than resuming at A:901. This prevents both writer-ID fork and `last_node_index` rollback/reuse.
+
+Counterexample to the old over-strong wording: if A:901..905 existed only on the lost local disk and no supported state can reintroduce them, their loss does not by itself make A:900 unsafe. The test oracle is future re-entry, not whether a coordinate was once locally committed.
+
+Establishing continuation safety must not require contacting/discovering every possible peer; exercise a recovery-source implementation whose transport-level invariant can make the guarantee locally, consistent with `$id-4719065396881648`.
 
 This does not substitute for pre-Journal creator-resume.
 
@@ -130,11 +132,29 @@ With no local database:
 
 1. continuation-safe installation recovery source exists -> restore/adopt `snapshot.localWriter`;
 2. source definitely absent -> only then generate fresh fingerprint;
-3. query/read fails or own-stream completeness cannot be guaranteed -> fail without fresh fallback.
+3. query/read fails or continuation safety cannot be guaranteed -> fail without fresh fallback.
 
 ## Reset tests
 
 Generated reset tests cover held-snapshot compatibility, old-history retention, repeat no-op, ValueId preservation, exact target absence, partial validity, stale persistence, and unseen later concurrency.
+
+### Reset own-writer-behind rejection
+
+Fixture:
+
+```text
+receiver localWriter A frontier[A] = 900
+held reset JournalSyncSource frontier[A] = 905
+```
+
+Expected:
+
+- `resetTo()` fails `JournalWriterBehindError` before importing any source record or authoring any reset event;
+- active receiver Journal/projection remain unchanged;
+- the held `JournalSyncSource` is not used as continuation authority;
+- lifecycle must first complete `recoverExistingWriterFrom(InstallationRecoverySource)` with a continuation-safe head;
+- reset succeeds only when retried afterward;
+- divergent A overlap is `JournalForkError`.
 
 ### Reset proof weakening
 
@@ -209,9 +229,9 @@ graph interpretation
 
 and does not invoke ordinary migration decisions before the canonical cut.
 
-Regression: configure a would-be legacy -> bootstrap path which would require the current `MigrationStorage.create()` behavior (fresh allocator identity plus execution-time timestamps). Startup must fail `JournalVersionCompatibilityError` before bootstrap history is authored. It must not run create and then compare/generated state.
+Regression: configure a would-be legacy -> bootstrap path which would require fresh allocator identity plus execution-time timestamps. Startup must fail `JournalVersionCompatibilityError` before bootstrap history is authored. It must not generate the target state and then compare it.
 
-Likewise reject any pre-bootstrap path requiring semantic `override`/`invalidate`/`delete`, schema-semantic transformation, randomness, wall clock, or allocator-dependent graph output. Those transformations belong before the supported source state or after bootstrap as Journal-aware migration.
+Likewise reject any pre-bootstrap path requiring semantic create/invalidate/delete, schema-semantic transformation, randomness, wall clock, or allocator-dependent graph output. Those transformations belong before the supported source state or after bootstrap as Journal-aware migration.
 
 ## Canonical bootstrap artifact tests
 
@@ -342,7 +362,7 @@ Every migration verifies deterministic whole-history format rewrite, one target 
 Identity-specific cases:
 
 - `keep` preserves selected ValueId;
-- representation-only rewrite uses `keep` plus canonical codec; Journal-aware use of legacy value-producing `override()` is rejected;
+- representation-only rewrite uses `keep` plus the canonical codec;
 - explicit `invalidate()` preserves cached occurrence ValueId and authors a true node-scoped invalidation;
 - schema/proof/freshness-only changes preserve ValueId;
 - `create`/genuine semantic replacement creates new ValueId;
@@ -374,9 +394,9 @@ Migration persists value-scoped stale B marker even though replay at cut is alre
 
 ## Canonical per-record rewrite regressions
 
-Replicas X/Y retain historical V, selected only on X. Same migration must rewrite V identically on both without invoking a selected-value `override()` callback. Representation-only migration uses `keep` for selected semantic state and the canonical codec for every retained V. Later sync must not report `JournalForkError` for V.
+Replicas X/Y retain historical V, selected only on X. Same migration must rewrite V identically on both. Representation-only migration uses `keep` for selected semantic state and the canonical codec for every retained V. Later sync must not report `JournalForkError` for V.
 
-The codec MUST be total over retained source history. Include a historical ValueEvent and validation-basis NodeKey for a node family removed from target schema; migration still rewrites/retains those historical records deterministically. If the version migration cannot define that rewrite, it fails before cutover rather than dropping or guessing history.
+The codec MUST be total over retained source history. Include a historical ValueEvent and validation-basis NodeKey for a node family removed from target schema; migration still rewrites/retains those historical records deterministically. If the version migration cannot define that rewrite, it fails `JournalVersionCompatibilityError` before cutover rather than dropping or guessing history.
 
 ## Current-format codec tests
 
