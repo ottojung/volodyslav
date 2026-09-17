@@ -264,6 +264,7 @@ Join is historical merge, not reset. It:
 
 - reuses canonical ValueIds for exact shared occurrences;
 - converts local-only/different legacy occurrences as historical concurrent bootstrap values using legacy `modifiedAt` authority;
+- records locally-authored proof against the joining host's own legacy input occurrence ValueIds, not whichever input occurrences later win conflict selection;
 - treats legacy absence as no deletion evidence;
 - intersects exact-shared positive validity: canonical proof is the basis and `proof(V,D)` barriers remove canonical edges the joining side lacks;
 - never adds joining-only proof to an exact shared occurrence;
@@ -272,25 +273,36 @@ Join is historical merge, not reset. It:
 
 ## Journal-aware migration API boundary
 
+The directed source->target `JournalFormatCodec` is defined normatively in `migration.md` §Journal format codec:
+
 ```text
-rewriteJournalFormat(...)
-computeMigrationTarget(...)
-applyRequiredSemanticMigration(...)
+JournalFormatCodec {
+    rewriteNodeKey(sourceKey: NodeKey) -> NodeKey
+    rewriteComputedValue(
+        sourceKey: NodeKey,
+        payload: ComputedValue
+    ) -> ComputedValue
+}
+
+rewriteJournalFormat(
+    source: JournalSnapshot,
+    sourceVersion: Version,
+    targetVersion: Version,
+    codec: JournalFormatCodec
+) -> TargetFormatJournal
 ```
 
-The format rewrite is one deterministic transform over the **entire retained source-format record domain**, including historical records for node families absent from target schema. It preserves record IDs/historical meaning/references.
+The format rewrite is deterministic over the **entire retained source-format record domain**, including historical records for node families absent from target schema. It decodes source records, rewrites embedded NodeKeys and retained ValueEvent payloads, re-canonicalizes target structures such as ValidationBasis order, preserves record IDs/historical meaning/references, and encodes the target format.
 
-When payload representation changes, one pure version codec rewrites every retained affected ValueEvent independent of local selection. The codec is the sole representation-rewrite mechanism; an occurrence-preserving selected node uses `keep`.
+Codec functions are synchronous, deterministic, capability-free, and identity by default when omitted. A codec throw or any other inability to transform every retained source record into a valid target semantic record is `JournalVersionCompatibilityError` before cutover.
 
-Semantic migration:
+Semantic migration then:
 
-- preserves ValueIds for occurrence-preserving decisions (`keep`, `invalidate`, proof/freshness/schema-only changes);
+- preserves ValueIds, freshness, and current-shape-compatible source replay proof for `keep`;
 - uses node scope for true explicit `invalidate(K)`;
 - uses one `proof(V,D)` barrier per removed incoming validity edge for maintenance-only proof weakening;
 - persists target propagated stale state with `value(V)` when own effective proof is otherwise complete; and
 - creates new ValueEvents only for genuine new/replaced occurrences.
-
-If the canonical source->target codec is not total over retained source-version history, migration fails `JournalVersionCompatibilityError` before cutover.
 
 Independent genuine replacement migrations may create distinct replacement ValueIds; later synchronization handles the normal conflict/staleness consequence.
 
