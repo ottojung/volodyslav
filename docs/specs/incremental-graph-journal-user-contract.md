@@ -55,7 +55,7 @@ If a selected occurrence has complete **effective** own proof but is stale becau
 
 If an ordinary source contains a longer prefix of the receiver's **own** local writer, ordinary sync does not adopt that suffix and continue authoring.
 
-It fails `JournalWriterBehindError` and requires authoritative same-writer recovery through the configured `InstallationRecoverySource`. A generic peer may prove that the receiver is behind, but it cannot prove that the observed head is the greatest durable local-writer coordinate which can later re-enter history.
+It fails `JournalWriterBehindError` and requires authoritative same-writer recovery through the configured `InstallationRecoverySource`. A generic peer may prove that the receiver is behind, but it cannot establish that the observed head is continuation-safe under `database-lifecycle.md` §4.1.
 
 ## Absent-installation startup
 
@@ -63,15 +63,15 @@ A machine with no local database/writer identity queries the installation recove
 
 - continuation-safe synchronized state exists -> restore that writer/history/projection/allocator state;
 - definite absence -> fresh identity may be created;
-- read/query/completeness uncertainty -> fail, no fresh fallback.
+- read/query/continuation-safety uncertainty -> fail, no fresh fallback.
 
-The recovery source is stronger than a generic sync source: it must guarantee that the restored local-writer head is complete for safe continuation.
+For writer A at recovered head q, continuation-safe means that after recovery no previously authored `A:r` with `r > q` can later enter supported retained history. Records lost only with the old local disk and unable to re-enter do not make q unsafe. The guarantee comes from the recovery authority's transport/storage contract; Journal 3 does not require discovering/contacting every peer.
 
 ## Existing-writer recovery
 
 A behind existing installation may resume its writer only from a continuation-safe recovery snapshot whose local writer is the same writer and whose stream extends the local stream by an exact prefix.
 
-Recovery imports the missing own-writer suffix plus required causal history, reconstructs allocator/high-water/projection, and only then permits another local record after the complete recovered head. Divergent overlap is a writer fork.
+Recovery imports the missing own-writer suffix plus required causal history, reconstructs allocator/high-water/projection, and only then permits another local record after the continuation-safe recovered head. Divergent overlap is a writer fork.
 
 ## Initial Journal bootstrap
 
@@ -91,9 +91,9 @@ The artifact contains exactly the original bootstrap frontier/version/schema, no
 
 ### Bootstrap is semantic identity
 
-Bootstrap journals the already-persisted supported legacy graph. Before Journal identity exists it does not run ordinary migration `create`/`override`/`invalidate`/`delete`, synthesize new timestamps/identifiers, or perform a schema-semantic migration.
+Bootstrap journals the already-persisted supported legacy graph. Before Journal identity exists it does not run ordinary semantic migration decisions such as `create`/`invalidate`/`delete`, synthesize new timestamps/identifiers, or perform a schema-semantic migration.
 
-If such a migration is required, the automatic bootstrap transition is incompatible. Actual graph/schema migration happens before entering the supported legacy source state or afterward as Journal-aware migration.
+If such a migration is required, the automatic bootstrap transition is incompatible. Actual graph/schema/representation migration happens before entering the supported legacy source state or afterward as Journal-aware migration.
 
 ### Creator resume
 
@@ -138,11 +138,9 @@ Migration has two distinct parts:
 
 ### Representation rewrite
 
-One canonical transform rewrites **every retained source-format record**, including history for node families absent from the target schema. If no deterministic target representation exists for some retained record, that migration is unsupported.
+One canonical transform rewrites **every retained source-format record**, including history for node families absent from the target schema. If no deterministic target representation exists for some retained record, migration fails `JournalVersionCompatibilityError` before cutover.
 
-When ValueEvent payload representation changes, one pure per-record codec is the sole source of target bytes across all replicas and all selected/historical occurrences.
-
-Once Journal history exists, representation-only change is **not** expressed through legacy `override(nodeIdentifier,value)`. The selected semantic occurrence uses `keep`; the legacy value-producing override path is rejected in Journal-aware mode.
+When ValueEvent payload representation changes, one pure per-record codec is the sole source of target bytes across all replicas and all selected/historical occurrences. A selected semantic occurrence whose meaning survives uses `keep`.
 
 ### Semantic occurrence identity
 
@@ -176,6 +174,8 @@ resetTo(source)
 
 requires an established writable receiver and one held compatible source snapshot.
 
+If the reset source is ahead for the receiver's own local writer, reset fails `JournalWriterBehindError` before importing or authoring anything. The lifecycle must establish a continuation-safe writer head through `recoverExistingWriterFrom(InstallationRecoverySource)` before reset is retried.
+
 Reset retains history and establishes the source projection relative to all history it observed.
 
 - matching target occurrence -> preserve ValueId;
@@ -185,8 +185,6 @@ Reset retains history and establishes the source projection relative to all hist
 - target persistent stale with effective own proof complete -> `value(V)` reset marker;
 - target absence while union selects value -> one DeleteEvent;
 - already-selected absence -> no redundant delete.
-
-If the reset source reveals a longer receiver-local writer prefix, reset must stop and perform authoritative same-writer recovery first; a generic reset source cannot authorize writer continuation.
 
 Reset repairs intentionally causally follow observed history. That causal-later semantics is not used for pre-Journal bootstrap conflicts.
 
