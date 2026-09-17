@@ -64,7 +64,7 @@ A successful pairwise synchronization conceptually:
 
 Imported records retain their original writer identity/body. Receipt itself creates no adoption/acknowledgement event.
 
-A source may of course contain already-known local-writer records through the receiver's current local head; matching overlap is validated normally. What ordinary synchronization may not do is treat a *longer* local-writer prefix as sufficient authority to resume that writer.
+A source may contain already-known local-writer records through the receiver's current local head; matching overlap is validated normally. Ordinary synchronization may not treat a *longer* local-writer prefix as sufficient authority to resume that writer.
 
 ## Full synchronization
 
@@ -79,9 +79,9 @@ receiver: A:1..900
 source:   A:1..905
 ```
 
-The source proves the receiver is behind, but it does not prove that 905 is the greatest A coordinate ever durably published. Another surviving supported location might already retain `A:906..910`.
+The source proves the receiver is behind, but it does not establish that head 905 is continuation-safe under `database-lifecycle.md` §4.1.
 
-Therefore ordinary synchronization does **not** activate `A:901..905` and continue at 906. It fails `JournalWriterBehindError` without changing the active receiver. The lifecycle must instead query its continuation-safe `InstallationRecoverySource`, which is allowed to resume A only when it can guarantee the complete published A stream through the greatest durable coordinate.
+Therefore ordinary synchronization does **not** activate `A:901..905` and continue at 906. It fails `JournalWriterBehindError` without changing the active receiver. The lifecycle must instead query `InstallationRecoverySource` and may resume A only when that source guarantees that, after recovery, no previously-authored higher A record can later enter supported retained history.
 
 Any overlap disagreement is `JournalForkError`.
 
@@ -99,7 +99,7 @@ A supported published graph is dependency-closed under the current schema.
 
 If selected history makes a required direct input absent while a dependent occurrence remains selected, retaining that dependent would violate the materialization/`oldValue` contract. Synchronization therefore authors explicit `DeleteEvent(reason="sync")` over the required dependent closure rather than hiding the dependent as latent state.
 
-This is the structural/hard-stale case. Dependency disagreement by itself is **not** deletion evidence while every required input remains materialized.
+Dependency disagreement by itself is **not** deletion evidence while every required input remains materialized.
 
 ## Proof/freshness changes: when the cached value is kept
 
@@ -137,7 +137,7 @@ Staging/derived scratch state may be incomplete off to the side, but one support
 
 ## Streamability
 
-Missing writer suffixes are streamable by writer range without loading whole history/suffix into RAM.
+Missing foreign-writer suffixes are streamable by writer range without loading whole history/suffix into RAM.
 
 Normalization may currently require graph-sized derived/scratch work. #1607 owns the future end-to-end change-sensitive time theorem.
 
@@ -160,9 +160,11 @@ An outer procedure may process source snapshots sequentially. Each successful pa
 These are separate lifecycle transitions:
 
 - **absent restore** — recovers this installation's continuing writer identity/history through a continuation-safe recovery source before ordinary sync;
-- **reset** — rebaselines an established receiver to a source projection relative to observed history; for every removed incoming edge `D -> K` of preserved occurrence V it uses edge-specific `proof(V,D)` negative evidence, while persistent target stale flags use current-value invalidation;
+- **reset** — rebaselines an established receiver to a source projection relative to observed history; if source is ahead for the receiver's own writer it fails before import/authorship and requires recovery first; for every removed incoming edge `D -> K` of preserved occurrence V it uses edge-specific `proof(V,D)` negative evidence, while persistent target stale flags use current-value invalidation;
 - **pre-Journal bootstrap** — uses one frozen canonical cut for a supported semantic-identity bootstrap target; creator may resume an interrupted first cutover; equal occurrences reuse canonical ValueIds, exact shared proof is conservatively intersected with joining proof via `proof(V,D)` barriers, divergent values are concurrent historical facts using legacy `modifiedAt`, stale shared/recursive state is preserved conservatively, and local absence is not deletion evidence;
-- **Journal-aware migration** — rewrites retained records through one canonical per-record format transformation, rejects the legacy value-producing `override()` path once Journal history exists, preserves ValueIds for occurrence-preserving changes, uses edge-specific proof barriers/persistent stale markers when graph flags require them, and may independently author new ValueIds for genuine replacements.
+- **Journal-aware migration** — rewrites retained records through one total canonical per-record format transformation, preserves ValueIds for occurrence-preserving changes, uses edge-specific proof barriers/persistent stale markers when graph flags require them, and may independently author new ValueIds for genuine replacements.
+
+A non-total Journal format codec is `JournalVersionCompatibilityError` before cutover.
 
 Two independent late bootstrap joiners may assign distinct ValueIds to the same non-canonical legacy occurrence; this accepted trade-off may later stale dependents naming the losing occurrence.
 
