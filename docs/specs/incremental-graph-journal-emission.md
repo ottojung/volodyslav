@@ -144,7 +144,7 @@ Maintenance transitions also separate value identity from proof/freshness state:
 - reset preserves a ValueId when the requested occurrence already exists;
 - bootstrap may establish/reuse historical occurrence identities under its special legacy rules;
 - Journal-aware migration preserves ValueId for occurrence-preserving semantic decisions such as `keep` and `invalidate`;
-- representation-only Journal format change is performed by the canonical whole-history codec while selected preserved state uses `keep`; Journal-aware code does **not** evaluate the legacy value-producing `override()` path;
+- representation-only Journal format change is performed by the canonical whole-history codec while selected preserved state uses `keep`;
 - maintenance-only proof weakening uses `proof(V,D)` negative edge evidence rather than creating a new ValueEvent; and
 - persistent stale state uses `value(V)` invalidation.
 
