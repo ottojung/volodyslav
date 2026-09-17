@@ -58,7 +58,8 @@ Journal 3 specifies:
 - the accepted non-canonical bootstrap ValueId split trade-off `$id-1635227135166767`;
 - bounded bootstrap compatibility rather than permanent support for every old artifact;
 - a total deterministic whole-history database-format rewrite, including records for target-removed node families;
-- representation-only Journal migration through canonical codec + `keep`, with legacy value-producing `override()` rejected once Journal history exists;
+- representation-only Journal migration through the canonical codec + `keep`;
+- `JournalVersionCompatibilityError` before cutover when that codec is not total over retained source history;
 - independent genuine replacement migrations, accepting possible dependent staleness after later conflict;
 - minimal deterministic reset with edge-specific proof weakening;
 - no destructive authoritative-history compaction.
@@ -78,8 +79,9 @@ The tests/examples intentionally cover at least:
 - a newly selected remote dependent receiving persistent stale history;
 - structural missing-input sync deleting a dependent while mere input-version mismatch keeps its cached `oldValue`;
 - ordinary peer revealing a longer receiver-local writer prefix causing `JournalWriterBehindError`, not unsafe continuation;
-- continuation-safe recovery refusing a stale writer snapshot which could reuse escaped sequence/allocator state;
-- pre-Journal bootstrap path requiring execution-time `create()` being rejected;
+- continuation-safe recovery rejecting a head when a higher local-writer record can later re-enter supported history;
+- reset source ahead for local writer failing before import/authoring and requiring recovery first;
+- pre-Journal bootstrap path requiring execution-time semantic/allocator transformation being rejected;
 - creator crash after artifact publication resuming exact frozen history;
 - current post-bootstrap snapshot not substituting for the original bootstrap cut;
 - canonical stale/shared fresh and canonical fresh/shared stale both remaining conservatively stale;
@@ -90,7 +92,7 @@ The tests/examples intentionally cover at least:
 - identical non-canonical late joiners possibly splitting ValueId as an explicit accepted trade-off;
 - same historical ValueEvent selected on one replica but not another rewriting identically through the total codec;
 - retained history for a node family removed from target schema still receiving a deterministic target-format representation;
-- Journal-aware legacy value-producing `override()` being rejected;
+- non-total Journal codec failing `JournalVersionCompatibilityError` before cutover;
 - independent genuine replacement migration possibly staling dependents after conflict.
 
 ## Scope boundary
