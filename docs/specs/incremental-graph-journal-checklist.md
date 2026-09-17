@@ -125,14 +125,19 @@ Acceptance:
 - is historical legacy merge, not reset;
 - exact occurrences reuse canonical ValueIds;
 - local-only/different occurrences become historical joining ValueEvents using persisted legacy `modifiedAt` authority;
+- joining historical ValueEvents are allocated in nondecreasing `(modifiedAt, canonical NodeKey)` order before joining records whose contexts include canonical coordinates;
 - divergent values remain concurrent absent genuine legacy causality;
 - canonical-present/local-absent does not fabricate delete;
+- maintain `joiningOccurrenceValueId(K)` for every joining legacy materialization: canonical ValueId when exact-shared, otherwise the joining ValueEvent ID even if that occurrence loses selection;
+- locally-authored validation bases use the joining host's own legacy input occurrence ValueIds, never a different occurrence merely because it won conflict selection;
+- local dependent whose legacy-valid input loses to a newer selected occurrence is hard stale, not fresh;
 - exact shared validity is `canonicalValid ∩ joiningValid`;
 - every canonical proof edge absent on the joining side gets a `proof(sharedV,input)` bootstrap barrier; joining-only proof never strengthens canonical proof;
 - exact shared occurrence is stale if canonical OR joining legacy copy is stale, with uncovered value-scoped bootstrap marker as required after proof-edge barriers;
 - a joining explicit invalidation on a canonical-fresh shared occurrence therefore remains hard stale and cannot cache-revalidate from canonical proof alone;
 - after direct proof/stale roots, deterministic topological J2b pass persists every selected occurrence stale solely through a stale input;
 - later upstream `Unchanged` cannot silently freshen such bootstrap-stale dependent;
+- post-bootstrap validations unseen by a late join are concurrent with that join's negative proof/stale evidence and do not clear it until a causally later validation occurs;
 - two joiners may split same non-canonical occurrence ValueId as accepted by `$id-1635227135166767`;
 - stale partial validity uses controlled `"unknown"`;
 - cutover atomic.
@@ -191,11 +196,16 @@ Acceptance:
 Acceptance:
 
 - retained old history deterministically rewritten into one target format preserving IDs/meaning;
-- rewrite is total over retained source history, including records for node families absent from target schema;
-- non-total source->target codec fails `JournalVersionCompatibilityError` before cutover;
-- per-record payload codec independent of selected status/replica-local state;
+- directed source->target `JournalFormatCodec` is declared by the migration definition and defaults missing transforms to identity;
+- `rewriteNodeKey` and `rewriteComputedValue` are synchronous, deterministic, and capability-free;
+- rewrite is total over retained source history, including records for node families absent from target schema and non-selected ValueEvents;
+- every embedded NodeKey is rewritten, including record keys, validation-basis inputs, and proof-scope inputs;
+- rewritten ValidationBasis entries are re-sorted by the target canonical NodeKeyString order;
+- non-total/throwing source->target codec fails `JournalVersionCompatibilityError` before cutover;
 - same historical record rewrites identically across replicas;
 - representation-only change uses `keep` plus the canonical codec;
+- `keep` preserves occurrence ValueId, timestamps, freshness, and target-shape-compatible source replay validity even when the node is stale;
+- stale `keep` alone does not create proof barriers or force recomputation;
 - explicit migration `invalidate(K)` preserves occurrence ValueId and authors true node-scoped invalidation;
 - maintenance-only proof weakening for preserved V uses one `proof(V,D)` barrier per removed incoming edge, not a whole-ValueId or node barrier;
 - two replicas independently weakening the same V to the same partial proof retain that partial proof after synchronization;
@@ -250,14 +260,19 @@ Priority regressions/properties:
 - canonical bootstrap source decision/original cut;
 - bootstrap graph-semantic identity and rejection of semantic/time/allocator-dependent pre-bootstrap migration;
 - creator crash resumes exact artifact without migration callback rerun;
+- bootstrap mixed-winner edge preserves the joiner's actual input ValueId and leaves the dependent hard stale;
+- joining bootstrap writer order extends `(modifiedAt, canonical NodeKey)` authority order;
 - exact shared canonical-stale + joining-fresh remains stale;
 - exact shared proof intersection preserves joining explicit invalidation;
 - joining stale shared input persistently stales canonical dependent;
+- late-join negative evidence is cleared only by a causally later validation;
 - legacy conflict uses persisted modifiedAt rather than upgrade time;
 - legacy absence does not fabricate delete;
 - accepted non-canonical identity split;
 - unsupported historical target fails compatibility;
 - total pure format rewrite over selected/non-selected/target-removed history;
+- target NodeKey rewrite re-canonicalizes validation basis order;
+- recursively stale `keep` preserves compatible proof;
 - independent replacement migration trade-off;
 - minimal deterministic reset.
 
