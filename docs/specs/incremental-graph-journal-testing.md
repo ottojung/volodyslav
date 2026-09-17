@@ -284,6 +284,45 @@ Join sees only frozen cut, reuses K=v1 identity, creates no delete for N, and la
 - canonical-present/local-absent authors no delete;
 - local-present/canonical-absent authors historical joining ValueEvent.
 
+### Joining bootstrap writer-order regression
+
+Create two joining-only/different legacy occurrences with `modifiedAt` 10 and 5 and intentionally attempt to allocate the 10 record first. The resulting same-writer stream is authority-inconsistent and MUST be rejected.
+
+The supported bootstrap constructor instead sorts all joining historical ValueEvents by nondecreasing `(modifiedAt, canonical NodeKey)` before allocating writer sequences. All of them precede joining proof/stale records whose contexts include the canonical bootstrap cut.
+
+### Mixed conflict winners must not rewrite proof provenance
+
+Fixture:
+
+```text
+D -> K
+
+canonical:
+    D = Dc, modifiedAt=20
+    K = Kc, modifiedAt=10
+
+joining legacy:
+    D = Dj, modifiedAt=10
+    K = Kj, modifiedAt=30
+    D -> K valid
+    K fresh
+```
+
+After J1:
+
+```text
+selected D = Dc
+selected K = Kj
+```
+
+Expected J2 certificate:
+
+```text
+Validate(Kj, basis={D:Dj})
+```
+
+not `{D:Dc}`. `joiningOccurrenceValueId(D)` names Dj even though Dj lost conflict selection. Replay therefore sees a basis mismatch against current Dc, `D -> Kj` is not valid, and Kj is hard stale until K itself revalidates/recomputes. Bootstrap MUST NOT manufacture freshness for a cross-replica combination no legacy replica possessed.
+
 ### Exact shared proof intersection
 
 Fixture:
@@ -351,6 +390,17 @@ Expected:
 
 Run this over longer chains/branching DAGs and require one deterministic topological propagation pass to persist every recursive stale transition.
 
+### Late join versus unseen post-bootstrap validation
+
+Fixture:
+
+1. canonical bootstrap cut contains exact occurrence V;
+2. cohort later validates V after the cut;
+3. a still-legacy host joins from the frozen cut and contributes `proof(V,D)` and/or `value(V)` negative evidence without having observed that post-bootstrap validation;
+4. ordinary sync later imports the cohort validation.
+
+Expected: the earlier cohort validation is concurrent with the late-join negative evidence and does not clear it. V remains correspondingly stale/proof-weakened until a validation causally after the late-join evidence re-proves/revalidates it. This is the intentional conservative late-join trade-off; freshness must not be inferred from an ordering the legacy state cannot establish.
+
 ### Non-canonical identity-split trade-off
 
 Two late joiners may independently assign different bootstrap ValueIds to the same occurrence which differs from canonical cut. After union one wins and dependent certificates naming the loser may stale/recompute. This is accepted by `$id-1635227135166767`.
@@ -362,6 +412,8 @@ Every migration verifies deterministic whole-history format rewrite, one target 
 Identity-specific cases:
 
 - `keep` preserves selected ValueId;
+- a recursively stale `keep` preserves source-replay incoming validity when its certificate remains target-shape-compatible;
+- stale `keep` alone does not author proof barriers or force recomputation;
 - representation-only rewrite uses `keep` plus the canonical codec;
 - explicit `invalidate()` preserves cached occurrence ValueId and authors a true node-scoped invalidation;
 - schema/proof/freshness-only changes preserve ValueId;
@@ -397,6 +449,10 @@ Migration persists value-scoped stale B marker even though replay at cut is alre
 Replicas X/Y retain historical V, selected only on X. Same migration must rewrite V identically on both. Representation-only migration uses `keep` for selected semantic state and the canonical codec for every retained V. Later sync must not report `JournalForkError` for V.
 
 The codec MUST be total over retained source history. Include a historical ValueEvent and validation-basis NodeKey for a node family removed from target schema; migration still rewrites/retains those historical records deterministically. If the version migration cannot define that rewrite, it fails `JournalVersionCompatibilityError` before cutover rather than dropping or guessing history.
+
+Add a NodeKey-format transition where source canonical order differs from target canonical order. Assert `rewriteNodeKey` is applied to record node keys, validation-basis inputs, and proof-scope inputs, and that every rewritten ValidationBasis is re-sorted by **target** canonical NodeKeyString order before encoding.
+
+Assert `rewriteComputedValue(sourceKey,payload)` runs for selected and non-selected retained ValueEvents. Codec functions receive no mutable capabilities and are deterministic. A thrown transform or invalid target representation fails `JournalVersionCompatibilityError` before cutover.
 
 ## Current-format codec tests
 
