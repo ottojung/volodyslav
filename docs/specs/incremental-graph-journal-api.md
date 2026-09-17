@@ -148,13 +148,15 @@ InstallationRecoverySource {
 }
 ```
 
-`ContinuationSafeSnapshot` contains an ordinary stable Journal snapshot plus the semantic guarantee defined by `database-lifecycle.md` §4.1. For its `localWriter = A` and `frontier[A] = q`, the source guarantees that after recovery no previously authored A record with sequence greater than q can later enter supported retained history for writer A.
+This semantic interface intentionally contains no hostname, Git branch name, repository URL, filesystem path, or other transport locator. The outer transport/lifecycle adapter is responsible for locating the one configured recovery authority for this installation. It may use deployment-specific information externally, but such locators are not persisted in IncrementalGraph state and do not enter Journal semantics, per `$id-4373538486707762`.
 
-That is a guarantee about future admissible history, not every local record ever committed. Records lost only with the old local storage and unable to re-enter supported history do not make q unsafe. If a higher A record can still re-enter supported history, q is not continuation-safe.
+`ContinuationSafeSnapshot` contains an ordinary stable Journal snapshot plus the guarantee defined by `database-lifecycle.md` §4.1. For its `localWriter = A` and `frontier[A] = q`, no previously authored A record with sequence greater than q may later enter supported retained history after recovery.
 
-A source which cannot establish that guarantee MUST return `IndeterminateOrError`. A merely readable/lagging peer copy is insufficient.
+For the configured installation recovery authority this guarantee is established by `$id-6158827469032147`: successfully published A history is monotonic at the authority, and any supported durable A history outside the installation that can survive local loss and later re-enter supported state must derive from history first published there. The source therefore does not establish continuation safety by discovering every peer.
 
-The guarantee is transport-neutral: Journal 3 does not prescribe how a transport/storage layer establishes continuation authority. It does not require contacting or discovering every possible peer.
+Records authored only on local storage after the last successful publication and then irretrievably lost do not make the returned head unsafe. Their coordinates may be reused after recovery because no supported surviving copy can later reintroduce them.
+
+A source which cannot uphold the recovery-authority contract, or whose read is unavailable/indeterminate, MUST return `IndeterminateOrError`. A merely readable peer copy is insufficient. Silent rollback or corruption of already-published authoritative history is outside ordinary recovery semantics and requires explicit disaster recovery.
 
 ## Receiver-less absent restore
 
