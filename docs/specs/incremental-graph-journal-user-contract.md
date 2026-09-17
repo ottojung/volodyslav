@@ -51,29 +51,25 @@ So mixed input histories affect validity/freshness, not cache existence, unless 
 
 If a selected occurrence has complete **effective** own proof but is stale because an input is stale, sync persists `Invalidate(scope=value(currentValueId), reason="sync")`, including when that occurrence was newly selected from the source. Later upstream `Unchanged` cannot freshen the dependent automatically.
 
-## Synchronization can reveal unsafe writer rollback
+## Synchronization can reveal unsupported local rollback
 
 If an ordinary source contains a longer prefix of the receiver's **own** local writer, ordinary sync does not adopt that suffix and continue authoring.
 
-It fails `JournalWriterBehindError` and requires same-writer recovery through an `InstallationRecoverySource` which can establish a continuation-safe head. A generic peer may prove that the receiver is behind, but merely appearing newest does not itself prove that no older higher record can later re-enter under the supported backend model.
+It fails `JournalWriterBehindError` before import/authorship. Under the supported lifecycle model, an existing local database cannot legitimately have lost part of its own committed writer stream, so this is unsupported/corrupt existing state requiring explicit operator/disaster handling—not a normal same-writer recovery case.
 
 ## Absent-installation startup
 
-A machine with no local database/writer identity queries an installation recovery source **before** generating a fresh fingerprint.
+A machine whose local database is completely absent queries an installation recovery source **before** generating a fresh fingerprint.
 
 - continuation-safe synchronized state exists -> restore that writer/history/projection/allocator state;
 - definite absence -> fresh identity may be created;
 - read/query/continuation-safety uncertainty -> fail, no fresh fallback.
 
-For writer A at recovered head q, continuation-safe means that after recovery no previously authored `A:r` with `r > q` can later enter supported retained history. The persistence/recovery implementation may rely on guarantees of its supported backend model to establish this and need not account for hypothetical copies that cannot arise or later re-enter under that model. Records lost only with local storage and unable to re-enter do not make q unsafe.
+For writer A at recovered head q, continuation-safe means that after recovery no previously authored `A:r` with `r > q` can later enter supported retained history. The persistence/recovery implementation may rely on guarantees of its supported backend model to establish this and need not account for hypothetical copies that cannot arise or later re-enter under that model. Records lost only with the completely lost local database and unable to re-enter do not make q unsafe.
 
 The recovery source abstraction does not require one server, one branch, one authority, or one storage topology. Transport locators such as hostnames or branch names remain outside IncrementalGraph-owned persisted state and semantic recovery APIs.
 
-## Existing-writer recovery
-
-A behind existing installation may resume its writer only from a continuation-safe recovery snapshot whose local writer is the same writer and whose stream extends the local stream by an exact prefix.
-
-Recovery imports the missing own-writer suffix plus required causal history, reconstructs allocator/high-water/projection, and only then permits another local record after the continuation-safe recovered head. Divergent overlap is a writer fork.
+Absent restoration does not apply when a local database still exists but has been partially rolled back, truncated, mixed with older storage, or otherwise externally damaged. Those states are outside the supported lifecycle model.
 
 ## Initial Journal bootstrap
 
@@ -176,7 +172,7 @@ resetTo(source)
 
 requires an established writable receiver and one held compatible source snapshot.
 
-If the reset source is ahead for the receiver's own local writer, reset fails `JournalWriterBehindError` before importing or authoring anything. The lifecycle must establish a continuation-safe writer head through `recoverExistingWriterFrom(InstallationRecoverySource)` before reset is retried.
+If the reset source is ahead for the receiver's own local writer, reset fails `JournalWriterBehindError` before importing or authoring anything. This is unsupported existing-state rollback and does not enter absent-installation restoration or another automatic same-writer recovery path.
 
 Reset retains history and establishes the source projection relative to all history it observed.
 
