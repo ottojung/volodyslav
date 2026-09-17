@@ -258,7 +258,7 @@ Journal-aware migration does not require replicas to coordinate on one canonical
 
 Each replica may independently author its own replacement `ValueEvent`. When those histories later synchronize, normal conflict authority selects the current occurrence. A dependent whose certificate names a losing replacement occurrence may therefore become stale and require revalidation or recomputation.
 
-This consequence is accepted in order to preserve migration independence and the no-remote-participation requirement. Occurrence-preserving migrations—including representation-only whole-Journal rewrites combined with `keep`—preserve existing shared ValueIds and do not incur this identity split. The legacy value-producing `override()` path is not part of Journal-aware migration.
+This consequence is accepted in order to preserve migration independence and the no-remote-participation requirement. Occurrence-preserving migrations—including representation-only whole-Journal rewrites combined with `keep`—preserve existing shared ValueIds and do not incur this identity split.
 
 ---
 
