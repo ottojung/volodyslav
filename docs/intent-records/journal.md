@@ -263,16 +263,18 @@ Transport mechanisms may carry or persist Journal/database snapshots without the
 ---
 
 $id-6158827469032147
-title: Writer recovery must not create record-identity conflicts
+title: Persistent database state is lifecycle-owned
 date: 2026/09/16
 source: @ottojung
 kind: requirement
 
-After supported recovery from local loss or rollback, continuing an existing Journal writer must not reuse a `JournalRecordId` that can later re-enter supported retained history with different meaning.
+Persistent IncrementalGraph database state may change only through supported Volodyslav lifecycle transitions. Specifications and implementations must not enlarge the supported state space by inventing recovery semantics for arbitrary external storage damage or rollback.
 
-Recovery may rely on guarantees of the supported persistence and synchronization model to establish that a continuation point is safe. It does not need to defend against hypothetical histories that cannot arise or later re-enter under that supported model. If safe continuation cannot be established, same-writer authoring must not resume automatically.
+Complete disappearance of the local database is the one supported externally caused local-storage loss: it yields the lifecycle's `Absent` state and may be handled by the normal Volodyslav-controlled restoration or fresh-creation path. Partial deletion, rollback to an older local database state, mixing old and new storage, partial restoration, or direct external mutation are outside the supported lifecycle model and may be treated as corrupted/unsupported state rather than repaired semantically.
 
-This intent does not prescribe a particular recovery topology, number of recovery sources, storage backend, Git layout, hostname/branch convention, centralized authority, or recovery protocol.
+Crashes or interruption during a supported Volodyslav transition are different from external storage mutation. Each supported transition must define or inherit crash/atomicity behavior such that any state it exposes for later supported use is itself a valid lifecycle state; a crash does not authorize arbitrary partially committed database meaning.
+
+Specifications may rely on closure under these supported transitions and need not defend against hypothetical partial histories that cannot arise within this model. Any future proposal to support an additional external-loss or rollback case must first change this intent and define an explicit controlled lifecycle transition.
 
 ---
 
