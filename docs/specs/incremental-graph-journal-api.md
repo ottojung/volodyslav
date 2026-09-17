@@ -50,7 +50,7 @@ Snapshot laws:
 6. retained history is contiguous and contexts are transitively closed;
 7. reads never invoke computors or mutate state.
 
-A generic `JournalSnapshot` says nothing about whether its `localWriter` head is complete enough to **resume authoring that writer after local history loss**.
+A generic `JournalSnapshot` says nothing about whether its `localWriter` head is safe to **resume authoring that writer after local history loss**.
 
 ## JournalSyncSource
 
@@ -148,11 +148,13 @@ InstallationRecoverySource {
 }
 ```
 
-`ContinuationSafeSnapshot` contains an ordinary stable Journal snapshot plus the semantic guarantee that, for its `localWriter = A`, the snapshot contains A's complete own stream through the greatest A coordinate ever durably published by the supported lifecycle and capable of later re-entering supported history.
+`ContinuationSafeSnapshot` contains an ordinary stable Journal snapshot plus the semantic guarantee defined by `database-lifecycle.md` §4.1. For its `localWriter = A` and `frontier[A] = q`, the source guarantees that after recovery no previously authored A record with sequence greater than q can later enter supported retained history for writer A.
+
+That is a guarantee about future admissible history, not every local record ever committed. Records lost only with the old local storage and unable to re-enter supported history do not make q unsafe. If a higher A record can still re-enter supported history, q is not continuation-safe.
 
 A source which cannot establish that guarantee MUST return `IndeterminateOrError`. A merely readable/lagging peer copy is insufficient.
 
-The guarantee is transport-neutral: Journal 3 does not prescribe how a transport/storage layer establishes authoritative continuation ownership/completeness.
+The guarantee is transport-neutral: Journal 3 does not prescribe how a transport/storage layer establishes continuation authority. It does not require contacting or discovering every possible peer.
 
 ## Receiver-less absent restore
 
@@ -169,7 +171,7 @@ On `Exists(S)`:
 - author no semantic event merely for restoration; and
 - run the ordinary migration gate before exposing APIs.
 
-`DefinitelyAbsent` permits fresh identity creation. Query/read/completeness uncertainty does not.
+`DefinitelyAbsent` permits fresh identity creation. Query/read/continuation-safety uncertainty does not.
 
 ## Existing-writer authoritative recovery
 
@@ -181,7 +183,7 @@ recoverExistingWriterFrom(source: InstallationRecoverySource)
 Preconditions:
 
 - local database already has writer A;
-- source returns `Exists(S)` with `S.localWriter == A` and continuation-safe completeness;
+- source returns `Exists(S)` with `S.localWriter == A` and a continuation-safe A head;
 - local A prefix is an exact prefix of S's A stream;
 - any imported foreign history required by retained event contexts is available.
 
@@ -191,9 +193,9 @@ Recovery:
 2. rejects divergent overlap as `JournalForkError`;
 3. reconstructs A head, allocator watermark, authority high-water, projection/indexes;
 4. atomically publishes the recovered state; and
-5. only then permits another A-authored record, strictly after the recovered complete head.
+5. only then permits another A-authored record, strictly after the continuation-safe recovered head.
 
-If completeness cannot be established, recovery fails; Journal 3 does not guess a sequence or silently roll over writer identity.
+If continuation safety cannot be established, recovery fails; Journal 3 does not guess a sequence or silently roll over writer identity.
 
 ## Reset API
 
@@ -203,7 +205,7 @@ resetTo(source: JournalSyncSource) -> Promise<ResetResult>
 
 Reset requires an established writable receiver and one held compatible snapshot.
 
-If that snapshot reveals a longer receiver-local writer prefix, reset does not use it as continuation authority; lifecycle must complete `recoverExistingWriterFrom()` first.
+If that snapshot reveals a longer receiver-local writer prefix, reset fails `JournalWriterBehindError` before importing records or authoring events. A `JournalSyncSource` cannot authorize continuation; lifecycle must complete `recoverExistingWriterFrom(InstallationRecoverySource)` first, then retry reset.
 
 Reset maintenance semantics include:
 
@@ -278,9 +280,7 @@ applyRequiredSemanticMigration(...)
 
 The format rewrite is one deterministic transform over the **entire retained source-format record domain**, including historical records for node families absent from target schema. It preserves record IDs/historical meaning/references.
 
-When payload representation changes, one pure version codec rewrites every retained affected ValueEvent independent of local selection.
-
-Once Journal history exists, representation-only change is **not** expressed through legacy `override(nodeIdentifier,value)`: the codec is the sole source of target bytes and an occurrence-preserving selected node uses `keep`. Journal-aware evaluation of the legacy value-producing override path is invalid.
+When payload representation changes, one pure version codec rewrites every retained affected ValueEvent independent of local selection. The codec is the sole representation-rewrite mechanism; an occurrence-preserving selected node uses `keep`.
 
 Semantic migration:
 
@@ -289,6 +289,8 @@ Semantic migration:
 - uses one `proof(V,D)` barrier per removed incoming validity edge for maintenance-only proof weakening;
 - persists target propagated stale state with `value(V)` when own effective proof is otherwise complete; and
 - creates new ValueEvents only for genuine new/replaced occurrences.
+
+If the canonical source->target codec is not total over retained source-version history, migration fails `JournalVersionCompatibilityError` before cutover.
 
 Independent genuine replacement migrations may create distinct replacement ValueIds; later synchronization handles the normal conflict/staleness consequence.
 
