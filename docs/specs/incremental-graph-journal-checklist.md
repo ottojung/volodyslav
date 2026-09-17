@@ -74,20 +74,23 @@ Acceptance:
 - freshness/validity reproduce graph semantics;
 - full rebuild works.
 
-## 7. Absent-installation restore
+## 7. Lifecycle-owned storage and absent-installation restore
 
 Acceptance:
 
-- installation recovery source queried before fresh fingerprint generation;
+- existing local persistent state is accepted only when produced by supported Volodyslav lifecycle transitions;
+- complete disappearance of the local database is the supported external-loss case and yields the `Absent` state;
+- partial deletion, rollback to an older local state, mixed snapshots, partial restoration, or direct external mutation are corrupted/unsupported rather than new recovery cases (`$id-6158827469032147`);
+- a crash/interruption of a supported transition exposes only a state permitted by that transition's atomicity/crash rules;
+- installation recovery source is queried only for an absent local database and before fresh fingerprint generation;
 - source exists -> restore/adopt `localWriter` only when the held snapshot establishes a **continuation-safe head** as defined by `database-lifecycle.md` §4.1;
-- continuation-safe means no higher record for that writer can later re-enter supported history after recovery;
-- a readable but potentially lagging snapshot returns indeterminate/error and MUST NOT be used for writer continuation;
+- continuation-safe means no higher record for that writer can later re-enter supported history after absent-state restoration;
 - source definitely absent -> fresh creation allowed;
 - source read/query failure -> fail, no fresh fallback;
 - writer head/watermark/high-water/projection reconstructed before new allocation;
-- stale recovery snapshot `A:1..900` is rejected when a higher A record can still re-enter supported history;
-- records lost only with the old local disk and unable to re-enter supported history do not by themselves make the recovered head unsafe;
-- establishing continuation safety does not require contacting/discovering every possible peer (`$id-4719065396881648`).
+- records lost only with the completely lost local database and unable to re-enter supported history do not by themselves make the restored head unsafe;
+- establishing absent-restoration safety does not require contacting/discovering every possible peer (`$id-4719065396881648`);
+- an existing local database is never routed through absent restore merely because some of its data is missing or old.
 
 ## 8. Pre-Journal bootstrap
 
@@ -149,9 +152,8 @@ Acceptance:
 - compatibility from held source snapshot;
 - every missing **foreign-writer** suffix imported;
 - overlap verified;
-- a longer agreeing prefix of the receiver's own local writer causes `JournalWriterBehindError` rather than ordinary-sync continuation;
-- same-writer continuation is allowed only through `InstallationRecoverySource` after it establishes a continuation-safe head per `database-lifecycle.md` §4.1;
-- a generic/lagging peer snapshot cannot authorize resumed same-writer allocation;
+- a longer agreeing prefix of the receiver's own local writer causes `JournalWriterBehindError` before publication and classifies the receiver as corrupted/unsupported rather than triggering recovery;
+- no ordinary sync path imports a missing suffix of the receiver's own writer;
 - fork rejected;
 - transfer streamable;
 - imported records unchanged;
@@ -173,8 +175,8 @@ Acceptance:
 Acceptance:
 
 - source target/compatibility from one held snapshot;
-- own-writer-behind source fails `JournalWriterBehindError` before import/authoring; no inline recovery;
-- reset is retried only after `recoverExistingWriterFrom(InstallationRecoverySource)` establishes a continuation-safe head;
+- own-writer-behind source fails `JournalWriterBehindError` before import/authoring and is treated as corrupted/unsupported receiver state;
+- reset never invokes an existing-writer recovery path and is not retried merely to repair local rollback;
 - unchanged target occurrence preserves ValueId;
 - new ValueEvent only for actual occurrence replacement;
 - for every removed incoming edge `D -> K` of preserved V, reset authors `Invalidate(scope=proof(V,D),reason=reset)`;
@@ -227,13 +229,14 @@ Acceptance:
 - one current format per active replica;
 - bootstrap artifact interpreted only by software explicitly supporting its target;
 - known graph/Journal mismatch not exposed;
-- valid history rebuilds projection;
-- invalid history rejected;
+- valid authoritative Journal history may rebuild derived projection/indexes;
+- rebuild is not permitted to repair missing/truncated authoritative Journal history or local rollback;
+- invalid/known-incomplete history rejected;
 - context closure, allocator, high-water, indexes reconstructible/validated.
 
 ## 14. Error model
 
-Provide actionable categories for writer fork, bootstrap fork, stream gap, causal closure, reference causality, current-format validation, ordinary snapshot/bootstrap compatibility, unsafe writer continuation, projection failure, publication/source-read failure.
+Provide actionable categories for writer fork, bootstrap fork, stream gap, causal closure, reference causality, current-format validation, ordinary snapshot/bootstrap compatibility, own-writer-behind unsupported state, projection failure, publication/source-read failure.
 
 Bootstrap incompatibility specifically includes a would-be pre-Journal target requiring semantic/time/allocator-dependent migration before Journal identity exists.
 
@@ -253,10 +256,10 @@ Priority regressions/properties:
 - stable snapshot compatibility;
 - selected-remote stale persistence;
 - repeat-sync no-op and normalization convergence;
-- absent restore vs fresh creation;
-- ordinary peer revealing a longer local-writer prefix fails `JournalWriterBehindError` before sync publication;
-- recovery succeeds only from a continuation-safe head; a stale head is rejected if a higher writer record can later re-enter supported history;
-- reset own-writer-behind source fails before import/authoring and requires lifecycle recovery first;
+- complete local database loss enters Absent and can restore/fresh-create through the controlled lifecycle;
+- partial local loss/rollback is unsupported and never silently reclassified as Absent;
+- ordinary peer revealing a longer local-writer prefix fails `JournalWriterBehindError` before sync publication and does not trigger same-writer recovery;
+- reset own-writer-behind source fails before import/authoring and remains unsupported rather than recover-and-retry;
 - canonical bootstrap source decision/original cut;
 - bootstrap graph-semantic identity and rejection of semantic/time/allocator-dependent pre-bootstrap migration;
 - creator crash resumes exact artifact without migration callback rerun;
@@ -282,10 +285,10 @@ Issue #1607 owns end-to-end change-sensitive synchronization complexity. Correct
 
 ## 17. Completion condition
 
-Journal 3 implementation is complete only when ordinary operations, startup/restore, bootstrap/migration, synchronization, reset, restart/open, and rebuild preserve:
+Journal 3 implementation is complete only when ordinary operations, startup/absent restore, bootstrap/migration, synchronization, reset, restart/open, and rebuild preserve:
 
 ```text
 persistedGraph == project(retainedJournal)
 ```
 
-with the causal, identity, compatibility, proof, and persistent-freshness laws above covered by tests/models.
+with the lifecycle fault model, causal, identity, compatibility, proof, and persistent-freshness laws above covered by tests/models.
