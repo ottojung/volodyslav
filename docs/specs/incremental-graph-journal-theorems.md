@@ -2,47 +2,47 @@
 
 ## Purpose
 
-This document collects proof obligations for implementations, tests, bounded models, and code review.
-
-The laws are semantic. Optimized indexes/checkpoints/incremental folds are allowed only when observationally equivalent to these rules.
+These are proof obligations for implementation, tests, bounded models, and review. Optimized replay/index/checkpoint implementations are valid only when observationally equivalent.
 
 ## Law 1: deterministic replay
 
-For one supported well-formed causally closed journal J under one compatible current database/schema interpretation, `project(J)` has one unique semantic result.
+For one supported well-formed Journal J under one compatible current schema/version, `project(J)` has one unique semantic result independent of arrival order, wall time, randomness, transport ancestry, computor execution, or mutable graph bytes.
 
-Replay does not depend on arrival order, wall time, randomness, computor execution, transport ancestry, or mutable graph bytes used as a second authority.
+## Law 2: graph/Journal equality
 
-## Law 2: graph/journal equality at supported commit boundaries
-
-For every supported committed database C:
+At every supported committed boundary:
 
 ```text
-semanticGraph(C.graph) == semanticGraph(project(C.journal))
+semanticGraph(database.graph) == semanticGraph(project(database.journal))
 ```
 
-including after ordinary operations, synchronization, reset, bootstrap/migration, and projection rebuild.
+including ordinary operations, sync, reset, bootstrap/migration, recovery, and rebuild.
 
 ## Law 3: local emission preservation
 
-For every supported ordinary graph transition `G -> G'`, if emission appends required records yielding J', then `project(J') == G'`.
+For every supported ordinary graph transition `G -> G'`, emitted Journal records produce `project(J') == G'`.
 
 ## Law 4: no-event no-change
 
-If an API operation produces no persisted semantic graph transition and emits no semantic records, journal and projection are unchanged.
+An operation with no persisted semantic transition and no semantic records leaves Journal/projection unchanged.
 
 ## Law 5: event contexts are causally closed cuts
 
-For semantic event F=(W,q):
+For semantic `F=(W,q)`:
 
 ```text
 F.context[W] == q - 1
 ```
 
-and every context coordinate is retained. For every semantic event E included by F's context, every coordinate of `E.context` is <= corresponding coordinate of `F.context`.
+and every included semantic predecessor E satisfies:
 
-Therefore `happenedBefore` is transitive.
+```text
+E.context <= F.context
+```
 
-Pre-Journal legacy-value conversion may deliberately omit canonical foreign coordinates so a historical legacy value remains concurrent with canonical bootstrap value. The context actually stored on that event must still be closed over every coordinate it includes.
+componentwise. Therefore `happenedBefore` is transitive.
+
+The narrow pre-Journal historical-value conversion rule may omit canonical foreign coordinates so upgrade read order does not invent legacy causality; the context actually stored remains closed.
 
 ## Law 6: authority extends causality
 
@@ -52,138 +52,141 @@ happenedBefore(E,F) => authorityCompare(E,F) < 0
 
 ## Law 7: reference causality
 
-Every ValueId reference denotes historical evidence in the referencing event's causal past. Validation target/basis references, value-scoped invalidation references, and proof-scoped invalidation references satisfy happened-before and expected node identity.
+Every ValueId reference names a ValueEvent in the referencing event's causal past and for the expected semantic node. This includes validation targets/bases, `value(V)` invalidations, and `proof(V,D)` barriers.
 
 ## Law 8: compatible prefix union
 
-For mutually compatible same-version causally closed prefix journals, immutable prefix union is idempotent, commutative, and associative. Overlap disagreement is a fork, not graph merge conflict.
+For mutually compatible same-version causally closed prefix Journals, immutable prefix union is idempotent, commutative, and associative. Same-ID disagreement is a fork.
 
-## Law 9: exact-prefix same-writer recovery
+## Law 9: writer continuation requires authoritative completeness
 
-If local A is `A:1..p` and source A is agreeing `A:1..q`, q>=p, importing `A:(p+1)..q` is valid Journal restoration. New A records begin strictly after q. Overlap disagreement fails.
+A longer agreeing prefix of writer A may be **retained** as information whenever valid, but it authorizes continued allocation under A only when the configured `InstallationRecoverySource` establishes that its recovered A head is the complete durable A stream capable of later re-entering supported history.
 
-## Law 10: absent-state restore preserves continuing writer identity
+An arbitrary sync peer exposing a longer A prefix is insufficient. If a writable receiver discovers `source.frontier[A] > local.frontier[A]` for its own local writer through ordinary sync/reset, it must stop with `JournalWriterBehindError` before new A authoring and perform authoritative recovery first.
 
-When no local database exists and configured installation recovery source supplies stable snapshot S:
+Overlap disagreement is `JournalForkError`.
+
+## Law 10: absent-state restore preserves continuing writer identity safely
+
+When no local database exists and the installation recovery source returns continuation-safe snapshot S:
 
 ```text
 localWriter_after_restore == S.localWriter
 ```
 
-Writer head/allocator/projection/history are reconstructed before new local authoring. Failure to query/read known synchronized state must not fall back to fresh identity generation.
+The writer head, allocator watermark, authority high-water, Journal, and projection are restored before new authoring.
+
+Definite absence alone permits fresh identity generation. Read/completeness uncertainty must not fall back to fresh creation.
 
 ## Law 11: synchronization compatibility comes from one held snapshot
 
-Ordinary synchronization with held source S requires exact version/schema equality, with compatibility fields, frontier, and records belonging to same immutable source state.
+Version/schema, frontier, and records used by synchronization/reset belong to one immutable `JournalSnapshot`. Earlier mutable metadata cannot authorize a later incompatible snapshot.
 
 ## Law 12: synchronization projection law
 
-After compatible prefix union and required normalization produce Jfinal, successful sync commits:
+After compatible foreign-prefix union plus required normalization produces Jfinal:
 
 ```text
 receiverJournal = Jfinal
 receiverGraph   = project(Jfinal)
 ```
 
-Imported source records retain exact identity/body.
+Imported records retain their exact identity/body.
 
-## Law 13: repeat synchronization no-op
+## Law 13: repeat synchronization is a no-op
 
-With no intervening state change, resynchronizing against same incorporated source authors no semantic records and changes no projection.
+With no intervening state change, synchronization against an already incorporated unchanged source authors no new semantic records and changes no projection.
 
-## Law 14: full sync is zero-frontier sync
+## Law 14: zero-frontier sync is not absent restore
 
-An already-established receiver with frontier zero uses same suffix-transfer/validation/normalization/replay algorithm. A fully absent installation is a different receiver-less lifecycle case.
+An already-established receiver with frontier zero may use ordinary synchronization for foreign histories. A fully absent installation uses the receiver-less recovery lifecycle instead.
 
 ## Law 15: dependency-closure normalization
 
-A supported published projection is dependency-closed under current schema. If union selects a value whose required input is absent, synchronization authors explicit semantic absence authority over required dependent closure.
+Every supported published projection is dependency-closed under current schema. If union selects value K while a required direct input is absent, synchronization authors explicit DeleteEvents over the selected dependent closure.
 
-## Law 16: certificate selection prefers causal invalidation coverage
+Input-version disagreement with all required inputs still present is not by itself deletion authority: cached K remains a legitimate `oldValue` and proof/freshness determine its stale state.
 
-Replay selects one eligible certificate maximizing lexicographically:
+## Law 16: certificate selection uses effective proof
+
+Replay selects one eligible certificate maximizing:
 
 ```text
-1. basisMatchCount
+1. effectiveBasisMatchCount
 2. coversValueInvalidations (true > false)
 3. authority
 ```
 
-Thus a concurrent greater-clock certificate cannot beat an equally matching certificate which causally covers current occurrence's invalidation.
+`effectiveBasisMatchCount` excludes basis edges suppressed by uncovered `proof(V,D)` barriers.
 
-## Law 17: one-certificate proof soundness
+## Law 17: one-certificate positive proof
 
-Every current validity edge comes from one selected current certificate; replay never combines edges from multiple certificates into synthetic proof.
+Every current positive validity edge comes from one selected current certificate. Replay never combines positive entries from different certificates into synthetic proof.
+
+Negative proof-edge barriers may independently subtract edges from that selected certificate.
 
 ## Law 18: node invalidation clearing is causal
 
-A node-scoped invalidation is genuine direct/explicit node invalidation. It remains effective unless a validation causally follows it. Total authority alone never clears it, and its effect is not limited to one ValueId.
+A node-scoped invalidation is genuine direct/explicit node invalidation. It remains effective against certificates that did not causally observe it, independent of ValueId. Total authority alone never clears it.
 
-## Law 19: occurrence-scoped invalidations have distinct meanings
+## Law 19: occurrence scopes are distinct
 
-For selected occurrence V of K:
+For occurrence V of node K:
 
-- `scope=value(V)` records persistent stale freshness for V and does not by itself remove incoming proof;
-- `scope=proof(V)` is a maintenance eligibility barrier for certificates targeting V and does not by itself mark V stale.
+- `value(V)` records persistent stale freshness for V without directly removing incoming proof;
+- `proof(V,D)` retires only incoming proof edge `D -> K` for V until a validation causally observes that barrier and re-proves D.
 
-Both stop affecting current projection when another ValueId becomes selected. Neither is interchangeable with node-scoped explicit invalidation.
+Both stop applying when another ValueId becomes selected. Neither is interchangeable with node scope.
 
-## Law 20: persistent input-staleness normalization
+## Law 20: concurrent proof-edge barriers compose
 
-After raw sync union/dependency closure, if selected K has a certificate whose basis exactly matches every selected direct input ValueId, covers its value invalidations, but some direct input is stale, final sync history contains an uncovered value-scoped invalidation for current `valueId(K)`.
+Let the selected certificate for V contain proof edges E.
 
-This applies whether K's ValueId was already local or newly selected from source.
-
-## Law 21: maintenance proof weakening requires an occurrence barrier
-
-Let a maintenance transition preserve current ValueId V of K while changing target incoming validity from `CurrentValid(K)` to `TargetValid(K)`.
-
-If:
+For every uncovered `proof(V,D)` barrier, D is removed from that certificate's effective basis. Therefore multiple concurrent barriers produce:
 
 ```text
-CurrentValid(K) - TargetValid(K) != empty
+effectiveEdges = E - union(barrieredInputs)
 ```
 
-then appending only a weaker ValidateEvent is insufficient because certificate selection prefers greater `basisMatchCount` before authority.
+Consequences:
 
-For proof weakening which is not itself a semantic explicit invalidation, reset/migration MUST first author:
+- two independent equivalent migrations weakening V to the same partial proof retain that partial proof after synchronization;
+- independent removals of different edges compose to their intersection;
+- unrelated edges are not destroyed;
+- barriers for V never taint replacement V2.
+
+## Law 21: maintenance proof weakening is edge-specific
+
+If reset/migration/bootstrap preserves V but target validity removes edge `D -> K`, maintenance authors:
 
 ```text
-InvalidateEvent {
-    node: K,
-    scope: { kind: "proof", value: V },
-    reason: "reset" | "migration"
-}
+Invalidate(K, scope=proof(V,D), reason=...)
 ```
 
-and then author target proof after it as needed.
+unless another semantic operation already makes that edge impossible for an independent reason.
 
-Every older certificate for V predating that barrier is ineligible. Certificates for another occurrence V2 are unaffected.
+A weaker ValidateEvent alone is insufficient because older stronger positive proof could otherwise win.
 
-If the migration operation is genuinely `invalidate(K)`, it also authors/retains the real node-scoped invalidation required by that operation. The proof barrier and explicit node invalidation are separate semantics even when both are needed in one migration.
-
-This law covers stale `keep`/`override` proof loss, reset targets with fewer validity edges, and any occurrence-preserving schema/proof transition that weakens validity.
+True migration `invalidate(K)` remains node-scoped.
 
 ## Law 22: maintenance persistent staleness survives upstream Unchanged
 
-After maintenance proof repair, define for target-present K:
+For selected certificate C define:
 
 ```text
 selfProofReady(K) iff
-    selected certificate exists
-    and basisMatchCount == numberOfDirectInputs
-    and coversValueInvalidations
+    C exists
+    and effectiveBasisMatchCount(K,C) == numberOfDirectInputs(K)
+    and coversValueInvalidations(K,C)
 ```
 
-If target state stores K stale and `selfProofReady(K)` is true, final maintenance history contains an uncovered value-scoped invalidation for K's final ValueId unless one already exists.
+If target state stores K stale while `selfProofReady(K)` is true, final history contains an uncovered `value(currentValueId(K))` marker unless one already exists—even when K is currently stale only through an input.
 
-This remains required even when current replay is already stale solely because a direct input is stale.
-
-Therefore later `Unchanged` revalidation of an upstream input cannot make K fresh automatically; K itself must validate/recompute.
+Therefore a later upstream `Unchanged` cannot freshen K without K itself validating/recomputing.
 
 ## Law 23: canonical bootstrap source decision
 
-Before pre-Journal bootstrap, configured cohort source yields exactly one of:
+Before pre-Journal bootstrap, the cohort source yields exactly:
 
 ```text
 Exists(CanonicalBootstrapSnapshot)
@@ -191,157 +194,89 @@ DefinitelyAbsent
 IndeterminateOrError
 ```
 
-`DefinitelyAbsent` permits first canonical creation; `IndeterminateOrError` fails without creation.
+Definite absence permits first creation only under source arbitration semantics. Indeterminate/error fails without competing creation.
 
-For `Exists(B)`, exact target compatibility is checked first. If `B.creatorWriter` equals local pre-Journal fingerprint, lifecycle uses creator-resume; otherwise ordinary join.
+## Law 24: canonical bootstrap artifact is the original cut
 
-Distinct accepted canonical artifacts for one cohort are unsupported.
-
-## Law 24: canonical bootstrap artifact is original cut
-
-If creator C finishes bootstrap at Fbootstrap, canonical artifact contains exactly records through Fbootstrap with bootstrap target version/schema.
-
-Later ordinary Journal events do not enter that artifact. A current JournalSnapshot containing bootstrap prefix is not equivalent to artifact.
-
-The artifact must remain immutable for software releases which claim support for that bootstrap target, but Journal 3 does not require all future releases to retain historical artifact compatibility forever.
+The canonical artifact contains exactly records through the creator frontier immediately after bootstrap and before post-bootstrap Journal operations. A later current `JournalSnapshot` containing that prefix is not a substitute.
 
 ## Law 25: bootstrap is semantic identity over persisted legacy state
 
-The supported pre-Journal -> Journal bootstrap does not run an ordinary legacy semantic migration before authoring the initial Journal history.
+The supported pre-Journal -> Journal bootstrap journals the already-persisted graph without running ordinary semantic migration first. It preserves existing materialized NodeKeys, NodeIdentifiers, payloads, timestamps, freshness, validity, graph interpretation, and allocator watermark.
 
-Its bootstrap target must represent the same persisted graph interpretation and preserve exactly the already-stored semantic state:
-
-- materialized NodeKeys;
-- NodeIdentifiers;
-- payloads;
-- createdAt/modifiedAt;
-- freshness;
-- validity;
-- local allocation watermark.
-
-Therefore bootstrap identity and creator-resume are deterministic functions of persisted legacy state rather than migration execution time, wall-clock-generated `create()` timestamps, or host-local allocation performed during upgrade.
-
-If reaching a proposed bootstrap target would require `create`/`override`/`invalidate`/`delete` or another semantic legacy migration, that source/target pair is not an automatic bootstrap path and fails `JournalVersionCompatibilityError` before authoring bootstrap history. Such graph/schema migration occurs before entering the supported bootstrap source state or afterward as Journal-aware migration.
+If reaching the proposed bootstrap target requires semantic/time/allocator-dependent migration, the automatic bootstrap transition is unsupported.
 
 ## Law 26: bootstrap creator resume is exact and non-authoring
 
-If pre-Journal local fingerprint W equals `artifact.creatorWriter` and artifact target is supported, creator-resume compares:
+When local pre-Journal fingerprint equals `artifact.creatorWriter`, creator-resume directly compares persisted legacy semantics with `project(artifact)`. Equality installs exactly artifact history and reconstructs writer state without new semantic records. Mismatch is `JournalBootstrapForkError`.
+
+## Law 27: bootstrap join does not invent legacy causality
+
+A joining legacy occurrence which did not observe the canonical occurrence remains concurrent with it even though bootstrap code reads the artifact. Its conflict authority derives from persisted legacy `modifiedAt`, not upgrade time.
+
+## Law 28: exact-shared bootstrap validity is conservative intersection
+
+For an exact occurrence V shared by canonical and joining legacy state:
 
 ```text
-semanticGraph(project(artifact,W))
-    == semanticGraph(persistedLocalLegacyGraph)
+JoinedValid(K) = CanonicalValid(K) intersect JoiningValid(K)
 ```
 
-under the semantic-identity bootstrap interpretation.
+Canonical certificate remains the positive basis. For every canonical edge D absent from joining proof, bootstrap authors `proof(V,D)`. Joining-only proof never strengthens the shared occurrence.
 
-It MUST NOT rerun an ordinary migration callback or regenerate timestamps/identifiers to perform that comparison.
+## Law 29: exact-shared bootstrap freshness is conservative union of stale evidence
 
-On equality it installs exactly artifact records, reconstructs W head/watermark/high-water/projection, and cuts over without authoring another semantic record.
-
-On inequality it fails `JournalBootstrapForkError` and changes no active state. A different fingerprint may not use creator-resume.
-
-## Law 27: bootstrap join does not invent causal succession
-
-Let Vc be canonical bootstrap ValueEvent for K and Vl a different legacy occurrence on a joining installation which did not observe Vc in legacy time.
-
-Converted Vl must not include Vc solely because bootstrap code read the artifact. Therefore absent genuine pre-Journal causal evidence Vc and Vl are concurrent and conflict authority is seeded by legacy `modifiedAt`, not upgrade time.
-
-## Law 28: exact shared occurrence freshness is conservative
-
-For an exact occurrence V shared by canonical artifact and joining legacy state, the join reuses canonical ValueId and does not author a causally-later validation merely to strengthen the joining host's proof.
-
-The final shared occurrence is persistently stale iff either legacy side stored that occurrence stale:
+For exact shared V:
 
 ```text
 joinedStale(V) = canonicalStale(V) OR joiningStale(V)
 ```
 
-If necessary the join authors an uncovered value-scoped bootstrap invalidation after all bootstrap proof records. A fresh joining copy can therefore never clear canonical stale evidence merely by upgrading later.
+An uncovered value-scoped bootstrap invalidation remains/gets authored after proof-edge barriers when required. A fresh joining copy cannot clear canonical stale evidence.
 
-## Law 29: bootstrap join persists recursive-only staleness
+## Law 30: bootstrap persists recursive-only staleness
 
-After direct shared/local bootstrap evidence is encoded, replay the combined history. For every present selected K whose own proof is complete/current and which is stale solely because at least one direct input is stale, bootstrap join ensures an uncovered:
+After direct bootstrap proof/stale roots, every selected K whose own effective proof is complete but which is stale through a direct input receives an uncovered current-value bootstrap invalidation. Later upstream `Unchanged` therefore cannot silently freshen K.
 
-```text
-InvalidateEvent {
-    node: K,
-    scope: { kind: "value", value: valueId(K) },
-    reason: "bootstrap"
-}
-```
+## Law 31: canonical identity guarantee is limited to canonical-equal occurrences
 
-unless an applicable current-value marker already exists.
+Exact canonical-equal occurrences reuse canonical ValueIds. Local-only occurrences may receive joining-writer bootstrap ValueIds; canonical-only materializations are not deleted merely because joining cache lacks them.
 
-Therefore later `Unchanged` revalidation of that input cannot freshen K without K itself validating/recomputing.
+Independent late joiners may assign distinct ValueIds to the same non-canonical occurrence; `$id-1635227135166767` accepts the resulting possible dependent staleness.
 
-## Law 30: canonical identity guarantee is limited to canonical-equal occurrences
+## Law 32: bootstrap compatibility is bounded
 
-For an exact equal legacy occurrence on canonical and joining state, join reuses canonical ValueId and creates no joining ValueEvent.
+A canonical artifact is usable only when its version/schema exactly equal the running release's supported bootstrap target. Journal 3 does not require arbitrary future releases to preserve every historical bootstrap decoder/entry path.
 
-A local-only materialization may be represented by joining bootstrap ValueEvent. Canonical-only materialization is not deleted merely because joining cache lacks it.
+## Law 33: representation migration is total and replica-independent
 
-Two independent joiners carrying the same occurrence which differs from canonical cut may author distinct bootstrap ValueIds. Later synchronization may stale dependents naming losing occurrence. This is accepted by `$id-1635227135166767`.
-
-## Law 31: bootstrap compatibility is bounded by running release
-
-Canonical artifact may be used only when:
-
-```text
-artifact.databaseVersion   == expectedBootstrapTargetVersion
-artifact.graphSchemeString == expectedBootstrapTargetGraphSchemeString
-```
-
-for the running release, and that target is a semantic-identity Journalization target for the supported persisted legacy source state.
-
-Mismatch or a target requiring pre-bootstrap semantic migration fails `JournalVersionCompatibilityError` before history is authored.
-
-Journal 3 does not require arbitrary future releases to preserve old bootstrap artifact decoder or bootstrap entry path. Operator recovery may first use software which explicitly supports that target.
-
-## Law 32: bootstrap creator projection equivalence
-
-For canonical accepted persisted legacy graph G:
-
-```text
-semanticGraph(project(bootstrap(G))) == semanticGraph(G)
-```
-
-including materialization, identifiers, payloads, timestamps, freshness, validity, and allocator meaning.
-
-Creator freezes resulting frontier before ordinary Journal authoring begins.
-
-## Law 33: migration preserves occurrence identity for occurrence-preserving decisions
-
-For Journal-aware migration, `keep`, `invalidate`, schema/proof/freshness-only change, and semantic-preserving `override()` preserve selected ValueId when semantic occurrence survives.
-
-A new ValueEvent is reserved for actual semantic create/replace occurrence changes.
-
-## Law 34: record-format rewrite is replica-independent
-
-For every retained source record R and one source->target migration definition:
+For every retained source-format record R and fixed source->target migration definition:
 
 ```text
 rewriteJournalRecord(R)
 ```
 
-is deterministic function of R and migration definition, independent of whether R is selected, which other records replica retains, callback order, and mutable replica-local state.
+is deterministic from R and the migration definition, independent of selection, callback traversal, mutable replica state, or which other records happen to be retained.
 
-Thus replicas retaining same historical JournalRecordId produce same target-format body.
+The rewrite domain is **all retained source-version history**, including records for node families absent from target schema. If no deterministic target representation exists for some retained record, migration is unsupported and fails before cutover.
 
-## Law 35: `override()` preserves ValueId but cannot redefine immutable history locally
+## Law 34: Journal-aware representation-only change uses codec + keep
 
-Suppose selected occurrence V represents semantic x and canonical per-record codec maps V to target representation `newEncoding(x)`.
+Once Journal history exists, legacy value-producing `override(nodeIdentifier,value)` is not a semantic Journal-aware migration operation.
 
-A valid Journal-aware `override(K, ...)` asserts agreement with that rewrite. Target keeps ValueId V and semantic x. Callback disagreement fails before cutover; it never activates a different body for V.
+The whole-history codec is the sole source of target representation bytes. A selected occurrence whose semantic meaning survives uses `keep`, preserving ValueId. Journal-aware use of legacy `override()` is rejected rather than evaluated as a second rewrite path.
+
+## Law 35: migration preserves occurrence identity when occurrence survives
+
+`keep`, `invalidate`, schema/proof/freshness-only changes, and representation-only format rewrite preserve selected ValueId when semantic occurrence survives.
+
+A new ValueEvent is reserved for genuine create/replace occurrence changes.
 
 ## Law 36: independent genuine replacement migrations are allowed
 
-If migration genuinely creates/replaces occurrence, replicas may independently author different new ValueIds.
+Replicas may independently author distinct ValueIds for genuinely replaced occurrences. Later synchronization selects by normal authority and may stale dependents naming a losing replacement. This accepted behavior does not require one canonical migration participant.
 
-After later synchronization ordinary authority selects current occurrence. Dependents whose certificates name losing replacement may become stale until revalidated/recomputed.
-
-This is accepted and does not require one canonical migration participant.
-
-## Law 37: migration equivalence and representation preservation
+## Law 37: migration equivalence
 
 For:
 
@@ -350,23 +285,19 @@ Jconverted = rewriteJournalFormat(Jbefore,...)
 Jafter = Jconverted + required semantic migration records
 ```
 
-pre-existing IDs/causal/reference meaning are preserved and:
+all pre-existing IDs/causal/reference meaning are preserved and:
 
 ```text
 project(Jafter,targetSchema) == Gtarget
 ```
 
-The equality includes exact target validity and freshness persistence, not merely current recursive freshness at cutover.
-
-Future replay does not run historical migration callbacks.
+including exact target validity and persistent freshness behavior.
 
 ## Law 38: reset is minimal semantic rebaselining
 
 Let `J0 = union(receiver,source)`, `P0 = project(J0)`, and `PS = project(sourceSnapshot)`.
 
-Reset preserves P0 selected ValueId when same target semantic occurrence is already selected, creates ValueEvent only when occurrence must change, authors DeleteEvent exactly when P0 present and target absent, and repairs proof/freshness without unnecessary value replacement.
-
-Proof weakening follows Law 21 and persistent target staleness follows Law 22.
+Reset preserves P0 ValueId when the requested occurrence already matches, creates ValueEvent only when the occurrence itself must change, uses DeleteEvent exactly when target requires absence, repairs removed validity with `proof(V,D)`, and persists target stale flags according to Law 22.
 
 After reset:
 
@@ -374,61 +305,44 @@ After reset:
 semanticGraph(project(Jreset)) == semanticGraph(PS)
 ```
 
-and a target-stale dependent does not become fresh merely because an upstream input later revalidates `Unchanged`.
+relative to the history reset observed.
 
-This causal-later target-repair law applies to reset and MUST NOT be reused for pre-Journal bootstrap value conflict conversion.
+## Law 39: writer stream and writer-state monotonicity
 
-## Law 39: writer sequence contiguity and writer-state monotonicity
-
-For writer A with head q, records are exactly A:1..q with no durable holes. Failed transactions consume no durable coordinate. Local writer-state watermark is nondecreasing; foreign writer-state records never replace local allocator watermark.
+For writer A with head q, committed records are exactly `A:1..q`. Failed transactions consume no durable coordinate. Local writer-state watermark never decreases; foreign writer-state records never replace local allocator state.
 
 ## Law 40: replay rebuild safety
 
-Valid authoritative Journal rebuilds observationally equivalent derived state without changing history. Invalid authoritative history causes rebuild failure rather than mutation to match damaged graph bytes.
+Valid authoritative Journal rebuilds observationally equivalent derived state without semantic authoring. Invalid authoritative history causes rebuild failure rather than mutation to match damaged graph bytes.
 
 ## Law 41: one current format per active replica
 
-Every active replica contains only representation selected by current `global/version`. Format migration deterministically rewrites old records preserving ID/meaning before target cutover. Ordinary replay/sync performs no mixed-version conversion.
-
-A bootstrap artifact is lifecycle source state rather than active replica; its historical representation is relevant only while running software explicitly supports that bootstrap target.
+Every active replica contains only the representation selected by current `global/version`. Migration rewrites complete retained history before target cutover; ordinary replay/sync performs no mixed-version conversion.
 
 ## Law 42: fair-execution synchronization convergence
 
-For finitely many supported replicas and finite schema DAG, after non-normalization graph-changing operations stop, fair synchronization eventually reaches finite normalization fixed point, disseminates all actually authored records, yields equivalent projections, and makes further sync semantic no-op.
+For finitely many supported replicas and a finite schema DAG, after non-normalization graph-changing operations stop, fair synchronization eventually reaches a finite normalization fixed point, disseminates all actually authored records, yields equivalent projections, and makes further synchronization a semantic no-op.
 
-The law is per actual execution; counterfactual schedules which authored different real normalization records need not end identically.
+The law is per actual execution; counterfactual schedules which genuinely authored different normalization histories need not be byte-identical.
 
-## Suggested implementation verification
+## Required verification themes
 
-At minimum exercise/model:
+At minimum model/test:
 
-- ordinary emission cases;
-- context transitivity, own-prefix closure, authority extension;
-- concurrent values and causal overwrite;
-- invalidation-aware certificate selection;
-- proof-scoped maintenance weakening with old stronger certificates and no taint of a different ValueId;
-- true explicit node invalidation remaining node-scoped;
-- maintenance propagated staleness followed by upstream `Unchanged`;
+- deterministic replay and graph/Journal equality;
+- context transitivity and authority extension;
+- reference causality;
+- immutable prefix union/fork rejection;
+- continuation-safe writer recovery and stale-peer rejection;
+- node/value/proof-edge invalidation semantics;
+- concurrent same-ValueId proof-edge barriers;
 - selected-remote stale persistence;
-- dependency deletion closure and repeat sync;
-- stable snapshot version/schema race;
-- exact same-writer recovery and fork rejection;
-- absent-state restore vs fresh creation;
-- canonical bootstrap three-way decision;
-- creator crash after artifact publication and exact resume without rerunning migration callbacks;
-- creator-resume mismatch rejection;
-- frozen bootstrap cut excluding later creator history;
-- rejection of a bootstrap target requiring wall-clock/allocator-dependent legacy semantic migration;
-- late bootstrap conflict using legacy `modifiedAt` without synthetic causality;
-- canonical stale + joining fresh exact shared occurrence remains stale;
-- joining stale input makes canonical dependent persistently stale through later input `Unchanged`;
-- independent joiners splitting identical non-canonical occurrence identity;
-- bounded bootstrap-version incompatibility;
-- pure per-record rewrite independent of selected/non-selected status;
-- `override()` assertion against canonical codec output;
-- independently migrated genuine replacements causing allowed downstream staleness;
-- minimal reset preserving occurrences while weakening proof correctly;
-- rebuild from Journal only;
-- malformed future/concurrent references and transitive contexts.
-
-A bounded executable model is strongly encouraged because these laws quantify over causal/event interleavings.
+- structural deletion versus retained stale `oldValue`;
+- bootstrap original-cut/creator-resume/conflict authority;
+- exact-shared bootstrap proof intersection and symmetric stale merge;
+- bootstrap recursive stale persistence;
+- total replica-independent format rewrite including target-removed node families;
+- rejection of Journal-aware legacy `override()`;
+- independent replacement-migration trade-off;
+- minimal reset; and
+- fair synchronization convergence.
