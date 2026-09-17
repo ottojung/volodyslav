@@ -50,7 +50,7 @@ All methods are `async`.
 | `keep(nodeIdentifier)` | Preserve node as-is in the new version. |
 | `invalidate(nodeIdentifier)` | Mark the node for recomputation. |
 | `delete(nodeIdentifier)` | Remove the node from the new version entirely. |
-| `create(nodeKeyString, value, freshness)` | Create a new cached node (not in the previous version) in the new schema with the result of `value(nodeIdentifier)` (a `NodeIdentifier => Promise<ComputedValue>`) as its initial value. `freshness` must be `"up-to-date"` or `"potentially-outdated"`. `nodeKeyString` is a `NodeKeyString` — the semantic key by which the node will be identified in the new schema. A fresh `NodeIdentifier` is allocated automatically. |
+| `create(nodeKeyString, value, freshness)` | Create a new cached node (not in the previous version) in the new schema with the result of `value(nodeIdentifier)` (a `NodeIdentifier => Promise<ComputedValue>`), as its initial value. `freshness` must be `"up-to-date"` or `"potentially-outdated"`. `nodeKeyString` is a `NodeKeyString` — the semantic key by which the node will be identified in the new schema. A fresh `NodeIdentifier` is allocated automatically. |
 
 ### Traversal methods
 
@@ -82,19 +82,52 @@ Calling the same decision twice is allowed and has no effect, except that `creat
 
 ### Operation semantics
 
-`keep` preserves the semantic occurrence, freshness, timestamps, and — for up-to-date nodes — compatible incoming validity. A stale node carried through `keep` loses its incoming proofs: persisted storage does not encode whether its preexisting staleness was explicit or propagated, so it is conservatively treated as a direct invalidation root.
+`keep` preserves the semantic occurrence, timestamps, freshness, and every incoming validity edge supplied by the source replay whose explicit input-key set is still compatible with the target node's direct-input set. Staleness alone does not discard incoming proof: Journal history distinguishes explicit node invalidation, occurrence-scoped stale state, proof-edge barriers, and recursive input staleness, so Journal-aware migration does not need the old conservative “stale keep loses proof” heuristic.
 
-Within a **preexisting stale `keep` region**, every stale node loses incoming proofs, so validity edges inside the region may disappear. A stale B whose dependent C is also stale loses both `A⇝B` and `B⇝C` during migration, and both nodes must recompute.
+A kept certificate whose input-key set no longer matches the target direct-input set remains historical evidence but is not current-shape-compatible proof. Schema change may therefore remove validity because the edge/input shape genuinely changed, not merely because the kept node was stale.
 
 **Migration-time propagated invalidation** is different: the migration callback explicitly calls `invalidate()` on a node, and the propagation runs in memory with full provenance. In that case outgoing proofs survive and freshness-only propagation preserves validity edges.
 
 ### Representation-only changes
 
-Representation-only changes use `keep`; retained `ValueEvent`s are rewritten by the version's canonical whole-Journal codec as specified by `incremental-graph-journal-migrations.md`.
+Representation-only changes use `keep`; retained Journal records are rewritten by the version transition's canonical whole-Journal format codec as specified below and in `incremental-graph-journal-migrations.md`.
 
-Once Journal history exists, the codec is the single source of target representation bytes for every retained affected occurrence, selected or historical. There is no second value-producing migration decision for representation rewriting.
+Once Journal history exists, the format codec is the single source of target representation bytes for every retained affected occurrence, selected or historical. There is no second value-producing migration decision for representation rewriting.
 
 A pre-Journal database that would require a value-producing representation migration before Journal identity can be established is not migrated by the Journal 3 lifecycle. It must first reach a supported pre-Journal source state using software which owns that older transition, or bootstrap a supported identity state and perform the representation transition afterward under the Journal-aware codec.
+
+### Journal format codec
+
+Each directed database-version transition may define one pure `JournalFormatCodec`:
+
+```text
+JournalFormatCodec {
+    rewriteNodeKey(sourceKey: NodeKey) -> NodeKey
+    rewriteComputedValue(
+        sourceKey: NodeKey,
+        payload: ComputedValue
+    ) -> ComputedValue
+}
+```
+
+If a function is omitted, it defaults to the identity transform.
+
+Both functions are synchronous and deterministic. They receive only their explicit arguments plus the fixed source->target migration definition; they receive no database handle, network/filesystem capability, clock, randomness, allocator, migration traversal state, or other mutable replica-local capability.
+
+`rewriteNodeKey` changes representation only: its result must denote the same historical semantic node under the target version. `rewriteComputedValue` likewise changes representation only and must preserve the historical semantic value represented by the source ValueEvent. Semantic creation/replacement belongs to migration decisions, not to the format codec.
+
+The whole-history rewrite pipeline is:
+
+1. decode each retained record under the source database version into the Journal semantic model;
+2. rewrite every embedded `NodeKey` with `rewriteNodeKey`, including record node keys, `ValidationBasis.input`, and `proof(V,D)` input keys;
+3. for every retained `ValueEvent`, rewrite its payload with `rewriteComputedValue(sourceKey, payload)`, including non-selected values and values for node families absent from the target schema;
+4. preserve `JournalRecordId`, writer sequence, contexts, AuthorityTime meaning, ValueId/reference identity, NodeIdentifier, and timestamps;
+5. re-canonicalize target-format structures after rewriting — in particular, sort every ValidationBasis by the target version's canonical persisted `NodeKeyString` order; and
+6. encode the transformed semantic record using the target version's canonical record encoding.
+
+The codec is total only if that pipeline succeeds for **every retained source-version record**. Any codec throw, missing transform result, invalid target NodeKey/value representation, or other inability to produce the required target semantic record makes the source->target transition incompatible and fails `JournalVersionCompatibilityError` before cutover.
+
+Two replicas applying the same source->target transition to the same historical record must therefore produce the same target-format record body.
 
 `invalidate` preserves the cached value if it exists, marks nodes as `"potentially-outdated"`, and preserves `modifiedAt`.
 
@@ -130,6 +163,8 @@ This preserves the materialization invariant that every materialized node has al
 | `InvalidMigrationDecisionError` | `create` violates its semantic/cache-state contract. |
 | `GetMissingNodeError` | `get()`/traversal called for a node not in `S`. |
 | `MissingDependencyMetadataError` | A materialized node has missing or corrupted dependency metadata. |
+
+Journal-format-codec failure is not a migration-decision error; it is `JournalVersionCompatibilityError` under the Journal 3 lifecycle.
 
 ---
 
