@@ -4,244 +4,205 @@
 
 This document specifies local storage properties required by Journal 3 without choosing a remote/backend product, changing transport behavior, or prescribing exact LevelDB key names.
 
-Existing IncrementalGraph sublevel formats remain unchanged during Journal 3 work; Journal-specific authoritative/derived state lives in new storage namespaces.
+Existing IncrementalGraph sublevel formats remain unchanged; Journal-specific state lives in new namespaces.
 
 ## Required logical state
 
-A conforming local implementation persists enough information to recover:
+A conforming implementation can recover:
 
 - every retained Journal record by `JournalRecordId`;
-- ordered per-writer ranges;
-- retained frontier, explicitly or derivably;
+- ordered per-writer ranges/frontiers;
 - current local writer identity;
-- existing durable compatibility metadata (`global/version`, `global/graph_scheme`);
-- matching materialized graph projection;
-- optional derived indexes/caches.
+- `global/version` and `global/graph_scheme`;
+- the matching materialized graph projection;
+- local writer allocator/high-water state; and
+- optional rebuildable indexes/checkpoints.
 
-Journal records are authoritative semantic history. Index/frontier caches are rebuildable derived state.
-
-## Existing graph sublevels remain projections
-
-Do not embed Journal provenance/causal/synchronization metadata into existing `values`, `freshness`, `valid`, `timestamps`, or identifier record formats.
+Journal records are authoritative semantic history. Derived indexes/frontier caches are not.
 
 ## One current format per active replica
 
-The active replica's existing `global/version` selects complete persisted representation, including Journal records/derived metadata.
+`global/version` selects the complete active representation, including Journal records. Journal records have no independent version tag.
 
-Journal records carry no independent format discriminator.
-
-During database migration, source active and inactive target replicas may temporarily use different whole-database versions, but each replica individually remains homogeneous.
-
-A target becomes active only after all retained records are rewritten into target canonical representation and semantic migration replay validates.
-
-A `CanonicalBootstrapSnapshot` is lifecycle source state, not active JournalReplica. Its historical representation is interpreted only by software which explicitly supports that bootstrap target; Journal 3 does not require arbitrary future releases to retain old artifact compatibility forever.
+A format migration builds a homogeneous target representation and cuts over only after all retained records have deterministic target encodings and target replay validates.
 
 ## Ordered writer ranges
 
-Storage supports logical iteration:
+Storage supports efficient logical iteration:
 
 ```text
 records(author, afterExclusive, throughInclusive)
 ```
 
-in ascending sequence order without scanning unrelated writers.
+without scanning unrelated writers.
 
-## Canonical current record codec
+## Canonical record codec
 
-For one database version each Journal record has one canonical persisted representation/meaning.
+For one current version each record has one canonical representation/meaning.
 
-The codec preserves record ID, event kind/body, causal context, authority time, references, payload/timestamps, reasons/scopes/certificate bases, and writer-state fields.
-
-ValidateEvent basis encoding is self-describing:
+ValidateEvent bases are self-describing and canonical-order:
 
 ```text
 { input: NodeKey, value: ValueId | "unknown" }
 ```
 
-with unique input keys serialized by canonical persisted NodeKeyString order.
-
-InvalidateEvent scope encoding distinguishes:
+Invalidate scopes encode distinctly:
 
 ```text
 { kind: "node" }
 { kind: "value", value: ValueId }
-{ kind: "proof", value: ValueId }
+{ kind: "proof", value: ValueId, input: NodeKey }
 ```
 
-The three scopes have different replay meanings and must not be collapsed in storage.
+Storage must not collapse these scopes.
 
-## Causal-context validation support
+## Causal validation support
 
-Storage/import/open validation verifies semantic-event contexts are genuine closed cuts.
-
-For F=(W,q):
+For semantic `F=(W,q)`:
 
 ```text
 F.context[W] == q - 1
 ```
 
-and every semantic event E included by F.context satisfies `E.context <= F.context` componentwise.
+and every included semantic E satisfies:
 
-It is insufficient to validate only that coordinates are within retained frontier.
+```text
+E.context <= F.context
+```
 
-Controlled pre-Journal bootstrap conversion may intentionally leave canonical foreign coordinates out of a joining legacy ValueEvent's context so pre-existing legacy value remains concurrent with canonical value. Resulting context is still validated for own-prefix exactness and transitive closure over every coordinate it includes.
+componentwise. Merely checking coordinates are within retained frontier is insufficient.
 
-## Individual record sizing
-
-Journal 3 imposes no compacted-journal total-size bound.
-
-A ValueEvent may contain application-sized `ComputedValue`, so one record may scale with payload size.
-
-Records remain individually addressable so range streaming/recovery does not require loading complete history.
+The narrow historical bootstrap-value exception may omit canonical foreign coordinates, but its stored context remains closed over every coordinate it claims.
 
 ## Atomic local publication
 
-Local storage supports atomic publication of matching graph and finalized Journal records at supported observation boundary.
+Ordinary graph transition and finalized Journal history become durable atomically. Large maintenance operations may build inactive state and atomically switch the active pair.
 
-Ordinary operations may use one transaction/batch. Synchronization/reset/bootstrap/migration may build inactive target state and atomically cut over.
+No supported state exposes new Journal with old graph or old Journal with new graph.
 
-## Immutable historical identity within one format
+## Immutable same-version record identity
 
-Outside explicit database-format migration, a committed `(author,sequence)` body/meaning is never mutated.
+Outside explicit database-format migration, committed `(author,sequence)` meaning is immutable.
 
-A version migration may rewrite every retained record representation only when it deterministically preserves record identity, historical semantic meaning, causal/reference relationships, and writer coordinate.
+Same-ID body disagreement is a fork. Representation migration is permitted only when it deterministically preserves JournalRecordId, historical semantic fact, causal/reference meaning, and writer coordinates.
 
-Representation rewrite itself is not semantic Journal event.
+## Total whole-history format rewrite
 
-## Pure payload representation rewrite
+A source->target Journal format migration defines a deterministic target representation for **every retained source-format record**, not merely records whose node families remain in target schema.
 
-When database-version migration changes `ComputedValue` representation, one pure per-record codec determines target payload representation of every affected retained `ValueEvent`.
+Historical ValueEvents, validation-basis NodeKeys, invalidations, and other records for target-removed families remain retained and require deterministic target encodings. If the transform is not total over retained source history, that migration is unsupported before cutover.
 
-Codec result depends only on source record and version-migration definition, not selection, callback order, or replica-local mutable state.
+When payload representation changes, one pure per-record codec rewrites every affected retained ValueEvent independent of:
 
-Therefore two replicas retaining same historical `JournalRecordId` rewrite that record identically even when only one currently selects it.
+- selected/non-selected status;
+- target current-schema membership;
+- replica-local mutable state;
+- callback traversal; or
+- which other records the replica retains.
 
-## Semantic-preserving `override()` storage rewrite
+Thus two replicas retaining one historical ID produce the same target-format body.
 
-For Journal-aware migration, `MigrationStorage.override()` is semantic-preserving assertion, not direct mutation of immutable retained record bytes.
+## No Journal-aware value-producing `override()`
 
-For selected overridden occurrence verify:
+Once Journal history exists, the canonical codec is the sole source of representation-only target bytes.
 
-```text
-overrideResult == canonicalRewrittenPayload(selectedValueEvent)
-```
+A selected occurrence whose semantic meaning survives uses `keep`. Journal-aware execution rejects the legacy `override(nodeIdentifier,value)` path rather than evaluating a second replica-local representation transform.
 
-while preserving ValueId, NodeIdentifier, timestamps, causal context/authority meaning, and references.
+The legacy override API remains relevant only to pre-Journal migrations whose source has no Journal history.
 
-Mismatch fails migration before cutover.
+## Maintenance proof-edge records
 
-## Maintenance proof/freshness records
-
-Local Journal storage must support maintenance authoring patterns required to reproduce existing graph flags exactly.
-
-### Proof weakening barrier
-
-When reset/migration preserves ValueId V but target validity removes a currently-valid incoming edge for that occurrence, maintenance writes:
+When bootstrap/reset/migration preserves occurrence V but intentionally removes incoming validity edge `D -> K`, it may persist:
 
 ```text
 InvalidateEvent {
     node: K,
-    scope: { kind: "proof", value: V },
-    reason: "reset" | "migration"
+    scope: { kind: "proof", value: V, input: D },
+    reason: "bootstrap" | "reset" | "migration"
 }
 ```
 
-before the target validation.
+This is authoritative semantic history, not derived metadata.
 
-This barrier is semantic history, not derived metadata. Older stronger certificates targeting V remain retained but become ineligible because they did not observe the barrier. Certificates for another occurrence V2 are not affected merely because they belong to the same node.
+Replay treats the barrier as negative evidence only for `(V,D)`. It does not invalidate the whole certificate, unrelated inputs, or another ValueId V2.
 
-A real explicit `invalidate(K)` remains node-scoped. Storage must preserve the distinction between direct node invalidation and maintenance-only proof weakening.
+Multiple barriers accumulate by removing the union of named edges from effective proof.
 
-### Persistent stale marker
+True explicit `invalidate(K)` remains node-scoped.
 
-When reset/migration target stores K stale while K's own selected proof is otherwise complete, storage retains an uncovered value-scoped invalidation for final K ValueId even if K is already recursively stale through an input.
+## Persistent stale records
 
-Bootstrap join has the same persistence obligation after merging legacy evidence: if a selected occurrence has complete own proof but is stale through a direct input, an uncovered `reason="bootstrap"` value-scoped marker is retained/authored so a later upstream `Unchanged` cannot erase the stored stale transition.
+When graph/lifecycle semantics persist K stale while K's own effective proof is otherwise complete, retained history contains an uncovered:
 
-## Semantic migration identity
+```text
+Invalidate(K, scope=value(currentValueId(K)), reason=...)
+```
 
-Migration preserves existing ValueIds for occurrences retained by `keep`, `override`, `invalidate`, schema/proof/freshness-only changes, and equivalent occurrence-preserving transitions.
+This requirement covers ordinary propagation, synchronization, bootstrap, reset, and migration. It prevents later upstream `Unchanged` from silently erasing a stored stale transition.
 
-When migration genuinely creates/replaces occurrence, local migrating writer may author new ValueEvent. Different replicas may independently create different replacement ValueIds; later synchronization resolves normally and may stale dependents naming losing replacement.
+## Safe local writer continuation
 
-Storage does not require canonical remote migration author.
+A stored writer head is safe for continued local allocation only when lifecycle invariants establish that it is complete for that continuing writer.
 
-## Canonical pre-Journal bootstrap artifact
+A generic peer `JournalSnapshot` is not sufficient continuation authority merely because it contains a longer agreeing local-writer prefix.
 
-The first supported pre-Journal -> Journal transition is a semantic-identity Journalization of an already-persisted legacy graph. It does not first run ordinary legacy semantic migration callbacks.
+The configured `InstallationRecoverySource` supplies the stronger continuation-safe contract used by absent restore and existing-writer recovery. If that source cannot establish that the recovered head is the greatest durable local-writer coordinate capable of later re-entering supported history, continuation remains indeterminate and no new local record may be allocated.
 
-The bootstrap target therefore preserves the persisted source's graph interpretation and exact materialized semantic state, including NodeIdentifiers, payloads, timestamps, freshness, validity, and allocator watermark. A source/target pair which would require wall-clock/allocator-dependent `create()` or another semantic migration before Journalization is not an automatic bootstrap path and fails compatibility before bootstrap history is authored.
+After authoritative recovery, storage reconstructs at least:
 
-One canonical semantic bootstrap cut supplies shared ValueId basis for occurrences equal to canonical cut.
+- local Journal head;
+- `last_node_index`;
+- authority high-water;
+- projection; and
+- required derived indexes.
 
-Configured cohort bootstrap source may return immutable `CanonicalBootstrapSnapshot` containing:
+## Canonical bootstrap artifact
 
-- exact bootstrap target `databaseVersion`;
-- exact bootstrap target `graphSchemeString`;
-- canonical creator writer identity;
-- exact `bootstrapFrontier` captured immediately after bootstrap publication;
-- exactly records through that frontier, with no post-bootstrap records.
+`CanonicalBootstrapSnapshot` is lifecycle source state, not an active JournalReplica. It contains exactly the original bootstrap cut/version/schema and no later records.
 
-The artifact is immutable while a running software release claims support for that bootstrap target. If a later release no longer supports target version/schema, bootstrap join fails compatibility rather than requiring permanent old-format support.
+The artifact is immutable while a release claims support for that bootstrap target. A later current `JournalSnapshot` containing the bootstrap prefix is not equivalent.
 
-A current `JournalSnapshot` containing canonical records as prefix is not equivalent artifact.
+Creator-resume installs exactly artifact history only after direct persisted-legacy equality validation.
 
-Artifact storage/transport mechanism is unspecified.
+Ordinary joining retains the canonical cut verbatim and may add joining-writer historical values, `proof(V,D)` barriers for exact-shared canonical proof edges missing on the joining side, `value(V)` stale markers, and local WriterState history.
 
-### Creator resume storage
+Legacy absence does not manufacture DeleteEvent. Joining historical values may use the controlled non-causal bootstrap context rule and legacy `modifiedAt` authority.
 
-If artifact publication succeeded but creator local cutover failed, a restart with matching `creatorWriter` compares the artifact projection directly with the still-persisted legacy graph under the semantic-identity bootstrap interpretation. It does not rerun a migration callback or regenerate timestamps/identifiers.
+## Existing graph sublevels remain projection
 
-On equality it installs **exactly** artifact records as local stream and reconstructs writer head, `last_node_index`, authority high-water, projection, and indexes. No duplicate bootstrap records are allocated.
-
-Semantic mismatch is `JournalBootstrapForkError` and changes no active state.
-
-### Ordinary joining storage
-
-A joining host retains canonical cut verbatim and may additionally persist:
-
-- historical joining-writer bootstrap ValueEvents for local-only/different occurrences;
-- bootstrap proof/freshness records derived from legacy evidence;
-- local WriterStateRecord preserving allocator watermark.
-
-Equal occurrences continue to reference canonical ValueIds. For an exact shared occurrence, canonical proof is not replaced by a causally-later joining validation merely to strengthen proof. If either canonical or joining copy is stale, the shared occurrence remains persistently stale and an uncovered value-scoped bootstrap marker is retained/authored when necessary.
-
-After direct bootstrap stale evidence is represented, join propagates persistent staleness through the selected dependency DAG: a selected occurrence with complete own proof and a stale direct input receives/retains a value-scoped bootstrap marker unless one already applies.
-
-Local absence does not create bootstrap DeleteEvent against canonical materialization.
-
-Joining historical ValueEvents may omit canonical foreign coordinates so conflicts remain concurrent; authority is seeded from legacy `modifiedAt`.
-
-Two independent joiners may assign distinct ValueIds to same non-canonical occurrence; this is accepted by `$id-1635227135166767` rather than solved in storage by payload-derived identity.
-
-## No destructive replay-history GC
-
-Base Journal 3 does not delete authoritative historical records merely because current effect can be summarized.
-
-A version migration replacing source-format encodings with target-format encodings of same records is representation replacement, not semantic compaction.
+Journal provenance, causal metadata, proof barriers, and synchronization state are not embedded into existing `values`, `freshness`, `valid`, `timestamps`, or identifier formats. Replay lowers semantic state into those existing representations.
 
 ## Derived indexes
 
-Optional rebuildable indexes may include per-writer head/frontier, record-by-node history, selected current head, candidate certificate/invalidation indexes, reverse structural edges, authority high-water, context-closure summaries, and replay checkpoint references.
+Optional rebuildable indexes may include:
 
-Derived data never becomes independent semantic authority.
+- per-writer heads/frontiers;
+- node history;
+- candidate head/certificate/invalidation indexes;
+- reverse structural edges;
+- authority high-water;
+- context-closure summaries; and
+- replay checkpoint references.
+
+They never become independent authority.
 
 ## Stable local snapshots
 
-When local storage supplies `JournalSyncSource`, it provides one stable snapshot containing from same committed state:
+A local `JournalSyncSource` supplies one immutable committed state containing exact version/schema, localWriter, frontier, and corresponding records.
 
-- exact `databaseVersion`;
-- exact `graphSchemeString`;
-- `localWriter`;
-- fixed frontier;
-- corresponding immutable records.
+That ordinary snapshot is distinct from both:
 
-Ordinary `JournalSnapshot` represents current state. It is distinct from canonical bootstrap artifact.
+- `CanonicalBootstrapSnapshot`; and
+- continuation-safe recovery authority.
 
-Journal 3 does not specify how external transport supplies either abstraction.
+Transport implementation of these abstractions is outside Journal semantics.
 
 ## Startup validation
 
-Before retained history is relied on as supported semantic evidence, implementation enforces current-format decoding, writer contiguity, exact own-prefix event contexts, transitive context closure, authority extension, ValueId reference causality, canonical certificate shape, and Journal/projection consistency or successful rebuild.
+Before history is trusted, storage/open validates current-format decoding, stream contiguity, exact own-prefix contexts, transitive closure, authority extension, ValueId reference causality, canonical validation bases/scopes, local allocator consistency, and Journal/projection equality or successful rebuild.
 
 Malformed authoritative history is rejected rather than repaired from mutable graph bytes.
+
+## No destructive replay-history GC
+
+Journal 3 does not destructively delete authoritative old records merely because their current effect can be summarized. Format replacement of the same historical records during version migration is not semantic compaction.
