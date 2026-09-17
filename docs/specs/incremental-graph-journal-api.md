@@ -70,6 +70,8 @@ JournalSyncSource {
 
 Synchronization/reset obtains compatibility metadata from the returned held snapshot itself. An earlier mutable metadata query is insufficient.
 
+A generic `JournalSyncSource` is not automatically safe for **writer continuation** after local rollback/loss. Continuing a writer identity requires the stronger recovery-source guarantee defined below.
+
 ## JournalPublication
 
 Ordinary graph operations stage semantic intents before commit but do not reserve durable Journal coordinates early.
@@ -145,16 +147,33 @@ A fully absent installation cannot call this operation because no receiver write
 
 ## Receiver-less absent-state restore API
 
+Conceptually the configured installation recovery source has a stronger continuation contract than an arbitrary sync source:
+
+```text
+InstallationRecoverySource {
+    query() ->
+        Exists(ContinuationSafeSnapshot)
+      | DefinitelyAbsent
+      | IndeterminateOrError
+}
+```
+
+`ContinuationSafeSnapshot` contains an ordinary stable Journal snapshot plus the semantic guarantee that, for its `localWriter = A`, the snapshot contains A's complete own stream through the greatest A coordinate ever durably published by the supported lifecycle.
+
+A source which cannot guarantee that no longer A prefix exists elsewhere MUST return `IndeterminateOrError`. A merely lagging/readable copy is not sufficient to resume writer A.
+
+Restoring an absent installation is then:
+
 ```text
 restoreAbsentFrom(source: InstallationRecoverySource)
     -> Promise<RestoredDatabase>
 ```
 
-`InstallationRecoverySource` is the configured transport-neutral source for this installation's own synchronized state.
-
 The operation adopts `snapshot.localWriter`, restores retained history/projection/allocator state, creates no semantic history merely for restoration, and then hands the restored database to the normal migration gate.
 
-If querying/opening known synchronized installation state fails, startup fails. Fresh creation is separate and allowed only after definite absence.
+If querying/opening known synchronized installation state fails, or own-writer completeness is indeterminate, startup fails. Fresh creation is separate and allowed only after definite absence.
+
+The same continuation-safe guarantee is required by any same-writer recovery path before it may author another coordinate under a writer identity whose local state was behind/lost.
 
 ## Reset API
 
@@ -166,10 +185,10 @@ Reset requires an already-established writable receiver and uses one held compat
 
 Those rules include two maintenance-specific event uses:
 
-- an occurrence-scoped `InvalidateEvent(scope={kind:"proof", value:V})` before reset weakens currently-valid incoming proof for preserved V; and
-- a value-scoped stale marker when reset target freshness is persistently stale while the occurrence's own proof is otherwise complete.
+- one occurrence-and-input-specific `InvalidateEvent(scope={kind:"proof", value:V, input:D})` for each currently-valid edge `D -> K` which reset intentionally removes while preserving V; and
+- a value-scoped stale marker when reset target freshness is persistently stale while the occurrence's own effective proof is otherwise complete.
 
-The proof barrier is not ordinary explicit invalidation and does not taint another ValueId.
+Proof-edge barriers are not ordinary explicit invalidation. They retire only the named edge of the named ValueId; concurrent barriers for different inputs compose by removing the union of those edges, while another ValueId is unaffected.
 
 ## Bootstrap/migration API boundary
 
@@ -269,9 +288,10 @@ A different fingerprint cannot use creator-resume.
 4. reuses canonical ValueIds for equal legacy occurrences;
 5. converts local-only/different legacy occurrences into joining-writer `ValueEvent(reason="bootstrap")` records with authority seeded from their persisted legacy `modifiedAt` and without synthetic causal observation of canonical value events;
 6. lets normal Journal authority resolve conflicting concurrent legacy occurrences;
-7. for an exact shared occurrence, keeps the canonical certificate as proof basis and preserves stale state conservatively if either legacy side is stale;
-8. after direct stale roots, persists recursive-only stale state over the selected dependency DAG using value-scoped bootstrap invalidations;
-9. does not author a DeleteEvent merely because a node is absent from one legacy replica while present in the canonical basis.
+7. for an exact shared occurrence, retains the canonical certificate as positive proof but intersects validity with the joining legacy evidence by adding `proof(value,input)` barriers for canonical edges the joining side lacks; it never strengthens canonical proof from joining-only evidence;
+8. preserves shared stale state conservatively if either legacy side is stale, after proof-edge barriers are staged;
+9. after direct proof/stale roots, persists recursive-only stale state over the selected dependency DAG using value-scoped bootstrap invalidations;
+10. does not author a DeleteEvent merely because a node is absent from one legacy replica while present in the canonical basis.
 
 A joining host does not emit a causally-later validation for an exact shared occurrence merely to strengthen its local legacy proof; doing so could clear canonical stale evidence solely because that host upgraded later.
 
@@ -289,17 +309,18 @@ computeMigrationTarget(...)
 applyRequiredSemanticMigration(...)
 ```
 
-The representation rewrite is a canonical per-record transform. If ValueEvent payload representation changes, one pure version-migration codec is applied identically to every retained affected ValueEvent regardless of selection or replica-local state.
+The representation rewrite is a canonical per-record transform over the **entire retained source-format record domain**, including history for node families removed from the target graph schema. If ValueEvent payload representation changes, one pure version-migration codec is applied identically to every retained affected ValueEvent regardless of selection or replica-local state. A migration without a deterministic representation for every retained source record is unsupported and fails before cutover.
+
+For Journal-aware migration, representation-only rewrite is not expressed with legacy `override(nodeIdentifier,value)`. The codec is the single source of target bytes; a semantically preserved selected occurrence uses `keep`. The legacy value-producing override path is rejected once Journal history exists.
 
 The semantic phase preserves existing ValueIds for occurrence-preserving decisions and appends only semantic records needed for the target state.
 
 Maintenance proof/freshness has explicit internal semantics:
 
 - true migration `invalidate(K)` remains node-scoped because it semantically invalidates K;
-- when another migration transition merely removes currently-valid incoming proof for a preserved occurrence V, author an occurrence-scoped proof barrier before target validation so older stronger certificates for V become ineligible without tainting another ValueId;
-- when target state stores K stale while K's own selected proof is otherwise complete and covers its own value invalidations, ensure an uncovered value-scoped migration invalidation exists even if K is already recursively stale through an input.
-
-`override()` is occurrence-preserving, but its callback is not authoritative record-rewrite input. Its selected-record result must equal canonical per-record codec output; otherwise migration fails with `InvalidMigrationDecisionError` before cutover.
+- when another migration transition removes currently-valid incoming proof for preserved occurrence V, author one `proof(value=V,input=D)` barrier for every removed edge D rather than invalidating the whole certificate;
+- concurrent proof-edge barriers on the same V compose by subtracting the union of their named edges, so independently equivalent migrations do not destroy unrelated proof;
+- when target state stores K stale while K's own selected effective proof is otherwise complete and covers its own value invalidations, ensure an uncovered value-scoped migration invalidation exists even if K is already recursively stale through an input.
 
 Journal-aware migration does not require one canonical migration participant. Replicas may independently author distinct new ValueIds for genuine created/replaced occurrences; later synchronization may stale dependents whose certificates name a losing replacement occurrence.
 
@@ -321,8 +342,6 @@ JournalProjectionError
 JournalPublicationError
 JournalSourceReadError
 ```
-
-Migration may additionally surface the existing `InvalidMigrationDecisionError` when a Journal-aware `override()` disagrees with canonical per-record rewrite.
 
 The exact class names may differ except where a named lifecycle/migration category is referenced normatively; the semantic distinctions are normative.
 
