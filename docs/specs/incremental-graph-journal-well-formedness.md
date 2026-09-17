@@ -81,7 +81,7 @@ A historical certificate whose explicit input set no longer equals the current s
 
 ## Value/proof-scoped InvalidateEvent rule
 
-For either occurrence-referencing scope:
+A value-scoped invalidation has shape:
 
 ```text
 InvalidateEvent I {
@@ -90,16 +90,20 @@ InvalidateEvent I {
 }
 ```
 
-or:
+A proof-edge barrier has shape:
 
 ```text
 InvalidateEvent I {
     node: K,
-    scope: { kind: "proof", value: V }
+    scope: {
+        kind: "proof",
+        value: V,
+        input: D
+    }
 }
 ```
 
-require:
+For either occurrence-referencing scope require:
 
 ```text
 event(V) is a retained ValueEvent
@@ -107,11 +111,19 @@ event(V).node == K
 happenedBefore(event(V), I)
 ```
 
+For proof scope additionally require:
+
+- `D` is a valid canonical semantic NodeKey in the current record format;
+- the reason is one of the controlled maintenance reasons which may author proof barriers: `bootstrap`, `reset`, or `migration`;
+- the lifecycle transition which authored the barrier justified D as the exact incoming proof edge it was retiring for V.
+
+The last condition is an authoring obligation, not a requirement that D remain a direct input under every later schema. Historical proof-edge barriers remain intelligible after schema evolution; current replay applies one only when the selected certificate/current input relation makes that `(V,D)` edge relevant.
+
 A value-scoped invalidation cannot stale a value occurrence which did not yet exist in the invalidating event's causal history.
 
-A proof-scoped barrier likewise cannot invalidate certificate history for an occurrence which the barrier had not causally observed.
+A proof-edge barrier likewise cannot retire proof for an occurrence which the barrier had not causally observed. It retires only the named `D -> K` proof edge for the named occurrence V; it does not make the whole certificate ineligible and does not affect another input or another ValueId.
 
-Proof scope is reserved for the occurrence-specific maintenance semantics defined by reset/migration. It is not a substitute encoding for ordinary explicit node invalidation.
+Proof scope is reserved for the edge-specific maintenance semantics defined by bootstrap/reset/migration. It is not a substitute encoding for ordinary explicit node invalidation.
 
 ## Node-scoped InvalidateEvent rule
 
@@ -256,7 +268,7 @@ This monotone watermark is also part of the existing NodeIdentifier uniqueness a
 
 Synchronization/import operates only between compatible current database versions and validates these rules before activating imported history.
 
-If a source provides a syntactically valid current-format record whose context closure, authority causality, reference causality, or self-described basis is impossible, the source history is unsupported/corrupt.
+If a source provides a syntactically valid current-format record whose context closure, authority causality, reference causality, proof-edge scope, or self-described basis is impossible, the source history is unsupported/corrupt.
 
 The receiver must not rewrite/re-author the source event to make it fit its current graph. Cross-version representation rewriting belongs only to the explicit database migration path before ordinary synchronization.
 
