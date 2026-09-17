@@ -122,7 +122,7 @@ J0 = Jreceiver join Jsource
 Jafter = J0 + required reset events
 ```
 
-Reset first requires that an ordinary reset source is not ahead for the receiver's own local writer. If it is, reset fails `JournalWriterBehindError`; lifecycle recovery must establish a continuation-safe head before reset is retried.
+Reset first requires that an ordinary reset source is not ahead for the receiver's own local writer. If it is, reset fails `JournalWriterBehindError` before import/authorship because the existing receiver is outside the supported lifecycle state space. Reset does not repair such rollback.
 
 Reset preserves an occurrence when target immutable occurrence state already matches. For every incoming edge removed from preserved V, reset authors `proof(V,D)` negative evidence; it does not invalidate the whole occurrence proof. Target persistent stale state gets `value(V)` marker when own effective proof is otherwise complete. Target absence gets DeleteEvent only when J0 selects a value.
 
@@ -169,13 +169,13 @@ If canonical artifact publication succeeded but creator cutover failed, same-fin
 
 The artifact is the original frozen bootstrap cut. A running release joins it only if version/schema exactly equal that release's supported bootstrap target. No permanent decoder/migration ladder is implied.
 
-## Writer continuation requires stronger authority than ordinary union
+## Established local writer state is monotone under the supported lifecycle
 
-A generic sync peer may prove that local writer A is behind by exposing a longer agreeing A prefix. It does **not** thereby establish that the observed head is continuation-safe.
+While a local database exists, its own committed writer stream cannot legitimately become a proper prefix of a previously published/surviving copy. Supported lifecycle transitions preserve that writer history monotonically; arbitrary partial rollback or truncation is excluded by `$id-6158827469032147`.
 
-Continuation-safe is defined by `database-lifecycle.md` §4.1: after recovery from head q, no previously authored A record with sequence greater than q may later enter supported retained history. This concerns future admissible history, not every local record ever committed before storage loss.
+Therefore a generic sync/reset source exposing a longer agreeing prefix of the receiver's own writer is not a special merge case and not evidence for a recovery algorithm. It is evidence that the existing receiver is outside the supported lifecycle state space and causes `JournalWriterBehindError` before import or authoring.
 
-Therefore ordinary information join cannot authorize continued A sequence allocation. Same-writer continuation after local loss requires `InstallationRecoverySource`; if continuation safety is indeterminate, authoring A remains forbidden.
+Complete local disappearance is different. The lifecycle then enters `Absent`, and absent-installation restoration may adopt a continuation-safe snapshot whose head is guaranteed not to conflict with any higher old record that can later re-enter supported history.
 
 ## Journal-aware migration representation is a total record transform
 
