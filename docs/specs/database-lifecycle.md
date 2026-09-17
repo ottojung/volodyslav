@@ -26,51 +26,57 @@ The normal startup operation remains:
 volodyslav start
 ```
 
-Raw filesystem/database manipulation is not a supported lifecycle transition.
+Persistent IncrementalGraph state is lifecycle-owned. A supported local database changes only through the controlled transitions in this specification. Raw filesystem/database manipulation, partial external restoration, or rollback to an older local database image are not lifecycle transitions.
+
+Complete disappearance of the local database is the supported external-loss case. It produces the **Absent** lifecycle state and may enter the controlled restore/fresh-creation path. This fault-model boundary is `$id-6158827469032147`.
 
 ## 2. Lifecycle states
 
 A local installation is in one of these lifecycle states:
 
-- **Absent** — no supported local database/writer identity is established.
-- **Legacy/migratable** — a structurally valid supported pre-Journal database exists.
-- **Current** — active database version/schema match the running application and graph equals Journal replay.
-- **Incompatible for an operation** — independently valid state cannot participate in the requested sync/reset/migration/bootstrap boundary.
-- **Corrupted/unsupported** — required invariants fail or state was produced outside supported transitions.
+- **Absent** — no supported local database/writer identity is present locally, including after complete loss of the local database;
+- **Legacy/migratable** — a structurally valid supported pre-Journal database exists;
+- **Current** — active database version/schema match the running application and graph equals Journal replay;
+- **Incompatible for an operation** — independently valid state cannot participate in the requested sync/reset/migration/bootstrap boundary; or
+- **Corrupted/unsupported** — required invariants fail, state was produced outside supported transitions, or local persistent state has been partially deleted, rolled back, mixed, or externally modified.
 
 Supported transitions include:
 
-1. absent-state restoration of this installation's own synchronized history;
+1. absent-state restoration of this installation's synchronized history;
 2. fresh creation when no such history exists;
 3. open;
 4. ordinary graph evolution;
 5. pre-Journal bootstrap;
 6. Journal-aware migration;
 7. synchronization;
-8. controlled reset;
-9. projection rebuild.
+8. controlled reset; and
+9. projection rebuild from valid authoritative Journal history.
 
 A successful startup reaches **Current** before graph-backed APIs are exposed.
+
+A process/power crash during a supported transition does not create a new arbitrary lifecycle state. The transition's atomicity/crash rules must ensure that any state later exposed for supported use is itself one of the valid states permitted by that transition. If storage damage instead produces a partial or rolled-back database, that state is corrupted/unsupported rather than a new recovery case.
 
 ## 3. Startup flow
 
 Conceptually startup performs:
 
 1. validate required operating context;
-2. determine whether supported local database state exists;
+2. determine whether supported local database state is completely absent or exists;
 3. if local state is absent, run the absent-state decision below;
-4. open established local state sufficiently to read version metadata;
+4. otherwise open the existing state sufficiently to read version metadata and validate the lifecycle boundary;
 5. run the migration/bootstrap gate when required;
-6. validate/rebuild Journal-derived projection state when applicable;
+6. validate/rebuild Journal-derived projection state when applicable; and
 7. expose IncrementalGraph APIs.
 
-Startup never silently reinterprets malformed/incompatible existing state as a fresh database.
+Startup never silently reinterprets malformed, partially missing, rolled-back, incompatible, or otherwise unsupported existing state as absence or as a fresh database.
 
 Routine startup of an already-current local database does not imply ordinary multi-source synchronization unless outer application policy explicitly requests it.
 
 Maintenance transitions are exclusive with ordinary graph activity at their publication/cutover boundary.
 
 ## 4. Absent-state decision
+
+This section applies only when the local IncrementalGraph database is completely absent. An existing but damaged, truncated, or older local database does not enter this path.
 
 The absent-state decision happens **before generating a new DatabaseFingerprint**.
 
@@ -88,27 +94,25 @@ Startup obtains exactly one of:
 
 Failure to query or obtain known synchronized state MUST NOT fall back to fresh creation.
 
-For writer A, call a held recovery snapshot with `frontier[A] = q` **continuation-safe at q** iff, after recovery from that snapshot, no previously authored A record with sequence greater than q can later enter supported retained history for writer A.
+For writer A, call a held recovery snapshot with `frontier[A] = q` **continuation-safe at q** iff, after restoring the completely absent installation from that snapshot, no previously authored A record with sequence greater than q can later enter supported retained history for writer A.
 
-This is the only property Journal recovery needs from the persistence/recovery layer. Journal 3 does **not** prescribe one mechanism for proving it. A recovery source may return `Exists(ContinuationSafeSnapshot)` only when the guarantees of its supported backend model imply that q is safe.
+This is a property required only for absent-state restoration. It is not a mechanism for repairing an existing local database that has gone backwards. Journal 3 does **not** prescribe one mechanism for establishing the property. A recovery source may return `Exists(ContinuationSafeSnapshot)` only when the guarantees of its supported backend model imply that q is safe.
 
 The supported backend model is allowed to rule out histories which cannot actually arise or later re-enter under that backend. Recovery is not required to defend against every imaginable storage topology. For example, a backend may establish continuation safety because surviving writer history can only propagate through a monotonic publication path; another backend could establish the same property using a different protocol, replicated metadata, consensus, leases, or another mechanism. None of those mechanisms is part of Journal semantics.
 
-A record that existed only on local storage and is irretrievably lost need not count against continuation safety when the supported backend model guarantees that no surviving copy can later reintroduce it. Conversely, if a higher A record remains admissible under the supported backend model and can later re-enter retained history, q is not continuation-safe.
-
-A generic readable peer snapshot is not automatically continuation authority merely because it appears newest. It is usable for same-writer recovery only if the recovery layer can establish the continuation-safe property for it. If safety is unknown, the result is `IndeterminateOrError` rather than permission to restore, continue A, or silently create another writer identity.
+A record that existed only on the completely lost local storage need not count against continuation safety when the supported backend model guarantees that no surviving copy can later reintroduce it. Conversely, if a higher A record remains admissible under the supported backend model and can later re-enter retained history, q is not continuation-safe.
 
 Journal 3 does not require contacting or discovering every possible peer to establish continuation safety, consistent with `$id-4719065396881648`.
 
 #### Current Git-backed transport as an example
 
-The current Git-backed transport is one way to satisfy the abstract contract; this paragraph is explanatory, not a required Journal topology.
+The current Git-backed transport is one way to satisfy the abstract absent-restoration contract; this paragraph is explanatory, not a required Journal topology.
 
-In the supported flow, an installation renders/publishes its database through its transport-managed remote branch before another installation can obtain that published writer history through the same synchronization transport. The branch/location mapping is transport configuration and is not stored in IncrementalGraph state. Under the normal supported Git persistence model, successfully published branch history is not silently rewound while still being treated as ordinary authoritative state.
+In the supported flow, an installation renders/publishes its database through its transport-managed remote branch before another installation can obtain that published writer history through the same synchronization transport. The branch/location mapping is transport configuration and is not stored in IncrementalGraph state. Under the normal supported Git persistence model, successfully published branch history is not silently rewound while still being treated as ordinary recoverable state.
 
-Therefore a writer record which survives local database loss on some other participating installation must already have passed through the remote publication path. If the recovery adapter reads the current published prefix from that path, there cannot simultaneously be a hidden higher writer prefix on another supported participant that bypassed publication and later re-enters history. Local records written after the last successful publication but lost before publication may disappear permanently and their sequence coordinates may be reused after recovery.
+Therefore a writer record which survives complete loss of the local database on some other participating installation must already have passed through the remote publication path. Local records written after the last successful publication but lost with the complete local database may disappear permanently and their sequence coordinates may be reused after absent-state restoration.
 
-If the remote repository itself is silently rolled back, loses previously published commits, or is externally rewritten while surviving replicas still retain the removed writer records, that violates the assumptions of this Git-backed recovery model. Such storage disaster requires explicit recovery handling; ordinary Journal recovery must not pretend the rolled-back prefix is continuation-safe.
+If the remote repository itself is silently rolled back, loses previously published commits, or is externally rewritten while surviving replicas still retain the removed writer records, that violates the assumptions of this Git-backed recovery model. Such storage damage is outside ordinary lifecycle recovery.
 
 This rule also protects the monotone NodeIdentifier allocation watermark carried by any recoverable writer prefix.
 
@@ -117,7 +121,7 @@ This rule also protects the monotone NodeIdentifier allocation watermark carried
 Restoring an absent installation is conceptually:
 
 ```text
-restoreAbsentFrom(snapshot) -> Current-or-Migratable local database
+restoreAbsentFrom(source) -> Current-or-Migratable local database
 ```
 
 It is not `synchronizeFrom()` or `resetTo()` because those operations require an already-established writable receiver identity.
@@ -135,7 +139,7 @@ Restore retains the source history and reconstructs:
 - local writer head;
 - local `last_node_index`;
 - authority high-water;
-- materialized graph;
+- materialized graph; and
 - derived indexes/caches.
 
 No new semantic record is required merely to restore exact retained history.
@@ -152,7 +156,7 @@ Fresh creation:
 - starts at local writer frontier zero;
 - retains no foreign history;
 - materializes an empty graph;
-- initializes local `last_node_index` under the ordinary allocator contract;
+- initializes local `last_node_index` under the ordinary allocator contract; and
 - records current version/schema metadata.
 
 Thus:
@@ -161,19 +165,19 @@ Thus:
 project(empty journal) = empty graph
 ```
 
-## 5. Same-writer Journal restoration and recovery
+## 5. Existing local state never uses rollback recovery
 
-A behind but existing **Journal** installation may recover a longer exact prefix of its own writer stream only through `InstallationRecoverySource`.
+An existing supported local database is authoritative for its own local-writer prefix. The lifecycle does not contain a transition which repairs an existing database by importing a missing suffix of its own writer after local rollback or partial data loss.
 
-If local A retains `A:1..p` and the recovery source returns agreeing `A:1..q`, `q >= p`, maintenance may retain `A:(p+1)..q` together with causally required foreign history and reconstruct allocator/high-water/projection before authoring again **only if q is continuation-safe under §4.1**.
+Therefore, if local writer A retains `A:1..p` but a synchronization/reset source contains an agreeing `A:1..q` with `q > p`, this does not mean that A is a supported "behind writer" awaiting recovery. It is evidence that one of the lifecycle assumptions has been violated—for example partial local rollback/loss, unsupported cloning, or externally manipulated persistence.
 
-The recovery source may be implemented by any backend topology which can establish that property. A generic peer/source snapshot which merely happens to contain a longer prefix does not establish it by itself. If continuation safety cannot be established under the supported backend model, recovery is indeterminate and no new A record may be allocated.
+Such an operation must fail without authoring new A records or silently repairing the receiver. `JournalWriterBehindError` may be used as the specific diagnostic for this condition, but it denotes corrupted/unsupported lifecycle state rather than a recoverable normal state.
 
-New A records begin strictly after q. Any overlap disagreement is a writer fork.
+Likewise, overlap disagreement for one writer coordinate is a writer fork and is unsupported.
 
 Two independently live installations intentionally authoring under one fingerprint are unsupported.
 
-A pre-Journal creator which published its canonical bootstrap artifact but crashed before local cutover is not this case because no active Journal prefix exists yet. It uses §8.2 creator-resume.
+The separate creator-resume rule in §8.2 is not an exception: it handles interruption of the one controlled pre-Journal bootstrap transition before an active Journal database exists, and its permitted states are explicitly defined by that transition.
 
 ## 6. Opening current Journal state
 
@@ -189,10 +193,12 @@ Supported state requires at least:
 - one current record format selected by `global/version`;
 - transitively closed semantic-event contexts;
 - current version/schema compatible with running interpretation;
-- graph observationally equivalent to replay, or successfully rebuilt before exposure;
+- graph observationally equivalent to replay, or successfully rebuilt before exposure; and
 - local writer allocator state consistent with retained local history.
 
 Known graph/Journal disagreement is not exposed as ordinary current state.
+
+A local Journal stream with a missing/truncated tail is not normalized into a shorter valid history merely because the retained prefix is internally contiguous. If supported evidence shows that this installation previously authored a longer local prefix, the local state is corrupted/unsupported under §5.
 
 ## 7. Ordinary evolution
 
@@ -204,7 +210,7 @@ For every successful committed semantic transition:
 project(journalAfter) == graphAfter
 ```
 
-Graph/Journal publication is atomic. Failed transactions consume no durable Journal coordinate.
+Graph/Journal publication is atomic. Failed operations consume no durable Journal coordinate. A crash may expose only states permitted by the operation's transaction/publication boundary; it does not make a partially committed Journal/projection pair a supported state.
 
 A successful operation which changes no persisted semantic state need not append a semantic event merely because the API was invoked.
 
@@ -274,7 +280,7 @@ It:
 3. validates the still-local persisted legacy graph directly under the semantic-identity bootstrap interpretation; it does **not** rerun a migration callback;
 4. requires equality of presence, payloads, NodeIdentifiers, timestamps, freshness, validity, and allocator state required by the bootstrap contract;
 5. on mismatch fails `JournalBootstrapForkError` and authors/cuts over nothing;
-6. on equality installs exactly artifact history, reconstructs writer head/`last_node_index`/authority high-water/projection/indexes, and atomically cuts over;
+6. on equality installs exactly artifact history, reconstructs writer head/`last_node_index`/authority high-water/projection/indexes, and atomically cuts over; and
 7. resumes the ordinary migration gate from the installed Journal version.
 
 This closes the crash window where canonical artifact publication succeeded but local Journal cutover did not.
@@ -290,7 +296,7 @@ A divergent legacy value is not made causally later merely because its host upgr
 - reuses canonical ValueId for exact equal occurrences;
 - converts local-only/different persisted legacy occurrences into historical joining-writer bootstrap ValueEvents seeded by their own legacy `modifiedAt`;
 - uses normal Journal authority for conflicting concurrent occurrences;
-- does not treat one legacy cache's absence as deletion evidence;
+- does not treat one legacy cache's absence as deletion evidence; and
 - preserves the joining writer fingerprint/allocator watermark.
 
 For an **exact shared occurrence**, positive validity is merged conservatively by intersection:
@@ -331,7 +337,7 @@ A Journal-aware migration:
 7. preserves true explicit `invalidate(K)` as a node-scoped invalidation;
 8. when maintenance merely weakens proof for preserved occurrence V, authors one occurrence-and-input-specific `scope={kind:"proof",value:V,input:D}` barrier for every removed incoming edge D rather than a node-wide or whole-certificate invalidation;
 9. persists target propagated-stale state with value-scoped invalidation whenever a target-stale occurrence's own effective proof is otherwise complete, even when it is already recursively stale through an input;
-10. verifies target replay;
+10. verifies target replay; and
 11. atomically cuts over.
 
 The representation codec MUST be total over retained source-version history. If any retained record—including one for a node family absent from the target schema—has no deterministic target representation, migration fails `JournalVersionCompatibilityError` before cutover.
@@ -356,11 +362,11 @@ A pairwise sync:
 1. enters required maintenance ownership;
 2. opens one stable source snapshot;
 3. checks compatibility from that snapshot;
-4. if the source has a longer prefix of the receiver's own local writer, fails `JournalWriterBehindError` and requires §5 recovery first;
+4. if the source has a longer prefix of the receiver's own local writer, fails `JournalWriterBehindError` as evidence of corrupted/unsupported lifecycle state under §5;
 5. streams missing immutable foreign-writer suffixes;
 6. validates overlap, contiguity, causal closure, authority, and references;
 7. performs required receiver-authored semantic normalization;
-8. replays/validates final projection;
+8. replays/validates final projection; and
 9. atomically publishes Journal + projection.
 
 No computor executes during sync.
@@ -377,7 +383,7 @@ It means:
 
 without deleting retained history.
 
-If the held reset source is ahead for the receiver's own local writer, reset fails `JournalWriterBehindError` before importing/authorship and requires §5 recovery before retry. `resetTo()` does not perform same-writer recovery inline.
+If the held reset source is ahead for the receiver's own local writer, reset fails `JournalWriterBehindError` before importing/authorship. This is the same corrupted/unsupported lifecycle condition as §5; reset does not repair it and there is no existing-writer rollback-recovery transition.
 
 Reset preserves an already-selected value occurrence when immutable semantic occurrence state already matches target. It authors new ValueEvents only where occurrence itself must change.
 
@@ -395,7 +401,9 @@ Maintenance may rebuild graph/index state from valid retained Journal history un
 
 It may recreate graph sublevels and derived indexes/caches, but must not rewrite authoritative Journal meaning merely to make replay succeed.
 
-If authoritative history is invalid/forked, rebuild fails.
+Projection rebuild repairs derived-state loss only. It is not a supported way to repair missing/truncated authoritative Journal history, rollback of the active database, or an externally mixed database image.
+
+If authoritative history is invalid/forked or known incomplete, rebuild fails.
 
 ## 12. User/API expectations
 
@@ -413,34 +421,40 @@ Reads materialized projection without invoking computors merely for diagnostics.
 
 ### synchronization
 
-May change selected values, identifiers, freshness, validity, and materialization by importing/replaying history and authoring required normalization; never invokes computors.
+May change selected values, identifiers, freshness, validity, and materialization by importing/replaying foreign-writer history and authoring required normalization; never invokes computors. It does not repair rollback of the receiver's own writer stream.
 
 ### reset
 
-May intentionally rebaseline observable graph state while retaining history. Success is atomic.
+May intentionally rebaseline observable graph state while retaining history. Success is atomic. It does not serve as raw database rollback recovery.
 
 ### migration/startup
 
-Graph APIs are not initialized until required restore/bootstrap/migration/replay validation completes.
+Graph APIs are not initialized until required absent restore/bootstrap/migration/replay validation completes.
 
-## 13. Trust model
+## 13. Trust and storage-fault model
 
 Supported participants are non-adversarial but may be stale, interrupted, offline, delayed, or incompatible.
 
-Correctness still rejects malformed state, writer forks, non-closed causal contexts, broken reference causality, and Journal/projection invariant failure.
+Local persistent database state is assumed to be changed only through supported Volodyslav transitions, except that the complete local database may disappear. Complete disappearance maps to **Absent** and is recoverable through §4. Arbitrary partial filesystem loss, replacement with an older database image, mixed snapshots, manual edits, or storage corruption are not modeled as normal lifecycle evolution.
 
-Journal 3 does not require Byzantine provenance or malicious-peer containment.
+Correctness still rejects malformed state, writer forks, non-closed causal contexts, broken reference causality, Journal/projection invariant failure, and evidence that the local writer has lost an already-surviving suffix.
 
-## 14. Unsupported operations
+Journal 3 does not require Byzantine provenance, malicious-peer containment, general partial-corruption repair, or semantic recovery from arbitrary filesystem damage.
 
-Unsupported operations include:
+## 14. Unsupported operations and states
+
+Unsupported operations/states include:
 
 - manually editing Journal records;
 - changing one same-version record's semantic meaning while keeping its ID;
+- partial deletion of a local database;
+- replacing an existing local database with an older snapshot or backup;
+- mixing records/files from different database moments;
+- partially restoring local storage while retaining some old state;
 - mixed record formats in one active replica;
 - destructive authoritative-history truncation followed by continued same-writer authoring;
 - independently cloning one writer identity into multiple live writers;
-- resuming a writer from a recovery snapshot which is not continuation-safe under §4.1;
+- an existing receiver whose own writer prefix is shorter than surviving supported history for that writer;
 - persisting hostnames, Git branch names, repository locators, or other transport identities as IncrementalGraph implementation-owned database/recovery metadata;
 - manually editing graph sublevels away from Journal replay;
 - bypassing required Journal-aware version migration;
@@ -455,12 +469,12 @@ Unsupported operations include:
 - continuing creator-resume when artifact projection and persisted legacy semantic state disagree;
 - using a maintenance proof barrier with node scope when no actual node invalidation occurred;
 - using a whole-ValueId proof barrier when only specific incoming proof edges are being retired;
-- using a non-total format codec which cannot rewrite retained history for target-removed node families;
-- treating a checkpoint as replacement authority for missing history.
+- using a non-total format codec which cannot rewrite retained history for target-removed node families; and
+- treating a checkpoint as replacement authority for missing authoritative history.
 
-Backend-specific violations which invalidate a source's claimed continuation-safety assumptions—such as silent loss or rollback of durable writer history in a backend model that assumes monotonic publication—require explicit recovery rather than ordinary same-writer continuation.
+Backend-specific violations which invalidate an absent-restoration source's continuation-safety assumptions—such as silent loss or rollback of durable writer history in a backend model that assumes monotonic publication—are likewise outside ordinary lifecycle recovery.
 
-New recovery/import behavior must be introduced as an explicit controlled transition with stated invariants.
+Any future recovery/import behavior for a currently unsupported storage-damage case must first change `$id-6158827469032147` and then introduce an explicit controlled transition with stated invariants.
 
 ## 15. Corruption versus incompatibility
 
@@ -470,12 +484,14 @@ Corruption/unsupported evidence includes:
 
 - same writer/sequence with different bodies;
 - committed stream holes;
+- evidence that an existing local writer previously had a longer surviving prefix than the current local state;
+- partial/mixed/rolled-back local persistent state;
 - non-closed semantic-event contexts;
 - mixed current record formats;
 - impossible ValueId references;
 - incompatible current NodeIdentifier reuse;
 - creator-resume artifact/local-legacy semantic disagreement;
-- graph known to disagree with replay without successful rebuild;
+- graph known to disagree with replay without successful derived-state rebuild; and
 - local allocator state which could reuse a retired index.
 
 Incompatibility includes:
@@ -483,4 +499,4 @@ Incompatibility includes:
 - a pre-Journal source/target bootstrap pair which cannot preserve persisted graph semantics exactly without running semantic/time/allocator-dependent migration logic before Journal identity exists; and
 - a Journal-aware source/target version pair whose canonical codec is not total over retained source history.
 
-Operations fail where such evidence becomes relevant. They must not silently convert corruption/incompatibility into a fresh database or ordinary graph conflict.
+Operations fail where such evidence becomes relevant. They must not silently convert corruption/unsupported state or incompatibility into absence, a fresh database, or ordinary graph conflict.
