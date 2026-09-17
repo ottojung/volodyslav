@@ -105,13 +105,13 @@ Historical B/C values remain retained but cannot silently reappear.
 
 After source history and normalization are incorporated, syncing unchanged source again produces no records and no projection change.
 
-## Trace 12: continuation-safe same-writer recovery
+## Trace 12: existing own-writer rollback is unsupported
 
-Local A has A:1..100. `InstallationRecoverySource` returns agreeing A:1..120 and guarantees that after recovery no previously-authored `A:q`, `q > 120`, can later enter supported retained history. Import 101..120, rebuild writer/allocator/high-water state, continue after 120. Overlap disagreement is a fork.
+Receiver A has a live local database whose local writer ends at A:100. A synchronization source contains agreeing history through A:120.
 
-A generic peer snapshot containing A:1..120 is insufficient because it does not carry this continuation-safe guarantee.
+Under the lifecycle model this is not a normal recoverable state. A supported existing local database cannot have partially lost or rolled back its own writer history while surviving as an ordinary database.
 
-If A:121..125 existed only on an irretrievably lost old disk and cannot re-enter supported history, their former local existence does not by itself make recovery from 120 unsafe.
+Synchronization fails with `JournalWriterBehindError` before import or local authorship. The receiver is corrupted/unsupported for ordinary lifecycle use; Journal 3 does not import A:101..120 into the existing database and does not run a same-writer recovery protocol.
 
 ## Trace 13: certificate selection prefers invalidation coverage
 
@@ -136,7 +136,11 @@ K1 is stale due to `Invalidate(value=K1)`. Later K2 wins. K1 marker remains hist
 
 ## Trace 17: receiver-less absent-state restore
 
-No local database exists. Recovery source yields continuation-safe snapshot S with localWriter A. Startup restores A history/allocator/projection. Query failure or inability to establish continuation safety does not generate fresh writer B and does not resume A from a stale prefix.
+The complete local database is gone, so the lifecycle state is `Absent`. Recovery source yields continuation-safe snapshot S with localWriter A. Startup restores A history/allocator/projection and may then continue authoring A.
+
+This path applies only to complete local absence. An existing but truncated/rolled-back local database is not treated as absent.
+
+Query failure or inability to establish continuation safety does not generate a fresh writer and does not continue A from an uncertain persisted snapshot.
 
 ## Trace 18: canonical bootstrap source decision
 
@@ -206,7 +210,7 @@ Joining legacy host has the exact same occurrence V but marks it fresh with comp
 
 Join reuses V but does **not** author a joining ValidateEvent merely to strengthen the shared occurrence's proof. It preserves/ensures an uncovered value-scoped bootstrap invalidation for V because one side was stale.
 
-Therefore upgrade execution cannot produce a causally-later C2 which covers I and accidentally freshens K. Exact shared stale merge is symmetric:
+Therefore upgrade execution cannot produce a causally-later C2 which covers I and accidentally freshen K. Exact shared stale merge is symmetric:
 
 ```text
 joined stale = canonical stale OR joining stale
@@ -338,23 +342,27 @@ If union selects K present and target requires absence, reset authors exactly on
 
 Legacy K has inputs A/B, is stale, with only A->K validity. Canonical bootstrap writes partial basis `{A:A0,B:"unknown"}` and value-scoped stale marker. Replay reproduces partial proof without invented provenance.
 
-## Trace 40: stale recovery source cannot resume writer
+## Trace 40: absent restore may reuse unpublished lost coordinates
 
-A recovery source offers A:1..900, but supported surviving state can later reintroduce A:901..905. Head 900 is therefore not continuation-safe.
+A's complete local database is destroyed. Its last successfully recoverable synchronized snapshot ends at A:900. Before destruction the local machine had also authored A:901..905, but those records were never published anywhere that can survive and reintroduce them under the supported backend model.
 
-The recovery source must return indeterminate/error. Restoring and continuing at A:901 would fork immutable writer IDs and could reuse NodeIdentifier allocation indices represented by the recoverable higher prefix.
+The absent-state recovery source may therefore return A:900 as continuation-safe. Startup restores the absent installation and the next new A record may reuse coordinate 901, because the old unpublished 901..905 disappeared with the complete local database.
 
-By contrast, if A:901..905 existed only on an irretrievably lost disk and cannot re-enter supported history, their former local existence does not by itself make head 900 unsafe.
+If surviving supported state could later reintroduce old A:901..905, the recovery source must not claim A:900 is continuation-safe.
 
-## Trace 41: reset cannot recover writer inline
+## Trace 41: reset detects unsupported own-writer rollback
 
 Receiver local writer A is at A:1..900. Held reset `JournalSyncSource` contains agreeing A:1..905.
 
-`resetTo()` fails `JournalWriterBehindError` before importing any source record or authoring a reset event. The active receiver remains unchanged. Lifecycle first runs `recoverExistingWriterFrom(InstallationRecoverySource)`; only after that source establishes a continuation-safe head may reset be retried.
+`resetTo()` fails `JournalWriterBehindError` before importing any source record or authoring a reset event. The active receiver remains unchanged.
+
+This is not followed by `recoverExistingWriterFrom(...)`: the existing receiver has demonstrated that it lost/rolled back part of its own writer history, which is outside the supported lifecycle model. Complete loss would instead have produced `Absent` before reset was possible.
 
 ## Trace 42: projection rebuild
 
 Authoritative Journal is valid but derived graph bytes are damaged. Maintenance rebuilds projection without semantic event.
+
+Projection rebuild is permitted because Journal authority is intact. Missing/truncated Journal history would not be repaired this way.
 
 ## Trace 43: synchronization normalization is real history
 
