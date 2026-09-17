@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Journal 3 failures have different operational meanings. Lifecycle code must not collapse incompatibility, writer continuation uncertainty, forked identity, malformed history, projection failure, or storage failure into one generic error.
+Journal 3 failures have different operational meanings. Lifecycle code must not collapse incompatibility, unsupported lifecycle state, forked identity, malformed history, projection failure, or storage failure into one generic error.
 
 Exact JavaScript class names may differ except where a category is referenced normatively. The semantic distinctions below are required.
 
@@ -15,7 +15,7 @@ Meaning:
 Examples:
 
 - receiver/source disagree on `A:42`;
-- authoritative same-writer recovery finds divergent overlap;
+- two supported histories expose conflicting bodies for one writer coordinate;
 - two migrations rewrote one historical ID differently because the format transform depended on replica-local state.
 
 Required behavior: do not merge by graph conflict authority or payload equality; fail before cutover.
@@ -117,7 +117,7 @@ Fail before incompatible history is interpreted/authored or a migration target i
 
 Meaning:
 
-> A writable receiver discovers evidence that a longer prefix of its **own local writer stream** exists, but the current operation does not have an authoritative continuation-safe recovery source.
+> An established writable receiver discovers evidence that a longer prefix of its **own local writer stream** exists elsewhere.
 
 Example:
 
@@ -127,18 +127,16 @@ receiver frontier[A] = 900
 ordinary peer snapshot frontier[A] = 905
 ```
 
-The peer proves the receiver is behind, but does **not** establish that 905 is a continuation-safe head as defined by `database-lifecycle.md` §4.1. Continuing from 905 without that guarantee could reuse a coordinate belonging to a higher A record that can later re-enter supported history.
+Under the supported lifecycle model, an existing local database cannot legitimately lose or roll back part of its own committed history. Therefore this observation is evidence that the receiver is outside the supported lifecycle state space; it is not a normal same-writer recovery condition.
 
 Required behavior:
 
-- ordinary synchronization/reset must not author another A record;
-- do not treat the peer's longer prefix as sufficient continuation authority;
-- run the lifecycle's authoritative same-writer recovery through `InstallationRecoverySource`;
-- only after that source establishes a continuation-safe A head may A continue.
+- ordinary synchronization/reset must not import the longer own-writer suffix or author another A record;
+- leave the active receiver unchanged;
+- surface `JournalWriterBehindError` as unsupported/corrupt lifecycle state requiring explicit operator/disaster handling;
+- do not route the existing receiver through absent-installation restoration and do not silently create a new writer identity.
 
-If the authoritative recovery source cannot establish continuation safety, recovery remains indeterminate/fails. Journal 3 does not silently roll the writer over to a new identity as part of this specification.
-
-Divergent overlap is instead `JournalForkError`.
+If the local database is completely gone, the lifecycle state is `Absent` and the separate absent-installation restoration path applies. Divergent overlap is instead `JournalForkError`.
 
 ## JournalProjectionError
 
@@ -185,7 +183,7 @@ Examples:
 - snapshot metadata/range I/O error;
 - source disappears before required range is read;
 - cohort source says canonical artifact exists but the exact frozen cut cannot be read;
-- installation recovery source cannot deliver the continuation-safe snapshot it claimed.
+- absent-installation recovery source cannot deliver the continuation-safe snapshot it claimed.
 
 Partial staged state is not activated. Failure to read a known canonical artifact does not authorize another canonical creation.
 
@@ -204,7 +202,7 @@ Lifecycle/administrative callers should distinguish at least:
 ```text
 retryable operational failure
 vs compatibility / use-supported-version-first
-vs writer-behind / authoritative recovery required
+vs unsupported writer-behind / lifecycle corruption
 vs rebuildable derived-state mismatch
 vs authoritative corruption/fork
 ```
