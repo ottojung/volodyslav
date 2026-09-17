@@ -42,7 +42,7 @@ Reset requires:
 
 Compatibility metadata must come from the same held `JournalSnapshot` used to derive the target and import source records.
 
-If the source contains a longer exact prefix of the receiver's own writer stream, reset first performs the same safe same-writer recovery defined by the lifecycle specification. That continuation is allowed only when the recovery source can guarantee that the held snapshot contains the complete own-writer stream ever durably published for that writer. A merely lagging peer snapshot is not sufficient. Divergent overlap is a hard fork.
+If the held source snapshot has `frontier[localWriter]` greater than the receiver's, reset fails with `JournalWriterBehindError` **before importing any record or authoring any event**, and leaves the active receiver unchanged. A `JournalSyncSource` is not continuation authority. The lifecycle must complete `recoverExistingWriterFrom(InstallationRecoverySource)` before reset is retried. Divergent overlap is `JournalForkError`.
 
 An installation with no local database/writer identity uses the absent-state restoration lifecycle in `database-lifecycle.md`; `resetTo()` does not invent a local writer identity for an absent receiver.
 
@@ -348,7 +348,7 @@ not:
 
 ## Same-writer restoration versus reset
 
-If a receiver only lacks an exact suffix of its own writer history, exact-prefix recovery is restoration. No reset baseline is needed. Writer continuation still requires the recovery source's complete-own-stream guarantee from `database-lifecycle.md` before any new local coordinate may be allocated.
+If a receiver only lacks an exact suffix of its own writer history, that is an existing-writer recovery condition, not reset work. `resetTo()` fails with `JournalWriterBehindError`; the lifecycle runs `recoverExistingWriterFrom(InstallationRecoverySource)`, which must establish a continuation-safe head as defined by `database-lifecycle.md` §4.1, and reset may then be retried.
 
 `resetTo(source)` is for intentional semantic rebaselining when ordinary retained-history selection would otherwise produce another observable graph state.
 
