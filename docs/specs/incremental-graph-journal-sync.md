@@ -23,7 +23,7 @@ A completely absent installation uses the receiver-less restoration lifecycle in
 synchronizeFrom(source: JournalSyncSource) -> SyncResult
 ```
 
-`JournalSyncSource` is transport-neutral. It does not by itself prove that a snapshot is authoritative for resuming the receiver's own writer identity.
+`JournalSyncSource` is transport-neutral. It does not repair or redefine the receiver's own writer history.
 
 ## Preconditions
 
@@ -73,7 +73,7 @@ in ascending writer-local sequence order.
 
 No node summary substitutes for missing authoritative history.
 
-## Receiver-local writer must never be recovered from an ordinary sync source
+## Receiver-local writer ahead in the source is unsupported state
 
 Suppose receiver local writer is W.
 
@@ -85,7 +85,7 @@ FS[W] > FR[W]
 
 then the receiver is demonstrably behind a surviving longer prefix of **its own writer stream**.
 
-Ordinary synchronization MUST NOT simply import that suffix and continue authoring W. A peer that happens to retain `W:1..q` does not establish that q is a **continuation-safe head** under `database-lifecycle.md` §4.1. Continuing W without that guarantee could reuse a coordinate belonging to a higher W record that can later re-enter supported history.
+Under the lifecycle fault model, an existing supported local database does not lose or roll back part of its own writer history. Complete local loss produces the `Absent` state and uses absent restoration; partial rollback/truncation is outside the supported lifecycle model.
 
 Therefore pairwise synchronization fails before publication or local normalization with:
 
@@ -93,17 +93,13 @@ Therefore pairwise synchronization fails before publication or local normalizati
 JournalWriterBehindError
 ```
 
-and requires the lifecycle's authoritative same-writer recovery transition first.
-
-The authoritative recovery source is the configured `InstallationRecoverySource` from `database-lifecycle.md` / `incremental-graph-journal-api.md`. It may authorize continuation only when its held W head is continuation-safe: after recovery, no higher previously-authored W record can later enter supported retained history. If that guarantee is indeterminate, recovery fails rather than guessing a continuation point.
-
-After authoritative recovery advances the receiver to the continuation-safe recovered W head and reconstructs allocator/high-water/projection state, ordinary synchronization may be retried.
+This error is diagnostic evidence of corrupted/unsupported lifecycle state, such as partial local rollback/loss, unsupported cloning, or externally manipulated persistence. Ordinary synchronization MUST NOT import the missing own-writer suffix and MUST NOT invoke a same-writer recovery transition, because no such supported transition exists.
 
 This is distinct from:
 
 - a foreign writer suffix, which ordinary synchronization may import normally;
 - an absent installation, which uses receiver-less restore; and
-- pre-Journal creator-resume, which uses the frozen canonical bootstrap artifact.
+- pre-Journal creator-resume, which uses the frozen canonical bootstrap artifact as part of its explicitly defined controlled transition.
 
 ## Immutable overlap law
 
@@ -254,7 +250,7 @@ A sync-authored Delete/Invalidate event:
 4. consumes the next receiver writer sequence; and
 5. participates in future synchronization normally.
 
-No such event may be allocated while the receiver has detected unrecovered later history for its own writer.
+No such event may be allocated after synchronization has detected a surviving longer prefix of the receiver's own writer; that operation has already failed as unsupported state.
 
 ## Atomic publication
 
@@ -283,7 +279,7 @@ Successful `Sync(R,S)`:
 
 1. checked compatibility from the held snapshot;
 2. retained every compatible imported foreign record unchanged;
-3. did not infer own-writer continuation safety from an ordinary peer snapshot;
+3. observed no source evidence that the receiver had lost part of its own writer history;
 4. added only justified receiver normalization;
 5. committed `receiverGraph = project(receiverJournal)`; and
 6. becomes a semantic no-op when repeated against the same incorporated source without intervening changes.
@@ -311,13 +307,13 @@ This is convergence of each actual fair execution, not counterfactual confluence
 
 Correctness never requires every peer to acknowledge or return. A delayed supported replica can later provide/import immutable foreign suffixes.
 
-Resuming **this installation's own writer after local history loss** is different: continuation requires the authoritative installation-recovery contract above so old local sequence numbers cannot be reused.
+Complete loss of this installation's local database is handled by the absent-state restoration lifecycle. Partial loss of this installation's own writer history while an existing local database remains is outside the supported lifecycle model and is not repaired by synchronization.
 
 ## Multi-source execution
 
 The core operation is pairwise against one held source snapshot. An outer procedure may process multiple sources sequentially; successful earlier sources may commit even if a later source fails.
 
-If any source reveals the receiver is behind its own writer, that pairwise operation stops with `JournalWriterBehindError` and no normalization is authored for that failed operation. Lifecycle recovery must happen before retry.
+If any source reveals the receiver is behind its own writer, that pairwise operation stops with `JournalWriterBehindError` and no normalization is authored for that failed operation. The receiver is then corrupted/unsupported for ordinary lifecycle use until handled by an explicitly defined future recovery process outside the current model.
 
 ## Version boundary
 
