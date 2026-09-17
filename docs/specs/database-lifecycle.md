@@ -74,11 +74,9 @@ Maintenance transitions are exclusive with ordinary graph activity at their publ
 
 The absent-state decision happens **before generating a new DatabaseFingerprint**.
 
-The outer lifecycle has one configured transport-neutral way to ask for synchronized state belonging to **this installation**. Call that the installation recovery source.
+The outer lifecycle obtains a transport-neutral `InstallationRecoverySource` capable of answering whether recoverable synchronized state exists for **this installation**. The source is an abstraction: an implementation may construct it from one storage location, several locations, a Git-backed transport, a hosted service, files, or another persistence topology.
 
-The IncrementalGraph database does not persist a hostname, Git branch, repository locator, or other transport identity for this source. Outer transport/lifecycle code may use deployment configuration such as a hostname to locate the source, but that locator is outside the database and outside the `InstallationRecoverySource` semantic interface, consistent with `$id-4373538486707762`.
-
-The source implements the monotonic recovery-authority contract from `$id-6158827469032147`. Journal 3 does not otherwise define whether that authority is implemented by Git, files, a hosted service, or another transport.
+The IncrementalGraph database does not persist a hostname, Git branch, repository locator, or other transport identity for this source. Outer transport/lifecycle code may use deployment configuration such as a hostname to construct or locate the source, but those locators stay outside the persisted database and outside the `InstallationRecoverySource` semantic interface, consistent with `$id-4373538486707762`.
 
 ### 4.1 Query the installation recovery source
 
@@ -92,23 +90,27 @@ Failure to query or obtain known synchronized state MUST NOT fall back to fresh 
 
 For writer A, call a held recovery snapshot with `frontier[A] = q` **continuation-safe at q** iff, after recovery from that snapshot, no previously authored A record with sequence greater than q can later enter supported retained history for writer A.
 
-For the configured `InstallationRecoverySource`, this guarantee follows from the recovery-authority contract rather than from discovering every peer:
+This is the only property Journal recovery needs from the persistence/recovery layer. Journal 3 does **not** prescribe one mechanism for proving it. A recovery source may return `Exists(ContinuationSafeSnapshot)` only when the guarantees of its supported backend model imply that q is safe.
 
-1. successful publication of A history to the authority is monotonic, so after the authority has accepted `A:1..q` it cannot later present a shorter or conflicting prefix as authoritative;
-2. any supported durable copy of A-authored history outside the local installation which can survive local loss and later re-enter supported history must derive from history first successfully published to that authority; and therefore
-3. an authoritative snapshot ending at q cannot coexist, within the supported lifecycle, with a hidden surviving previously-authored `A:r`, `r > q`, which can later re-enter history.
+The supported backend model is allowed to rule out histories which cannot actually arise or later re-enter under that backend. Recovery is not required to defend against every imaginable storage topology. For example, a backend may establish continuation safety because surviving writer history can only propagate through a monotonic publication path; another backend could establish the same property using a different protocol, replicated metadata, consensus, leases, or another mechanism. None of those mechanisms is part of Journal semantics.
 
-This is deliberately about **future admissible history**, not about every record ever committed to a local disk. An A record which existed only on local storage after the last successful publication and was irretrievably lost may be forgotten; its coordinate may later be reused because no supported surviving copy can reintroduce it.
+A record that existed only on local storage and is irretrievably lost need not count against continuation safety when the supported backend model guarantees that no surviving copy can later reintroduce it. Conversely, if a higher A record remains admissible under the supported backend model and can later re-enter retained history, q is not continuation-safe.
 
-A generic readable peer snapshot is not continuation authority, even if it appears newest. Only the configured installation recovery authority has the publication/monotonicity contract required to establish continuation safety. If that authority is unavailable, unreadable, or indeterminate, the result is `IndeterminateOrError` rather than permission to restore, continue A, or silently create another writer identity.
+A generic readable peer snapshot is not automatically continuation authority merely because it appears newest. It is usable for same-writer recovery only if the recovery layer can establish the continuation-safe property for it. If safety is unknown, the result is `IndeterminateOrError` rather than permission to restore, continue A, or silently create another writer identity.
 
 Journal 3 does not require contacting or discovering every possible peer to establish continuation safety, consistent with `$id-4719065396881648`.
 
-Example: suppose the recovery authority has successfully published `A:1..900`. Records `A:901..905` may then be authored locally. If they are never successfully published and are lost with local storage, recovery from the authoritative `A:1..900` snapshot may safely reuse sequence 901. By contrast, if `A:901..905` were successfully published, the monotonic authority must not later return `A:1..900` as the authoritative recovery state.
+#### Current Git-backed transport as an example
 
-Silent rollback, corruption, or external rewriting of already-published authoritative writer history violates the supported recovery-authority contract. Such a storage disaster requires explicit disaster recovery; ordinary Journal recovery does not pretend that the rolled-back prefix is continuation-safe.
+The current Git-backed transport is one way to satisfy the abstract contract; this paragraph is explanatory, not a required Journal topology.
 
-This rule also protects the monotone NodeIdentifier allocation watermark carried by any recoverable published prefix.
+In the supported flow, an installation renders/publishes its database through its transport-managed remote branch before another installation can obtain that published writer history through the same synchronization transport. The branch/location mapping is transport configuration and is not stored in IncrementalGraph state. Under the normal supported Git persistence model, successfully published branch history is not silently rewound while still being treated as ordinary authoritative state.
+
+Therefore a writer record which survives local database loss on some other participating installation must already have passed through the remote publication path. If the recovery adapter reads the current published prefix from that path, there cannot simultaneously be a hidden higher writer prefix on another supported participant that bypassed publication and later re-enters history. Local records written after the last successful publication but lost before publication may disappear permanently and their sequence coordinates may be reused after recovery.
+
+If the remote repository itself is silently rolled back, loses previously published commits, or is externally rewritten while surviving replicas still retain the removed writer records, that violates the assumptions of this Git-backed recovery model. Such storage disaster requires explicit recovery handling; ordinary Journal recovery must not pretend the rolled-back prefix is continuation-safe.
+
+This rule also protects the monotone NodeIdentifier allocation watermark carried by any recoverable writer prefix.
 
 ### 4.2 Receiver-less restore
 
@@ -165,7 +167,7 @@ A behind but existing **Journal** installation may recover a longer exact prefix
 
 If local A retains `A:1..p` and the recovery source returns agreeing `A:1..q`, `q >= p`, maintenance may retain `A:(p+1)..q` together with causally required foreign history and reconstruct allocator/high-water/projection before authoring again **only if q is continuation-safe under §4.1**.
 
-A generic peer/source snapshot which merely happens to contain a longer prefix is not continuation authority. The configured authority is special because supported durable A history cannot bypass it and its accepted published A prefix cannot roll back. If that contract cannot be established, recovery is indeterminate and no new A record may be allocated.
+The recovery source may be implemented by any backend topology which can establish that property. A generic peer/source snapshot which merely happens to contain a longer prefix does not establish it by itself. If continuation safety cannot be established under the supported backend model, recovery is indeterminate and no new A record may be allocated.
 
 New A records begin strictly after q. Any overlap disagreement is a writer fork.
 
@@ -437,7 +439,6 @@ Unsupported operations include:
 - changing one same-version record's semantic meaning while keeping its ID;
 - mixed record formats in one active replica;
 - destructive authoritative-history truncation followed by continued same-writer authoring;
-- silent rollback, corruption, or external rewriting of already-published installation recovery-authority history followed by ordinary same-writer recovery;
 - independently cloning one writer identity into multiple live writers;
 - resuming a writer from a recovery snapshot which is not continuation-safe under §4.1;
 - persisting hostnames, Git branch names, repository locators, or other transport identities as IncrementalGraph implementation-owned database/recovery metadata;
@@ -456,6 +457,8 @@ Unsupported operations include:
 - using a whole-ValueId proof barrier when only specific incoming proof edges are being retired;
 - using a non-total format codec which cannot rewrite retained history for target-removed node families;
 - treating a checkpoint as replacement authority for missing history.
+
+Backend-specific violations which invalidate a source's claimed continuation-safety assumptions—such as silent loss or rollback of durable writer history in a backend model that assumes monotonic publication—require explicit recovery rather than ordinary same-writer continuation.
 
 New recovery/import behavior must be introduced as an explicit controlled transition with stated invariants.
 
