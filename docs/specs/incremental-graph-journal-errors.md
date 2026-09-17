@@ -108,9 +108,10 @@ Examples:
 - bootstrap artifact version/schema differs from the release's supported bootstrap target;
 - current software no longer supports that historical bootstrap target;
 - a current post-bootstrap snapshot is supplied where the original canonical bootstrap cut is required;
-- pre-Journal bootstrap would require a semantic/time/allocator-dependent migration before Journal identity is established.
+- pre-Journal bootstrap would require a semantic/time/allocator-dependent migration before Journal identity is established;
+- a Journal-aware format migration's codec is not total over retained source-version history, including retained records for node families absent from the target schema.
 
-Fail before incompatible history is interpreted/authored. Do not fall back to fresh creation.
+Fail before incompatible history is interpreted/authored or a migration target is cut over. Do not fall back to fresh creation.
 
 ## JournalWriterBehindError
 
@@ -126,16 +127,16 @@ receiver frontier[A] = 900
 ordinary peer snapshot frontier[A] = 905
 ```
 
-The peer proves the receiver is behind, but does **not** prove that 905 is the greatest A sequence which can later re-enter supported history. Continuing from 905 without that proof could reuse an escaped `A:906`.
+The peer proves the receiver is behind, but does **not** establish that 905 is a continuation-safe head as defined by `database-lifecycle.md` §4.1. Continuing from 905 without that guarantee could reuse a coordinate belonging to a higher A record that can later re-enter supported history.
 
 Required behavior:
 
 - ordinary synchronization/reset must not author another A record;
 - do not treat the peer's longer prefix as sufficient continuation authority;
 - run the lifecycle's authoritative same-writer recovery through `InstallationRecoverySource`;
-- only after that source establishes a complete own-writer head may A continue.
+- only after that source establishes a continuation-safe A head may A continue.
 
-If the authoritative recovery source cannot establish completeness, recovery remains indeterminate/fails. Journal 3 does not silently roll the writer over to a new identity as part of this specification.
+If the authoritative recovery source cannot establish continuation safety, recovery remains indeterminate/fails. Journal 3 does not silently roll the writer over to a new identity as part of this specification.
 
 Divergent overlap is instead `JournalForkError`.
 
@@ -190,11 +191,9 @@ Partial staged state is not activated. Failure to read a known canonical artifac
 
 ## InvalidMigrationDecisionError
 
-The existing migration framework may reject a migration decision whose semantics are unsupported.
+The existing migration framework may reject a migration decision whose semantic/cache-state contract is unsupported, such as an invalid `create()` assertion.
 
-For Journal-aware migration, the legacy value-producing `override(nodeIdentifier,value)` path is invalid: representation rewrite is owned solely by the canonical whole-Journal codec and occurrence-preserving selected state uses `keep`.
-
-A source->target format migration whose codec is not total over all retained source-version history—including records for node families absent from the target schema—is likewise unsupported and must fail before cutover (the implementation may surface this as `InvalidMigrationDecisionError`, `JournalVersionCompatibilityError`, or another migration-definition category as appropriate).
+A non-total Journal format codec is **not** this category; it is `JournalVersionCompatibilityError` because the source/target database versions do not define a complete retained-history representation transition.
 
 ## User-facing error expectations
 
