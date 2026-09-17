@@ -42,7 +42,7 @@ Reset requires:
 
 Compatibility metadata must come from the same held `JournalSnapshot` used to derive the target and import source records.
 
-If the held source snapshot has `frontier[localWriter]` greater than the receiver's, reset fails with `JournalWriterBehindError` **before importing any record or authoring any event**, and leaves the active receiver unchanged. A `JournalSyncSource` is not continuation authority. The lifecycle must complete `recoverExistingWriterFrom(InstallationRecoverySource)` before reset is retried. Divergent overlap is `JournalForkError`.
+If the held source snapshot has `frontier[localWriter]` greater than the receiver's, reset fails with `JournalWriterBehindError` **before importing any record or authoring any event**, and leaves the active receiver unchanged. Under the lifecycle fault model, that condition means the existing local database has lost/rolled back part of its own writer history or otherwise entered unsupported state. Reset does not repair it, and there is no supported existing-writer rollback-recovery transition. Divergent overlap is `JournalForkError`.
 
 An installation with no local database/writer identity uses the absent-state restoration lifecycle in `database-lifecycle.md`; `resetTo()` does not invent a local writer identity for an absent receiver.
 
@@ -346,11 +346,11 @@ not:
 
 > permanently dominate every event that might exist elsewhere.
 
-## Same-writer restoration versus reset
+## Own-writer rollback is not reset work
 
-If a receiver only lacks an exact suffix of its own writer history, that is an existing-writer recovery condition, not reset work. `resetTo()` fails with `JournalWriterBehindError`; the lifecycle runs `recoverExistingWriterFrom(InstallationRecoverySource)`, which must establish a continuation-safe head as defined by `database-lifecycle.md` §4.1, and reset may then be retried.
+If a source shows that an existing receiver lacks a suffix of its own writer history, the receiver is outside the supported lifecycle model. `resetTo()` fails with `JournalWriterBehindError` before import/authorship and does not attempt to repair the condition.
 
-`resetTo(source)` is for intentional semantic rebaselining when ordinary retained-history selection would otherwise produce another observable graph state.
+Complete local database loss is different: it produces the lifecycle's `Absent` state and is handled before a writable reset receiver exists. Reset is only for intentional semantic rebaselining of a valid established receiver.
 
 ## Repeat-reset idempotence
 
