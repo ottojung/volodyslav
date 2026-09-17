@@ -58,15 +58,17 @@ Receiver normalization is finalized after the imported frontier it normalizes. I
 
 An ordinary `JournalSyncSource` may reveal that the receiver is behind its own writer stream. For example, receiver writer A may retain `A:1..900` while the source retains an agreeing `A:1..905`.
 
-That observation is not sufficient authority to resume writer A. The source might itself be behind another surviving copy containing `A:906..910`; continuing from 905 could then reuse already-published coordinates.
+That observation is not sufficient authority to resume writer A. The source does not establish that 905 is continuation-safe under `database-lifecycle.md` §4.1.
 
-Therefore ordinary synchronization does **not** activate a longer own-writer suffix and continue authoring merely because overlap agrees. It fails with `JournalWriterBehindError` and leaves the active receiver unchanged until the lifecycle's continuation-safe `InstallationRecoverySource` establishes the complete published A head. Divergent overlap is `JournalForkError`.
+Therefore ordinary synchronization does **not** activate a longer own-writer suffix and continue authoring merely because overlap agrees. It fails with `JournalWriterBehindError` and leaves the active receiver unchanged until `InstallationRecoverySource` establishes a continuation-safe A head. Divergent overlap is `JournalForkError`.
 
 ## Reset
 
-Reset runs as exclusive maintenance over one source cut + receiver union.
+Reset runs as exclusive maintenance, but it does not perform writer recovery inline.
 
-It stages only required Value/Delete/Validate/Invalidate records. Preserved ValueIds are not reallocated merely because reset is maintenance.
+If the held reset source is ahead for the receiver's own writer, reset fails `JournalWriterBehindError` before source import or reset authoring. Lifecycle recovery must establish a continuation-safe head first; reset may then be retried.
+
+Once that precondition holds, reset stages only required Value/Delete/Validate/Invalidate records. Preserved ValueIds are not reallocated merely because reset is maintenance.
 
 If target proof is weaker for preserved V, then for every currently effective incoming edge `D -> K` which the target removes, reset stages one edge-specific barrier:
 
@@ -102,7 +104,7 @@ A release which does not support the artifact target version/schema fails compat
 
 Bootstrap journals the **persisted legacy graph directly**. Before the canonical cut it does not run ordinary semantic migration decisions which create/delete/change graph semantics or synthesize wall-clock/allocator-dependent graph facts.
 
-Thus canonical creation and creator-resume never regenerate `MigrationStorage.create()` output or other execution-dependent migration results. If actual graph/schema semantic migration is required, it runs only after Journal bootstrap as Journal-aware migration.
+Thus canonical creation and creator-resume do not regenerate execution-dependent migration results. If actual graph/schema/representation migration is required, it runs only after Journal bootstrap as Journal-aware migration.
 
 ### Canonical creation and creator-resume crash window
 
@@ -148,7 +150,9 @@ Migration may perform:
 
 Representation rewrite preserves old IDs and allocates no new Journal positions.
 
-One pure version codec rewrites every affected retained ValueEvent identically regardless of local selection. Once Journal history exists, the legacy value-producing `MigrationStorage.override()` path is not evaluated; representation-preserving selected state uses `keep`, and the canonical codec is the sole source of target representation bytes.
+One pure version codec rewrites every affected retained ValueEvent identically regardless of local selection. Representation-preserving selected state uses `keep`; the canonical codec is the sole source of target representation bytes.
+
+The codec must be total over retained source-version history. If any retained record lacks a deterministic target representation, migration fails `JournalVersionCompatibilityError` before cutover.
 
 Semantic migration may stage:
 
