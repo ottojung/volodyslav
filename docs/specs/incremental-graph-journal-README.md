@@ -8,7 +8,7 @@ Journal 3 is split by semantic responsibility. For a first implementation pass, 
 4. `incremental-graph-journal-replay.md` — deterministic projection and effective proof.
 5. `incremental-graph-journal-emission.md` — ordinary graph transition emission.
 6. `incremental-graph-journal-locking.md` — finalization/atomic publication.
-7. `incremental-graph-journal-api.md` — snapshots, recovery sources, bootstrap/migration boundaries.
+7. `incremental-graph-journal-api.md` — snapshots, absent restoration sources, bootstrap/migration boundaries.
 8. `incremental-graph-journal-sync.md` — suffix replication, normalization, convergence.
 9. `incremental-graph-journal-reset.md` — controlled rebaseline.
 10. `incremental-graph-journal-migrations.md` — legacy bootstrap and Journal-aware migration.
@@ -46,12 +46,14 @@ Journal 3 specifies:
 - persistent stale markers so upstream `Unchanged` cannot erase a stored stale transition;
 - commit-time Journal IDs/contexts/authority and atomic graph+Journal publication;
 - stable ordinary source snapshots whose compatibility metadata and records belong to one cut;
-- continuation-safe installation recovery before fresh identity generation or resumed same-writer authoring;
-- continuation safety defined by future admissible history: no higher record for the continuing writer may later re-enter supported history after recovery;
-- recovery allowed to rely on the supported backend model to rule out histories which cannot arise or later re-enter under that model;
+- lifecycle-owned local persistence: while a database exists, its state changes only through supported Volodyslav transitions;
+- complete local database disappearance as the supported external-loss case, entering `Absent`; partial rollback/truncation/external mutation remains unsupported;
+- continuation-safe absent-installation restoration before a restored writer resumes or a fresh identity is generated;
+- continuation safety defined by future admissible history: no higher old record may later re-enter and collide with newly-authored coordinates after absent restore;
+- absent restoration allowed to rely on the supported backend model to rule out histories which cannot arise or later re-enter under that model;
 - transport locators such as hostnames and branch names excluded from IncrementalGraph-owned persistent state and semantic recovery APIs;
-- ordinary synchronization importing foreign-writer suffixes, while a longer receiver-local writer prefix triggers `JournalWriterBehindError` and recovery;
-- reset likewise refusing to recover the writer inline;
+- ordinary synchronization importing foreign-writer suffixes, while a longer receiver-local writer prefix triggers `JournalWriterBehindError` as unsupported existing-state rollback;
+- reset likewise rejecting an own-writer-ahead source rather than repairing a rolled-back receiver;
 - exact structural deletion only when a selected dependent loses a required materialized input; mixed input versions otherwise keep the cached value as legitimate `oldValue` and express hard/soft stale state through proof/freshness;
 - a frozen canonical bootstrap artifact for the original pre-Journal cut;
 - bootstrap as semantic identity over already-persisted legacy state;
@@ -87,11 +89,13 @@ The tests/examples intentionally cover at least:
 - migration/reset dependent stale only through an input remaining stale after that input later returns `Unchanged`;
 - a newly selected remote dependent receiving persistent stale history;
 - structural missing-input sync deleting a dependent while mere input-version mismatch keeps its cached `oldValue`;
-- ordinary peer revealing a longer receiver-local writer prefix causing `JournalWriterBehindError`, not unsafe continuation;
-- continuation-safe recovery rejecting a head when a higher local-writer record can later re-enter supported history;
-- local-only lost writer records that cannot re-enter not unnecessarily blocking continuation;
-- recovery models which exclude impossible hidden higher prefixes not being forced to discover such nonexistent copies;
-- reset source ahead for local writer failing before import/authoring and requiring recovery first;
+- complete local database loss entering `Absent` and restoring only through the absent-state lifecycle;
+- partial local rollback/truncation remaining outside the supported lifecycle model;
+- ordinary peer revealing a longer receiver-local writer prefix causing `JournalWriterBehindError` with no automatic same-writer repair;
+- absent restore rejecting a head when a higher old local-writer record can later re-enter supported history;
+- unpublished records lost together with the complete local database not blocking restoration when they cannot later re-enter;
+- backend models which exclude impossible hidden higher prefixes not being forced to discover such nonexistent copies;
+- reset source ahead for local writer failing before import/authoring as unsupported existing-state rollback;
 - pre-Journal bootstrap path requiring execution-time semantic/allocator transformation being rejected;
 - creator crash after artifact publication resuming exact frozen history;
 - current post-bootstrap snapshot not substituting for the original bootstrap cut;
@@ -115,7 +119,7 @@ The tests/examples intentionally cover at least:
 
 Journal 3 stops at semantic stable-snapshot/lifecycle boundaries. It does not prescribe Git branch/file mechanics, a hosted backend, SQL/HTTP/RPC schemas, authentication, or deployment topology.
 
-A transport can remain unchanged if its adapter can provide the required stable ordinary snapshots, continuation-safe installation recovery, and canonical-bootstrap source semantics. How continuation safety is established is backend-specific; Journal 3 requires only the resulting guarantee and does not prescribe a single recovery authority, source count, storage topology, or publication protocol.
+A transport can remain unchanged if its adapter can provide the required stable ordinary snapshots, continuation-safe **absent-installation** restoration, and canonical-bootstrap source semantics. How absent-restoration safety is established is backend-specific; Journal 3 requires only the resulting guarantee and does not prescribe a single recovery authority, source count, storage topology, or publication protocol.
 
 Also outside core correctness:
 
