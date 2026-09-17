@@ -2,114 +2,76 @@
 
 ## Purpose
 
-This document maps ordinary IncrementalGraph transitions to replay-complete Journal 3 records.
+This document maps ordinary IncrementalGraph transitions to replay-complete Journal records. Synchronization, reset, bootstrap, recovery, and migration have separate maintenance rules.
 
-It covers normal runtime graph operations, not synchronization/reset/bootstrap/migration maintenance.
+## Emission law
 
-## Emission principle
-
-For an ordinary committed graph transition:
-
-```text
-Gbefore -> Gafter
-```
-
-emission appends exactly the semantic history needed so that:
+For every successful ordinary committed graph transition:
 
 ```text
 project(Jafter) == Gafter
 ```
 
-A public call which produces no persisted semantic graph change need not append a semantic event merely because it was invoked.
+An API call which produces no persisted semantic graph change need not append a semantic record merely because it ran.
 
-## Staging versus finalization
+## Staging and serialized finalization
 
-Computation may stage intents, but durable event IDs/contexts/authority are not reserved until serialized publication finalization.
+Computors may run before final publication and may stage semantic intents. Durable Journal coordinates are allocated only inside the serialized graph finalization boundary.
 
-This matters because the final committed graph/input state may differ from the state seen when computation began within the limits allowed by the existing graph locking model.
+Finalization:
 
-At finalization:
+1. reads the latest committed local writer head/frontier and authority high-water;
+2. determines the actual settled graph transition;
+3. drops staged effects which did not happen and adds effects discovered during reconciliation;
+4. constructs validation bases from the final current direct-input ValueIds;
+5. allocates one contiguous local writer range;
+6. resolves same-publication ValueId references in semantic dependency order;
+7. gives semantic `(W,q)` exact own-writer context `q-1` plus the complete causally closed foreign frontier semantically observed;
+8. allocates authority extending every predecessor; and
+9. atomically publishes graph + Journal records.
 
-1. read latest committed local writer head/frontier/high-water;
-2. determine the actual settled graph transition;
-3. drop/add staged effects to match that transition exactly;
-4. allocate a contiguous local writer range;
-5. resolve same-publication ValueIds in semantic dependency order;
-6. assign every semantic event `(W,q)`:
+Failed transactions consume no durable sequence coordinate.
 
-```text
-context[W] = q - 1
-```
+## Contexts are complete semantic observation
 
-and the complete semantically observed causally closed cross-writer frontier;
-7. allocate AuthorityTimes extending all causal predecessors;
-8. atomically publish graph + Journal records.
+If ordinary publication observes B:7 and B:7 observed A:11, the new context includes A through at least 11 even when its body references only B.
 
-Failed transactions consume no durable sequence positions.
+The narrow pre-Journal historical-value conversion exception is lifecycle-only; ordinary emission cannot omit observed ancestry.
 
-## Contexts record complete ordinary semantic observation
+## Fresh pull no-op
 
-For ordinary graph operations, an event context is never merely the set of writers explicitly referenced by its body.
-
-If the operation semantically observed B:7 and B:7 had observed A:11, the new event context includes A through at least 11 even when the new event body directly references only B.
-
-All ordinary emission therefore preserves transitive `happenedBefore`.
-
-The controlled pre-Journal conversion of historical legacy values is not ordinary emission and is specified separately in `incremental-graph-journal-migrations.md`. Migration's physical act of reading the canonical bootstrap artifact does not by itself become causal history for a legacy value which pre-existed that read.
-
-## Fresh pull fast path
-
-If K is already fresh and pull performs no persisted graph transition:
+If K is already fresh and pull changes no persisted state:
 
 ```text
-no semantic Journal record required
+no semantic Journal record
 ```
 
-Reading/returning a cached value is not itself historical mutation.
+Reading a cached value is not historical mutation.
 
-## First materialization / changed recomputation
+## First materialization or changed recomputation
 
-If K becomes a new semantic value occurrence, emit one `ValueEvent` carrying the exact committed:
+When K becomes a new semantic value occurrence, emit:
 
-- NodeKey;
-- NodeIdentifier;
-- ComputedValue payload;
-- createdAt;
-- modifiedAt.
-
-Its event ID becomes the new `ValueId(K)`.
-
-Then emit one `ValidateEvent` for that ValueId whose explicit basis contains exactly one entry for each current direct input D:
+1. `ValueEvent` containing the exact committed NodeKey, NodeIdentifier, payload, `createdAt`, and `modifiedAt`;
+2. `ValidateEvent` targeting that new ValueId with one canonical-order basis entry per current direct input:
 
 ```text
 { input: D, value: finalCurrentValueId(D) }
 ```
 
-in canonical persisted NodeKeyString order.
+Normal compute validation never uses `"unknown"`.
 
-A normal compute validation never uses `"unknown"`.
+The ValueEvent precedes references to it.
 
-The ValueEvent precedes the ValidateEvent in the same publication.
+## `Unchanged` and cache revalidation
 
-## `Unchanged`
+When K's semantic value occurrence is preserved, keep its existing ValueId. If the operation revalidates it, emit a new ValidateEvent for that ValueId with the finalized current input basis.
 
-If K's computor returns `Unchanged`, preserve the existing current ValueId.
-
-If K was stale and the operation successfully revalidates it, emit one `ValidateEvent` targeting that existing ValueId with the finalized current input basis.
-
-Do **not** emit another ValueEvent merely because a validation happened.
-
-The validation causally covers prior node/value invalidations only when those invalidations are in its closed context.
-
-## Cache revalidation
-
-When existing graph semantics revalidate a cached occurrence without recomputing/replacing its payload, preserve its ValueId and append the required ValidateEvent exactly as for `Unchanged`.
-
-Proof state and value occurrence identity are separate.
+Proof state is not value-occurrence identity.
 
 ## Explicit invalidation
 
-For explicit invalidation of K, emit:
+Explicit invalidation of K emits:
 
 ```text
 InvalidateEvent {
@@ -119,30 +81,25 @@ InvalidateEvent {
 }
 ```
 
-A later validation clears this node-scoped invalidation only by causally observing it.
+A validation clears its effect only by causally observing it.
 
-## Propagated fresh-to-stale transition
+## Propagated persistent staleness
 
-When ordinary graph semantics actually propagate fresh->stale to cached dependent D without deleting its occurrence, emit:
+When ordinary graph semantics persist a fresh -> stale flag transition on cached dependent D without deleting D, emit:
 
 ```text
 InvalidateEvent {
     node: D,
-    scope: {
-        kind: "value",
-        value: currentValueId(D)
-    },
+    scope: { kind: "value", value: currentValueId(D) },
     reason: "propagated"
 }
 ```
 
-Only dependents which undergo the persistent flag transition receive such events.
+This does not directly remove D's incoming proof. It keeps that exact occurrence stale until D itself validates/recomputes.
 
-A value-scoped invalidation does not by itself erase D's incoming validity edges; it keeps that exact cached occurrence stale until D itself validates/recomputes.
+## Deletion
 
-## Materialization deletion
-
-When ordinary graph semantics remove K's cached materialization, emit:
+When ordinary graph semantics remove K's materialization, emit:
 
 ```text
 DeleteEvent {
@@ -151,67 +108,46 @@ DeleteEvent {
 }
 ```
 
-If one deletion structurally requires removal of dependent materializations, emit the complete actual deletion closure in cause-before-dependent order.
+If structural closure requires deleting dependents, emit the complete actual closure cause-before-dependent. Historical values remain retained.
 
-Old ValueEvents remain retained history.
+## Writer state
 
-## Value change plus dependent invalidation
+Whenever ordinary publication durably advances local `last_node_index`, include a WriterStateRecord sufficient for replay to reconstruct the resulting nondecreasing watermark. No redundant writer-state record is required when allocation did not advance.
 
-A changed recomputation may publish:
+## Publication order
 
-```text
-Value(K,new)
-Validate(K,new,basis)
-Invalidate(D1,currentD1,propagated)
-Invalidate(D2,currentD2,propagated)
-...
-```
+One publication uses a deterministic order extending semantic dependencies:
 
-The K value/validation precede propagated effects they cause where causality requires it. Dependent invalidations use their own final current ValueIds.
+- referenced ValueEvent before its references;
+- cause before propagated stale effect;
+- input/structural deletion before dependent deletion;
+- deterministic WriterState placement.
 
-## WriterStateRecord emission
-
-When ordinary publication durably advances local `last_node_index`, include a WriterStateRecord sufficient for replay to reconstruct the resulting watermark.
-
-The watermark is monotone and never decreases/reuses retired indices.
-
-If no durable allocator advancement occurred, no redundant WriterStateRecord is required merely because a transaction executed.
-
-## Publication ordering
-
-One publication chooses a deterministic order extending all semantic constraints:
-
-- referenced same-publication ValueEvent before referencing Validate/Invalidate event;
-- direct cause before propagated dependent effect;
-- dependency deletion before dependent deletion;
-- WriterState placement deterministic and replay-safe.
-
-When no semantic order exists, canonical NodeKey then stable record-kind order is an acceptable tie-break.
+Canonical NodeKey and stable record-kind order may break otherwise-unconstrained ties.
 
 ## Validation basis finalization
 
-A computor may run before final darkroom publication, but the persisted basis is constructed/confirmed from the **actual final current input ValueIds at commit** under the existing graph locking guarantees.
+The persisted validation basis describes the **actual committed** computation/proof. If a staged computation can no longer legitimately commit against final direct-input ValueIds, the graph operation must retry/recompute/fail according to existing transaction semantics; Journal emission must not record a false basis.
 
-If the staged computation result can no longer legitimately be committed against those final inputs, the graph transaction semantics must reject/retry/recompute as appropriate; Journal emission never lies by recording a basis the committed computation did not establish.
+## Atomicity and allocator safety
 
-## Atomicity
+Graph mutation, Journal records, writer head/watermark, and required derived state become durable together. Volatile allocator/index state must not outrun durable success.
 
-The graph transition and all finalized Journal records become durable together.
+## No payload-equality identity inference
 
-No supported observation sees only one side.
-
-## No payload equality inference
-
-Emission never searches history for an equal payload to reuse an unrelated ValueId.
-
-ValueId preservation happens only when the graph operation semantically preserves the current occurrence (`Unchanged`/cache revalidation), not because bytes happen to compare equal.
+Emission never searches history for equal payload bytes to reuse an unrelated ValueId. ValueId is preserved only when the graph semantics preserve the existing occurrence.
 
 ## Maintenance boundary
 
-Synchronization, reset, bootstrap, and migration have separate authoring rules because they operate over retained histories/source targets rather than ordinary computor transitions.
+Maintenance transitions also separate value identity from proof/freshness state:
 
-Those maintenance rules decide whether a semantic value occurrence is preserved or replaced. Reset/migration do not create a new ValueEvent merely because proof, freshness, schema, database version, or stored representation changes; semantic-preserving migration `override()` keeps the existing ValueId through target-format representation rewrite. A maintenance ValueEvent is authored only when the corresponding lifecycle rule genuinely creates/replaces the semantic occurrence.
+- reset preserves a ValueId when the requested occurrence already exists;
+- bootstrap may establish/reuse historical occurrence identities under its special legacy rules;
+- Journal-aware migration preserves ValueId for occurrence-preserving semantic decisions such as `keep` and `invalidate`;
+- representation-only Journal format change is performed by the canonical whole-history codec while selected preserved state uses `keep`; Journal-aware code does **not** evaluate the legacy value-producing `override()` path;
+- maintenance-only proof weakening uses `proof(V,D)` negative edge evidence rather than creating a new ValueEvent; and
+- persistent stale state uses `value(V)` invalidation.
 
-Bootstrap additionally has a historical-conversion rule for pre-Journal legacy ValueEvents: the event may represent a value which existed before the canonical artifact was read, so bootstrap does not infer foreign causality from migration execution order.
+A maintenance ValueEvent is authored only when that lifecycle rule genuinely creates/replaces the semantic occurrence.
 
-Maintenance still obeys immutable writer identity, contiguous sequences, closed stored contexts, authority extending actual happened-before, reference causality, and atomic Journal/projection publication, subject only to that explicitly defined historical bootstrap context/authority rule.
+All maintenance still obeys immutable writer identity, sequence contiguity, causal/reference rules, authority extension, and atomic Journal/projection publication, except for the explicitly specified historical bootstrap-value causality rule.
