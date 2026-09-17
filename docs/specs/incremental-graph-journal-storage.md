@@ -80,6 +80,12 @@ Ordinary graph transition and finalized Journal history become durable atomicall
 
 No supported state exposes new Journal with old graph or old Journal with new graph.
 
+## Lifecycle-owned local persistence
+
+While the local database exists, its authoritative persisted state changes only through supported Volodyslav lifecycle transitions. Local writer head and allocator state do not decrease through such transitions.
+
+Complete disappearance of the local database is supported and yields the lifecycle `Absent` state. Partial Journal truncation, rollback to an older database image, mixed old/new storage, partial restoration, or direct external mutation are unsupported/corrupt storage states rather than inputs to a semantic repair algorithm.
+
 ## Immutable same-version record identity
 
 Outside explicit database-format migration, committed `(author,sequence)` meaning is immutable.
@@ -130,15 +136,13 @@ Invalidate(K, scope=value(currentValueId(K)), reason=...)
 
 This requirement covers ordinary propagation, synchronization, bootstrap, reset, and migration. It prevents later upstream `Unchanged` from silently erasing a stored stale transition.
 
-## Safe local writer continuation
+## Established local writer monotonicity and absent restoration
 
-A stored writer head is safe for continued local allocation only when `InstallationRecoverySource` establishes a **continuation-safe head** under `database-lifecycle.md` §4.1.
+For an existing supported database, the local writer head and `last_node_index` are monotone. A generic peer `JournalSnapshot` containing a longer agreeing prefix of the local writer is therefore evidence of unsupported existing-state rollback and causes `JournalWriterBehindError`; it is not a source for repairing that existing database.
 
-For writer A at head q, continuation-safe means that after recovery no previously authored A record with sequence greater than q can later enter supported retained history. This is about future admissible history, not every record once committed to a lost local disk.
+When the complete local database is absent, restoration may use `InstallationRecoverySource`. For writer A restored at head q, the returned snapshot must be continuation-safe: after restore no previously-authored A record with sequence greater than q may later enter supported retained history and collide with new allocation.
 
-A generic peer `JournalSnapshot` is not sufficient continuation authority merely because it contains a longer agreeing local-writer prefix. If continuation safety is indeterminate, no new local record may be allocated.
-
-After authoritative recovery, storage reconstructs at least:
+After absent restoration, storage reconstructs at least:
 
 - local Journal head;
 - `last_node_index`;
@@ -183,7 +187,7 @@ A local `JournalSyncSource` supplies one immutable committed state containing ex
 That ordinary snapshot is distinct from both:
 
 - `CanonicalBootstrapSnapshot`; and
-- continuation-safe recovery authority.
+- a continuation-safe snapshot supplied for complete-absence restoration.
 
 Transport implementation of these abstractions is outside Journal semantics.
 
