@@ -79,12 +79,15 @@ Acceptance:
 Acceptance:
 
 - installation recovery source queried before fresh fingerprint generation;
-- source exists -> restore/adopt `localWriter` only when source guarantees the complete own-writer stream ever durably published for that writer;
+- source exists -> restore/adopt `localWriter` only when the held snapshot establishes a **continuation-safe head** as defined by `database-lifecycle.md` §4.1;
+- continuation-safe means no higher record for that writer can later re-enter supported history after recovery;
 - a readable but potentially lagging snapshot returns indeterminate/error and MUST NOT be used for writer continuation;
 - source definitely absent -> fresh creation allowed;
 - source read/query failure -> fail, no fresh fallback;
 - writer head/watermark/high-water/projection reconstructed before new allocation;
-- stale recovery snapshot `A:1..900` is rejected for continuation when `A:901..905` may already have been published elsewhere.
+- stale recovery snapshot `A:1..900` is rejected when a higher A record can still re-enter supported history;
+- records lost only with the old local disk and unable to re-enter supported history do not by themselves make the recovered head unsafe;
+- establishing continuation safety does not require contacting/discovering every possible peer (`$id-4719065396881648`).
 
 ## 8. Pre-Journal bootstrap
 
@@ -104,7 +107,7 @@ Acceptance:
 - bootstrap journals the persisted legacy graph directly;
 - materialized NodeKeys, NodeIdentifiers, payloads, timestamps, freshness, validity, allocator watermark, and graph interpretation are preserved exactly at the cut;
 - no ordinary legacy migration callback runs before canonical bootstrap;
-- a path needing `MigrationStorage.create()`, semantic `override`/`invalidate`/`delete`, schema-semantic transformation, wall clock, randomness, or allocator-dependent new graph identity is rejected as incompatible before bootstrap history;
+- a path needing semantic `create`/`invalidate`/`delete`, schema-semantic transformation, wall clock, randomness, or allocator-dependent new graph identity is rejected as incompatible before bootstrap history;
 - actual graph/schema migration happens after bootstrap via Journal-aware migration.
 
 ### Creator resume
@@ -142,7 +145,7 @@ Acceptance:
 - every missing **foreign-writer** suffix imported;
 - overlap verified;
 - a longer agreeing prefix of the receiver's own local writer causes `JournalWriterBehindError` rather than ordinary-sync continuation;
-- same-writer continuation is allowed only through a continuation-safe recovery source which guarantees the complete published own stream;
+- same-writer continuation is allowed only through `InstallationRecoverySource` after it establishes a continuation-safe head per `database-lifecycle.md` §4.1;
 - a generic/lagging peer snapshot cannot authorize resumed same-writer allocation;
 - fork rejected;
 - transfer streamable;
@@ -165,7 +168,8 @@ Acceptance:
 Acceptance:
 
 - source target/compatibility from one held snapshot;
-- union history retained only after any own-writer-behind condition has been resolved through continuation-safe recovery;
+- own-writer-behind source fails `JournalWriterBehindError` before import/authoring; no inline recovery;
+- reset is retried only after `recoverExistingWriterFrom(InstallationRecoverySource)` establishes a continuation-safe head;
 - unchanged target occurrence preserves ValueId;
 - new ValueEvent only for actual occurrence replacement;
 - for every removed incoming edge `D -> K` of preserved V, reset authors `Invalidate(scope=proof(V,D),reason=reset)`;
@@ -188,9 +192,10 @@ Acceptance:
 
 - retained old history deterministically rewritten into one target format preserving IDs/meaning;
 - rewrite is total over retained source history, including records for node families absent from target schema;
+- non-total source->target codec fails `JournalVersionCompatibilityError` before cutover;
 - per-record payload codec independent of selected status/replica-local state;
 - same historical record rewrites identically across replicas;
-- representation-only change uses `keep` plus canonical codec; Journal-aware execution rejects legacy value-producing `override()`;
+- representation-only change uses `keep` plus the canonical codec;
 - explicit migration `invalidate(K)` preserves occurrence ValueId and authors true node-scoped invalidation;
 - maintenance-only proof weakening for preserved V uses one `proof(V,D)` barrier per removed incoming edge, not a whole-ValueId or node barrier;
 - two replicas independently weakening the same V to the same partial proof retain that partial proof after synchronization;
@@ -222,7 +227,7 @@ Provide actionable categories for writer fork, bootstrap fork, stream gap, causa
 
 Bootstrap incompatibility specifically includes a would-be pre-Journal target requiring semantic/time/allocator-dependent migration before Journal identity exists.
 
-Journal-aware migration incompatibility includes a format migration whose codec is not total over retained source-format history.
+Journal-aware migration incompatibility includes a format migration whose codec is not total over retained source-format history and therefore fails `JournalVersionCompatibilityError`.
 
 ## 15. Reference model / property verification
 
@@ -240,9 +245,10 @@ Priority regressions/properties:
 - repeat-sync no-op and normalization convergence;
 - absent restore vs fresh creation;
 - ordinary peer revealing a longer local-writer prefix fails `JournalWriterBehindError` before sync publication;
-- stale own-writer recovery source cannot resume a previously published coordinate;
+- recovery succeeds only from a continuation-safe head; a stale head is rejected if a higher writer record can later re-enter supported history;
+- reset own-writer-behind source fails before import/authoring and requires lifecycle recovery first;
 - canonical bootstrap source decision/original cut;
-- bootstrap graph-semantic identity and rejection of current legacy `create()` path;
+- bootstrap graph-semantic identity and rejection of semantic/time/allocator-dependent pre-bootstrap migration;
 - creator crash resumes exact artifact without migration callback rerun;
 - exact shared canonical-stale + joining-fresh remains stale;
 - exact shared proof intersection preserves joining explicit invalidation;
