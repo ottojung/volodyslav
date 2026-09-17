@@ -68,6 +68,10 @@ Authority is a deterministic total order extending happened-before.
 
 Supported state exposes neither new Journal + old graph nor old Journal + new graph.
 
+### Lifecycle-owned persistence
+
+While a local database exists, its persistent state changes only through supported Volodyslav lifecycle transitions. Complete local database disappearance is supported and produces the lifecycle `Absent` state. Partial rollback, truncation, mixed restoration, or external mutation of an existing database is outside the supported lifecycle model, per `$id-6158827469032147`.
+
 ### Replay performs no historical external work
 
 Replay never invokes computors, reruns lifecycle operations, asks wall clock/randomness/network for semantic facts, or repairs meaning from mutable graph bytes.
@@ -133,7 +137,7 @@ Ordinary sync:
 4. authors only required receiver normalization;
 5. replays and atomically cuts over.
 
-If an ordinary peer exposes a longer prefix of the receiver's **own writer**, sync does not use that peer as continuation authority. It stops with `JournalWriterBehindError`; the lifecycle must perform continuation-safe same-writer recovery first.
+If an ordinary peer exposes a longer prefix of the receiver's **own writer**, sync stops with `JournalWriterBehindError` before import/authorship. Under the supported lifecycle model this means the existing receiver has somehow gone backwards and is unsupported/corrupt; ordinary synchronization does not repair it.
 
 Sync normalization may author only:
 
@@ -142,15 +146,15 @@ Sync normalization may author only:
 
 No computor runs during sync.
 
-## Safe writer restoration
+## Absent-installation restoration
 
-After local history loss, continuing writer A from recovered head q is safe only if no previously-authored `A:r`, `r > q`, can later re-enter supported retained history and collide with newly-authored coordinates.
+When the complete local database is gone, the installation is `Absent`. Restoring its continuing writer A from recovered head q is safe only if no previously-authored `A:r`, `r > q`, can later re-enter supported retained history and collide with newly-authored coordinates.
 
-`InstallationRecoverySource` packages exactly that guarantee as a `ContinuationSafeSnapshot`. How the source establishes it belongs to the supported backend model, not to Journal semantics. The backend may use one storage location, several locations, Git publication rules, replicated metadata, consensus, or another protocol. Recovery may rely on backend invariants which make some hypothetical histories impossible.
+`InstallationRecoverySource` packages exactly that guarantee as a `ContinuationSafeSnapshot`. How the source establishes it belongs to the supported backend model, not to Journal semantics. The backend may use one storage location, several locations, Git publication rules, replicated metadata, consensus, or another protocol. Restoration may rely on backend invariants which make some hypothetical histories impossible.
 
-A generic peer snapshot is therefore not automatically sufficient merely because it appears newest, but neither does Journal require surveying every imaginable peer or storage location. If the supported recovery layer can establish continuation safety, writer A may continue strictly after q. If it cannot, same-writer continuation fails rather than guessing a sequence.
+Records authored only on the completely lost local storage may be absent from the recovered snapshot and their coordinates may later be reused when the backend model guarantees that no surviving supported copy can reintroduce them. Conversely, if a higher record can later re-enter, the proposed recovered head is not continuation-safe.
 
-Transport locators such as hostnames or branch names remain outside persisted IncrementalGraph state and outside the recovery semantic interface. `database-lifecycle.md` §4.1 gives the abstract rule and explains how the current Git-backed flow can satisfy it without making that transport topology normative.
+This mechanism applies only to complete local absence. It is not a way to repair an existing truncated or rolled-back database. Transport locators such as hostnames or branch names remain outside persisted IncrementalGraph state and outside the recovery semantic interface. `database-lifecycle.md` §4.1 gives the abstract rule and explains how the current Git-backed flow can satisfy it without making that transport topology normative.
 
 ## Canonical pre-Journal bootstrap
 
@@ -205,7 +209,7 @@ Independent genuine replacements may create different ValueIds on different repl
 
 Reset retains observed receiver/source history and establishes the requested source projection relative to that observed history.
 
-If the held reset source is ahead for the receiver's own local writer, reset fails `JournalWriterBehindError` before source import or reset authoring; lifecycle writer recovery must complete first.
+If the held reset source is ahead for the receiver's own local writer, reset fails `JournalWriterBehindError` before source import or reset authoring. This is unsupported existing-state rollback, not a same-writer recovery path.
 
 Otherwise reset preserves an already-matching occurrence, creates/replaces only when semantic occurrence state differs, uses `proof(V,D)` per removed incoming edge, persists target stale flags with `value(V)`, and authors DeleteEvent for target absence when necessary.
 
