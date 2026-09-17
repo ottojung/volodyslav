@@ -17,11 +17,13 @@ The central identity rule is:
 
 > Migration must not manufacture a new ValueId merely because the database version, schema, proof state, freshness, or stored representation changed. A new ValueEvent is required only when the semantic value occurrence itself is created or replaced.
 
-That rule includes `MigrationStorage.override()`: override is a semantic-preserving representation rewrite and therefore preserves the selected ValueId.
+Representation-only changes to retained Journal history are performed by the canonical whole-Journal rewrite codec and preserve existing ValueIds.
 
 ## Relationship to the existing migration framework
 
-The existing migration framework decides later Journal-aware target IncrementalGraph state using `keep`, `override`, `invalidate`, `delete`, and `create` as specified by `migration.md`.
+The existing migration framework supplies semantic target decisions such as `keep`, `invalidate`, `delete`, and `create` as specified by `migration.md`.
+
+The legacy/pre-Journal framework also has `override(nodeIdentifier,value)` for representation-only rewriting. Once Journal history exists, that value-producing `override()` path is not part of the Journal-aware semantic decision vocabulary: representation rewriting belongs exclusively to the canonical whole-Journal codec, and an occurrence whose semantic value is preserved uses `keep`.
 
 Journal-aware migration adds three responsibilities:
 
@@ -75,6 +77,8 @@ such that:
 
 The rewrite is canonical and deterministic. Given the same source-version record and source->target migration definition, independently migrating replicas produce the same target-format record.
 
+The rewrite contract is **total over retained source-version history**, not merely over nodes which still exist in the target graph schema. Historical ValueEvents, NodeKeys, validation-basis inputs, invalidation scopes, and other records for a node family removed from the current target schema still require one deterministic target-format representation. Target-schema membership is not a prerequisite for preserving historical identity/meaning. If the source->target migration cannot deterministically rewrite every retained source-format record, that migration is unsupported and fails before cutover.
+
 ### Pure per-record payload rewrite
 
 When `ComputedValue` representation changes between database versions, the migration definition supplies one deterministic payload codec for retained `ValueEvent`s:
@@ -87,6 +91,7 @@ rewriteValuePayload(sourceVersion, targetVersion, sourceValueEvent)
 The result is a pure function of the source record and the version-migration definition. It is applied to **every** retained ValueEvent whose payload representation changes, regardless of:
 
 - whether that occurrence is currently selected;
+- whether its node family still exists in the target schema;
 - which replica is performing migration;
 - what other records the replica happens to retain;
 - migration callback traversal/order; or
@@ -94,11 +99,9 @@ The result is a pure function of the source record and the version-migration def
 
 The rewritten record keeps its existing `JournalRecordId`, `NodeIdentifier`, `createdAt`, `modifiedAt`, causal identity, authority meaning, references, and semantic value.
 
-`MigrationStorage.override()` does not supply authoritative replacement bytes for an existing Journal record. For Journal-aware migration it is an occurrence-preserving decision/assertion: the callback result for the selected occurrence MUST equal the payload produced for that selected record by the canonical per-record codec. A mismatch fails migration before cutover.
+For Journal-aware migration, this codec is the **single source of target representation bytes** for retained ValueEvents. The selected semantic occurrence uses `keep` when its meaning is preserved. The legacy value-producing `MigrationStorage.override()` path is not evaluated in Journal-aware mode and must be rejected if requested.
 
-This restriction is necessary because the same historical `JournalRecordId` may be retained on replicas where that occurrence is selected on one replica and historical on another. The target body for one immutable ID cannot depend on selection or other replica-local state.
-
-`override()` MUST NOT be used for a semantic value change. A migration that changes the meaning/value of a node follows the ordinary migration contract (`invalidate()`/recomputation or another explicit semantic replacement) and does not disguise that change as record-format rewriting.
+A migration that changes the meaning/value of a node follows the semantic migration contract (`invalidate()`/recomputation or another explicit semantic replacement). It must not smuggle semantic change into the representation codec.
 
 If application/schema semantics change independently of representation, that semantic change is represented by newly appended migration events. It must not be smuggled into the rewritten historical meaning of an old record.
 
@@ -433,9 +436,45 @@ If that local occurrence was stale, follow with a value-scoped `InvalidateEvent(
 
 #### Exact shared occurrences
 
-For an occurrence shared exactly with the canonical basis, do not author a second ValueEvent **and do not author a joining-side ValidateEvent merely to strengthen or replace the canonical proof**.
+For an occurrence shared exactly with the canonical basis, bootstrap merges proof **conservatively by intersection**, while keeping the shared canonical ValueId.
 
-The canonical certificate remains the retained proof basis for that shared occurrence. This is deliberately conservative: pre-Journal joining proof has no durable cross-host causal coordinate, and turning it into a causally-later bootstrap validation could otherwise cover canonical stale history simply because migration ran later.
+Define:
+
+```text
+CanonicalValid(K) = {
+    D | Pc contains semantic validity edge D -> K
+}
+
+JoiningValid(K) = {
+    D | Gl contains legacy validity edge D -> K
+}
+
+JoinedValid(K) = CanonicalValid(K) intersect JoiningValid(K)
+```
+
+The join MUST NOT add an incoming validity edge which is absent on either legacy side merely because the other side has it. In particular, a joining host which explicitly invalidated K must not be silently upgraded back to the canonical creator's stronger proof.
+
+The canonical certificate remains the positive proof basis. For every canonical edge which the joining legacy state does not also justify:
+
+```text
+D in CanonicalValid(K) - JoiningValid(K)
+```
+
+author one bootstrap proof-edge barrier:
+
+```text
+InvalidateEvent {
+    node: K,
+    scope: {
+        kind: "proof",
+        value: Pc.valueId(K),
+        input: D
+    },
+    reason: "bootstrap"
+}
+```
+
+No joining-side ValidateEvent is authored merely to strengthen proof on an exact shared occurrence. Proof-edge barriers only subtract canonical edges, so replay yields exactly the conservative intersection without allowing upgrade timing to create new positive proof.
 
 Freshness merge for the exact shared occurrence is symmetric and conservative:
 
@@ -445,24 +484,24 @@ joinedSharedStale(K) iff
     or joining legacy graph Gl says K stale
 ```
 
-After all J2 proof records, if `joinedSharedStale(K)` is true, history MUST contain an **uncovered** value-scoped `InvalidateEvent(reason="bootstrap")` for the shared canonical ValueId. A fresh joining copy never clears canonical stale evidence; a stale joining copy makes a canonical-fresh shared occurrence stale without changing its ValueId.
+After all shared-occurrence proof-edge barriers are authored, if `joinedSharedStale(K)` is true, history MUST contain an **uncovered** value-scoped `InvalidateEvent(reason="bootstrap")` for the shared canonical ValueId. A fresh joining copy never clears canonical stale evidence; a stale joining copy makes a canonical-fresh shared occurrence stale without changing its ValueId.
 
-Proof/freshness records may causally observe the canonical cut because they do not decide which conflicting legacy value occurrence wins. The stale marker is deliberately placed after any J2 proof record which could otherwise cover an earlier stale marker.
+The stale marker is deliberately placed after the proof-edge barriers. A proof barrier does not clear stale evidence, and no bootstrap validation is introduced merely to strengthen the shared proof.
 
 ### Pass J2b: persist recursive-only staleness
 
-J2 establishes direct stale roots. Bootstrap must also persist propagated stale flags created by the **combined** canonical/joining state.
+J2 establishes direct stale roots and conservative proof intersections. Bootstrap must also persist propagated stale flags created by the **combined** canonical/joining state.
 
-Process present nodes in deterministic dependency-topological order after J2. For each K, replay history including any bootstrap stale markers already authored for its inputs. Let C be the replay-selected certificate for current `valueId(K)` and define the same predicate used by synchronization normalization:
+Process present nodes in deterministic dependency-topological order after J2. For each K, replay history including any bootstrap proof/stale records already authored for its inputs. Let C be the replay-selected certificate for current `valueId(K)` and define the same predicate used by synchronization normalization:
 
 ```text
 selfProofReady(K) iff
     C exists
-    and basisMatchCount(K,C) == numberOfDirectInputs(K)
+    and effectiveBasisMatchCount(K,C) == numberOfDirectInputs(K)
     and coversValueInvalidations(K,C)
 ```
 
-Certificate eligibility already accounts for node/proof barriers.
+Node invalidations affect certificate eligibility; proof-edge barriers reduce the effective basis edge-by-edge.
 
 If:
 
@@ -485,7 +524,7 @@ unless such a marker already applies.
 
 Continue forward through dependents using the replay state after each required marker. Because the schema is acyclic, one input-to-dependent topological pass reaches the required fixed point.
 
-This rule applies regardless of whether K's selected occurrence came from the canonical cut or the joining host. In particular, a canonical-only dependent which becomes stale because the joiner made one of its shared inputs stale receives its own persistent marker. A later `Unchanged` revalidation of that input cannot silently make the dependent fresh.
+This rule applies regardless of whether K's selected occurrence came from the canonical cut or the joining host. In particular, a canonical-only dependent which becomes stale because the joiner weakened/staled one of its shared inputs receives its own persistent marker when its own proof is otherwise ready. A later `Unchanged` revalidation of that input cannot silently make the dependent fresh.
 
 ### Pass J3: writer state and projection
 
@@ -506,6 +545,7 @@ Instead:
 - local-only materializations survive;
 - canonical-only materializations survive;
 - conflicting occurrences are selected by normal Journal authority, principally legacy `modifiedAt`;
+- exact shared validity is the conservative intersection of canonical and joining legacy validity evidence;
 - exact shared stale state is conservative across both legacy sides;
 - every selected occurrence stale solely because a direct input is stale has a persistent current-value bootstrap invalidation; and
 - proof/freshness follows replay of retained evidence under those rules.
@@ -560,15 +600,13 @@ Journal-aware migration does **not** require a canonical cohort source. Each rep
 
 ### `keep`
 
-`keep` preserves the current semantic occurrence. The selected ValueId remains unchanged.
+`keep` preserves the current semantic occurrence. The selected ValueId remains unchanged. Representation-only changes to that retained occurrence are supplied by the whole-Journal rewrite codec, not by a second value callback.
 
-### `override`
+### Representation-only rewrite
 
-`override` is semantic-preserving by contract. It preserves the selected ValueId even if target-version stored payload representation differs.
+Journal-aware migration has no semantic `override(valueCallback)` decision. The deterministic record codec rewrites every retained affected occurrence, selected or historical. A migration author who wants to preserve the semantic occurrence uses `keep`.
 
-The target payload representation comes exclusively from the canonical per-record rewrite codec. The `override()` callback is checked against that codec result for the selected source record; it does not mutate that record independently.
-
-If the callback result differs from the canonical codec output, migration fails before cutover.
+The legacy/pre-Journal `override(nodeIdentifier,value)` API remains a separate legacy migration mechanism and MUST NOT be evaluated once the source contains Journal history.
 
 ### `invalidate`
 
@@ -592,7 +630,7 @@ Two replicas may independently run the same Journal-aware migration. If the migr
 
 After later synchronization one occurrence wins by normal Journal conflict authority. A dependent whose certificate names the losing replacement ValueId may become stale and recompute/revalidate. This is accepted by `$id-1270770443138081` rather than requiring one remote canonical migration participant.
 
-Occurrence-preserving migrations—including `keep`, `override`, proof-only changes, freshness-only changes, and representation-only whole-history rewrites—retain already-shared ValueIds.
+Occurrence-preserving migrations—including `keep`, proof-only changes, freshness-only changes, schema-only changes, and representation-only whole-history rewrites—retain already-shared ValueIds.
 
 ## Migration observation cut
 
@@ -614,13 +652,13 @@ TargetPresent = present keys in Gtarget
 MigrationDomain = BeforePresent union TargetPresent
 ```
 
-A key absent before and after needs no event solely because historical records exist.
+A key absent before and after needs no event solely because historical records exist. Historical records for removed node families are still rewritten and retained by the total representation codec even though they do not participate in current target graph membership.
 
 ## Migration Pass 1: establish target value/absence heads
 
 For every K in TargetPresent:
 
-- if the migration decision preserves K's semantic occurrence (`keep`, `override`, `invalidate`, or equivalent), set `targetValueId(K) = valueId_Gbefore(K)` and author no ValueEvent;
+- if the migration decision preserves K's semantic occurrence (`keep`, `invalidate`, or equivalent), set `targetValueId(K) = valueId_Gbefore(K)` and author no ValueEvent;
 - if the migration genuinely creates/replaces K's semantic occurrence, author one `ValueEvent(reason="migration")` and use its ID as `targetValueId(K)`.
 
 For every K in `BeforePresent - TargetPresent`, author exactly one required `DeleteEvent(reason="migration")` unless converted history already selects absence.
@@ -643,7 +681,7 @@ TargetValid(K) = {
 
 ### Explicit `invalidate()` and proof weakening barriers
 
-Replay intentionally selects the eligible certificate with greatest `basisMatchCount` before authority. A later partial certificate therefore cannot by itself remove validity supplied by an older stronger certificate.
+Replay intentionally selects the certificate with greatest **effective** basis applicability before authority. A later partial certificate therefore cannot by itself remove validity supplied by older proof unless the removed edges are represented as negative proof evidence.
 
 There are two semantically different reasons to make older proof inapplicable.
 
@@ -665,29 +703,35 @@ This is a real node invalidation, not merely a certificate-selection trick. As w
 
 #### Maintenance-only proof weakening
 
-Otherwise, whenever migration must remove at least one currently-valid incoming edge while preserving the occurrence:
+Otherwise, for every currently-valid incoming edge which the target removes while preserving K's occurrence:
 
 ```text
-CurrentValid(K) - TargetValid(K) != empty
+D in CurrentValid(K) - TargetValid(K)
 ```
 
-migration authors an occurrence-scoped **proof barrier**:
+migration authors one occurrence-and-input-specific proof-edge barrier:
 
 ```text
 InvalidateEvent {
     node: K,
-    scope: { kind: "proof", value: targetValueId(K) },
+    scope: {
+        kind: "proof",
+        value: targetValueId(K),
+        input: D
+    },
     reason: "migration"
 }
 ```
 
-A proof barrier makes only certificates targeting that exact ValueId and predating the barrier ineligible. It does not node-invalidate a later/concurrent replacement occurrence and does not itself substitute for a persistent stale marker.
+A proof-edge barrier retires only `D -> K` proof for that exact ValueId. It does not make the whole certificate ineligible, does not node-invalidate a replacement occurrence, and does not itself substitute for a persistent stale marker.
 
-This barrier is used for stale `keep`/`override` regions where the existing migration contract discards incoming proofs and for schema/target proof transitions which remove current validity while preserving K's occurrence.
+This edge granularity is required for independent migration. If two replicas preserve the same ValueId and independently weaken the same target proof, their concurrent barriers do not destroy the other unchanged edges. If they independently remove different edges, the merged result conservatively removes the union of those edges, which is exactly the intersection of the proof each maintenance transition retained.
 
-If migration only adds validity, no barrier is required solely for that addition because the later certificate has at least as strong a basis and wins normally.
+This barrier is used for stale `keep` regions where the migration contract discards incoming proofs and for schema/target proof transitions which remove current validity while preserving K's occurrence.
 
-After any required node invalidation/proof barrier, inspect replay under the target schema. If replay already yields exactly `TargetValid(K)` and target freshness does not require a new certificate, migration need not manufacture one.
+If migration only adds validity, no barrier is required solely for that addition because the later certificate has at least as strong an effective basis and wins normally.
+
+After any required node invalidation/proof-edge barriers, inspect replay under the target schema. If replay already yields exactly `TargetValid(K)` and target freshness does not require a new certificate, migration need not manufacture one.
 
 Otherwise author one causally-later migration `ValidateEvent` targeting `targetValueId(K)`:
 
@@ -707,7 +751,7 @@ with one entry for every target direct input D in canonical NodeKey order.
 
 Use `targetValueId(D)` exactly when D is in `TargetValid(K)`; otherwise use `"unknown"`.
 
-If a barrier was authored, this validation occurs after it. Even an all-`"unknown"` target certificate can therefore represent zero incoming target validity without an older full certificate re-winning by basis-match count.
+A target validation authored after local proof-edge barriers causally covers those barriers. A concurrent barrier from an independently migrated replica may still suppress only its named edge; it cannot invalidate the target certificate's unrelated proof entries. Thus two replicas which independently migrate the same preserved ValueId to the same partial proof still converge on that partial proof rather than losing all proof.
 
 Call replay after Pass 2 `P2`.
 
@@ -718,11 +762,11 @@ For each present K let C be the replay-selected certificate in P2 and define:
 ```text
 selfProofReady(K) iff
     C exists
-    and basisMatchCount(K,C) == numberOfDirectInputs(K)
+    and effectiveBasisMatchCount(K,C) == numberOfDirectInputs(K)
     and coversValueInvalidations(K,C)
 ```
 
-Node-scoped invalidation and occurrence-scoped proof-barrier coverage are already part of certificate eligibility.
+Node-scoped invalidation is part of certificate eligibility; proof-edge barriers reduce effective proof edge-by-edge.
 
 For target-fresh K, final replay must make K fresh; any observed invalidation that would prevent this is covered by the causally later target validation rather than by replacing K's ValueId.
 
@@ -741,7 +785,7 @@ InvalidateEvent {
 
 This rule is intentionally stronger than “only if replay would otherwise be fresh.” If K's own proof is ready but K is currently stale only because a direct input is stale, the value-scoped marker is still required whenever `Gtarget` stores K as stale. Otherwise a later `Unchanged` revalidation of that input could make K fresh automatically, losing the migration framework's persistent propagated-stale flag.
 
-If `selfProofReady(K)` is false, K already has a persistent own-state reason for staleness (basis mismatch, node invalidation, proof barrier without sufficient replacement proof, or current-value invalidation), so no extra marker is required merely to duplicate that reason.
+If `selfProofReady(K)` is false, K already has a persistent own-state reason for staleness (basis mismatch, node invalidation, effective proof-edge deficit, or current-value invalidation), so no extra marker is required merely to duplicate that reason.
 
 Thus migration reproduces both target proof edges and the persistence behavior of target freshness without manufacturing a replacement ValueEvent.
 
@@ -776,7 +820,7 @@ Ordinary synchronization requires compatible current database/schema interpretat
 
 Replicas at different versions do not ordinary-sync until each has independently reached a compatible target interpretation through a supported migration path.
 
-Shared pre-migration records independently rewritten through the same format migration compare identically after rewrite.
+Shared pre-migration records independently rewritten through the same total format migration compare identically after rewrite, including historical records whose node families no longer exist in the current target schema.
 
 Migration-authored new semantic records synchronize like any other immutable history. If independently migrating replicas created distinct replacement occurrences, ordinary head/certificate/freshness rules handle the resulting conflict and possible downstream staleness.
 
@@ -792,7 +836,7 @@ Current replay uses an old certificate only when:
 - its explicit input-key set equals the current target input set;
 - ordinary invalidation/certificate-selection rules accept it.
 
-When migration needs weaker proof for a preserved occurrence, the occurrence-scoped proof barrier above intentionally makes stronger pre-migration certificates for that ValueId ineligible before the target certificate is authored. Explicit `invalidate()` instead retains its true node-scoped meaning.
+When migration needs weaker proof for a preserved occurrence, the proof-edge barriers above suppress only the exact removed incoming edges for that ValueId. Explicit `invalidate()` instead retains its true node-scoped meaning.
 
 ## Atomic publication
 
@@ -825,6 +869,7 @@ At minimum cover:
 - creator-resume semantic mismatch fails with `JournalBootstrapForkError` and authors nothing;
 - a different fingerprint cannot use creator-resume;
 - late host whose local occurrence equals canonical occurrence reuses canonical ValueId;
+- exact shared occurrence merges incoming validity by intersection; joining explicit invalidation/absent proof cannot be silently replaced by stronger canonical proof;
 - exact shared occurrence remains persistently stale if either canonical or joining legacy copy is stale; a fresh joining copy cannot clear canonical stale state;
 - canonical fresh `D -> K`, joining shared D stale and K absent/different: bootstrap persists D stale, then J2b persists selected K stale so later D `Unchanged` cannot freshen K;
 - local conflicting legacy occurrence is concurrent with canonical occurrence and later `modifiedAt` wins independent of upgrade time;
@@ -838,11 +883,14 @@ At minimum cover:
 
 - `keep` preserves ValueId;
 - pure per-record format rewrite is identical regardless of selected/non-selected status;
-- `override()` preserves ValueId and mismatch with canonical codec fails before cutover;
+- total format rewrite handles retained historical records for node families absent from target schema, or migration fails before cutover if no total rewrite exists;
+- Journal-aware migration rejects legacy value-producing `override()`; representation-only change uses `keep` plus canonical codec;
 - explicit `invalidate()` preserves cached ValueId and uses true node-scoped invalidation;
-- old full certificate followed by maintenance target weaker/no proof uses an occurrence-scoped proof barrier and the old certificate cannot win replay;
-- a proof barrier for V does not invalidate certificates for a concurrent/later replacement ValueId V2;
-- stale `keep`/`override` proof weakening likewise removes unwanted old validity without node-wide taint;
+- old full certificate followed by maintenance target weaker/no proof uses per-input proof-edge barriers and old removed edges cannot win replay;
+- two replicas independently weaken the same preserved ValueId to the same partial proof and later synchronization retains that partial proof rather than losing all proof;
+- concurrent proof-edge barriers for different inputs compose to removal of the union of those edges;
+- a proof-edge barrier for V does not invalidate certificates for a concurrent/later replacement ValueId V2;
+- stale `keep` proof weakening likewise removes unwanted old validity without node-wide taint;
 - proof-only/freshness-only/schema-only changes do not create ValueEvent;
 - migration `A -> B`, both fresh, then `invalidate(A)` persists propagated stale B so revalidating A `Unchanged` does not freshen B;
 - `create()` or true semantic replacement creates a new ValueId;
