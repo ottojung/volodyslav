@@ -88,6 +88,12 @@ Startup obtains exactly one of:
 
 Failure to query or obtain known synchronized state MUST NOT fall back to fresh creation.
 
+A recovery source may report **source exists** for writer A only when it can guarantee that the held snapshot contains the complete A-authored stream through the greatest A coordinate ever durably published by the supported lifecycle. In other words, the source is authoritative enough for writer continuation, not merely an arbitrary readable/lagging copy.
+
+If the source cannot establish that completeness guarantee, including when another supported location may contain a longer already-published A prefix, it MUST report the result as indeterminate/error rather than permit restoration followed by new A authoring.
+
+This rule prevents restoration from an old `A:1..900` snapshot from later reusing `A:901` when `A:901..905` had already escaped to another replica. It also protects the monotone NodeIdentifier allocation watermark carried by that missing prefix.
+
 ### 4.2 Receiver-less restore
 
 Restoring an absent installation is conceptually:
@@ -103,6 +109,8 @@ The held source snapshot supplies the continuing installation identity:
 ```text
 localWriter = snapshot.localWriter
 ```
+
+and MUST satisfy the complete-own-stream continuation guarantee from §4.1 before this installation may ever author another record under that writer.
 
 Restore retains the source history and reconstructs:
 
@@ -137,11 +145,13 @@ project(empty journal) = empty graph
 
 ## 5. Same-writer Journal restoration and recovery
 
-A behind but existing **Journal** installation may recover a longer exact prefix of its own writer stream.
+A behind but existing **Journal** installation may recover a longer exact prefix of its own writer stream only through a continuation-safe recovery source.
 
-If local A retains `A:1..p` and a compatible held source contains agreeing `A:1..q`, `q >= p`, maintenance may retain `A:(p+1)..q` together with causally required foreign history and reconstruct allocator/high-water/projection before authoring again.
+If local A retains `A:1..p` and such a source contains agreeing `A:1..q`, `q >= p`, maintenance may retain `A:(p+1)..q` together with causally required foreign history and reconstruct allocator/high-water/projection before authoring again.
 
-New A records begin strictly after q. Any overlap disagreement is a writer fork.
+Before new A records are allocated, the recovery source MUST guarantee that q is at least the greatest A coordinate ever durably published by the supported lifecycle. A generic peer/source snapshot which merely happens to contain a longer prefix is insufficient if it cannot make that guarantee.
+
+New A records begin strictly after q. Any overlap disagreement is a writer fork. A source which cannot prove continuation completeness yields an indeterminate/recovery failure rather than permission to continue A.
 
 Two independently live installations intentionally authoring under one fingerprint are unsupported.
 
@@ -263,16 +273,24 @@ A divergent legacy value is not made causally later merely because its host upgr
 - does not treat one legacy cache's absence as deletion evidence;
 - preserves the joining writer fingerprint/allocator watermark.
 
-For an **exact shared occurrence**, canonical proof is retained as the proof basis; join does not author a causally-later validation merely to strengthen the joining host's proof. Shared freshness is conservative:
+For an **exact shared occurrence**, positive validity is merged conservatively by intersection:
+
+```text
+joinedValid(K) = canonicalValid(K) intersect joiningValid(K)
+```
+
+The canonical certificate remains the positive proof basis. For every canonical incoming edge absent from the joining legacy proof, join authors an occurrence-and-input-specific `proof(value,input)` barrier. Join never adds an edge missing on the canonical side merely because the joining side has it, and it does not author a causally-later validation merely to strengthen the joining host's proof.
+
+Shared freshness is also conservative:
 
 ```text
 joined shared occurrence stale
     iff canonical legacy copy stale OR joining legacy copy stale
 ```
 
-An uncovered value-scoped bootstrap invalidation is retained/authored when required, so a fresh joining copy cannot clear canonical stale state and a stale joining copy can make a canonical-fresh shared occurrence stale without changing ValueId.
+An uncovered value-scoped bootstrap invalidation is retained/authored after those proof-edge barriers when required, so a fresh joining copy cannot clear canonical stale state and a stale joining copy can make a canonical-fresh shared occurrence stale without changing ValueId.
 
-After direct stale roots are represented, join performs the bootstrap propagated-staleness pass over the selected dependency DAG. If selected K has complete own proof (`selfProofReady`) but is stale because a direct input is stale, join ensures an uncovered value-scoped bootstrap invalidation exists for current `valueId(K)`. This applies to canonical-only, joining, and shared selected occurrences. Consequently a later upstream `Unchanged` cannot silently freshen a dependent which became persistently stale during bootstrap merge.
+After direct stale/proof roots are represented, join performs the bootstrap propagated-staleness pass over the selected dependency DAG. If selected K has complete own **effective** proof (`selfProofReady`) but is stale because a direct input is stale, join ensures an uncovered value-scoped bootstrap invalidation exists for current `valueId(K)`. This applies to canonical-only, joining, and shared selected occurrences. Consequently a later upstream `Unchanged` cannot silently freshen a dependent which became persistently stale during bootstrap merge.
 
 Two independent late joiners with the same occurrence that differs from the canonical cut may assign distinct bootstrap ValueIds. Later synchronization may stale dependents naming the losing occurrence. This accepted limitation is `$id-1635227135166767`.
 
@@ -285,21 +303,19 @@ No particular remote host needs to reconcile, acknowledge, or return merely for 
 A Journal-aware migration:
 
 1. validates source Journal/projection under source version;
-2. deterministically rewrites every retained record into target representation, preserving IDs/meaning;
+2. deterministically rewrites **every retained record**, including history for node families removed from the target schema, into target representation while preserving IDs/meaning;
 3. applies one pure per-record payload rewrite to every affected retained ValueEvent regardless of selected status;
 4. computes target graph under isolated target storage;
-5. preserves ValueIds for occurrence-preserving decisions such as `keep`, `override`, and `invalidate`;
-6. treats `override()` as an assertion against the canonical per-record rewrite;
+5. preserves ValueIds for occurrence-preserving semantic decisions such as `keep` and `invalidate`; representation-only change is handled by the codec rather than `override()`;
+6. rejects the legacy value-producing `override()` path when the source already contains Journal history;
 7. creates new ValueEvents only for actual new/replaced semantic occurrences;
 8. preserves true explicit `invalidate(K)` as a node-scoped invalidation;
-9. when maintenance merely weakens proof for preserved occurrence V, authors an occurrence-scoped `scope={kind:"proof",value:V}` barrier before target validation rather than a node-wide invalidation;
-10. persists target propagated-stale state with value-scoped invalidation whenever a target-stale occurrence's own proof is otherwise complete, even when it is already recursively stale through an input;
+9. when maintenance merely weakens proof for preserved occurrence V, authors one occurrence-and-input-specific `scope={kind:"proof",value:V,input:D}` barrier for every removed incoming edge D rather than a node-wide or whole-certificate invalidation;
+10. persists target propagated-stale state with value-scoped invalidation whenever a target-stale occurrence's own effective proof is otherwise complete, even when it is already recursively stale through an input;
 11. verifies target replay;
 12. atomically cuts over.
 
-A proof barrier affects certificates for only its named ValueId. It does not invalidate proof for a concurrent/later replacement occurrence.
-
-A Journal-aware `override()` result which disagrees with canonical per-record rewrite fails before cutover.
+Proof-edge barriers affect only the named input edge of the named ValueId. Concurrent barriers for the same V compose by removing the union of the edges they name; they do not destroy unrelated proof entries or proof for another replacement ValueId.
 
 Journal-aware migration does not require a canonical migration participant. Independently migrated replicas may author different ValueIds for genuinely replaced occurrences; later synchronization may stale dependents which named a losing occurrence. This is accepted.
 
@@ -341,11 +357,11 @@ without deleting retained history.
 
 Reset preserves an already-selected value occurrence when immutable semantic occurrence state already matches target. It authors new ValueEvents only where occurrence itself must change.
 
-When reset merely removes incoming validity for a preserved occurrence V, it authors an occurrence-scoped **proof barrier** for V before the target validation. It does not use a node-scoped invalidation merely as a certificate-selection device.
+When reset merely removes incoming validity for a preserved occurrence V, it authors one occurrence-and-input-specific **proof-edge barrier** for each removed edge before any target validation. It does not use a node-scoped invalidation merely as a certificate-selection device.
 
-If reset target stores a node stale while its own proof is otherwise complete, reset persists that stale state with a value-scoped invalidation even when recursive replay is already stale through an input.
+If reset target stores a node stale while its own effective proof is otherwise complete, reset persists that stale state with a value-scoped invalidation even when recursive replay is already stale through an input.
 
-An unseen concurrent event may later affect ordinary synchronization normally; a reset proof barrier for one ValueId does not taint certificates for another occurrence.
+An unseen concurrent event may later affect ordinary synchronization normally; a reset proof-edge barrier for one ValueId/input does not taint unrelated proof or certificates for another occurrence.
 
 A completely absent installation does not use reset. Pre-Journal bootstrap join is also not reset: divergent bootstrap values represent pre-existing legacy facts and do not inherit reset's causally-later target-repair semantics.
 
@@ -400,6 +416,7 @@ Unsupported operations include:
 - mixed record formats in one active replica;
 - destructive authoritative-history truncation followed by continued same-writer authoring;
 - independently cloning one writer identity into multiple live writers;
+- resuming a writer from a recovery snapshot which cannot guarantee the complete own-writer stream ever published;
 - manually editing graph sublevels away from Journal replay;
 - bypassing required Journal-aware version migration;
 - forcing ordinary sync/reset across incompatible snapshot metadata;
@@ -412,8 +429,9 @@ Unsupported operations include:
 - rerunning legacy migration callbacks during creator-resume;
 - continuing creator-resume when artifact projection and persisted legacy semantic state disagree;
 - using a maintenance proof barrier with node scope when no actual node invalidation occurred;
-- using replica-local `override()` output to rewrite one immutable historical record differently from canonical version codec;
-- treating semantic-changing `override()` as representation-only rewrite;
+- using a whole-ValueId proof barrier when only specific incoming proof edges are being retired;
+- evaluating the legacy value-producing `override()` path after Journal history exists;
+- using a non-total format codec which cannot rewrite retained history for target-removed node families;
 - treating a checkpoint as replacement authority for missing history.
 
 New recovery/import behavior must be introduced as an explicit controlled transition with stated invariants.
