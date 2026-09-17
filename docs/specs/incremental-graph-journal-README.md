@@ -55,11 +55,16 @@ Journal 3 specifies:
 - bootstrap as semantic identity over already-persisted legacy state;
 - creator-resume without rerunning migration callbacks;
 - historical late-host bootstrap conflicts using legacy `modifiedAt`, not upgrade time;
+- joining bootstrap ValueEvents allocated in nondecreasing `(modifiedAt, canonical NodeKey)` order;
+- locally-authored bootstrap proof naming the joining host's **actual legacy input occurrences**, even when those inputs lose conflict selection;
 - exact-shared bootstrap proof intersection (`canonicalValid ∩ joiningValid`) and conservative stale merge;
 - bootstrap propagation of recursive-only stale state;
 - the accepted non-canonical bootstrap ValueId split trade-off `$id-1635227135166767`;
+- the accepted conservative late-join negative-evidence trade-off `$id-4465456703882268`;
 - bounded bootstrap compatibility rather than permanent support for every old artifact;
 - a total deterministic whole-history database-format rewrite, including records for target-removed node families;
+- one pure directed `JournalFormatCodec` with deterministic `rewriteNodeKey` / `rewriteComputedValue`, followed by target re-canonicalization such as ValidationBasis re-sorting;
+- Journal-aware `keep` preserving occurrence identity, freshness, and target-shape-compatible source replay proof even when recursively stale;
 - representation-only Journal migration through the canonical codec + `keep`;
 - `JournalVersionCompatibilityError` before cutover when that codec is not total over retained source history;
 - independent genuine replacement migrations, accepting possible dependent staleness after later conflict;
@@ -87,13 +92,18 @@ The tests/examples intentionally cover at least:
 - pre-Journal bootstrap path requiring execution-time semantic/allocator transformation being rejected;
 - creator crash after artifact publication resuming exact frozen history;
 - current post-bootstrap snapshot not substituting for the original bootstrap cut;
+- joining bootstrap ValueEvents out of `(modifiedAt, canonical NodeKey)` order being authority-inconsistent;
+- a joining dependent whose own legacy input occurrence loses conflict selection remaining hard stale rather than being certified against the winning input;
 - canonical stale/shared fresh and canonical fresh/shared stale both remaining conservatively stale;
 - exact shared canonical proof edge absent from joining proof being removed with `proof(V,D)`;
 - joining stale input persistently staling a canonical dependent;
+- unseen post-bootstrap validation not erasing a late join's concurrent negative proof/stale evidence until causally revalidated;
 - divergent legacy value authority depending on persisted `modifiedAt`, not upgrade time;
 - legacy cache absence not manufacturing deletion;
 - identical non-canonical late joiners possibly splitting ValueId as an explicit accepted trade-off;
+- recursively stale `keep` preserving current-shape-compatible source replay proof;
 - same historical ValueEvent selected on one replica but not another rewriting identically through the total codec;
+- NodeKey rewriting re-sorting ValidationBasis entries by target canonical order;
 - retained history for a node family removed from target schema still receiving a deterministic target-format representation;
 - non-total Journal codec failing `JournalVersionCompatibilityError` before cutover;
 - independent genuine replacement migration possibly staling dependents after conflict.
