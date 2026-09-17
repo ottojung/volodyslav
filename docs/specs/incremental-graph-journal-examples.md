@@ -107,20 +107,22 @@ After source history and normalization are incorporated, syncing unchanged sourc
 
 ## Trace 12: exact same-writer prefix recovery
 
-Local A has A:1..100; controlled source has agreeing A:1..120. Import 101..120, rebuild writer state, continue after 120. Overlap disagreement is a fork.
+Local A has A:1..100. A continuation-safe recovery source has agreeing A:1..120 and guarantees 120 is at least the greatest A coordinate ever durably published. Import 101..120, rebuild writer state, continue after 120. Overlap disagreement is a fork.
+
+A generic peer snapshot is insufficient to authorize continuation if it cannot guarantee no longer A prefix exists elsewhere.
 
 ## Trace 13: certificate selection prefers invalidation coverage
 
 C2 causally covers value invalidation I for current V. Concurrent C1 has same full basis and greater authority but does not observe I. C2 wins because coverage is compared before authority.
 
-## Trace 14: competing partial certificates never combine
+## Trace 14: competing partial certificates never combine positive proof
 
 ```text
 C1=[{A:A2},{B:B1}]
 C2=[{A:A1},{B:B2}]
 ```
 
-Replay chooses one certificate; it never synthesizes `{A:A2,B:B2}`.
+Replay chooses one certificate; it never synthesizes `{A:A2,B:B2}`. Proof-edge barriers may only subtract edges from the selected certificate.
 
 ## Trace 15: historical old-schema certificate remains intelligible
 
@@ -132,7 +134,7 @@ K1 is stale due to `Invalidate(value=K1)`. Later K2 wins. K1 marker remains hist
 
 ## Trace 17: receiver-less absent-state restore
 
-No local database exists. Recovery source yields snapshot S with localWriter A. Startup restores A history/allocator/projection. Query failure does not generate fresh writer B.
+No local database exists. Recovery source yields continuation-safe snapshot S with localWriter A. Startup restores A history/allocator/projection. Query failure or inability to guarantee the complete published A stream does not generate fresh writer B and does not resume A from a stale prefix.
 
 ## Trace 18: canonical bootstrap source decision
 
@@ -200,15 +202,40 @@ so canonical K is stale.
 
 Joining legacy host has the exact same occurrence V but marks it fresh with complete local proof.
 
-Join reuses V but **does not author a joining ValidateEvent merely to strengthen the shared occurrence's proof**. It preserves/ensures an uncovered value-scoped bootstrap invalidation for V because one side was stale.
+Join reuses V but does **not** author a joining ValidateEvent merely to strengthen the shared occurrence's proof. It preserves/ensures an uncovered value-scoped bootstrap invalidation for V because one side was stale.
 
-Therefore migration execution cannot produce a causally-later C2 which covers I and accidentally freshens K. Exact shared stale merge is symmetric:
+Therefore upgrade execution cannot produce a causally-later C2 which covers I and accidentally freshens K. Exact shared stale merge is symmetric:
 
 ```text
 joined stale = canonical stale OR joining stale
 ```
 
-## Trace 25: joining stale shared input persistently stales canonical dependent
+## Trace 25: exact shared proof is the intersection
+
+```text
+D -> K
+canonical:
+    exact V for K, fresh
+    D -> K valid
+joining legacy:
+    exact same V
+    K explicitly invalidated, so D -> K invalid and K stale
+```
+
+Join reuses V. It does not replace V and does not adopt canonical proof unchanged. Instead it authors:
+
+```text
+Invalidate(K,scope=proof(V,D),reason=bootstrap)
+Invalidate(K,scope=value(V),reason=bootstrap)
+```
+
+The canonical certificate remains the positive basis, but D's edge is ineffective because of the proof-edge barrier. Thus joined proof is `canonicalValid ∩ joiningValid`.
+
+A later `pull(K)` cannot cache-revalidate merely from the canonical D proof; the joining host's explicit invalidation has not been softened away.
+
+If joining has an edge absent canonically, join still does not strengthen canonical proof; intersection remains conservative.
+
+## Trace 26: joining stale shared input persistently stales canonical dependent
 
 ```text
 D -> K
@@ -220,7 +247,7 @@ joining legacy:
     K absent (or different K loses authority)
 ```
 
-Pass J2 persists stale Dc. Kc remains selected and has complete own proof, so replay now reports K stale only recursively through D.
+Pass J2 persists stale Dc. Kc remains selected and has complete own effective proof, so replay now reports K stale only recursively through D.
 
 Pass J2b therefore authors:
 
@@ -230,42 +257,52 @@ Invalidate(K,scope=value(Kc),reason=bootstrap)
 
 Later `pull(D) -> Unchanged` may freshen D. K remains stale until K itself validates/recomputes.
 
-## Trace 26: identical non-canonical late joiners may split ValueId
+## Trace 27: identical non-canonical late joiners may split ValueId
 
 Canonical C has older K. J1/J2 both hold same newer non-canonical legacy K, but independently join and author J1:k and J2:k. Later authority selects one; dependent certs naming loser may stale. This is accepted by `$id-1635227135166767`.
 
-## Trace 27: bounded bootstrap compatibility
+## Trace 28: bounded bootstrap compatibility
 
 A future release which no longer supports artifact B's bootstrap target rejects B with `JournalVersionCompatibilityError` before authoring. Journal 3 does not require an eternal decoder/migration ladder.
 
-## Trace 28: representation-only override preserves ValueId
+## Trace 29: representation-only Journal migration uses one codec
 
-X/Y retain historical V, selected only on X. Pure format codec rewrites V identically on both. X's `override()` callback merely asserts selected result equals codec. Different replica-local output fails before cutover; no JournalRecordId fork is created.
+X/Y retain historical V, selected only on X. The total pure format codec rewrites V identically on both, including if V's node family is no longer present in the current target schema.
 
-## Trace 29: independent genuine replacement migration may stale dependent
+X's selected semantic occurrence uses `keep`; there is no second Journal-aware `override(valueCallback)` implementation. Later sync therefore cannot discover two different target bodies for V merely because selection differed across replicas.
+
+## Trace 30: independent genuine replacement migration may stale dependent
 
 X/Y share A1/B1; migration genuinely replaces A independently as A2x/A2y. After union one wins; dependent proof naming losing A occurrence may stale/recompute. Accepted; no canonical migration participant required.
 
-## Trace 30: occurrence-preserving migration
+## Trace 31: occurrence-preserving migration
 
 A version bump changes schema/proof/freshness but retains semantic A/B occurrences. A1/B1 ValueIds remain; migration appends only required proof/freshness history.
 
-## Trace 31: proof barrier weakens one occurrence without tainting another
+## Trace 32: proof-edge barrier weakens one occurrence without tainting another
 
-Before migration current B occurrence is B1 with full `{A:A1}` proof. Maintenance target keeps B1 but removes A->B validity.
+Before migration current B occurrence is B1 with full `{A:A1,C:C1}` proof. Maintenance target keeps B1 but removes A->B validity while retaining C->B.
 
-Appending only `{A:"unknown"}` is insufficient because old certificate has greater basisMatchCount. Migration authors:
+Appending only a later partial certificate is insufficient because older proof may otherwise remain stronger. Migration authors:
 
 ```text
-M:n   Invalidate(B,scope=proof(B1),reason=migration)
-M:n+1 Validate(B,value=B1,basis=[{A:"unknown"}],reason=migration)
+M:n   Invalidate(B,scope=proof(B1,A),reason=migration)
+M:n+1 Validate(B,value=B1,basis=[{A:"unknown"},{C:C1}],reason=migration)
 ```
 
-Old B1 certificate is ineligible; target has no A->B edge.
+The old certificate's A edge is ineffective; C remains valid.
 
-Now suppose another replica concurrently created B2 and validated B2 without observing M:n. After histories meet, M:n does **not** make B2's certificate ineligible because the barrier names B1 only.
+Now suppose another replica concurrently created B2 and validated B2 without observing M:n. The B1/A barrier does not affect B2.
 
-## Trace 32: explicit migration invalidate remains node-scoped
+## Trace 33: concurrent same-ValueId migrations compose
+
+Two replicas share B1 with full `{A:A1,C:C1}` proof and independently migrate to target `{A:A1,C:unknown}`.
+
+Each authors its own `proof(B1,C)` barrier and partial target validation. After synchronization, either target certificate may win by authority, but A->B remains valid and C->B remains invalid. The concurrent barriers do not erase A proof.
+
+Variant: X removes C while Y removes A. The merged negative evidence contains barriers for both inputs, so both edges are invalid. Independent maintenance composes as intersection, not as arbitrary whole-certificate destruction.
+
+## Trace 34: explicit migration invalidate remains node-scoped
 
 If migration explicitly calls `invalidate(B)`, that is not merely maintenance proof weakening. It authors:
 
@@ -275,34 +312,40 @@ Invalidate(B,scope=node,reason=migration)
 
 A certificate which did not causally observe this actual node invalidation cannot clear it, even if that certificate targets another concurrent occurrence.
 
-## Trace 33: migration persists propagated staleness
+## Trace 35: migration persists propagated staleness
 
 `A -> B`, initially both fresh with B proof `{A:a1}`. Migration explicitly invalidates A. Target graph has A stale and B persistently stale while B proof remains complete.
 
 Migration still authors `Invalidate(B,scope=value(b1),reason=migration)` even though B is recursively stale at cut. Later `A -> Unchanged` does not freshen B.
 
-## Trace 34: reset proof barrier removes receiver-only proof
+## Trace 36: reset proof-edge barrier removes receiver-only proof
 
-Receiver/source union selects same A/B occurrences but receiver has full A->B validity while reset target does not.
+Receiver/source union selects same B1 occurrence. Receiver has `{A:A1,C:C1}` validity while reset target keeps only C->B.
 
-Reset authors `Invalidate(B,scope=proof(B1),reason=reset)` before target partial validation. Old B1 full certificate becomes ineligible. A concurrent/later B2 certificate is not tainted by B1's barrier.
+Reset authors `Invalidate(B,scope=proof(B1,A),reason=reset)` and, if needed, a target validation. The old certificate may still prove C but cannot reintroduce A. A concurrent/later B2 certificate is not tainted by B1's barrier.
 
-## Trace 35: reset persists target propagated staleness
+## Trace 37: reset persists target propagated staleness
 
 Reset target stores A stale and B stale with complete B proof. Reset ensures value-scoped marker for final B ValueId even if replay is already recursively stale through A. Later `A -> Unchanged` does not freshen B.
 
-## Trace 36: reset deletion is deterministic
+## Trace 38: reset deletion is deterministic
 
 If union selects K present and target requires absence, reset authors exactly one `Delete(K,reason=reset)`. If absence is already selected, no redundant delete.
 
-## Trace 37: bootstrap stale node with partial proof
+## Trace 39: bootstrap stale node with partial proof
 
 Legacy K has inputs A/B, is stale, with only A->K validity. Canonical bootstrap writes partial basis `{A:A0,B:"unknown"}` and value-scoped stale marker. Replay reproduces partial proof without invented provenance.
 
-## Trace 38: projection rebuild
+## Trace 40: stale recovery source cannot resume writer
+
+A previously published through A:905 and another replica retained it. A loses local state. A recovery source can only provide A:1..900 and cannot prove that 900 is the complete published A stream.
+
+It must report indeterminate/error. Restoring and continuing at A:901 would fork immutable writer IDs and could reuse NodeIdentifier allocation indices represented only in A:901..905.
+
+## Trace 41: projection rebuild
 
 Authoritative Journal is valid but derived graph bytes are damaged. Maintenance rebuilds projection without semantic event.
 
-## Trace 39: synchronization normalization is real history
+## Trace 42: synchronization normalization is real history
 
 Receiver sees winning delete A from Y and authors dependent delete B; unseen concurrent A2 from Z arrives later. The B deletion remains real history. Different counterfactual schedules may author different normalization history while each fair execution converges.
