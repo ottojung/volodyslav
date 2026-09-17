@@ -105,26 +105,17 @@ After sync B=b2 is persistently stale. Later `A -> Unchanged` may freshen A but 
 
 For 2–4 replicas, stop non-normalization changes, synchronize in varying fair orders to fixed point, and require equivalent projections/no-op repeated sync within each actual schedule.
 
-## Same-writer recovery tests
+## Lifecycle fault-model tests
 
-Cover shorter->longer agreeing exact prefix, allocator/high-water reconstruction, continued authoring after recovered head, overlap fork rejection, and no duplicate reauthoring.
+The reference lifecycle state generator MUST be closed under supported Volodyslav transitions plus complete disappearance of the local database. It MUST NOT generate partial external rollback/damage as an ordinary recoverable input.
 
-Continuation is permitted only when `InstallationRecoverySource` establishes a continuation-safe head as defined by `database-lifecycle.md` §4.1: no higher record for that writer can later re-enter supported history after recovery.
+Cover:
 
-Critical stale-source regression:
-
-```text
-A recovery snapshot contains A:1..900
-some supported surviving state can later reintroduce A:901..905
-```
-
-The recovery source MUST NOT return continuation-safe `Exists`; restore/recovery fails indeterminate rather than resuming at A:901. This prevents both writer-ID fork and `last_node_index` rollback/reuse.
-
-Counterexample to the old over-strong wording: if A:901..905 existed only on the lost local disk and no supported state can reintroduce them, their loss does not by itself make A:900 unsafe. The test oracle is future re-entry, not whether a coordinate was once locally committed.
-
-Establishing continuation safety must not require contacting/discovering every possible peer; exercise a recovery-source implementation whose transport-level invariant can make the guarantee locally, consistent with `$id-4719065396881648`.
-
-This does not substitute for pre-Journal creator-resume.
+- supported ordinary/migration/sync/reset transitions preserve a valid database or fail without exposing an invalid target;
+- injected process crashes at supported publication/cutover boundaries expose only states explicitly permitted by those transition rules;
+- complete deletion of the local database yields `Absent` and enters absent-state restore/fresh creation;
+- partial deletion of Journal/graph state, replacement with an older local snapshot, mixed old/new persistent state, and direct external mutation are corrupted/unsupported, not new lifecycle states;
+- an existing local writer A at 900 plus surviving supported A history through 905 is rejected as `JournalWriterBehindError` and never repaired by importing 901..905 into the existing receiver.
 
 ## Absent-installation restoration tests
 
@@ -133,6 +124,24 @@ With no local database:
 1. continuation-safe installation recovery source exists -> restore/adopt `snapshot.localWriter`;
 2. source definitely absent -> only then generate fresh fingerprint;
 3. query/read fails or continuation safety cannot be guaranteed -> fail without fresh fallback.
+
+Absent restoration must not accept an existing but damaged/truncated database as though it were absent.
+
+Critical continuation-safety regression:
+
+```text
+complete local database is gone
+recovery snapshot contains A:1..900
+some supported surviving state can later reintroduce A:901..905
+```
+
+The recovery source MUST NOT return continuation-safe `Exists`; absent restore fails indeterminate rather than resuming at A:901.
+
+If A:901..905 existed only on the completely lost local database and no supported state can reintroduce them, their loss does not by itself make A:900 unsafe. The test oracle is future re-entry after complete local loss, not whether a coordinate was once locally committed.
+
+Establishing continuation safety must not require contacting/discovering every possible peer; exercise a recovery-source implementation whose transport-level invariant can make the guarantee locally, consistent with `$id-4719065396881648`.
+
+This does not substitute for pre-Journal creator-resume.
 
 ## Reset tests
 
@@ -151,9 +160,9 @@ Expected:
 
 - `resetTo()` fails `JournalWriterBehindError` before importing any source record or authoring any reset event;
 - active receiver Journal/projection remain unchanged;
-- the held `JournalSyncSource` is not used as continuation authority;
-- lifecycle must first complete `recoverExistingWriterFrom(InstallationRecoverySource)` with a continuation-safe head;
-- reset succeeds only when retried afterward;
+- receiver is classified corrupted/unsupported under the lifecycle fault model;
+- no `recoverExistingWriterFrom(...)` or equivalent same-writer recovery path is invoked;
+- reset is not retried merely to repair the local rollback;
 - divergent A overlap is `JournalForkError`.
 
 ### Reset proof weakening
@@ -460,7 +469,7 @@ For each current database version test golden fixtures, round trip, malformed-fi
 
 ## Corruption tests
 
-Reject stream gaps, same-ID disagreement, missing/transitively-open context, wrong own-prefix, authority not extending causality, bad validation references/bases, illegal ordinary `"unknown"`, invalid value/proof scope references, NodeIdentifier collision, decreasing writer-state watermark, graph/Journal mismatch, and mixed record formats.
+Reject stream gaps, same-ID disagreement, missing/transitively-open context, wrong own-prefix, authority not extending causality, bad validation references/bases, illegal ordinary `"unknown"`, invalid value/proof scope references, NodeIdentifier collision, decreasing writer-state watermark, graph/Journal mismatch, mixed record formats, and evidence that an existing local writer has lost a surviving suffix.
 
 ## Transaction failure tests
 
