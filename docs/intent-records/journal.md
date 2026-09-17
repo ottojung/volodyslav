@@ -72,13 +72,51 @@ date: 2026/09/06
 source: @ottojung
 kind: requirement
 
-Synchronization must converge.
+Synchronization must converge for whichever finite set of supported replicas is actually participating, without depending on participation by absent replicas.
 
-For any finite set of supported replicas, once graph-changing operations stop, fair repeated synchronization must eventually bring all replicas participating in that actual execution to observably equivalent IncrementalGraph states. Once this state has been reached, further synchronization without intervening graph changes must be a semantic no-op.
+Consider a quiescent participation epoch with a finite participating set P: non-normalization graph-changing operations have stopped, the membership of P remains fixed for the duration of the epoch, and every replica in P remains available long enough for fair synchronization. Synchronization among P must eventually reach a settled state in which:
 
-Synchronization itself may author real semantic normalization events required by IncrementalGraph semantics. Consequently this requirement is convergence of each actual fair execution; it does not require two counterfactual executions which observed sources in different orders and therefore genuinely authored different normalization histories to end identically.
+- all replicas in P have observably equivalent projected IncrementalGraph states;
+- all replicas in P have incorporated the same retained synchronized Journal closure available within P, meaning equal writer frontiers and identical immutable records at every retained coordinate in that closure, even though local physical layout, indexes, and locally-authored stream ownership may differ; and
+- further synchronization among unchanged replicas in P transfers no new retained history, authors no new semantic normalization records, and leaves every projection unchanged.
+
+This convergence requirement is closed over the replicas that actually remain available. If replicas A, B, and C have participated, graph-changing operations stop, and A then becomes unavailable before convergence, B and C must still be able to settle without A. If A later returns, the enlarged participating set begins a new convergence epoch; synchronization must incorporate the histories now available from A, B, and C and settle again.
+
+A replica may be absent for an arbitrarily long finite interval or may never return. Its absence must not prevent the remaining participating replicas from reaching their own settled state. This specializes the independent no-remote-participation requirement to convergence behavior.
 
 This requirement does not prescribe CRDTs or another particular convergence mechanism.
+
+---
+
+$id-7140986253417724
+title: Counterfactual synchronization confluence is not required
+date: 2026/09/16
+source: @ottojung
+kind: accepted-tradeoff
+
+Synchronization may author real semantic normalization events required by IncrementalGraph semantics. Which normalization events become necessary may depend on the order in which a replica observes otherwise concurrent retained histories.
+
+Therefore Journal synchronization is not required to be counterfactually confluent. Two executions which start from the same replica states and eventually expose the same underlying histories, but expose them in different synchronization orders, may author different normalization histories and may settle to different retained Journals or projected graphs.
+
+This accepted non-confluence does not weaken convergence within an actual execution. Every quiescent participation epoch must still settle among its participating replicas according to `$id-4464408832385718`.
+
+---
+
+$id-5631842079463518
+title: Synchronization settling requires a host-count bound
+date: 2026/09/16
+source: @ottojung
+kind: requirement
+
+Convergence must require a bounded number of synchronization operations after graph-changing operations and participation changes stop.
+
+For a quiescent participation epoch containing H participating replicas, the replicas must be able to reach the settled state required by `$id-4464408832385718` within at most H^2 state-advancing successful pairwise synchronization operations under fair scheduling.
+
+A state-advancing synchronization is one which either incorporates retained Journal history not already present at the receiver or authors semantic normalization history required because of the incorporated/retained history. Semantically redundant synchronization calls which transfer no new retained history and author no normalization records do not consume this bound, because an external scheduler may repeat such calls arbitrarily often. Failed attempts to contact an unavailable host likewise do not consume the bound.
+
+If a graph-changing operation occurs or the participating set changes, the current quiescent participation epoch ends and a new one begins with H recomputed from the new participating set. Fairness is still required: the bound does not permit a scheduler to indefinitely avoid a synchronization needed to disseminate relevant history.
+
+This is a bound on the number of state-advancing pairwise synchronization operations needed for settling, not an end-to-end CPU, I/O, or wall-clock running-time bound. The separate synchronization-performance intent may continue to defer change-sensitive running-time requirements.
 
 ---
 
