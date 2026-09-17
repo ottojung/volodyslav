@@ -90,7 +90,7 @@ Same-ID body disagreement is a fork. Representation migration is permitted only 
 
 A source->target Journal format migration defines a deterministic target representation for **every retained source-format record**, not merely records whose node families remain in target schema.
 
-Historical ValueEvents, validation-basis NodeKeys, invalidations, and other records for target-removed families remain retained and require deterministic target encodings. If the transform is not total over retained source history, that migration is unsupported before cutover.
+Historical ValueEvents, validation-basis NodeKeys, invalidations, and other records for target-removed families remain retained and require deterministic target encodings. If the transform is not total over retained source history, migration fails `JournalVersionCompatibilityError` before cutover.
 
 When payload representation changes, one pure per-record codec rewrites every affected retained ValueEvent independent of:
 
@@ -102,13 +102,7 @@ When payload representation changes, one pure per-record codec rewrites every af
 
 Thus two replicas retaining one historical ID produce the same target-format body.
 
-## No Journal-aware value-producing `override()`
-
-Once Journal history exists, the canonical codec is the sole source of representation-only target bytes.
-
-A selected occurrence whose semantic meaning survives uses `keep`. Journal-aware execution rejects the legacy `override(nodeIdentifier,value)` path rather than evaluating a second replica-local representation transform.
-
-The legacy override API remains relevant only to pre-Journal migrations whose source has no Journal history.
+A selected occurrence whose semantic meaning survives uses `keep`; the canonical whole-history codec is the only representation-rewrite mechanism.
 
 ## Maintenance proof-edge records
 
@@ -142,11 +136,11 @@ This requirement covers ordinary propagation, synchronization, bootstrap, reset,
 
 ## Safe local writer continuation
 
-A stored writer head is safe for continued local allocation only when lifecycle invariants establish that it is complete for that continuing writer.
+A stored writer head is safe for continued local allocation only when `InstallationRecoverySource` establishes a **continuation-safe head** under `database-lifecycle.md` §4.1.
 
-A generic peer `JournalSnapshot` is not sufficient continuation authority merely because it contains a longer agreeing local-writer prefix.
+For writer A at head q, continuation-safe means that after recovery no previously authored A record with sequence greater than q can later enter supported retained history. This is about future admissible history, not every record once committed to a lost local disk.
 
-The configured `InstallationRecoverySource` supplies the stronger continuation-safe contract used by absent restore and existing-writer recovery. If that source cannot establish that the recovered head is the greatest durable local-writer coordinate capable of later re-entering supported history, continuation remains indeterminate and no new local record may be allocated.
+A generic peer `JournalSnapshot` is not sufficient continuation authority merely because it contains a longer agreeing local-writer prefix. If continuation safety is indeterminate, no new local record may be allocated.
 
 After authoritative recovery, storage reconstructs at least:
 
