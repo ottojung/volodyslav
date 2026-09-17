@@ -367,3 +367,28 @@ Projection rebuild is permitted because Journal authority is intact. Missing/tru
 ## Trace 43: synchronization normalization is real history
 
 Receiver sees winning delete A from Y and authors dependent delete B; unseen concurrent A2 from Z arrives later. The B deletion remains real history. Different counterfactual schedules may author different normalization history while each fair execution converges.
+
+## Trace 44: mixed bootstrap winners preserve actual proof provenance
+
+```text
+D -> K
+canonical:
+    D = Dc, modifiedAt=20
+    K = Kc, modifiedAt=10
+joining legacy:
+    D = Dj, modifiedAt=10
+    K = Kj, modifiedAt=30
+    D -> K valid
+```
+
+Bootstrap conflict selection therefore chooses canonical `Dc` for D and joining `Kj` for K.
+
+Pass J1 still retains the joining host's own historical identity `joiningOccurrenceValueId(D)=Dj`. Pass J2 records Kj's actual legacy proof as:
+
+```text
+Validate(Kj, basis={D:Dj}, reason=bootstrap)
+```
+
+It does **not** rewrite the basis to `{D:Dc}` merely because Dc won selection.
+
+Replay sees selected D= Dc while Kj's basis names Dj, so the edge does not match and Kj is hard stale. The join never manufactures a fresh `Dc -> Kj` combination that no legacy replica validated.
