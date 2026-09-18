@@ -367,6 +367,8 @@ changed = false
 
 and authors no semantic records.
 
+After one successful reset, every pre-reset eligible certificate is already barriered on every non-target edge it could expose, and any reset-authored target certificate is causally after those barriers and proves only target edges. Therefore a second reset to the unchanged source computes no new unwanted edge in `PotentialValid - TargetValid`; if the selected certificate already has the required target proof/freshness coverage, it authors no barrier or validation.
+
 Repeated reset therefore cannot create an unbounded chain of equivalent ValueEvents/ValidateEvents/Deletes.
 
 ## Atomicity
