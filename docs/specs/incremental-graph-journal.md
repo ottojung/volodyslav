@@ -201,7 +201,7 @@ Independent genuine replacements may create different ValueIds on different repl
 
 Reset retains observed receiver/source history and establishes the requested source projection relative to that observed history.
 
-If the held reset source is ahead for the receiver's own local writer, reset fails `JournalWriterBehindError` before source import or reset authoring. This is unsupported existing-state rollback, not a same-writer recovery path.
+Reset's own-writer-ahead behavior is defined by `incremental-graph-journal-reset.md` §Preconditions and the shared lifecycle boundary in `database-lifecycle.md` §5.
 
 Otherwise reset preserves an already-matching occurrence, creates/replaces only when semantic occurrence state differs, uses `proof(V,D)` per removed incoming edge, persists target stale flags with `value(V)`, and authors DeleteEvent for target absence when necessary.
 
