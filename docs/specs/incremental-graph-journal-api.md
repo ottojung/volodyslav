@@ -189,7 +189,7 @@ resetTo(source: JournalSyncSource) -> Promise<ResetResult>
 
 Reset requires an established writable receiver and one held compatible snapshot.
 
-If that snapshot reveals a longer receiver-local writer prefix, reset fails `JournalWriterBehindError` before importing records or authoring events. This indicates corrupted/unsupported receiver lifecycle state; reset does not repair it and there is no supported existing-writer rollback-recovery API.
+If that snapshot is ahead for the receiver's own writer, reset follows `incremental-graph-journal-reset.md` §Preconditions and the shared lifecycle boundary in `database-lifecycle.md` §5.
 
 Reset maintenance semantics include:
 
