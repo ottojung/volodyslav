@@ -131,7 +131,7 @@ The persisted validation basis describes the **actual committed** computation/pr
 
 ## Atomicity and allocator safety
 
-Graph mutation, Journal records, writer head/watermark, and required derived state become durable together. Volatile allocator/index state must not outrun durable success.
+Graph mutation, Journal records, local writer head, allocator watermark, authority high-water, and required committed-pair/derived state become durable together. Volatile allocator/index state must not outrun durable success.
 
 ## No payload-equality identity inference
 
