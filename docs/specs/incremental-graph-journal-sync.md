@@ -143,9 +143,17 @@ Raw union may select a graph state that neither input separately materialized. J
 
 ## Phase 1: dependency-closure removal
 
-If selected current value K has a required direct input D whose selected head is absent, K cannot remain materialized.
+Let:
 
-Compute the selected dependent-removal closure and author:
+```text
+H0 = selectedHeads(J0)
+```
+
+using the raw maintenance view from `incremental-graph-journal-replay.md` §Raw selected-head view. Synchronization does not require `project(J0)` before structural normalization.
+
+If H0 selects a ValueEvent for K and a required direct input D is absent under H0, K cannot remain materialized.
+
+Compute that raw selected dependent-removal closure and author:
 
 ```text
 DeleteEvent {
