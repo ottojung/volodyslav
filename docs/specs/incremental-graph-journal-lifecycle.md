@@ -225,7 +225,8 @@ Detailed bootstrap/migration rules are normative in `incremental-graph-journal-m
 After reading stored database version:
 
 - matching current Journal version -> no migration;
-- supported older Journal version -> run its Journal-aware migration independently;
+- supported older Journal version -> resolve and execute the canonical Journal migration chain from that stored version to the running version, as defined by `incremental-graph-journal-migrations.md` §9b;
+- older Journal version without a complete canonical chain to the running version -> fail `JournalVersionCompatibilityError`;
 - unsupported version -> fail;
 - supported pre-Journal state -> run the canonical-bootstrap-source decision below.
 
