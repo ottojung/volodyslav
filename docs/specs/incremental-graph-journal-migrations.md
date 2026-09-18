@@ -426,7 +426,7 @@ Start from:
 Gbefore = project(Jbefore, sourceSchema)
 ```
 
-First rewrite **all retained history** into the target representation using the directed source->target `JournalFormatCodec` defined in `migration.md`:
+First rewrite **all retained history** into the target representation using the directed source->target `JournalFormatCodec` defined in §10a:
 
 ```text
 Jconverted = rewriteJournalFormat(
@@ -462,13 +462,59 @@ From this point onward, semantic-repair key comparisons and occurrence-preservat
 
 Replicas migrate independently; no canonical migration participant is required.
 
+## 10a. Journal format codec contract
+
+Journal-aware representation change has exactly one representation-rewrite mechanism: a pure directed source->target `JournalFormatCodec`. The ordinary pre-Journal `MigrationStorage` API in `migration.md` describes shipped behavior and is not the owner of this Journal 3 codec.
+
+```text
+JournalFormatCodec {
+    rewriteNodeKey(sourceKey: NodeKey) -> NodeKey
+    rewriteComputedValue(
+        sourceKey: NodeKey,
+        payload: ComputedValue
+    ) -> ComputedValue
+}
+```
+
+If a function is omitted, it defaults to the identity transform.
+
+Both functions are synchronous and deterministic. They receive only their explicit arguments plus the fixed source->target migration definition; they receive no database handle, network/filesystem capability, clock, randomness, allocator, migration traversal state, or other mutable replica-local capability.
+
+`rewriteNodeKey` changes representation only: its result denotes the same historical semantic node under the target version. It is injective over the complete supported source NodeKey semantic domain, independent of which keys one replica happens to retain.
+
+Define `SourceNodeKeyDomain(sourceVersion)` as every distinct valid canonical semantic NodeKey which may occur in supported source-version Journal history, including keys for historical node families no longer present in the target schema. For every `K1`, `K2` in that domain:
+
+```text
+K1 != K2
+    => rewriteNodeKey(K1) != rewriteNodeKey(K2)
+```
+
+This is a contract of the codec definition, not a property established solely by scanning one replica's retained history. A concrete migration rejects any collision it observes as defensive validation, but absence of a local collision does not prove the distributed injectivity requirement. A many-to-one node merge is semantic migration, not representation rewrite.
+
+`rewriteComputedValue` likewise changes representation only and preserves the historical semantic value represented by the source ValueEvent. Semantic creation, replacement, or merging belongs to semantic migration decisions rather than the format codec.
+
+The whole-history rewrite pipeline:
+
+1. decodes each retained record under the source database version into the Journal semantic model;
+2. rewrites every embedded NodeKey using `rewriteNodeKey`, including record node keys, `ValidationBasis.input`, and `proof(V,D)` input keys;
+3. rewrites every retained ValueEvent payload using `rewriteComputedValue(sourceKey,payload)`, including non-selected values and values for node families absent from the target schema;
+4. preserves `JournalRecordId`, writer sequence, contexts, AuthorityTime meaning, ValueId/reference identity, NodeIdentifier, and timestamps;
+5. re-canonicalizes target-format structures after rewriting, including sorting every ValidationBasis by the target version's canonical persisted NodeKeyString order; and
+6. encodes the transformed semantic record using the target version's canonical record encoding.
+
+The codec is total over all retained source-version history. If any retained record has no deterministic valid target representation, or a locally observed NodeKey collision witnesses violation of the codec contract, migration fails `JournalVersionCompatibilityError` before cutover.
+
+Two replicas applying the same source->target transition to the same historical record must produce the same target-format record body.
+
+Representation-only selected state uses semantic `keep`; there is no second value-producing migration decision for representation rewriting. A stale kept occurrence does not lose source-replay proof merely because it is stale: Journal provenance distinguishes explicit node invalidation, value-scoped stale state, proof-edge barriers, and recursive staleness. Target-shape changes are handled explicitly by semantic repair.
+
 ## 10. One-format / total-codec invariant
 
 An active source replica is entirely source-format. The inactive target replica is entirely target-format. Journal records carry no per-record format selector.
 
 For every retained source record R with ID `(A,q)`, the source->target migration defines exactly one deterministic target-format record with the **same ID and historical meaning**.
 
-The normative codec contract and rewrite pipeline are in `migration.md` §Journal format codec. In summary, the rewrite:
+The normative codec contract and rewrite pipeline are in §10a. In summary, the rewrite:
 
 1. decodes under the source version;
 2. applies deterministic `rewriteNodeKey` to every embedded NodeKey;
@@ -502,6 +548,18 @@ create
 ```
 
 plus whatever explicit future create/replace operation is separately specified.
+
+### Callback key space
+
+The Journal-aware migration callback is evaluated over a fixed source->target codec. Its addressing/checking rules are:
+
+- `get(nodeIdentifier)` and traversal methods address previous-version materialized nodes by their source `NodeIdentifier` and expose source-representation data;
+- for `keep(nodeIdentifier)` and `invalidate(nodeIdentifier)`, resolve the source NodeKey `Ks` for that identifier, compute `Kt = rewriteNodeKey(Ks)`, and perform target-schema functor/arity compatibility against **Kt**, not Ks;
+- `create(nodeKeyString,...)` accepts a **target-representation** NodeKeyString. Before accepting creation, compare it against `rewriteNodeKey(Ks)` for every materialized source node `Ks` in the previous-version materialized set S. Equality means the target semantic node already exists through transported source state and MUST throw `CreateExistingNodeError`; it is not a new target node.
+
+Therefore a representation-only rename `Ks -> Kt` can use `keep(id(Ks))` even when Ks itself is absent from the target schema, provided Kt is target-compatible. Conversely, `create(Kt)` cannot manufacture a second occurrence merely because the source lookup table spells the existing node as Ks.
+
+These rules are Journal 3 target behavior. They do not redefine the currently shipped pre-Journal `MigrationStorage` implementation documented in `migration.md`.
 
 ### `keep`
 
