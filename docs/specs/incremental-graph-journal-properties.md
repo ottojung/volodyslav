@@ -116,7 +116,9 @@ Jafter = J0 + required reset events
 
 Reset's own-writer-ahead precondition is defined in `incremental-graph-journal-reset.md` §Preconditions and `incremental-graph-journal-lifecycle.md` §5.
 
-Reset preserves an occurrence when target immutable occurrence state already matches. For every incoming edge removed from preserved V, reset authors `proof(V,D)` negative evidence; it does not invalidate the whole occurrence proof. Target persistent stale state gets `value(V)` marker when own effective proof is otherwise complete. Target absence gets DeleteEvent only when J0 selects a value.
+Reset first inspects `selectedHeads(J0)`, not `project(J0)`: a compatible raw union may temporarily violate dependency closure even though receiver and source are each valid. Pass 1 repairs selected presence/immutable occurrence state to the valid source target; only then does full projection begin.
+
+Reset preserves an occurrence when the raw selected head's immutable occurrence state already matches the target. For every non-target proof edge any eligible retained certificate could expose, reset authors `proof(V,D)` negative evidence; it does not invalidate the whole occurrence proof. Target persistent stale state gets `value(V)` marker when own effective proof is otherwise complete. Target absence gets DeleteEvent only when the raw selected head is a value.
 
 Reset repairs causally follow the complete history it observed.
 
