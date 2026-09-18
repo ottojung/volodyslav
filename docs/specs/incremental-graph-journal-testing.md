@@ -482,7 +482,7 @@ before: selected full certificate for V
 migration target: same V with fewer/no validity edges
 ```
 
-Expected one `proof(V,D)` barrier for every removed edge D before/with target validation. Old proof may continue to prove unaffected inputs; barriered edges are ineffective. A concurrent/later replacement V2 certificate remains unaffected.
+Expected one `proof(V,D)` barrier for every D in `eligibleEffectiveProofUnion(K) - TargetValid(K)` before/with target validation. Old proof may continue to prove unaffected inputs; every non-target edge any eligible retained certificate could expose is barriered. A concurrent/later replacement V2 certificate remains unaffected.
 
 For explicit `invalidate(K)`, expected event remains node-scoped; do not replace actual invalidation semantics with proof barriers.
 
