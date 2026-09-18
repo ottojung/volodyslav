@@ -59,6 +59,8 @@ For every successful case:
 project(journalAfter) == graphAfter
 ```
 
+Publication atomically persists the resulting local writer head, allocator watermark, authority high-water, and committed active-pair metadata together with graph + Journal records.
+
 ## 6. Replay engine
 
 Acceptance:
