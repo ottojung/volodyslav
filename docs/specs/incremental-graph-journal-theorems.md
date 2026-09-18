@@ -60,7 +60,7 @@ For mutually compatible same-version causally closed prefix Journals, immutable 
 
 ## Law 9: established local writer history does not roll back
 
-The established-writer rollback boundary is defined normatively by `database-lifecycle.md` §5; ordinary synchronization behavior is defined by `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is unsupported state.
+The established-writer rollback boundary is defined normatively by `incremental-graph-journal-lifecycle.md` §5; ordinary synchronization behavior is defined by `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is unsupported state.
 
 The proof obligation is that supported lifecycle transitions never decrease an established local writer head/allocator state and that operations obey those owned failure rules rather than inventing a same-writer rollback-recovery transition.
 
@@ -302,7 +302,7 @@ Let `J0 = union(receiver,source)`, `P0 = project(J0)`, and `PS = project(sourceS
 
 Reset preserves P0 ValueId when the requested occurrence already matches, creates ValueEvent only when the occurrence itself must change, uses DeleteEvent exactly when target requires absence, repairs removed validity with `proof(V,D)`, and persists target stale flags according to Law 22.
 
-Reset's own-writer-ahead precondition is the one defined in `incremental-graph-journal-reset.md` and the lifecycle boundary in `database-lifecycle.md` §5.
+Reset's own-writer-ahead precondition is the one defined in `incremental-graph-journal-reset.md` and the lifecycle boundary in `incremental-graph-journal-lifecycle.md` §5.
 
 After reset:
 
