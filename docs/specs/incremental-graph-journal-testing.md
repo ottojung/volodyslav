@@ -470,6 +470,8 @@ Expected one `proof(V,D)` barrier for every removed edge D before/with target va
 
 For explicit `invalidate(K)`, expected event remains node-scoped; do not replace actual invalidation semantics with proof barriers.
 
+Add the same two-certificate fixture to maintenance-only migration proof weakening. With target validity empty, migration MUST barrier every edge in `eligibleEffectiveProofUnion(K)`, not merely edges exposed by the initially selected certificate, and final replay must exactly match target validity.
+
 ### Migration propagated stale
 
 ```text
