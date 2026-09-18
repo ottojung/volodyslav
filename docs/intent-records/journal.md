@@ -280,6 +280,24 @@ Specifications may rely on closure under these supported transitions and need no
 
 ---
 
+$id-7429043816351276
+title: Routine current-database startup is independent of retained Journal length
+date: 2026/09/18
+source: @ottojung
+kind: requirement
+
+Opening an already-current supported Journal 3 database must not require scanning, replaying, or re-validating the complete retained Journal merely to re-prove invariants established by earlier supported lifecycle transitions.
+
+Let G denote the size of the current materialized IncrementalGraph state plus currently required derived/index metadata, and H the size of retained authoritative Journal history. Journal-specific routine startup/open work must be O(1 + G) and must be independent of H. In particular, routine open must not perform Θ(H) full-history well-formedness validation, replay-equality checking, or reconstruction solely because old retained history exists.
+
+Routine open may read constant-size/current-version metadata and may perform checks or reconstruction bounded by current graph/derived-state size. The persisted representation must contain enough committed active-pair metadata to identify the atomically published Journal/projection generation and its local writer head, allocator watermark, and authority high-water without scanning historical records.
+
+This bound applies only to routine opening of an already-current supported database. Explicit migration, synchronization/import validation of newly received history, bootstrap, absent restoration, local publication/cutover validation, and explicit projection rebuild/maintenance may perform work over retained or transferred history as required by their own contracts. If routine open finds metadata inconsistent with a supported committed state, it may fail or enter an explicitly requested maintenance/rebuild transition; it must not silently fall back to a full-history scan as the normal open path.
+
+This performance requirement relies on the lifecycle-owned-state assumption in `$id-6158827469032147`: supported committed states have already satisfied their transition invariants, and arbitrary external mutation is not part of the supported state space.
+
+---
+
 $id-4173361406347342
 title: NodeIdentifier uniqueness across compatible supported states
 date: 2026/09/18
