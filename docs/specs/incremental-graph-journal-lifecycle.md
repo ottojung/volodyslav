@@ -439,7 +439,7 @@ May intentionally rebaseline observable graph state while retaining history. Suc
 
 ### migration/startup
 
-Graph APIs are not initialized until required absent restore/bootstrap/migration/replay validation completes.
+Graph APIs are not initialized until any required absent restore, bootstrap, migration, or explicit rebuild/replay-validation transition completes. Routine opening of an already-current supported database follows §6 and does not add full replay validation.
 
 ## 13. Trust and storage-fault model
 
