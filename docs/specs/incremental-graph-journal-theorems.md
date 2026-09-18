@@ -326,9 +326,21 @@ including exact target validity and persistent freshness behavior.
 
 ## Law 38: reset is minimal semantic rebaselining
 
-Let `J0 = union(receiver,source)`, `P0 = project(J0)`, and `PS = project(sourceSnapshot)`.
+Let:
 
-Reset preserves P0 ValueId when the requested occurrence already matches, creates ValueEvent only when the occurrence itself must change, uses DeleteEvent exactly when target requires absence, repairs removed validity with `proof(V,D)`, and persists target stale flags according to Law 22.
+```text
+J0 = union(receiver,source)
+H0 = selectedHeads(J0)
+PS = project(sourceSnapshot)
+```
+
+The raw union need not itself be dependency-closed, so reset MUST NOT require `project(J0)` before repair.
+
+Pass 1 compares H0's deterministic Value/Delete winners with PS. It preserves the H0 ValueId when the requested immutable occurrence already matches, creates a ValueEvent only when that occurrence itself must change, and uses DeleteEvent exactly when PS requires absence.
+
+Let J1 be J0 plus those Pass 1 occurrence/presence repairs. Because Pass 1 authors causally-later heads so selected presence and immutable occurrence state equal PS, and PS is a valid dependency-closed projection, J1 is dependency-closed and `P1 = project(J1)` is the first required full projection.
+
+Later passes repair proof/freshness using certificate-complete `proof(V,D)` barriers and Law 22.
 
 Reset's own-writer-ahead precondition is the one defined in `incremental-graph-journal-reset.md` and the lifecycle boundary in `incremental-graph-journal-lifecycle.md` §5.
 
