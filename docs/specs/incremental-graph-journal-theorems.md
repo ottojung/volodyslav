@@ -117,15 +117,7 @@ Input-version disagreement with all required inputs still present is not by itse
 
 ## Law 16: certificate selection uses effective proof
 
-Replay selects one eligible certificate maximizing:
-
-```text
-1. effectiveBasisMatchCount
-2. coversValueInvalidations (true > false)
-3. authority
-```
-
-`effectiveBasisMatchCount` excludes basis edges suppressed by uncovered `proof(V,D)` barriers.
+Certificate selection is defined normatively by `incremental-graph-journal-replay.md` §Certificate selection. The proof obligation here is that implementations choose exactly that deterministic replay-selected certificate, including the effective-proof and value-invalidation-coverage behavior defined there.
 
 ## Law 17: one-certificate positive proof
 
