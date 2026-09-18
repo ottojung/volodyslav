@@ -346,11 +346,9 @@ not:
 
 > permanently dominate every event that might exist elsewhere.
 
-## Own-writer rollback is not reset work
+## Own-writer rollback boundary
 
-If a source shows that an existing receiver lacks a suffix of its own writer history, the receiver is outside the supported lifecycle model. `resetTo()` fails with `JournalWriterBehindError` before import/authorship and does not attempt to repair the condition.
-
-Complete local database loss is different: it produces the lifecycle's `Absent` state and is handled before a writable reset receiver exists. Reset is only for intentional semantic rebaselining of a valid established receiver.
+Reset uses the shared boundary in `database-lifecycle.md` §5; no additional reset-specific recovery semantics exist.
 
 ## Repeat-reset idempotence
 
