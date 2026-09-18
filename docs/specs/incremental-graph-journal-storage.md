@@ -100,7 +100,7 @@ Storage must support applying that pipeline to **every retained source-format re
 
 The rewrite decodes the source record, applies the transition's pure NodeKey/value transforms, re-canonicalizes target structures, and encodes the target current format while preserving Journal identity and historical meaning. In particular, ValidationBasis entries are re-sorted by the target canonical persisted NodeKeyString order after NodeKey rewriting.
 
-Storage/migration validation must also establish that `rewriteNodeKey` is injective over distinct retained source NodeKeys. A collision would collapse historical semantic-node identities and fails `JournalVersionCompatibilityError` before cutover.
+The source->target codec definition must guarantee `rewriteNodeKey` injectivity over the complete supported source NodeKey semantic domain, not merely over keys retained by this storage instance. Storage/migration code should additionally reject any collision it observes among local retained keys as a defensive `JournalVersionCompatibilityError`, but that local scan does not establish the distributed codec property.
 
 If the codec cannot produce a deterministic valid target semantic record for any retained source record, migration fails `JournalVersionCompatibilityError` before cutover.
 
