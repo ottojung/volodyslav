@@ -778,7 +778,7 @@ At minimum cover:
 - `keep` preserves ValueId, freshness, and current-shape-compatible incoming validity even when the node is recursively stale;
 - stale `keep` alone authors no proof barriers;
 - total pure format codec rewrites selected/non-selected/target-removed history identically across replicas;
-- `rewriteNodeKey` applies to every embedded NodeKey, is injective over distinct retained source NodeKeys, and ValidationBasis is re-sorted by target canonical NodeKey order;
+- `rewriteNodeKey` applies to every embedded NodeKey and satisfies the codec-level injectivity contract over every valid source semantic NodeKey which may occur in supported source-version Journal history; a per-replica retained-key scan is only a defensive collision check; ValidationBasis is re-sorted by target canonical NodeKey order;
 - `rewriteComputedValue` applies to every retained ValueEvent, including non-selected history;
 - codec functions are synchronous, deterministic, and capability-free;
 - non-total/throwing/colliding codec fails `JournalVersionCompatibilityError` before cutover;
