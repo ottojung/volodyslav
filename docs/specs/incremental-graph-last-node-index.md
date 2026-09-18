@@ -2,9 +2,9 @@
 
 ## Purpose
 
-`last_node_index` is the greatest local allocation index durably retired
-from future use. It is a monotonic allocation watermark — not a count of
-existing nodes and not a count of committed materialized nodes.
+`last_node_index` is the greatest local allocation index reserved against reuse by the current supported retained local-writer history. It is a monotonic allocation watermark for an existing database and retained writer stream — not a count of existing nodes and not a count of committed materialized nodes.
+
+Continuation-safe restoration of a completely absent installation is the deliberate exception to monotonicity across wall-clock history: the restored watermark comes from the retained recovery prefix, and indices allocated only in a discarded suffix may be reused when that suffix cannot later enter supported retained history. See `database-lifecycle.md` §4.1.
 
 ## Storage location
 
@@ -71,6 +71,12 @@ When host graph records are merged, the merge writes the target/local
 change that value. If the graph is otherwise unchanged, differences in the
 host's `last_node_index` are metadata-only and do not cause a merge commit or a
 replica switch.
+
+## Absent-state restoration
+
+Ordinary sync/reset of an existing database never lowers the local watermark. When the complete local database is absent, `database-lifecycle.md` §4.1 may restore a continuation-safe older writer prefix. In that case `last_node_index` is reconstructed from that retained prefix.
+
+An index above the restored watermark may be allocated again only if its earlier allocation existed solely in the discarded suffix and no supported retained history can later reintroduce that suffix. If such history can later re-enter, the proposed restore point is not continuation-safe.
 
 ## Concurrency
 
