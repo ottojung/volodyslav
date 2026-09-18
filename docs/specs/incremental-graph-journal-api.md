@@ -191,6 +191,8 @@ Reset requires an established writable receiver and one held compatible snapshot
 
 If that snapshot is ahead for the receiver's own writer, reset follows `incremental-graph-journal-reset.md` §Preconditions and the shared lifecycle boundary in `incremental-graph-journal-lifecycle.md` §5.
 
+Reset may form a compatible raw receiver/source union whose selected Value/Delete heads are temporarily not dependency-closed. It inspects that staging union through `selectedHeads(J0)` and does not require full `project(J0)` before Pass 1 occurrence/presence repair. Full projection begins only after Pass 1 has restored the source target's dependency-closed selected presence.
+
 Reset maintenance semantics include:
 
 - one `Invalidate(scope={kind:"proof", value:V, input:D})` for every currently-valid incoming edge D intentionally removed while preserving V; and
