@@ -1,8 +1,8 @@
 ---
-title: Database Lifecycle
+title: Journal 3 Lifecycle (target design)
 ---
 
-# Volodyslav Database Lifecycle
+# Journal 3 Database Lifecycle (target design)
 
 ## 1. Overview
 
