@@ -114,7 +114,9 @@ If a function is omitted, it defaults to the identity transform.
 
 Both functions are synchronous and deterministic. They receive only their explicit arguments plus the fixed source->target migration definition; they receive no database handle, network/filesystem capability, clock, randomness, allocator, migration traversal state, or other mutable replica-local capability.
 
-`rewriteNodeKey` changes representation only: its result must denote the same historical semantic node under the target version. `rewriteComputedValue` likewise changes representation only and must preserve the historical semantic value represented by the source ValueEvent. Semantic creation/replacement belongs to migration decisions, not to the format codec.
+`rewriteNodeKey` changes representation only: its result must denote the same historical semantic node under the target version. It must also be **injective over the retained source NodeKey domain**: if two distinct source NodeKeys occur anywhere in retained Journal history, they must not rewrite to the same target NodeKey. A many-to-one node merge is a semantic migration, not a representation rewrite, and cannot preserve both historical node identities through this codec.
+
+`rewriteComputedValue` likewise changes representation only and must preserve the historical semantic value represented by the source ValueEvent. Semantic creation/replacement/merging belongs to migration decisions, not to the format codec.
 
 The whole-history rewrite pipeline is:
 
