@@ -131,7 +131,7 @@ synchronizeFrom(source: JournalSyncSource) -> Promise<SyncResult>
 
 Success means source compatibility came from the held snapshot, imported records were retained unchanged, normalization was complete, and active graph equals Journal replay.
 
-If the source is ahead for the receiver's own writer, synchronization follows the failure rule in `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is unsupported state, whose lifecycle classification is owned by `database-lifecycle.md` §5.
+If the source is ahead for the receiver's own writer, synchronization follows the failure rule in `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is unsupported state, whose lifecycle classification is owned by `incremental-graph-journal-lifecycle.md` §5.
 
 A fully absent installation cannot call this operation because no receiver writer identity exists yet.
 
@@ -152,7 +152,7 @@ This semantic interface intentionally contains no hostname, Git branch name, rep
 
 `InstallationRecoverySource` does not imply a single server, branch, authority, or storage location. An implementation may consult one source, several sources, replicated metadata, a transport-specific publication path, or another backend protocol. Journal code only consumes the semantic answer.
 
-`ContinuationSafeSnapshot` contains an ordinary stable Journal snapshot plus the absent-restoration guarantee defined by `database-lifecycle.md` §4.1. For its `localWriter = A` and `frontier[A] = q`, after restoring the completely absent installation no previously authored A record with sequence greater than q may later enter supported retained history.
+`ContinuationSafeSnapshot` contains an ordinary stable Journal snapshot plus the absent-restoration guarantee defined by `incremental-graph-journal-lifecycle.md` §4.1. For its `localWriter = A` and `frontier[A] = q`, after restoring the completely absent installation no previously authored A record with sequence greater than q may later enter supported retained history.
 
 How that guarantee is established belongs to the supported backend model. Restoration may rely on backend invariants which make some hypothetical histories impossible; it is not required to discover or defend against copies which cannot exist or later re-enter under that model. A source may return `Exists(ContinuationSafeSnapshot)` only when its backend-specific guarantees establish the property.
 
@@ -160,7 +160,7 @@ Records authored only on the completely lost local storage do not make q unsafe 
 
 This source is **not** an API for repairing an existing local database that is truncated, rolled back, partially restored, or otherwise missing some of its own writer history. Those states are outside the supported lifecycle model under `$id-6158827469032147`.
 
-The current Git-backed flow is one possible implementation of this abstraction; `database-lifecycle.md` §4.1 explains why its normal publication model can establish absent-restoration safety without storing transport locators in the database. That transport shape is not part of this API contract.
+The current Git-backed flow is one possible implementation of this abstraction; `incremental-graph-journal-lifecycle.md` §4.1 explains why its normal publication model can establish absent-restoration safety without storing transport locators in the database. That transport shape is not part of this API contract.
 
 ## Receiver-less absent restore
 
@@ -189,7 +189,7 @@ resetTo(source: JournalSyncSource) -> Promise<ResetResult>
 
 Reset requires an established writable receiver and one held compatible snapshot.
 
-If that snapshot is ahead for the receiver's own writer, reset follows `incremental-graph-journal-reset.md` §Preconditions and the shared lifecycle boundary in `database-lifecycle.md` §5.
+If that snapshot is ahead for the receiver's own writer, reset follows `incremental-graph-journal-reset.md` §Preconditions and the shared lifecycle boundary in `incremental-graph-journal-lifecycle.md` §5.
 
 Reset maintenance semantics include:
 
@@ -312,7 +312,7 @@ JournalSourceReadError
 InvalidMigrationDecisionError
 ```
 
-`JournalWriterBehindError` denotes the established-writer rollback condition owned by `database-lifecycle.md` §5; operation-specific behavior is defined by the synchronization/reset specs.
+`JournalWriterBehindError` denotes the established-writer rollback condition owned by `incremental-graph-journal-lifecycle.md` §5; operation-specific behavior is defined by the synchronization/reset specs.
 
 ## Locking ownership
 
