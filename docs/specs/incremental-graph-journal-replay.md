@@ -247,6 +247,21 @@ effectiveBasisMatchCount(K,C) =
         basisEntryEffective(K,C,D)
 ```
 
+For maintenance reasoning also define the effective proof edges of one eligible certificate and their union across all eligible retained certificates for the selected occurrence:
+
+```text
+effectiveProofEdges(K,C) = {
+    D in currentInputEdges(K)
+    | basisEntryEffective(K,C,D)
+}
+
+eligibleEffectiveProofUnion(K) =
+    union effectiveProofEdges(K,C)
+    over every eligibleCertificate(K,C)
+```
+
+`eligibleEffectiveProofUnion(K)` is **not** replay's positive validity relation. Replay still selects exactly one certificate and never combines positive proof. The union is only a maintenance analysis set: it identifies every incoming edge that some already-retained eligible certificate could expose if certificate selection changes after proof weakening.
+
 `"unknown"` contributes no match.
 
 A proof barrier for `(V,D)` is cleared for one certificate only when that certificate causally observes the barrier. A concurrent certificate may still prove other inputs, but it cannot re-establish D merely by having greater clock authority.
