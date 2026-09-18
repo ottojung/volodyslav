@@ -107,6 +107,7 @@ Acceptance:
 - cohort source query returns exactly exists / definitely absent / indeterminate-or-error;
 - exists returns immutable `CanonicalBootstrapSnapshot`, not current Journal snapshot;
 - definite absence permits staging only; it does not authorize local cutover;
+- staging the canonical creator candidate twice from identical persisted legacy state produces byte-identical records/artifact; canonical C2/C3 authority and record order contain no upgrade/publication wall-clock input;
 - `publishCanonicalBootstrapIfAbsent` is the first-creator arbitration boundary required by `$id-1847369205416728`;
 - concurrent distinct candidates cannot both receive `Published`; loser receives `AlreadyExists(B)` and joins/resumes B;
 - indeterminate query or publication outcome fails without local cutover or competing durable canonical history;
