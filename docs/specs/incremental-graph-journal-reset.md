@@ -177,10 +177,6 @@ After Pass 1 every source-present node has a final target occurrence `resetValue
 Let `P1` be replay after Pass 1. For each source-present K define:
 
 ```text
-CurrentValid(K) = {
-    D | P1 contains semantic validity edge D -> K
-}
-
 PotentialValid(K) =
     eligibleEffectiveProofUnion_P1(K)
 
