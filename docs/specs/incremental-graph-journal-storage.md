@@ -140,7 +140,7 @@ This requirement covers ordinary propagation, synchronization, bootstrap, reset,
 
 ## Established local writer monotonicity and absent restoration
 
-Storage obeys the established-writer rollback and complete-absence restoration rules owned by `database-lifecycle.md` §§4–5. In particular, storage does not define a separate same-writer rollback-repair path.
+Storage obeys the established-writer rollback and complete-absence restoration rules owned by `incremental-graph-journal-lifecycle.md` §§4–5. In particular, storage does not define a separate same-writer rollback-repair path.
 
 After absent restoration, storage reconstructs at least:
 
