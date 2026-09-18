@@ -96,6 +96,8 @@ Startup obtains exactly one of:
 
 Failure to query or obtain known synchronized state MUST NOT fall back to fresh creation.
 
+Fresh creation after `DefinitelyAbsent` assumes one live owner of this installation's lifecycle/database. Two concurrent processes independently claiming the same installation are outside the supported locking/lifecycle model and must be excluded by outer installation ownership. This differs from canonical cohort bootstrap, where multiple legitimate legacy installations may race and therefore require conditional publication arbitration.
+
 For writer A, call a held recovery snapshot with `frontier[A] = q` **continuation-safe at q** iff, after restoring the completely absent installation from that snapshot, no previously authored A record with sequence greater than q can later enter supported retained history for writer A.
 
 This is a property required only for absent-state restoration. It is not a mechanism for repairing an existing local database that has gone backwards. Journal 3 does **not** prescribe one mechanism for establishing the property. A recovery source may return `Exists(ContinuationSafeSnapshot)` only when the guarantees of its supported backend model imply that q is safe.
