@@ -193,7 +193,7 @@ Journal-aware semantic changes use `invalidate`, `delete`, `create`, or another 
 
 `keep`, `invalidate`, schema/proof/freshness-only changes, and representation-only format rewrite preserve selected ValueId when the semantic occurrence survives.
 
-True migration `invalidate(K)` is node-scoped. Other maintenance-only proof weakening uses `proof(V,D)` per removed edge.
+True migration `invalidate(K)` is node-scoped. Other maintenance-only proof weakening uses `proof(V,D)` for every non-target edge in the eligible-certificate effective-proof union, so weakening the current winner cannot expose proof from a losing certificate.
 
 ## Genuine replacement migration may split identity
 
