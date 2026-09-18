@@ -385,6 +385,7 @@ At minimum model/test:
 - exact-shared bootstrap proof intersection and symmetric stale merge;
 - bootstrap recursive stale persistence;
 - total replica-independent format rewrite including target-removed node families;
+- injective NodeKey transport and target-keyed occurrence-preserving migration bookkeeping;
 - representation migration through codec + `keep`;
 - independent replacement-migration trade-off;
 - minimal reset;
