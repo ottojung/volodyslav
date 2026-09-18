@@ -481,7 +481,9 @@ else:
 
 Then advance H to at least that authority.
 
-The cached high-water is derived allocator state, not independent semantic authority. It can be reconstructed from retained semantic events.
+The high-water is allocator state, not independent semantic authority. Every local publication and maintenance cutover updates/persists it atomically with the selected Journal/projection pair so routine open reads it without scanning retained history, as required by `$id-7429043816351276`.
+
+Reconstruction from retained semantic events is reserved for explicit rebuild, absent restoration, bootstrap, and migration/maintenance transitions whose contracts permit history-sized work; it is not the ordinary-open path.
 
 Journal 3 imposes no maximum-clock-skew rejection rule.
 
