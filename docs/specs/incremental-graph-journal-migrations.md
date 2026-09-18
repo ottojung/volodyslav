@@ -197,7 +197,7 @@ Use `bootstrapValueId(D)` exactly when legacy validity contains edge `D -> K`; o
 
 ### 5.4 Pass C3 — stale state
 
-For every legacy-stale K author, after its certificate:
+For every legacy-stale K in canonical persisted NodeKey order author, after its certificate:
 
 ```text
 InvalidateEvent {
