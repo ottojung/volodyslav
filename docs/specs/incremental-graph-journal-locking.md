@@ -29,7 +29,7 @@ Finalization:
 5. orders records by semantic reference/dependency constraints;
 6. assigns exact own-writer context and the closed observed cross-writer frontier;
 7. allocates AuthorityTimes after causal predecessors;
-8. atomically writes Journal records + graph mutations;
+8. atomically writes Journal records + graph mutations together with the resulting local writer head, allocator watermark, authority high-water, and committed active-pair metadata;
 9. updates volatile allocator/index caches only after durable success.
 
 A failed ordinary operation consumes no durable Journal coordinate.
