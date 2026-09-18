@@ -262,7 +262,13 @@ An already-established fresh receiver may have frontier zero and import foreign 
 
 ## Streamability
 
-Missing foreign suffixes must be streamable without retaining the full history/suffix in RAM. Normalization may use graph-sized derived state where correctness requires it.
+Synchronization processing MUST satisfy `$id-4924739474925738`.
+
+Missing foreign suffixes are consumed incrementally and must not require the full retained Journal or complete transferred suffix in RAM.
+
+Normalization may use graph-sized derived graph/index state where IncrementalGraph correctness independently requires it, but Journal-derived work such as the dependency-removal closure, stale-propagation worklist, or complete changed-node set must be incrementally iterable. It may live in durable/indexed staging or an equivalent bounded-memory work-queue representation; the algorithm MUST NOT require the complete closure/change set to exist as one in-RAM collection.
+
+This streamability requirement is independent of the deferred end-to-end running-time bound in `$id-3572255392439745`: synchronization may still perform whole-replica work for correctness.
 
 ## Pairwise result law
 
