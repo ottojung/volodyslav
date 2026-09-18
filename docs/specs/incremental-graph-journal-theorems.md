@@ -268,9 +268,21 @@ is deterministic from R and the migration definition, independent of selection, 
 
 The rewrite domain is **all retained source-version history**, including records for node families absent from target schema. If no deterministic target representation exists for some retained record, migration fails `JournalVersionCompatibilityError` before cutover.
 
+## Law 33a: NodeKey transport preserves semantic-node identity
+
+For a source->target format codec, `rewriteNodeKey` is injective over distinct NodeKeys occurring in retained source history. If `Ks1 != Ks2`, then:
+
+```text
+rewriteNodeKey(Ks1) != rewriteNodeKey(Ks2)
+```
+
+Otherwise the format rewrite cannot preserve both historical semantic-node identities and migration fails `JournalVersionCompatibilityError` before cutover.
+
+Let `GconvertedBefore = transportProjectionThroughCodec(Gbefore,...)`. Semantic migration repair operates in this target-keyed view: if `Kt = rewriteNodeKey(Ks)`, an occurrence-preserving decision at Kt obtains the same ValueId that Gbefore selected at Ks. A pure key-representation change therefore creates neither a replacement ValueEvent nor a DeleteEvent for Ks.
+
 ## Law 34: Journal-aware representation-only change uses codec + keep
 
-The whole-history codec is the sole source of target representation bytes. A selected occurrence whose semantic meaning survives uses `keep`, preserving ValueId. No second value-producing representation decision exists in the Journal-aware migration vocabulary.
+The whole-history codec is the sole source of target representation bytes. A selected occurrence whose semantic meaning survives uses `keep`, preserving ValueId. No second value-producing representation decision exists in the Journal-aware migration vocabulary. Semantic-repair bookkeeping is performed in the codec-transported target key space rather than by indexing source-keyed `Gbefore` with target NodeKeys.
 
 ## Law 35: migration preserves occurrence identity when occurrence survives
 
