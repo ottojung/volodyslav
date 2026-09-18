@@ -252,11 +252,14 @@ Acceptance:
 
 - one current format per active replica;
 - bootstrap artifact interpreted only by software explicitly supporting its target;
+- routine open of an already-current supported database satisfies `$id-7429043816351276`: Journal-specific work is `O(1 + G)` in current materialized/derived state size G and independent of retained Journal size H;
+- routine open reads only current version/schema, selected committed-pair metadata, local writer head, allocator watermark, authority high-water, and current graph/index state bounded by G; it does not scan/replay all retained history;
+- full stream/context/reference/authority/replay-equality validation remains at history-admission/publication, synchronization/reset cutover, bootstrap, absent restoration, migration, and explicit rebuild/maintenance boundaries;
 - known graph/Journal mismatch not exposed;
-- valid authoritative Journal history may rebuild derived projection/indexes;
+- valid authoritative Journal history may rebuild derived projection/indexes during explicit maintenance;
 - rebuild is not permitted to repair missing/truncated authoritative Journal history or local rollback;
-- invalid/known-incomplete history rejected;
-- context closure, allocator, high-water, indexes reconstructible/validated.
+- invalid/known-incomplete history encountered by explicit validation is rejected;
+- routine-open metadata inconsistency fails startup or enters explicit supported maintenance; it does not trigger a silent full-history routine-open scan.
 
 ## 14. Error model
 
