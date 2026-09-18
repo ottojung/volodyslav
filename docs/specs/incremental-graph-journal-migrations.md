@@ -671,10 +671,10 @@ This is semantic node invalidation, not a certificate-selection trick.
 
 ### 16.2 Maintenance-only proof weakening
 
-Otherwise, for every removed edge while preserving K's occurrence:
+Otherwise, for every incoming edge that any eligible retained certificate for the preserved occurrence can currently prove but the migration target must not expose:
 
 ```text
-D in CurrentValid(K) - TargetValid(K)
+D in PotentialValid(K) - TargetValid(K)
 ```
 
 author:
