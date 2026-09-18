@@ -23,8 +23,8 @@ Journal 3 is split by semantic responsibility. For a first implementation pass, 
 
 Surrounding lifecycle specs:
 
-- `incremental-graph-synchronization.md` — IncrementalGraph-facing synchronization shell;
-- `database-lifecycle.md` — restore/open/bootstrap/migrate/sync/reset/rebuild lifecycle.
+- `incremental-graph-journal-sync-shell.md` — IncrementalGraph-facing synchronization shell;
+- `incremental-graph-journal-lifecycle.md` — restore/open/bootstrap/migrate/sync/reset/rebuild lifecycle.
 
 ## One-sentence model
 
@@ -44,7 +44,7 @@ Each semantic rule has one normative owner. Other Journal documents may summariz
 - publication finalization, atomic graph+Journal cutover, and locking ownership: `incremental-graph-journal-locking.md`;
 - semantic API/snapshot/source boundaries: `incremental-graph-journal-api.md`;
 - pairwise synchronization import, normalization, convergence, and the host-count settling construction: `incremental-graph-journal-sync.md`;
-- lifecycle fault model, established-writer rollback boundary, and absent-installation restoration: `database-lifecycle.md`;
+- lifecycle fault model, established-writer rollback boundary, and absent-installation restoration: `incremental-graph-journal-lifecycle.md`;
 - shipped/pre-Journal migration API semantics: `migration.md`;
 - Journal bootstrap, Journal-aware migration procedure, and Journal format codec: `incremental-graph-journal-migrations.md` §10a;
 - reset procedure: `incremental-graph-journal-reset.md`;
