@@ -163,11 +163,9 @@ The artifact is the original frozen bootstrap cut. A running release joins it on
 
 ## Established local writer state is monotone under the supported lifecycle
 
-While a local database exists, its own committed writer stream cannot legitimately become a proper prefix of a previously published/surviving copy. Supported lifecycle transitions preserve that writer history monotonically; arbitrary partial rollback or truncation is excluded by `$id-6158827469032147`.
+The fault-model and established-writer rollback boundary are defined normatively in `database-lifecycle.md` §5, with ordinary synchronization behavior in `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is unsupported state.
 
-Therefore a generic sync/reset source exposing a longer agreeing prefix of the receiver's own writer is not a special merge case and not evidence for a recovery algorithm. It is evidence that the existing receiver is outside the supported lifecycle state space and causes `JournalWriterBehindError` before import or authoring.
-
-Complete local disappearance is different. The lifecycle then enters `Absent`, and absent-installation restoration may adopt a continuation-safe snapshot whose head is guaranteed not to conflict with any higher old record that can later re-enter supported history.
+The algebraic fact used here is only that supported existing-writer history is monotone; complete absence and continuation-safe restoration are a distinct lifecycle transition.
 
 ## Journal-aware migration representation is a total record transform
 
