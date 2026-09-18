@@ -126,11 +126,16 @@ internal boundaries would be redundant.
 ### Allocation
 
 Identifiers are allocated as `${nextIndex.toString(36)}-${fingerprint}` where
-`nextIndex` is a monotonic counter starting at `1` and `fingerprint` is the
-machine-local database fingerprint (see `docs/specs/incremental-graph-fingerprint.md`).
+`nextIndex` is monotone while an existing database and its retained local-writer
+stream continue, and `fingerprint` is the machine-local database fingerprint
+(see `docs/specs/incremental-graph-fingerprint.md`).
 
 Gaps in the index sequence are acceptable (caused by failed or interleaved
-transactions). The `last_node_index` watermark tracks the largest committed index.
+transactions). The `last_node_index` watermark tracks the largest allocation
+reserved by the current retained local-writer history. Continuation-safe restoration
+of a completely absent installation may reconstruct an older watermark and reuse
+indices allocated only in a discarded suffix that cannot later re-enter supported
+retained history; see `docs/specs/database-lifecycle.md` §4.1.
 
 ## Persisted storage model
 
@@ -215,7 +220,7 @@ fresh identifiers for `create` using the same fingerprint/index scheme. Represen
 
 The `last_node_index` watermark (see `docs/specs/incremental-graph-last-node-index.md`)
 is stored at the active replica's global sublevel under the key `"last_node_index"`.
-It is a monotonic allocation watermark, not a node count. Gaps are acceptable.
+It is monotone for an existing database and retained writer stream, not a node count. Continuation-safe absent restoration follows the exception defined in `docs/specs/incremental-graph-last-node-index.md` and `docs/specs/database-lifecycle.md` §4.1. Gaps are acceptable.
 
 ## Determinism
 
