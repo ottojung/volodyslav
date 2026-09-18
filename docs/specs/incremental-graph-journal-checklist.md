@@ -102,14 +102,17 @@ Acceptance:
 
 Acceptance:
 
-- cohort source returns exactly exists / definitely absent / indeterminate-or-error;
+- cohort source query returns exactly exists / definitely absent / indeterminate-or-error;
 - exists returns immutable `CanonicalBootstrapSnapshot`, not current Journal snapshot;
-- definite absence permits canonical creation only under first-creator arbitration;
-- indeterminate/error fails without competing creation;
+- definite absence permits staging only; it does not authorize local cutover;
+- `publishCanonicalBootstrapIfAbsent` is the first-creator arbitration boundary required by `$id-1847369205416728`;
+- concurrent distinct candidates cannot both receive `Published`; loser receives `AlreadyExists(B)` and joins/resumes B;
+- indeterminate query or publication outcome fails without local cutover or competing durable canonical history;
+- unknown publication outcome is resolved by re-query before retry/cutover;
 - artifact exposes exactly original `bootstrapFrontier` and expected target version/schema;
 - unsupported artifact target fails `JournalVersionCompatibilityError` before history;
 - no indefinite historical target support is required;
-- artifact durable before ordinary post-bootstrap authoring;
+- canonical artifact is durable before ordinary post-bootstrap authoring;
 
 ### Bootstrap semantic-identity target
 
