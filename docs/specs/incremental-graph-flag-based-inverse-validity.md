@@ -444,7 +444,7 @@ Migration rebuilds `valid` from the final migrated graph state:
 
 - `create` nodes marked `up-to-date` receive incoming valid flags for their current derived inputs because the migration callback supplies an up-to-date value.
 - `create` nodes marked `potentially-outdated` receive no incoming valid flags.
-- `override` and `keep` nodes preserve incoming valid flags when previous proof, schema compatibility, value identity, and freshness rules justify preserving that exact proof.
+- `keep` nodes preserve incoming valid flags when previous proof, schema compatibility, value identity, and freshness rules justify preserving that exact proof. Representation-only changes are handled by `keep` plus the canonical format codec; see `migration.md`.
 - **Explicit `invalidate`** nodes receive no incoming valid flags. Outgoing proofs from the explicitly invalidated node to its dependents survive when structurally and semantically transportable.
 - **Propagated `invalidate`** nodes preserve all historical incoming and outgoing proofs subject to normal structural compatibility and endpoint survival. Propagated invalidation changes freshness only.
 - `delete` nodes do not appear in `valid`.
