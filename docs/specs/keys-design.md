@@ -208,8 +208,8 @@ Delete removes:
 - `nodeKeyToId(nodeKey)`
 - `nodeIdToKey(id)`
 
-Migration preserves identifiers for `keep`, `override`, and `invalidate`, and allocates
-fresh identifiers for `create` using the same fingerprint/index scheme.
+Migration preserves identifiers for `keep` and `invalidate`, and allocates
+fresh identifiers for `create` using the same fingerprint/index scheme. Representation-only changes preserve the occurrence through `keep` plus the canonical codec in `migration.md`.
 
 ### last_node_index
 
