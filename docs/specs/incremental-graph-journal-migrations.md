@@ -177,7 +177,7 @@ All canonical ValueEvents precede canonical validation events.
 
 ### 5.3 Pass C2 — validation baseline
 
-For every materialized K author one self-describing:
+For every materialized K in canonical persisted NodeKey order author one self-describing:
 
 ```text
 ValidateEvent {
