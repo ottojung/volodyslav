@@ -292,6 +292,20 @@ Semantic migration calls `keep(id(Ks))`. The callback resolves source key Ks, tr
 
 If instead distinct retained Ks1 and Ks2 both rewrite to Kt, the codec is incompatible and migration fails `JournalVersionCompatibilityError` before cutover.
 
+## Trace 29b: skipped application release still follows canonical Journal chain
+
+Replicas X and Y share retained record `A:1` in Journal version v1.
+
+X upgrades while v2 is current, then later upgrades to v3:
+
+```text
+v1 -> v2 -> v3
+```
+
+Y remains offline during v2 and later starts the v3 application with stored v1 state. Journal 3 does not apply an independent direct v1 -> v3 migration. Y executes the same canonical semantic chain v1 -> v2 -> v3.
+
+Therefore the v3 body of shared immutable record `A:1` is byte-identical on X and Y. Intermediate semantic migration records authored by Y remain Y-authored history and are subsequently rewritten through the v2 -> v3 step normally. Ordinary synchronization at v3 does not report a same-ID fork merely because Y skipped an application release.
+
 ## Trace 30: independent genuine replacement migration may stale dependent
 
 X/Y share A1/B1; migration genuinely replaces A independently as A2x/A2y. After union one wins; dependent proof naming losing A occurrence may stale/recompute. Accepted; no canonical migration participant required.
