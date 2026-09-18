@@ -187,7 +187,9 @@ Jconverted = rewriteJournalFormat(Jbefore, sourceVersion, targetVersion)
 
 maps every retained source-format record to exactly one target-format representation while preserving ID, historical semantic fact, causal meaning, and references.
 
-The transform is total over retained history, including records for node families absent from target schema. If no deterministic target representation exists for some retained record, migration fails `JournalVersionCompatibilityError` before cutover.
+The transform is total over retained history, including records for node families absent from target schema. `rewriteNodeKey` is injective over distinct retained source NodeKeys; collapsing two historical semantic nodes onto one target key is incompatible and fails `JournalVersionCompatibilityError` before cutover.
+
+For semantic repair, the selected source projection is transported through the codec into target NodeKey representation while preserving ValueIds, NodeIdentifiers, timestamps, freshness, and rewritten proof/dependency endpoints. Migration decisions compare that target-keyed view with the target graph. A pure key-representation change therefore cannot be mistaken for source deletion plus target creation.
 
 One pure payload codec rewrites every affected retained ValueEvent independent of selected status or replica-local state.
 
