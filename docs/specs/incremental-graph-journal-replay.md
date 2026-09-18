@@ -494,15 +494,19 @@ Two current projections are semantically equivalent when they agree on:
 
 Temporary paths, inactive replica-slot names, transport metadata, LevelDB internal sequence numbers, and derived Journal index layouts are excluded.
 
-## Replay algorithms
+## Replay algorithms and streamability
 
 Definitions above are declarative.
 
-A conforming implementation may use whole-history replay, incremental folding, per-node indexes, verified replay checkpoints, or another observationally equivalent algorithm.
+Replay processing MUST satisfy `$id-4924739474925738`. A conforming implementation may scan the complete retained history, but it must not require the complete Journal, the complete incremental changed-node set, or all per-node histories to be materialized in RAM as one collection.
 
-Record arrival order must not change final result for one final supported journal.
+Head selection, eligible-certificate evaluation, invalidation/barrier evaluation, writer-state reconstruction, and projection lowering must be implementable through ordered/indexed iteration, bounded iterator/runtime buffers, per-node streaming/folding, durable derived indexes/checkpoints, or observationally equivalent incremental mechanisms.
 
-A clear whole-history/reference path should remain available as test oracle.
+Declarative notation such as `History(K)`, `HeadCandidates(K)`, or the set of eligible certificates does not require constructing those complete sets in memory. An implementation may use graph-sized derived state independently required by IncrementalGraph correctness and may perform whole-replica validation; the prohibition is on making complete Journal history or complete changed-node/work sets one in-RAM collection merely to replay them.
+
+Record arrival/chunking order must not change the final result for one final supported Journal.
+
+A clear whole-history **streaming scan** should remain available as the reference/test oracle; "whole-history" here describes how much history is read, not how much must coexist in RAM.
 
 ## Replay checkpoint correctness
 
