@@ -74,12 +74,16 @@ Let receiver history before reset be JR and define:
 
 ```text
 J0 = union(JR, S)
-P0 = project(J0)
+H0 = selectedHeads(J0)
 ```
+
+where `selectedHeads` is the raw maintenance view defined by `incremental-graph-journal-replay.md` §Raw selected-head view.
+
+Do **not** call `project(J0)` here. Two individually valid dependency-closed replicas may have a compatible union whose cross-authority Value/Delete winners are not dependency-closed. Reset must be able to repair that staging state rather than reject before Pass 1.
 
 All imported records retain their original writers.
 
-Reset-authored events are causally after the complete observed J0 frontier. J0 is staging state and need not be exposed as active before reset finishes.
+Reset-authored events are causally after the complete observed J0 frontier. J0 and H0 are staging state and need not be exposed as active before reset finishes.
 
 This causal-later rule is fundamental reset semantics, not a generic lifecycle-publication rule.
 
@@ -116,19 +120,19 @@ Process ResetDomain in deterministic order.
 
 ### Target-present K
 
-If P0 already contains K with the same observable immutable occurrence fields as PS:
+If H0 selects a ValueEvent for K with the same observable immutable occurrence fields as PS:
 
 ```text
-P0.nodeIdentifier(K) == PS.nodeIdentifier(K)
-P0.payload(K)        == PS.payload(K)
-P0.createdAt(K)      == PS.createdAt(K)
-P0.modifiedAt(K)     == PS.modifiedAt(K)
+H0.nodeIdentifier(K) == PS.nodeIdentifier(K)
+H0.payload(K)        == PS.payload(K)
+H0.createdAt(K)      == PS.createdAt(K)
+H0.modifiedAt(K)     == PS.modifiedAt(K)
 ```
 
 then preserve the receiver-union selected occurrence:
 
 ```text
-resetValueId(K) = P0.valueId(K)
+resetValueId(K) = H0.valueId(K)
 ```
 
 and author no ValueEvent for K.
@@ -150,14 +154,14 @@ ValueEvent {
 
 and define its ID as `resetValueId(K)`.
 
-The new occurrence is required because J0 does not already select the requested semantic value state.
+The new occurrence is required because H0 does not already select the requested semantic value state.
 
 ### Target-absent K
 
 For every K absent in PS:
 
-- if P0 already selects absence, author nothing;
-- if P0 selects a ValueEvent, author exactly one:
+- if H0 selects DeleteEvent or has no semantic head, author nothing;
+- if H0 selects a ValueEvent, author exactly one:
 
 ```text
 DeleteEvent {
@@ -170,11 +174,31 @@ There is no alternative strategy. Repeated reset to the same absent target there
 
 Again, this is explicit reset targeting. It is not the rule for comparing two pre-Journal legacy caches during canonical bootstrap.
 
+## Pass 1 closure guarantee
+
+Let `J1` be J0 plus the Pass 1 ValueEvents/Deletes.
+
+Because every reset-authored Pass 1 head is causally later than the complete J0 frontier:
+
+- every K present in PS has a selected ValueEvent in J1 whose immutable occurrence fields equal PS;
+- every K absent in PS has no selected ValueEvent in J1;
+- therefore selected presence in J1 is exactly selected presence in PS.
+
+PS is a valid source projection and is dependency-closed under the current schema. Hence J1's selected-present head set is dependency-closed as well. Its selected NodeIdentifiers/immutable occurrence state also match PS for every present node.
+
+Only now is full replay/projection required:
+
+```text
+P1 = project(J1)
+```
+
+This is the first full projection of the raw receiver/source union path. Failure here means some invariant other than the pre-repair dependency-closure mix remains invalid; reset does not treat such corruption as a repair opportunity.
+
 ## Pass 2: establish target validity/proof
 
 After Pass 1 every source-present node has a final target occurrence `resetValueId(K)`, either preserved or newly authored.
 
-Let `P1` be replay after Pass 1. For each source-present K define:
+For each source-present K define:
 
 ```text
 PotentialValid(K) =
