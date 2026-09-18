@@ -114,7 +114,7 @@ J0 = Jreceiver join Jsource
 Jafter = J0 + required reset events
 ```
 
-Reset's own-writer-ahead precondition is defined in `incremental-graph-journal-reset.md` §Preconditions and `database-lifecycle.md` §5.
+Reset's own-writer-ahead precondition is defined in `incremental-graph-journal-reset.md` §Preconditions and `incremental-graph-journal-lifecycle.md` §5.
 
 Reset preserves an occurrence when target immutable occurrence state already matches. For every incoming edge removed from preserved V, reset authors `proof(V,D)` negative evidence; it does not invalidate the whole occurrence proof. Target persistent stale state gets `value(V)` marker when own effective proof is otherwise complete. Target absence gets DeleteEvent only when J0 selects a value.
 
@@ -163,7 +163,7 @@ The artifact is the original frozen bootstrap cut. A running release joins it on
 
 ## Established local writer state is monotone under the supported lifecycle
 
-The fault-model and established-writer rollback boundary are defined normatively in `database-lifecycle.md` §5, with ordinary synchronization behavior in `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is unsupported state.
+The fault-model and established-writer rollback boundary are defined normatively in `incremental-graph-journal-lifecycle.md` §5, with ordinary synchronization behavior in `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is unsupported state.
 
 The algebraic fact used here is only that supported existing-writer history is monotone; complete absence and continuation-safe restoration are a distinct lifecycle transition.
 
