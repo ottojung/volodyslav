@@ -1,4 +1,8 @@
-# IncrementalGraph Synchronization
+---
+title: Journal 3 Synchronization Shell (target design)
+---
+
+# Journal 3 Synchronization Shell (target design)
 
 **Status:** this document specifies the Journal 3 target synchronization shell. Journal 3 is not yet implemented in the current backend. The shipped host-branch synchronization algorithm remains documented in `incremental-graph-synchronization.md` until the Journal 3 implementation lands.
 
