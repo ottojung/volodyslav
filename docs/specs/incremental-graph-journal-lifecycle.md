@@ -390,7 +390,7 @@ If the held reset source is ahead for the receiver's own local writer, reset fai
 
 Reset preserves an already-selected value occurrence when immutable semantic occurrence state already matches target. It authors new ValueEvents only where occurrence itself must change.
 
-When reset merely removes incoming validity for a preserved occurrence V, it authors one occurrence-and-input-specific **proof-edge barrier** for each removed edge before any target validation. It does not use a node-scoped invalidation merely as a certificate-selection device.
+When reset weakens incoming validity for a preserved occurrence V, it barriers every non-target edge that any eligible retained certificate could expose before any target validation. It does not use a node-scoped invalidation merely as a certificate-selection device.
 
 If reset target stores a node stale while its own effective proof is otherwise complete, reset persists that stale state with a value-scoped invalidation even when recursive replay is already stale through an input.
 
