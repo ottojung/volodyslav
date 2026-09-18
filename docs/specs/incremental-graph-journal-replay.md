@@ -378,15 +378,21 @@ selfProofReady(K) iff
     and coversValueInvalidations(K, certificate(K))
 ```
 
-Every supported committed projection satisfies: if selfProofReady(K) and some direct input of K is not fresh, then an uncovered value-scoped InvalidateEvent for valueId(K) exists.
+Every supported committed projection satisfies:
 
-Every authoring path which intentionally creates/reproduces a persistent fresh-to-stale flag must ensure this marker exists when the occurrence's own proof is otherwise complete:
+```text
+selfProofReady(K) => fresh(K)
+```
+
+The value-scoped marker rule is procedural, not a second committed-state implication. At each authoring path's **pre-marker replay cut**, if K's own proof is ready, the operation's target/settled semantics require K to remain persistently stale, and that staleness is attributable only to direct-input freshness, the path must ensure a current-value `InvalidateEvent` exists before publication:
 
 - ordinary emission for runtime propagated invalidation;
 - synchronization normalization for merged-input staleness;
 - pre-Journal bootstrap join when combined canonical/joining evidence makes a selected occurrence stale solely through a stale input;
 - reset when source target stores persistent stale state;
 - migration when migration target stores persistent propagated stale state.
+
+Once that marker is present and not causally covered by a later validation, `coversValueInvalidations` is false and therefore `selfProofReady(K)` is false in the committed state. This is what makes the committed invariant satisfiable while preventing a later upstream `Unchanged` from silently freshening K.
 
 Bootstrap additionally treats an **exact shared occurrence** conservatively: if either canonical or joining legacy copy was stale, the joined shared ValueId retains an uncovered value-scoped bootstrap invalidation. A fresh joining copy cannot causally validate away canonical stale evidence merely by upgrading later.
 
