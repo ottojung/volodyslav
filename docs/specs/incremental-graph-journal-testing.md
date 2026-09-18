@@ -153,6 +153,8 @@ If A:901..905 existed only on the completely lost local database and no supporte
 
 Allocator companion regression: let the recoverable A:1..900 prefix reconstruct `last_node_index = n`, while lost A:901..905 had advanced the destroyed local database to `m > n`. When the suffix cannot later re-enter supported retained history, absent restore reconstructs n and may allocate n+1 again even if that index was used only in the lost suffix. If supported retained history containing any allocation from that suffix can later re-enter, A:900 is not continuation-safe and the restore MUST be rejected. At no supported retained state may one physical NodeIdentifier denote incompatible semantic nodes.
 
+This regression is the concrete recovery boundary for `$id-4173361406347342`: the test oracle is whether both meanings can coexist in, or later join, supported retained history—not whether the identifier bit pattern was ever physically allocated before.
+
 Establishing continuation safety must not require contacting/discovering every possible peer; exercise a recovery-source implementation whose transport-level invariant can make the guarantee locally, consistent with `$id-4719065396881648`.
 
 This does not substitute for pre-Journal creator-resume.

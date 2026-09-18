@@ -85,6 +85,7 @@ Acceptance:
 - installation recovery source is queried only for an absent local database and before fresh fingerprint generation;
 - source exists -> restore/adopt `localWriter` only when the held snapshot establishes a **continuation-safe head** as defined by `incremental-graph-journal-lifecycle.md` §4.1;
 - continuation-safe means no higher record for that writer can later re-enter supported history after absent-state restoration;
+- NodeIdentifier uniqueness means unambiguous identity across every set of histories that can coexist in, or later join, supported retained state (`$id-4173361406347342`); it is not a never-issued-twice rule for allocations confined to a permanently discarded continuation-safe suffix;
 - source definitely absent -> fresh creation allowed;
 - source read/query failure -> fail, no fresh fallback;
 - writer head/allocator watermark/authority high-water/projection reconstructed before new allocation;

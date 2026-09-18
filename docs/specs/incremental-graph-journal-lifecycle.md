@@ -116,7 +116,7 @@ Therefore a writer record which survives complete loss of the local database on 
 
 If the remote repository itself is silently rolled back, loses previously published commits, or is externally rewritten while surviving replicas still retain the removed writer records, that violates the assumptions of this Git-backed recovery model. Such storage damage is outside ordinary lifecycle recovery.
 
-Continuation safety protects allocator identity as well as writer coordinates. The recoverable writer prefix carries the `last_node_index` watermark that remains reserved. If a higher allocation can later re-enter supported retained history, the older recovery point is not safe; if the higher allocation existed only in the discarded suffix and cannot re-enter, its index may be allocated again.
+Continuation safety protects allocator identity as well as writer coordinates. The recoverable writer prefix carries the `last_node_index` watermark that remains reserved. If a higher allocation can later re-enter supported retained history, the older recovery point is not safe; if the higher allocation existed only in the discarded suffix and cannot re-enter, its index may be allocated again. This is the supported-history uniqueness rule of `$id-4173361406347342`: reuse is allowed only when the two meanings cannot coexist in, or later join, any supported retained state.
 
 ### 4.2 Receiver-less restore
 
