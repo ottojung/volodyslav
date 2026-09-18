@@ -294,7 +294,7 @@ It:
 6. on equality installs exactly artifact history, reconstructs writer head/`last_node_index`/authority high-water/projection/indexes, and atomically cuts over; and
 7. resumes the ordinary migration gate from the installed Journal version.
 
-This closes the crash window where canonical artifact publication succeeded but local Journal cutover did not.
+This closes both publication crash windows: publication may have succeeded before local cutover, or its response may have been lost. On restart the installation first re-queries the canonical source. If the durable artifact has the local creator writer, creator-resume applies; if another writer won, discard local staging and join; if the source still reports definite absence, retry the same deterministic candidate through conditional publication; indeterminate/error fails without cutover.
 
 A different fingerprint MUST NOT use creator-resume.
 
