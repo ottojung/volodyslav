@@ -691,7 +691,11 @@ A `proof(V,D)` barrier retires only `D -> K` for exact occurrence V until causal
 
 Concurrent barriers compose by removing the union of their named edges. Therefore independent migrations weakening the same preserved occurrence do not destroy unrelated proof.
 
-A stale `keep` does not enter this path merely because it is stale. M2 authors barriers only for validity edges actually absent from `Gtarget`, such as edges removed by target schema/proof semantics.
+Compute the barrier set from the fixed P1 cut before authoring M2 barriers. Since `PotentialValid(K)` is the union of effective proof edges over **all** P1-eligible certificates for the preserved ValueId, every already-retained certificate is prevented from exposing a non-target edge after certificate selection changes. Proof barriers do not make an ineligible certificate eligible. A later migration-authored target certificate is causally after the barriers and may re-prove only target edges. Thus one barrier pass over `PotentialValid(K) - TargetValid(K)` is complete.
+
+This union is negative-maintenance analysis only; migration still never combines positive proof from different certificates.
+
+A stale `keep` does not enter this path merely because it is stale. M2 authors barriers only for edges absent from `Gtarget` that some eligible retained certificate could otherwise expose.
 
 If migration only adds validity, no barrier is required solely for the addition.
 
