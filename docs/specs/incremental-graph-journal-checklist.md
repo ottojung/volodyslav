@@ -152,8 +152,7 @@ Acceptance:
 - compatibility from held source snapshot;
 - every missing **foreign-writer** suffix imported;
 - overlap verified;
-- a longer agreeing prefix of the receiver's own local writer causes `JournalWriterBehindError` before publication and classifies the receiver as corrupted/unsupported rather than triggering recovery;
-- no ordinary sync path imports a missing suffix of the receiver's own writer;
+- own-writer-ahead handling matches `database-lifecycle.md` §5 and `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is unsupported state;
 - fork rejected;
 - transfer streamable;
 - imported records unchanged;
