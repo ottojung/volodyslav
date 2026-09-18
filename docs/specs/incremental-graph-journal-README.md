@@ -113,6 +113,8 @@ The tests/examples intentionally cover at least:
 - recursively stale `keep` preserving current-shape-compatible source replay proof;
 - same historical ValueEvent selected on one replica but not another rewriting identically through the total codec;
 - NodeKey rewriting re-sorting ValidationBasis entries by target canonical order;
+- non-identity `Ks -> Kt` representation rewrite with selected `keep` preserving ValueId and authoring neither replacement ValueEvent nor spurious delete;
+- two distinct retained source NodeKeys rewriting to one target key failing `JournalVersionCompatibilityError`;
 - retained history for a node family removed from target schema still receiving a deterministic target-format representation;
 - non-total Journal codec failing `JournalVersionCompatibilityError` before cutover;
 - independent genuine replacement migration possibly staling dependents after conflict.
