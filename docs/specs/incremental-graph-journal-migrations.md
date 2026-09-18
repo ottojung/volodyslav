@@ -880,7 +880,7 @@ At minimum cover:
 - non-identity `Ks -> Kt` representation rewrite plus `keep` preserves the old ValueId without replacement ValueEvent or spurious DeleteEvent;
 - representation-only change uses codec + `keep`;
 - explicit `invalidate()` preserves ValueId and authors node invalidation;
-- per-edge `proof(V,D)` barriers remove exactly target-retired validity;
+- maintenance proof weakening barriers every non-target edge in `eligibleEffectiveProofUnion(K)`, including edges exposed only by a previously losing certificate;
 - concurrent same-V barriers preserve unrelated proof and compose by edge union;
 - proof/freshness/schema-only changes create no ValueEvent;
 - migration-propagated stale dependent remains stale after upstream `Unchanged`;
