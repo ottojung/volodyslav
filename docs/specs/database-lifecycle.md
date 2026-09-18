@@ -110,11 +110,11 @@ The current Git-backed transport is one way to satisfy the abstract absent-resto
 
 In the supported flow, an installation renders/publishes its database through its transport-managed remote branch before another installation can obtain that published writer history through the same synchronization transport. The branch/location mapping is transport configuration and is not stored in IncrementalGraph state. Under the normal supported Git persistence model, successfully published branch history is not silently rewound while still being treated as ordinary recoverable state.
 
-Therefore a writer record which survives complete loss of the local database on some other participating installation must already have passed through the remote publication path. Local records written after the last successful publication but lost with the complete local database may disappear permanently and their sequence coordinates may be reused after absent-state restoration.
+Therefore a writer record which survives complete loss of the local database on some other participating installation must already have passed through the remote publication path. Local records written after the last successful publication but lost with the complete local database may disappear permanently. Their writer sequence coordinates, and local NodeIdentifier indices whose allocations are represented only by that discarded suffix, may be reused after absent-state restoration.
 
 If the remote repository itself is silently rolled back, loses previously published commits, or is externally rewritten while surviving replicas still retain the removed writer records, that violates the assumptions of this Git-backed recovery model. Such storage damage is outside ordinary lifecycle recovery.
 
-This rule also protects the monotone NodeIdentifier allocation watermark carried by any recoverable writer prefix.
+Continuation safety protects allocator identity as well as writer coordinates. The recoverable writer prefix carries the `last_node_index` watermark that remains reserved. If a higher allocation can later re-enter supported retained history, the older recovery point is not safe; if the higher allocation existed only in the discarded suffix and cannot re-enter, its index may be allocated again.
 
 ### 4.2 Receiver-less restore
 
@@ -137,12 +137,12 @@ and MUST establish a continuation-safe head under §4.1 before this installation
 Restore retains the source history and reconstructs:
 
 - local writer head;
-- local `last_node_index`;
+- local `last_node_index` reconstructed from the retained writer prefix;
 - authority high-water;
 - materialized graph; and
 - derived indexes/caches.
 
-No new semantic record is required merely to restore exact retained history.
+The reconstructed `last_node_index` may be lower than the destroyed database's final local watermark when the missing suffix is continuation-safe to discard under §4.1. No new semantic record is required merely to restore exact retained history.
 
 The restored snapshot may be at an older supported Journal version. Startup then runs the normal migration gate before exposing graph APIs.
 
@@ -492,7 +492,7 @@ Corruption/unsupported evidence includes:
 - incompatible current NodeIdentifier reuse;
 - creator-resume artifact/local-legacy semantic disagreement;
 - graph known to disagree with replay without successful derived-state rebuild; and
-- local allocator state which could reuse a retired index.
+- local allocator state which could reallocate an index whose earlier allocation can exist in or later enter supported retained history.
 
 Incompatibility includes:
 
