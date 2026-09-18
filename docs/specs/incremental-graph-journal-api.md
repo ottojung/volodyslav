@@ -131,7 +131,7 @@ synchronizeFrom(source: JournalSyncSource) -> Promise<SyncResult>
 
 Success means source compatibility came from the held snapshot, imported records were retained unchanged, normalization was complete, and active graph equals Journal replay.
 
-If the source exposes a longer prefix of the receiver's **own** writer, synchronization fails with `JournalWriterBehindError` before receiver-authored normalization/cutover. Under the lifecycle fault model this is evidence of corrupted/unsupported state—such as partial local rollback/loss or unsupported cloning—not a normal same-writer recovery case.
+If the source is ahead for the receiver's own writer, synchronization follows the failure rule in `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is unsupported state, whose lifecycle classification is owned by `database-lifecycle.md` §5.
 
 A fully absent installation cannot call this operation because no receiver writer identity exists yet.
 
