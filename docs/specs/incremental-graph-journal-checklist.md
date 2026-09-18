@@ -251,7 +251,7 @@ Provide actionable categories for writer fork, bootstrap fork, stream gap, causa
 
 Bootstrap incompatibility specifically includes a would-be pre-Journal target requiring semantic/time/allocator-dependent migration before Journal identity exists.
 
-Journal-aware migration incompatibility includes a format migration whose codec is not total over retained source-format history and therefore fails `JournalVersionCompatibilityError`.
+Journal-aware migration incompatibility includes a format migration whose codec is not total over retained source-format history, or a stored Journal version with no complete canonical migration chain to the running version; both fail `JournalVersionCompatibilityError`.
 
 ## 15. Reference model / property verification
 
