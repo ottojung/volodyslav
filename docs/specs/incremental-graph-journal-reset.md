@@ -219,6 +219,10 @@ A proof-edge barrier retires the exact incoming edge `D -> K` for the exact pres
 
 The barrier is occurrence-scoped on purpose. Reset is weakening proof for the preserved occurrence; it is not semantically issuing an explicit node invalidation which should taint certificates for an unseen concurrent/later replacement ValueId.
 
+The barrier set is computed from the fixed P1 cut **before** authoring any reset proof barriers. Because it covers every effective unwanted edge of every certificate eligible at P1, weakening one certificate cannot reveal an unwanted edge from a previously losing certificate. Proof barriers do not make an ineligible historical certificate eligible, and every reset-authored target validation is causally after the new barriers, so one pass over `PotentialValid(K) - TargetValid(K)` is complete; no iterative barrier-discovery loop is required.
+
+This does not combine positive proof from multiple certificates. `PotentialValid` is used only to choose negative barriers. Replay continues to obtain all positive validity edges from exactly one selected certificate.
+
 The barrier is required only for proof weakening/removal. If reset merely adds validity edges, the later stronger certificate naturally wins by effective basis-match count and no barrier is needed solely for that addition.
 
 After any required barriers, evaluate replay under the current schema.
