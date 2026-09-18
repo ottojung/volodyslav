@@ -275,6 +275,22 @@ This injectivity law belongs to the codec definition itself and is independent o
 
 Let `GconvertedBefore = transportProjectionThroughCodec(Gbefore,...)`. Semantic migration repair operates in this target-keyed view: if `Kt = rewriteNodeKey(Ks)`, an occurrence-preserving decision at Kt obtains the same ValueId that Gbefore selected at Ks. A pure key-representation change therefore creates neither a replacement ValueEvent nor a DeleteEvent for Ks.
 
+## Law 33b: canonical migration path preserves immutable overlap
+
+For every supported stored Journal version v and running target version t, migration semantics select one canonical version chain:
+
+```text
+v = v0 -> v1 -> ... -> vn = t
+```
+
+with each step determined by `canonicalNextJournalVersion`.
+
+Every replica starting from the same retained record body at v and reaching t through supported migration applies that same semantic chain. Therefore every pre-existing shared `JournalRecordId` has one byte-identical canonical body at t, independent of which application releases the replica happened to run between v and t.
+
+A release may drop support for an old source version, but while support remains it cannot redefine that source's canonical successor path. Any fused migration implementation is valid only if its complete retained Journal is exactly the same as stepwise canonical execution.
+
+Thus later synchronization of independently upgraded replicas does not turn supported version skipping into `JournalForkError`.
+
 ## Law 34: Journal-aware representation-only change uses codec + keep
 
 The whole-history codec is the sole source of target representation bytes. A selected occurrence whose semantic meaning survives uses `keep`, preserving ValueId. No second value-producing representation decision exists in the Journal-aware migration vocabulary. Semantic-repair bookkeeping is performed in the codec-transported target key space rather than by indexing source-keyed `Gbefore` with target NodeKeys.
