@@ -219,6 +219,20 @@ Two replicas independently migrate/reset to the same partial proof `{A:a1,C:unkn
 
 Variant: one replica removes A and the other removes C. After union both edges are invalid: negative edge evidence composes as the union of removed edges.
 
+### Reset losing-certificate proof exposure regression
+
+Construct preserved occurrence V of K with current inputs A1/B1 and two eligible certificates:
+
+```text
+C1 higher authority: {A:A1, B:B0} -> effective {A}
+C2 lower authority:  {A:A0, B:B1} -> effective {B}
+target validity: {}
+```
+
+C1 initially wins. Reset MUST compute `PotentialValid(K)={A,B}` across all eligible certificates, author `proof(V,A)` and `proof(V,B)` barriers, and finish with zero incoming validity. It MUST NOT barrier only A and allow C2 to expose B. Positive replay proof still comes from one certificate; the union is used only for negative barrier selection.
+
+Repeat the same reset against the unchanged source and require no new proof barrier or ValidateEvent.
+
 ### Reset persistent propagated stale
 
 Target has A stale and B stale with full B proof `{A:a1}`. Reset ensures final B ValueId has uncovered value-scoped reset invalidation. Later `A -> Unchanged` cannot freshen B.
