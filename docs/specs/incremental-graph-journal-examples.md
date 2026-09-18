@@ -361,7 +361,7 @@ Legacy K has inputs A/B, is stale, with only A->K validity. Canonical bootstrap 
 
 A's complete local database is destroyed. Its last successfully recoverable synchronized snapshot ends at A:900. Before destruction the local machine had also authored A:901..905, but those records were never published anywhere that can survive and reintroduce them under the supported backend model.
 
-The absent-state recovery source may therefore return A:900 as continuation-safe. Startup restores the absent installation and the next new A record may reuse coordinate 901, because the old unpublished 901..905 disappeared with the complete local database.
+The absent-state recovery source may therefore return A:900 as continuation-safe. Startup restores the absent installation and the next new A record may reuse coordinate 901, because the old unpublished 901..905 disappeared with the complete local database. The restored `last_node_index` is reconstructed from A:1..900, so NodeIdentifier indices allocated only by the lost A:901..905 suffix may likewise be reallocated.
 
 If surviving supported state could later reintroduce old A:901..905, the recovery source must not claim A:900 is continuation-safe.
 
