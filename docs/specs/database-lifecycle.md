@@ -6,6 +6,8 @@ title: Database Lifecycle
 
 ## 1. Overview
 
+**Status:** this document specifies the Journal 3 target lifecycle. Journal 3 is not yet implemented in the current backend. Current startup/migration/storage behavior remains governed by the shipped component implementation and its non-Journal documentation until the Journal 3 implementation lands. This document defines the lifecycle the implementation must move to; it does not claim that current runtime classes such as `InstallationRecoverySource` or Journal-specific errors already exist.
+
 This document specifies the supported lifecycle of Volodyslav's synchronized IncrementalGraph database under Journal 3.
 
 The central law is:
