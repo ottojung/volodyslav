@@ -205,7 +205,7 @@ Reset retains observed receiver/source history and establishes the requested sou
 
 Reset's own-writer-ahead behavior is defined by `incremental-graph-journal-reset.md` §Preconditions and the shared lifecycle boundary in `incremental-graph-journal-lifecycle.md` §5.
 
-Otherwise reset preserves an already-matching occurrence, creates/replaces only when semantic occurrence state differs, uses `proof(V,D)` per removed incoming edge, persists target stale flags with `value(V)`, and authors DeleteEvent for target absence when necessary.
+Otherwise reset preserves an already-matching occurrence, creates/replaces only when semantic occurrence state differs, uses `proof(V,D)` for every `D in eligibleEffectiveProofUnion(K) - TargetValid(K)`, persists target stale flags with `value(V)`, and authors DeleteEvent for target absence when necessary.
 
 Reset repair is intentionally causally later than all history it observed. That rule is not reused for pre-Journal bootstrap conflict conversion.
 
