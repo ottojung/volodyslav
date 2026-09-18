@@ -175,8 +175,7 @@ Acceptance:
 Acceptance:
 
 - source target/compatibility from one held snapshot;
-- own-writer-behind source fails `JournalWriterBehindError` before import/authoring and is treated as corrupted/unsupported receiver state;
-- reset never invokes an existing-writer recovery path and is not retried merely to repair local rollback;
+- own-writer-ahead reset behavior matches `incremental-graph-journal-reset.md` §Preconditions and `database-lifecycle.md` §5;
 - unchanged target occurrence preserves ValueId;
 - new ValueEvent only for actual occurrence replacement;
 - for every removed incoming edge `D -> K` of preserved V, reset authors `Invalidate(scope=proof(V,D),reason=reset)`;
