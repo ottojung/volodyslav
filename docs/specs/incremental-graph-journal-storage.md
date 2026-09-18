@@ -94,7 +94,7 @@ Same-ID body disagreement is a fork. Representation migration is permitted only 
 
 ## Total whole-history format rewrite
 
-The normative source->target `JournalFormatCodec` contract and rewrite pipeline are defined in `incremental-graph-journal-migrations.md` §10a.
+The normative source->target `JournalFormatCodec` contract and rewrite pipeline are defined in `incremental-graph-journal-migrations.md` §9a.
 
 Storage must support applying that pipeline to **every retained source-format record**, not merely records whose node families remain in target schema. This includes non-selected ValueEvents, historical validation-basis NodeKeys, proof-scope input NodeKeys, and history for target-removed families.
 
