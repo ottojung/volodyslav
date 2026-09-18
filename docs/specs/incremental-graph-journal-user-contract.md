@@ -197,7 +197,7 @@ Reset retains history and establishes the source projection relative to all hist
 
 - matching target occurrence -> preserve ValueId;
 - actual occurrence difference -> new reset ValueEvent;
-- each removed proof edge for preserved V -> `proof(V,D)` barrier;
+- every `D in eligibleEffectiveProofUnion(K) - TargetValid(K)` for preserved V -> `proof(V,D)` barrier;
 - exact target proof -> validation as needed;
 - target persistent stale with effective own proof complete -> `value(V)` reset marker;
 - target absence while union selects value -> one DeleteEvent;
