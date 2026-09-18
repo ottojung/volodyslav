@@ -823,7 +823,7 @@ Current replay uses such a certificate only when:
 - its explicit input-key set equals the current input set; and
 - ordinary invalidation/effective-proof selection accepts it.
 
-Proof weakening uses `proof(V,D)` barriers for exact removed edges. True explicit invalidation keeps node scope.
+Proof weakening uses `proof(V,D)` barriers for every non-target edge in the eligible-certificate effective-proof union. True explicit invalidation keeps node scope.
 
 ## 22. Atomic publication
 
