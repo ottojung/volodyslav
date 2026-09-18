@@ -42,7 +42,7 @@ Reset requires:
 
 Compatibility metadata must come from the same held `JournalSnapshot` used to derive the target and import source records.
 
-If the held source snapshot has `frontier[localWriter]` greater than the receiver's, reset fails with `JournalWriterBehindError` **before importing any record or authoring any event**, and leaves the active receiver unchanged. Under the lifecycle fault model, that condition means the existing local database has lost/rolled back part of its own writer history or otherwise entered unsupported state. Reset does not repair it, and there is no supported existing-writer rollback-recovery transition. Divergent overlap is `JournalForkError`.
+The shared own-writer rollback condition is defined by `database-lifecycle.md` §5. If the held source snapshot is ahead for the receiver's own writer, `resetTo()` fails `JournalWriterBehindError` before import/authorship and leaves the active receiver unchanged. Divergent overlap remains `JournalForkError`.
 
 An installation with no local database/writer identity uses the absent-state restoration lifecycle in `database-lifecycle.md`; `resetTo()` does not invent a local writer identity for an absent receiver.
 
