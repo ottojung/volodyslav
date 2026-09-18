@@ -384,15 +384,13 @@ Reset uses the shared boundary in `incremental-graph-journal-lifecycle.md` §5; 
 
 ## Repeat-reset idempotence
 
-For an exact repeat against the same source cut, if all source records are already retained, the active receiver projection already has `semanticGraph(receiver) == semanticGraph(PS)`, and there is no outstanding reset-specific repair obligation, reset returns:
+Reset returns:
 
 ```text
 changed = false
 ```
 
-and authors no semantic records.
-
-This fast no-change condition is evaluated on the already-valid active receiver plus source-membership/repair checks; it does not require projecting a newly formed raw union first.
+exactly when Passes 1–3 author no semantic records.
 
 After one successful reset, every pre-reset eligible certificate is already barriered on every non-target edge it could expose, and any reset-authored target certificate is causally after those barriers and proves only target edges. Therefore a second reset to the unchanged source computes no new unwanted edge in `PotentialValid - TargetValid`; if the selected certificate already has the required target proof/freshness coverage, it authors no barrier or validation.
 
