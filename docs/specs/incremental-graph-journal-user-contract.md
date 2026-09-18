@@ -151,7 +151,7 @@ Migration has two distinct parts:
 
 Each directed database-version transition uses the pure `JournalFormatCodec` defined by `migration.md`: deterministic `rewriteNodeKey(sourceKey)` and `rewriteComputedValue(sourceKey, payload)` functions, identity by default, followed by target-format re-canonicalization such as ValidationBasis re-sorting.
 
-The transform rewrites **every retained source-format record**, including history for node families absent from the target schema. `rewriteNodeKey` must be one-to-one across distinct retained semantic NodeKeys; a collision would merge historical node identities and fails `JournalVersionCompatibilityError` before cutover.
+The transform rewrites **every retained source-format record**, including history for node families absent from the target schema. The source->target `rewriteNodeKey` definition must be one-to-one across every valid source semantic NodeKey which may occur in supported source-version history, not just the keys retained by the current replica. Otherwise independently migrated replicas could later collapse distinct historical node identities when they synchronize. A locally observed collision is an immediate compatibility failure, but local absence of a collision is not sufficient proof.
 
 Semantic repair is then evaluated in the codec-transported **target NodeKey space**. Thus a representation-only `Ks -> Kt` rename with `keep` preserves the same selected ValueId instead of looking like a deletion of Ks plus creation of Kt.
 
