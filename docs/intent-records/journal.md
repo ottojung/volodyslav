@@ -281,16 +281,16 @@ Specifications may rely on closure under these supported transitions and need no
 ---
 
 $id-4173361406347342
-title: NodeIdentifier uniqueness spans joinable supported histories
+title: NodeIdentifier uniqueness across compatible supported states
 date: 2026/09/18
 source: @ottojung
 kind: requirement
 
-NodeIdentifier uniqueness is required across every set of histories that can coexist in, or later join, supported retained state. Within such a set, one physical NodeIdentifier must not denote incompatible semantic nodes.
+Across any collection of supported database states that can coexist or later be combined through supported operations, a given `NodeIdentifier` must identify the same node materialization lineage wherever it appears.
 
-This is not a stronger "never physically issued twice" requirement over all allocations that ever occurred. After complete local database loss, continuation-safe restoration may reconstruct an older allocator watermark and later reuse an index that was allocated only in the discarded suffix, provided the lifecycle guarantee establishes that no retained copy of the earlier allocation can ever later re-enter supported history.
+Two distinct materialization lineages must not use the same `NodeIdentifier` within such a collection of states.
 
-If an earlier allocation can still survive or later re-enter supported retained state, reuse is forbidden and the recovery point is not continuation-safe. This requirement inherits the accepted negligible DatabaseFingerprint collision assumption.
+No uniqueness relationship is required between states that cannot coexist or ever be combined in a supported execution.
 
 ---
 
