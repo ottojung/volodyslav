@@ -168,7 +168,8 @@ Acceptance:
 - includes newly selected remote ValueIds;
 - proof deficiency/node invalidation/already-uncovered value marker do not create unnecessary duplicate marker;
 - repeat sync no-op;
-- fair normalization reaches fixed point.
+- fair normalization reaches fixed point;
+- a quiescent H-replica gather-to-one/broadcast-from-one schedule settles within at most `2(H-1)` state-advancing successful pairwise synchronizations, implying the required H^2 achievable bound.
 
 ## 11. Reset
 
