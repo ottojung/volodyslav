@@ -102,17 +102,9 @@ proof(V,D)
 
 Proof barriers are edge-specific, not whole-certificate barriers.
 
-For eligible certificates replay maximizes:
+Certificate selection and effective-basis calculation are owned by `incremental-graph-journal-replay.md` §Certificate selection and §Effective basis match.
 
-```text
-1. effectiveBasisMatchCount
-2. coversValueInvalidations
-3. authority
-```
-
-`effectiveBasisMatchCount` ignores proof entries suppressed by uncovered `proof(V,D)` barriers.
-
-Positive proof comes from one selected certificate. Multiple proof-edge barriers may independently subtract edges from it.
+Conceptually, positive proof comes from one replay-selected certificate while proof-edge barriers may independently subtract edges from it.
 
 ## Hard stale, soft stale, and deletion
 
