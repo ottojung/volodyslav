@@ -103,20 +103,22 @@ This accepted non-confluence does not weaken convergence within an actual execut
 ---
 
 $id-5631842079463518
-title: Synchronization settling requires a host-count bound
+title: Synchronization settling admits a host-count bound
 date: 2026/09/16
 source: @ottojung
 kind: requirement
 
-Convergence must require a bounded number of synchronization operations after graph-changing operations and participation changes stop.
+After graph-changing operations and participation changes stop, the participating replicas must admit a settling schedule whose number of state-advancing successful pairwise synchronization operations is bounded solely as a function of the number of participating replicas, rather than by retained-history size or graph size.
 
-For a quiescent participation epoch containing H participating replicas, the replicas must be able to reach the settled state required by `$id-4464408832385718` within at most H^2 state-advancing successful pairwise synchronization operations under fair scheduling.
+For a quiescent participation epoch containing H participating replicas, there must exist a settling schedule reaching the state required by `$id-4464408832385718` within at most H^2 state-advancing successful pairwise synchronization operations.
 
-A state-advancing synchronization is one which either incorporates retained Journal history not already present at the receiver or authors semantic normalization history required because of the incorporated/retained history. Semantically redundant synchronization calls which transfer no new retained history and author no normalization records do not consume this bound, because an external scheduler may repeat such calls arbitrarily often. Failed attempts to contact an unavailable host likewise do not consume the bound.
+A state-advancing synchronization is one which either incorporates retained Journal history not already present at the receiver or authors semantic normalization history required because of the incorporated/retained history. Semantically redundant synchronization calls which transfer no new retained history and author no normalization records do not consume this bound. Failed attempts do not consume it either.
 
-If a graph-changing operation occurs or the participating set changes, the current quiescent participation epoch ends and a new one begins with H recomputed from the new participating set. Fairness is still required: the bound does not permit a scheduler to indefinitely avoid a synchronization needed to disseminate relevant history.
+This is an achievable-schedule bound, not a claim that every arbitrary fair ordering of pairwise synchronizations must settle within H^2 state-advancing calls. The independent convergence intent still requires arbitrary fair synchronization to settle eventually. An implementation or specification may satisfy this intent with any stronger host-count-only bound.
 
-This is a bound on the number of state-advancing pairwise synchronization operations needed for settling, not an end-to-end CPU, I/O, or wall-clock running-time bound. The separate synchronization-performance intent may continue to defer change-sensitive running-time requirements.
+If a graph-changing operation occurs or the participating set changes, the current quiescent participation epoch ends and a new one begins with H recomputed from the new participating set.
+
+This is a bound on the number of state-advancing pairwise synchronization operations in a deliberate settling schedule, not an end-to-end CPU, I/O, byte-transfer, or wall-clock running-time bound. The separate synchronization-performance intent may continue to defer change-sensitive running-time requirements.
 
 ---
 
