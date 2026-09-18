@@ -227,17 +227,32 @@ CohortBootstrapSource {
         Exists(CanonicalBootstrapSnapshot)
       | DefinitelyAbsent
       | IndeterminateOrError
+
+    publishCanonicalBootstrapIfAbsent(candidate) ->
+        Published(CanonicalBootstrapSnapshot)
+      | AlreadyExists(CanonicalBootstrapSnapshot)
+      | IndeterminateOrError
 }
 ```
 
+The publication operation is the first-creator arbitration boundary required by `$id-1847369205416728`. Semantically it is conditional on the cohort's canonical slot still being absent: among concurrent distinct candidates, at most one may return `Published`. Every later/losing attempt returns `AlreadyExists(B)` with the one durable winner, or `IndeterminateOrError` when the outcome cannot be established.
+
+`DefinitelyAbsent` from `queryCanonicalBootstrap()` is only permission to construct/stage a candidate and attempt conditional publication. It does **not** itself authorize durable canonical publication or local Journal cutover.
+
 - `Exists(B)` -> validate target; creator-resume iff `B.creatorWriter == localFingerprint`, otherwise join;
-- `DefinitelyAbsent` -> canonical creation is allowed only under the source's first-creator arbitration contract;
+- `DefinitelyAbsent` -> stage a deterministic candidate and call `publishCanonicalBootstrapIfAbsent(candidate)`;
 - `IndeterminateOrError` -> fail and do not create.
+
+Publication outcomes:
+
+- `Published(B)` -> B is the durable canonical artifact; local creator cutover may proceed only after validating that B is the published form of the staged candidate;
+- `AlreadyExists(B)` -> discard the losing staged candidate; creator-resume iff `B.creatorWriter == localFingerprint`, otherwise ordinary join;
+- `IndeterminateOrError` -> do not cut over. The active legacy database remains unchanged; on retry/restart re-query the canonical source before deciding whether to resume, join, or retry the same conditional publication.
 
 ### Canonical bootstrap operations
 
 ```text
-createCanonicalBootstrap(legacyState)
+stageCanonicalBootstrap(legacyState) -> candidate
 resumeCanonicalBootstrapCreator(legacyState, artifact)
 joinCanonicalBootstrap(legacyState, artifact)
 ```
