@@ -473,7 +473,28 @@ The codec MUST be total over retained source history. Include a historical Value
 
 Add a NodeKey-format transition where source canonical order differs from target canonical order. Assert `rewriteNodeKey` is applied to record node keys, validation-basis inputs, and proof-scope inputs, and that every rewritten ValidationBasis is re-sorted by **target** canonical NodeKeyString order before encoding.
 
-Assert `rewriteComputedValue(sourceKey,payload)` runs for selected and non-selected retained ValueEvents. Codec functions receive no mutable capabilities and are deterministic. A thrown transform or invalid target representation fails `JournalVersionCompatibilityError` before cutover.
+Add the combined selected-occurrence regression:
+
+```text
+source selected key Ks has ValueId V
+rewriteNodeKey(Ks) = Kt
+Ks != Kt
+migration decision for Kt = keep
+```
+
+Require:
+
+- the conceptual `GconvertedBefore` contains Kt with ValueId V and does not expose Ks as a semantic-repair key;
+- final selected node is Kt;
+- final ValueId is still V;
+- no replacement ValueEvent is authored;
+- no DeleteEvent is authored merely because Ks differs from Kt;
+- source proof/dependency endpoints are rewritten to target NodeKeys;
+- `project(Jafter,targetSchema) == Gtarget`.
+
+Also generate two distinct retained source NodeKeys Ks1/Ks2 whose codec maps both to one Kt. Migration MUST fail `JournalVersionCompatibilityError` before cutover; a representation codec may not merge historical semantic-node identities.
+
+Assert `rewriteComputedValue(sourceKey,payload)` runs for selected and non-selected retained ValueEvents. Codec functions receive no mutable capabilities and are deterministic. A thrown transform, invalid target representation, or retained-domain NodeKey collision fails `JournalVersionCompatibilityError` before cutover.
 
 ## Current-format codec tests
 
