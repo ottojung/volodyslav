@@ -8,7 +8,7 @@ This document specifies minimum verification categories. Exact framework/tooling
 
 ## Reference replay oracle
 
-Maintain one deliberately straightforward `project(J)` model. Optimized replay/index code is checked against this oracle over generated/bounded histories.
+Maintain one deliberately straightforward streaming `project(J)` model. Optimized replay/index code is checked against this oracle over generated/bounded histories. Test fixtures themselves may be bounded/in-memory, but the oracle algorithm should consume ordered records incrementally rather than rely on grouping the complete Journal by node in RAM.
 
 ## Local operation differential tests
 
