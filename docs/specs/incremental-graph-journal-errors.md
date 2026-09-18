@@ -116,28 +116,9 @@ Fail before incompatible history is interpreted/authored or a migration target i
 
 ## JournalWriterBehindError
 
-Meaning:
+This category names the established-writer rollback condition defined normatively in `database-lifecycle.md` §5. Ordinary synchronization handling is defined in `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is unsupported state; reset handling is defined in `incremental-graph-journal-reset.md` §Preconditions.
 
-> An established writable receiver discovers evidence that a longer prefix of its **own local writer stream** exists elsewhere.
-
-Example:
-
-```text
-receiver localWriter = A
-receiver frontier[A] = 900
-ordinary peer snapshot frontier[A] = 905
-```
-
-Under the supported lifecycle model, an existing local database cannot legitimately lose or roll back part of its own committed history. Therefore this observation is evidence that the receiver is outside the supported lifecycle state space; it is not a normal same-writer recovery condition.
-
-Required behavior:
-
-- ordinary synchronization/reset must not import the longer own-writer suffix or author another A record;
-- leave the active receiver unchanged;
-- surface `JournalWriterBehindError` as unsupported/corrupt lifecycle state requiring explicit operator/disaster handling;
-- do not route the existing receiver through absent-installation restoration and do not silently create a new writer identity.
-
-If the local database is completely gone, the lifecycle state is `Absent` and the separate absent-installation restoration path applies. Divergent overlap is instead `JournalForkError`.
+The taxonomy does not define a separate recovery rule: this error is not a request to repair an existing receiver by importing its missing own-writer suffix.
 
 ## JournalProjectionError
 
