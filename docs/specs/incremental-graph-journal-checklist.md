@@ -179,7 +179,7 @@ Acceptance:
 - own-writer-ahead reset behavior matches `incremental-graph-journal-reset.md` §Preconditions and `incremental-graph-journal-lifecycle.md` §5;
 - unchanged target occurrence preserves ValueId;
 - new ValueEvent only for actual occurrence replacement;
-- for every removed incoming edge `D -> K` of preserved V, reset authors `Invalidate(scope=proof(V,D),reason=reset)`;
+- reset computes `eligibleEffectiveProofUnion(K)` from the fixed post-value-repair cut and barriers every non-target edge any eligible retained certificate could expose, using `Invalidate(scope=proof(V,D),reason=reset)`;
 - old proof cannot reintroduce a barriered edge;
 - concurrent barriers for different inputs compose by removing the union of named edges;
 - barrier for `(V,D)` does not invalidate unrelated proof or certificates for another ValueId V2;
