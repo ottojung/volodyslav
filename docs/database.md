@@ -47,10 +47,9 @@ in the `global` sublevel.  The relationship between the two addressing schemes i
   `NodeKey` strings or concrete `NodeKey` descriptors.
 - **Storage** is identifier-native: all data sublevel records are keyed by
   `NodeIdentifier`.
-- **Migration existing-node operations** (`get`, `keep`, `invalidate`, `delete`)
+- **Migration decisions** (`keep`, `override`, `delete`, `invalidate`, `get`)
   take `NodeIdentifier` values, since migration operates directly on the
-  stored graph state. New materializations use `create` below. Representation-only
-  changes use `keep` plus the Journal format codec defined in `specs/migration.md`.
+  stored graph state.
 - **`create(nodeKeyString, value)`** is the special migration case: it
   accepts a semantic `NodeKey` string, allocates a fresh `NodeIdentifier`,
   and stores the new value under that identifier.
