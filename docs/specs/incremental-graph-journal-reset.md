@@ -193,10 +193,10 @@ TargetValid(K) = {
 
 Replay intentionally prefers certificates with greater effective basis applicability before authority. Therefore merely appending a later certificate with more `"unknown"` entries cannot by itself remove validity supplied by older proof.
 
-For every edge which reset must remove while preserving K's selected occurrence:
+For every incoming edge that **any eligible retained certificate** for the preserved occurrence can currently prove, but the reset target must not expose:
 
 ```text
-D in CurrentValid(K) - TargetValid(K)
+D in PotentialValid(K) - TargetValid(K)
 ```
 
 reset MUST author one barrier:
