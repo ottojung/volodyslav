@@ -679,7 +679,6 @@ Call replay after M1 `P1`.
 For each target-present K define:
 
 ```text
-CurrentValid(K)   = semantic incoming validity edges in P1
 PotentialValid(K) = eligibleEffectiveProofUnion_P1(K)
 TargetValid(K)    = semantic incoming validity edges in Gtarget
 ```
