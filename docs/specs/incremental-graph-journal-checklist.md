@@ -87,7 +87,8 @@ Acceptance:
 - continuation-safe means no higher record for that writer can later re-enter supported history after absent-state restoration;
 - source definitely absent -> fresh creation allowed;
 - source read/query failure -> fail, no fresh fallback;
-- writer head/watermark/high-water/projection reconstructed before new allocation;
+- writer head/allocator watermark/authority high-water/projection reconstructed before new allocation;
+- allocator watermark is reconstructed from the same continuation-safe retained writer prefix; indices allocated only in a discarded suffix may be reused only when that suffix cannot later enter supported retained history;
 - records lost only with the completely lost local database and unable to re-enter supported history do not by themselves make the restored head unsafe;
 - establishing absent-restoration safety does not require contacting/discovering every possible peer (`$id-4719065396881648`);
 - an existing local database is never routed through absent restore merely because some of its data is missing or old.
