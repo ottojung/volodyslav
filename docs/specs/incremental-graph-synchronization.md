@@ -72,22 +72,7 @@ An already-established receiver with frontier zero uses the same suffix-transfer
 
 ## Same-writer rollback boundary
 
-Suppose receiver local writer is A and an ordinary source contains an agreeing longer A prefix:
-
-```text
-receiver: A:1..900
-source:   A:1..905
-```
-
-Under the supported lifecycle model, this cannot arise from valid Volodyslav transitions: while the local database exists, its own committed writer history does not roll back.
-
-Therefore ordinary synchronization does **not** activate `A:901..905` and continue at 906. It fails `JournalWriterBehindError` without changing the active receiver. This is unsupported/corrupt existing state requiring explicit operator/disaster handling, not a normal same-writer recovery condition.
-
-If the complete local database instead disappears, the installation becomes `Absent` and may use the separate continuation-safe absent-restoration lifecycle before ordinary synchronization.
-
-Any overlap disagreement is `JournalForkError`.
-
-This does not cover interrupted canonical bootstrap before local Journal cutover; creator-resume is a separate lifecycle transition.
+The lifecycle classification is defined normatively in `database-lifecycle.md` §5 and the pairwise synchronization failure rule in `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is unsupported state. This IncrementalGraph-facing shell adds no separate rollback-recovery semantics.
 
 ## Projection rather than fieldwise merge
 
