@@ -36,18 +36,24 @@ Retained immutable Journal history is authority; the current IncrementalGraph da
 
 Each semantic rule has one normative owner. Other Journal documents may summarize consequences, expose API/error behavior, state proof obligations, or define tests, but they do not redefine the owned rule. If wording drifts, the owner below wins.
 
+- core Journal-authority/projection model and global conceptual invariants: `incremental-graph-journal.md`;
 - record shapes, identity primitives, causal/authority data: `incremental-graph-journal-types.md`;
 - well-formedness, context/reference legality, certificate eligibility: `incremental-graph-journal-well-formedness.md`;
 - replay, effective proof, certificate selection, freshness/validity projection: `incremental-graph-journal-replay.md`;
 - ordinary-operation Journal emission: `incremental-graph-journal-emission.md`;
+- publication finalization, atomic graph+Journal cutover, and locking ownership: `incremental-graph-journal-locking.md`;
+- semantic API/snapshot/source boundaries: `incremental-graph-journal-api.md`;
 - pairwise synchronization import, normalization, convergence, and the host-count settling construction: `incremental-graph-journal-sync.md`;
 - lifecycle fault model, established-writer rollback boundary, and absent-installation restoration: `database-lifecycle.md`;
 - general migration API/codec semantics: `migration.md`;
 - Journal bootstrap and Journal-aware migration procedure: `incremental-graph-journal-migrations.md`;
 - reset procedure: `incremental-graph-journal-reset.md`;
+- local Journal persistence/codec requirements: `incremental-graph-journal-storage.md`;
+- error categories and names: `incremental-graph-journal-errors.md`, with trigger semantics owned by the relevant rule file above;
+- user-visible operation consequences: `incremental-graph-journal-user-contract.md`, without redefining underlying algorithms;
 - regression/property inventory: `incremental-graph-journal-testing.md`.
 
-`incremental-graph-journal-theorems.md` states proof obligations derived from these definitions; `incremental-graph-journal-properties.md` explains algebraic consequences; `incremental-graph-journal-api.md`, `incremental-graph-journal-errors.md`, and `incremental-graph-journal-user-contract.md` expose boundaries/consequences; and `incremental-graph-journal-checklist.md` is an implementation checklist. None of those files is a competing definition of an owned semantic rule.
+`incremental-graph-journal-theorems.md` states proof obligations derived from these definitions; `incremental-graph-journal-properties.md` explains algebraic consequences; `incremental-graph-journal-examples.md` supplies explanatory traces; and `incremental-graph-journal-checklist.md` is an implementation checklist. None of those files is a competing definition of an owned semantic rule.
 
 ## Scope boundary
 
