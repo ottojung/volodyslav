@@ -49,7 +49,7 @@ Metadata is stored separately in sublevels keyed by fixed string keys:
 | Sublevel | Key | Value |
 |----------|-----|-------|
 | `global` | `'identifiers_keys_map'` | identifier ↔ key bijection |
-| `global` | `'last_node_index'` | allocation watermark for the current retained local-writer history |
+| `global` | `'last_node_index'` | greatest durably-retired allocation index |
 | `global` | `'fingerprint'` | local allocation fingerprint |
 | `_meta` | `'current_replica'` | active replica name (`'x'` or `'y'`) |
 
@@ -66,7 +66,7 @@ It mirrors the persisted state:
 | `globalSublevel` | `GlobalSublevelType` | Global sublevel handle. |
 | `schemaStorage` | `SchemaStorage` | Typed accessors for all node-data sublevels. |
 | `identifierLookup` | `IdentifierLookup` | Bijection `NodeKeyString ↔ NodeIdentifier`. |
-| `lastNodeIndex` | `number` | Allocation watermark for the current retained local-writer history. |
+| `lastNodeIndex` | `number` | Greatest durably-retired allocation index. |
 | `fingerprint` | `string` | Machine-local database fingerprint. |
 
 All replica-derived runtime state lives in `_computed`. No other long-lived field of
