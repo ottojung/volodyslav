@@ -248,15 +248,21 @@ The running release is not required to retain legacy bootstrap support forever. 
 
 Replicas expected to synchronize after Journal introduction use one canonical semantic bootstrap history as the shared ValueId basis for occurrences equal to the canonical cut.
 
-The configured transport-neutral cohort bootstrap source returns exactly one of:
+The configured transport-neutral cohort bootstrap source first answers:
 
 1. **canonical artifact exists** — validate it, then choose creator-resume or ordinary join based on writer identity;
-2. **source definitively does not exist** — `createCanonicalBootstrap` is allowed;
+2. **source definitively does not exist** — stage a deterministic canonical candidate, but do not cut over;
 3. **query failed or result is indeterminate** — fail and MUST NOT create competing canonical history.
 
-A definite-absence answer is valid only when suitable for first-creator arbitration. Distinct canonical artifacts for one cohort are unsupported and require explicit recovery rather than payload-based merge.
+A definite-absence query is not first-creator arbitration. The creator must conditionally publish the staged candidate through `publishCanonicalBootstrapIfAbsent`, whose semantic outcomes are:
 
-The creator freezes the canonical artifact at the exact frontier immediately after bootstrap and before ordinary Journal authoring. `createCanonicalBootstrap` does not report success until that artifact is durable.
+1. **Published(B)** — B is the one durable canonical artifact; after validating that B is the staged candidate, local creator cutover may proceed;
+2. **AlreadyExists(B)** — another attempt already selected the canonical artifact; discard the losing candidate and use creator-resume iff B belongs to the local fingerprint, otherwise ordinary join;
+3. **IndeterminateOrError** — do not cut over. Keep the supported pre-Journal database active and re-query before any retry.
+
+This conditional publication is the arbitration required by `$id-1847369205416728`: concurrent distinct candidates cannot both become accepted canonical histories for one cohort.
+
+The creator freezes its candidate at the exact frontier immediately after bootstrap. Ordinary Journal authoring remains disabled until conditional publication returns `Published` and local cutover succeeds.
 
 Before create-resume/join interpretation require:
 
