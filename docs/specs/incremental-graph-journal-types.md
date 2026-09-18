@@ -192,7 +192,7 @@ Journal 3 relies on the existing NodeIdentifier allocation contract rather than 
 Conceptually a locally allocated NodeIdentifier combines:
 
 ```text
-(DatabaseFingerprint, strictly increasing local allocation index)
+(DatabaseFingerprint, local allocation index)
 ```
 
 The database-fingerprint intent explicitly accepts the negligible probability of two independently-created hosts receiving the same fingerprint. Within one continuing fingerprint namespace, a local allocation index is never reallocated while the earlier allocation can exist in, or later enter, supported retained history.
@@ -372,7 +372,7 @@ WriterStateRecord = JournalRecordBase & {
 
 A writer-state record is authored only in its own writer stream.
 
-For one continuing writer, `lastNodeIndex` records are monotone nondecreasing.
+Within one supported retained writer stream, `lastNodeIndex` records are monotone nondecreasing. Continuation-safe absent restoration may discard an unrecoverable suffix and later reuse its writer coordinates; only the retained/restored stream participates in this monotonicity check.
 
 Foreign writer-state records are retained/relayed but never replace the receiver's own `last_node_index`.
 
