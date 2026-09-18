@@ -314,6 +314,16 @@ If `selfProofReady(K)` is false, K already has a persistent own-state reason for
 
 Thus reset freshness changes are represented as persistent freshness/proof history, not gratuitous value replacement.
 
+## Streamability
+
+Reset's Journal/replay processing MUST satisfy `$id-4924739474925738`.
+
+Pass 1 domain traversal, Pass 2 eligible-certificate/`PotentialValid(K)` evaluation, and Pass 3 freshness propagation must be implementable as ordered/indexed iteration with bounded iterator/runtime buffers. Journal-derived worklists or changed-node/closure sets may use durable/indexed staging or an equivalent bounded-memory queue, but reset MUST NOT require the complete retained Journal, complete reset domain, complete eligible-certificate population, or complete changed-node/propagation closure to be materialized in RAM as one collection.
+
+`PotentialValid(K)` is computed per node by streaming/folding that node's eligible certificate and invalidation history; the declarative union does not imply a global in-memory set.
+
+As with synchronization, graph-sized derived graph/index state independently required by IncrementalGraph correctness is allowed, and whole-replica work may still occur. This is a memory/streaming constraint, not the deferred change-sensitive running-time requirement.
+
 ## Resulting projection
 
 Let:
