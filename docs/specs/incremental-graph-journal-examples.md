@@ -353,6 +353,30 @@ A certificate which did not causally observe this actual node invalidation canno
 
 Migration still authors `Invalidate(B,scope=value(b1),reason=migration)` even though B is recursively stale at cut. Later `A -> Unchanged` does not freshen B.
 
+## Trace 35a: reset repairs a raw dependency-broken union before projection
+
+Schema is `D -> K`.
+
+Source S is valid with:
+
+```text
+D Value authority 10
+K Value authority 100
+```
+
+Receiver R is valid with:
+
+```text
+D Delete authority 50
+K Delete authority 51
+```
+
+Their compatible raw union selects D absent from R but K present from S. That head set is not dependency-closed, so `project(J0)` would be invalid.
+
+Reset instead uses `H0 = selectedHeads(J0)`. Pass 1 sees that source target requires D present and authors a causally-later reset ValueEvent for D. K's selected source occurrence already matches the target and keeps its ValueId. After Pass 1, selected presence is exactly the valid source target, so `P1 = project(J1)` is legal.
+
+Reset does not first author a sync-style Delete(K) only to recreate or restore K afterward.
+
 ## Trace 36: reset proof-edge barrier removes receiver-only proof
 
 Receiver/source union selects same B1 occurrence. Receiver has `{A:A1,C:C1}` validity while reset target keeps only C->B.
