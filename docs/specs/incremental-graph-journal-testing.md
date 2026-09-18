@@ -338,11 +338,13 @@ This is the regression for `$id-1847369205416728`.
 
 ### Unknown publication outcome
 
+Before the publication-outcome cases, stage the canonical candidate twice from byte-identical persisted legacy state, with different process/start times. Require the two candidates to be byte-identical: same record IDs/order, contexts, AuthorityTimes, bootstrap frontier, writer-state record, and encoded artifact bytes. In particular, canonical C2/C3 authority must not depend on upgrade/publication wall clock.
+
 If conditional publication returns `IndeterminateOrError`, require no local cutover and keep the supported legacy database active. On retry/restart:
 
 - re-query `Exists(B)` with local creator writer -> creator-resume;
 - re-query `Exists(B)` with another creator -> discard local staging and join;
-- re-query `DefinitelyAbsent` -> retry the same deterministic candidate conditionally;
+- re-query `DefinitelyAbsent` -> reconstruct/stage the same byte-identical candidate from unchanged persisted legacy state and retry that candidate conditionally;
 - re-query indeterminate/error -> fail again without cutover.
 
 Distinct canonical artifacts discovered despite the conditional-publication contract remain unsupported.
