@@ -278,7 +278,9 @@ rewriteJournalFormat(
 
 The format rewrite is deterministic over the **entire retained source-format record domain**, including historical records for node families absent from target schema. It decodes source records, rewrites embedded NodeKeys and retained ValueEvent payloads, re-canonicalizes target structures such as ValidationBasis order, preserves record IDs/historical meaning/references, and encodes the target format.
 
-Codec functions are synchronous, deterministic, capability-free, and identity by default when omitted. A codec throw or any other inability to transform every retained source record into a valid target semantic record is `JournalVersionCompatibilityError` before cutover.
+Codec functions are synchronous, deterministic, capability-free, and identity by default when omitted. `rewriteNodeKey` is injective over distinct retained source NodeKeys; a collision means the codec cannot preserve both historical semantic-node identities and is `JournalVersionCompatibilityError` before cutover. A codec throw or any other inability to transform every retained source record into a valid target semantic record is likewise incompatible.
+
+Semantic repair compares the codec-transported source projection and target graph in the same target NodeKey space. A non-identity representation rewrite therefore preserves a kept occurrence's ValueId rather than appearing as a delete/create pair.
 
 Semantic migration then:
 
