@@ -261,6 +261,8 @@ resumeCanonicalBootstrapCreator(legacyState, artifact)
 joinCanonicalBootstrap(legacyState, artifact)
 ```
 
+`stageCanonicalBootstrap` is pure/deterministic over persisted legacy state: repeated staging from byte-identical legacy state produces a byte-identical candidate, including record IDs/order, contexts, AuthorityTimes, frontier, and writer-state record. Canonical creator authority allocation is defined in `incremental-graph-journal-types.md` §Canonical creator post-value authority.
+
 Bootstrap journals the already-persisted supported legacy graph directly; it does not run ordinary semantic migration callbacks before Journal identity exists.
 
 Creator-resume is valid only for `artifact.creatorWriter`, installs exactly the artifact, compares directly against unchanged persisted legacy semantics, and authors no duplicate history.
