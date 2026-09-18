@@ -127,7 +127,7 @@ The whole-history rewrite pipeline is:
 5. re-canonicalize target-format structures after rewriting — in particular, sort every ValidationBasis by the target version's canonical persisted `NodeKeyString` order; and
 6. encode the transformed semantic record using the target version's canonical record encoding.
 
-The codec is total only if that pipeline succeeds for **every retained source-version record**. Any codec throw, missing transform result, invalid target NodeKey/value representation, or other inability to produce the required target semantic record makes the source->target transition incompatible and fails `JournalVersionCompatibilityError` before cutover.
+The codec is total only if that pipeline succeeds for **every retained source-version record** and the retained-domain `rewriteNodeKey` mapping is injective. Any codec throw, missing transform result, invalid target NodeKey/value representation, collision of two distinct retained source NodeKeys onto one target NodeKey, or other inability to produce the required target semantic record makes the source->target transition incompatible and fails `JournalVersionCompatibilityError` before cutover.
 
 Two replicas applying the same source->target transition to the same historical record must therefore produce the same target-format record body.
 
