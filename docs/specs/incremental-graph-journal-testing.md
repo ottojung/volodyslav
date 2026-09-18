@@ -630,7 +630,10 @@ Reject stream gaps, same-ID disagreement, missing/transitively-open context, wro
 
 Inject failures before/during publication and assert no half graph/Journal commit, no durable sequence consumed by failed ordinary operation, volatile state does not outrun disk, and failed maintenance before cutover leaves old active pair selected.
 
-Special case: artifact publication succeeds but creator local cutover fails -> retry creator-resume, not duplicate creation.
+Special cases:
+- conditional artifact publication succeeds but its response is lost -> re-query; if the durable artifact belongs to the local creator, creator-resume rather than duplicate creation;
+- publication succeeds but creator local cutover fails -> creator-resume;
+- publication outcome is indeterminate -> no local cutover until re-query resolves the canonical artifact.
 
 ## Performance tests are separate from correctness
 
