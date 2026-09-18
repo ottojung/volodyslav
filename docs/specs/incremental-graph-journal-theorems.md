@@ -375,5 +375,6 @@ At minimum model/test:
 - total replica-independent format rewrite including target-removed node families;
 - representation migration through codec + `keep`;
 - independent replacement-migration trade-off;
-- minimal reset; and
-- fair synchronization convergence.
+- minimal reset;
+- fair synchronization convergence; and
+- the `2(H-1)` gather/broadcast settling construction and its H^2 corollary.
