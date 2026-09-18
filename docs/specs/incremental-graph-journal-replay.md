@@ -105,7 +105,7 @@ present(K) iff head(K) is ValueEvent
 
 Every present K uses `NodeIdentifier` carried by selected ValueEvent.
 
-NodeIdentifier uniqueness is established by existing allocation contract: accepted-negligible-collision `DatabaseFingerprint` namespace plus strictly monotone non-reused local allocation index. Replay does not establish global uniqueness by scanning all historical ValueEvents.
+NodeIdentifier uniqueness is established by the allocation contract in `incremental-graph-journal-types.md` §NodeIdentifier uniqueness basis: an accepted-negligible-collision `DatabaseFingerprint` namespace plus a local allocation index which is never reallocated while the earlier allocation can exist in or later enter supported retained history. Replay does not establish global uniqueness by scanning all historical ValueEvents.
 
 If two distinct present NodeKeys nevertheless select same incompatible physical NodeIdentifier, projection fails as unsupported/corrupt current state.
 
@@ -421,11 +421,11 @@ last_node_index =
     lastNodeIndex from greatest A-local WriterStateRecord by sequence
 ```
 
-WriterState values must be monotone nondecreasing.
+WriterState values must be monotone nondecreasing within the retained writer stream being replayed.
 
 Foreign writer-state records do not change this database's local watermark.
 
-Before continuing local allocation after restoration/migration, reconstructed watermark preserves monotone allocator invariant so retired local index cannot be reused.
+Before continuing local allocation, the reconstructed watermark must cover every local index retired by the retained local-writer history. Migration preserves retained history and therefore preserves that watermark. Continuation-safe absent restoration may reconstruct an older watermark together with an older writer prefix; indices allocated only in the discarded suffix may be reallocated exactly when `database-lifecycle.md` §4.1 guarantees that suffix cannot later enter supported retained history.
 
 ## Replay equality
 
