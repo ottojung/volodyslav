@@ -179,6 +179,43 @@ Expected:
 - reset is not retried merely to repair the local rollback;
 - divergent A overlap is `JournalForkError`.
 
+### Reset raw-union dependency-closure regression
+
+Use schema `D -> K`.
+
+Source S is individually valid and dependency-closed:
+
+```text
+D Value authority 10
+K Value authority 100
+```
+
+Receiver R is individually valid and dependency-closed:
+
+```text
+D Delete authority 50
+K Delete authority 51
+```
+
+The compatible raw union selects:
+
+```text
+D -> Delete(50)   // absent
+K -> Value(100)   // present
+```
+
+so `project(union(R,S))` would reject the selected heads as non-dependency-closed.
+
+Reset MUST NOT attempt that projection before repair. It computes `H0 = selectedHeads(J0)`, observes that D does not match the source target, authors a causally-later reset ValueEvent for D, preserves K's matching source occurrence, and only then computes `P1 = project(J1)`.
+
+Require:
+
+- no temporary sync-style Delete(K) is authored;
+- Pass 1 selected presence equals the source target;
+- the first full projection of the union path succeeds only after Pass 1;
+- K's matching ValueId is preserved;
+- final reset projection equals PS.
+
 ### Reset proof weakening
 
 ```text
