@@ -146,9 +146,11 @@ Query failure or inability to establish continuation safety does not generate a 
 
 Legacy X reaches bootstrap gate:
 
-- `DefinitelyAbsent` -> may create canonical artifact;
-- `IndeterminateOrError` -> fail without creation;
+- `DefinitelyAbsent` -> stage a deterministic candidate, then conditionally publish it with `publishCanonicalBootstrapIfAbsent`; no local cutover yet;
+- `IndeterminateOrError` -> fail without publication;
 - `Exists(B)` -> validate exact expected bootstrap target; choose creator-resume iff creator writer equals local pre-Journal fingerprint, otherwise ordinary join.
+
+If X and Y both observed absence, exactly one distinct candidate may receive `Published`; the loser receives `AlreadyExists(B)` and joins/resumes the same winner.
 
 ## Trace 19: bootstrap is graph-semantic identity
 
