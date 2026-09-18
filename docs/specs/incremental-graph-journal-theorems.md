@@ -376,6 +376,18 @@ The construction and operation-count definition are normative in `incremental-gr
 
 This law is a proof obligation for that owned synchronization rule; it does not restate the construction.
 
+## Law 44: JournalRecordId uniqueness across compatible supported states
+
+Across any collection of supported database states that can coexist or later be combined through supported operations, a given `JournalRecordId` identifies the same journal record wherever it appears, and two distinct journal records never use the same `JournalRecordId`.
+
+This is the proof obligation corresponding to `$id-2567281946348705`. Lifecycle transitions, including continuation-safe absent restoration, may reuse a discarded writer coordinate only when its previous record cannot later coexist with or be combined with the new continuation in a supported execution.
+
+## Law 45: NodeIdentifier uniqueness across compatible supported states
+
+Across any collection of supported database states that can coexist or later be combined through supported operations, a given `NodeIdentifier` identifies the same node materialization lineage wherever it appears, and two distinct materialization lineages never use the same `NodeIdentifier`.
+
+This is the proof obligation corresponding to `$id-4173361406347342`. Allocation and lifecycle transitions must preserve it across all compatible supported states; continuation-safe restoration may reuse an allocation from a discarded suffix only when the earlier meaning cannot later coexist with or be combined with the restored continuation.
+
 ## Verification ownership
 
 Concrete regression/property coverage is maintained in `incremental-graph-journal-testing.md`. This file states proof obligations only and is not a second regression inventory.
