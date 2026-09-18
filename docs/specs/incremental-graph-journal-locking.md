@@ -66,7 +66,7 @@ Reset's own-writer-ahead precondition is owned by `incremental-graph-journal-res
 
 Otherwise reset stages only required Value/Delete/Validate/Invalidate records. Preserved ValueIds are not reallocated merely because reset is maintenance.
 
-If target proof is weaker for preserved V, then for every currently effective incoming edge `D -> K` which the target removes, reset stages one edge-specific barrier:
+If target proof is weaker for preserved V, reset stages one edge-specific barrier for every non-target edge `D -> K` that any eligible retained certificate for V could expose:
 
 ```text
 Invalidate(
