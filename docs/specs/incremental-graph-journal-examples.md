@@ -277,6 +277,21 @@ X/Y retain historical V, selected only on X. The total pure format codec rewrite
 
 X's selected semantic occurrence uses `keep`. The canonical codec is the only representation rewrite, so later synchronization cannot discover two different target bodies for V merely because selection differed across replicas.
 
+## Trace 29a: non-identity NodeKey rewrite preserves occurrence identity
+
+Source projection selects semantic node `Ks` with ValueId V. The format codec is representation-only and defines:
+
+```text
+rewriteNodeKey(Ks) = Kt
+Ks != Kt
+```
+
+Whole-history rewrite changes every retained reference from Ks representation to Kt representation while preserving V. The conceptual transported source projection therefore contains Kt with ValueId V.
+
+Semantic migration chooses `keep` for Kt. M1 reads V from the transported target-key view, authors no replacement ValueEvent, and does not treat Ks as a removed target key. Rewritten proof/dependency endpoints use target NodeKeys. Final replay selects Kt with V.
+
+If instead distinct retained Ks1 and Ks2 both rewrite to Kt, the codec is incompatible and migration fails `JournalVersionCompatibilityError` before cutover.
+
 ## Trace 30: independent genuine replacement migration may stale dependent
 
 X/Y share A1/B1; migration genuinely replaces A independently as A2x/A2y. After union one wins; dependent proof naming losing A occurrence may stale/recompute. Accepted; no canonical migration participant required.
