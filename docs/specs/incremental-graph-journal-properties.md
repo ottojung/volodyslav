@@ -157,7 +157,7 @@ After direct proof/stale roots are represented, bootstrap persists recursive-onl
 
 ## Creator resume is exact identity continuation
 
-If canonical artifact publication succeeded but creator cutover failed, same-fingerprint creator installs exactly that artifact after direct persisted-legacy equality validation. It reruns no migration callback and authors no duplicate bootstrap history.
+Canonical creation is selected by conditional first-creator publication, not by an earlier absence query. If canonical artifact publication succeeded but its response or creator cutover was lost, restart re-queries the canonical source. Same-fingerprint winner enters creator-resume and installs exactly that artifact after direct persisted-legacy equality validation; a different winner is joined instead. Creator-resume reruns no migration callback and authors no duplicate bootstrap history.
 
 ## Bootstrap compatibility is bounded
 
