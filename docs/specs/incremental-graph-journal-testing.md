@@ -635,6 +635,22 @@ Special cases:
 - publication succeeds but creator local cutover fails -> creator-resume;
 - publication outcome is indeterminate -> no local cutover until re-query resolves the canonical artifact.
 
+## Streaming correctness tests
+
+Streaming is a correctness requirement under `$id-4924739474925738`, separate from issue #1607's running-time goals.
+
+At minimum:
+
+- replay the same retained Journal with iterator chunk sizes 1, small N, and large N; all projections must be identical;
+- use an instrumented Journal/index interface which rejects any request to obtain the complete retained history or all per-node histories as one collection; replay must still succeed;
+- include one node with certificate/invalidation history larger than the configured iterator buffer and require correct head/certificate/barrier folding without whole-history materialization;
+- synchronize a foreign suffix and dependency/staleness closure larger than the in-memory work-queue threshold; require an iterator/durable-index-backed normalization path and the same final Journal/projection as the reference model;
+- reset a domain whose Pass 2 eligible-certificate population and Pass 3 propagation work exceed the in-memory work-queue threshold; require incremental/durable-indexed processing and the same target projection;
+- assert every committed state produced by ordinary emission, sync, bootstrap, reset, and migration satisfies `selfProofReady(K) => fresh(K)`;
+- separately exercise a pre-marker cut with `selfProofReady(K)` true and a stale direct input, then require the authoring path to add the current-value marker before commit, making the committed implication hold.
+
+These tests verify processing shape and semantic equivalence, not asymptotic elapsed-time bounds.
+
 ## Performance tests are separate from correctness
 
 Issue #1607 owns future synchronization performance bounds. Whole-journal migration cost is separately accepted. Correctness/property tests must not be weakened for optimization.
