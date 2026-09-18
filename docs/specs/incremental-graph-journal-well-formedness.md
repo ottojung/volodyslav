@@ -276,4 +276,6 @@ The receiver must not rewrite/re-author the source event to make it fit its curr
 
 `project(J)` is defined only for a supported well-formed retained journal J.
 
-Replay may validate well-formedness eagerly during import/open or lazily as referenced records are consumed, but any discovered violation is an error rather than an alternative conflict-resolution path.
+Replay may validate well-formedness eagerly during import, publication, migration, bootstrap, absent restoration, or explicit rebuild, or lazily as referenced records are consumed during such validation, but any discovered violation is an error rather than an alternative conflict-resolution path.
+
+Routine opening of an already-current supported database does not perform this retained-history validation; see `$id-7429043816351276`.
