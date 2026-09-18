@@ -868,13 +868,15 @@ At minimum cover:
 
 ### Bootstrap
 
-- canonical source exists / definitely absent / indeterminate decisions;
-- first-creator arbitration and competing-artifact rejection;
+- canonical source exists / definitely absent / indeterminate query decisions;
+- `DefinitelyAbsent` permits staging but never local cutover by itself;
+- two concurrent creators which both observed absence race through `publishCanonicalBootstrapIfAbsent`: exactly one distinct candidate is `Published`, the loser receives `AlreadyExists(B)`, and only the winner artifact is accepted;
+- indeterminate publication outcome leaves legacy state active and is resolved by re-query before retry/cutover;
 - frozen original bootstrap cut, never later current history;
 - artifact target mismatch -> `JournalVersionCompatibilityError` before history;
 - semantic/time/allocator-dependent pre-bootstrap transformation is rejected;
 - creator artifact durable before ordinary authoring;
-- creator crash resumes exact artifact without rerunning callbacks;
+- creator crash/lost publication response resumes exact artifact without rerunning callbacks;
 - creator mismatch -> `JournalBootstrapForkError`;
 - canonical and joining bootstrap ValueEvents use nondecreasing `(modifiedAt, canonical NodeKey)` writer order; an out-of-order joining stream is authority-inconsistent and rejected;
 - exact canonical-equal occurrence reuses canonical ValueId;
