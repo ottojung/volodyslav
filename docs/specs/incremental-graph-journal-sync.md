@@ -168,15 +168,7 @@ Compute:
 P1 = project(J1)
 ```
 
-For each present K let C be its replay-selected certificate. Replay selects certificates using:
-
-```text
-1. effectiveBasisMatchCount
-2. coversValueInvalidations (true > false)
-3. authority
-```
-
-where proof-edge barriers may remove individual basis matches.
+For each present K let C be its replay-selected certificate under `incremental-graph-journal-replay.md` §Certificate selection. Synchronization does not redefine certificate ordering.
 
 Define:
 
