@@ -874,6 +874,8 @@ At minimum cover:
 - `rewriteComputedValue` applies to every retained ValueEvent, including non-selected history;
 - codec functions are synchronous, deterministic, and capability-free;
 - non-total/throwing/colliding codec fails `JournalVersionCompatibilityError` before cutover;
+- supported skipped-version upgrades execute the same canonical Journal migration chain as stepwise upgrades; missing chain fails `JournalVersionCompatibilityError`;
+- shared pre-existing record IDs end byte-identical after stepwise versus skipped-release upgrade to the same target version;
 - semantic repair compares `GconvertedBefore` and `Gtarget` in target NodeKey space;
 - non-identity `Ks -> Kt` representation rewrite plus `keep` preserves the old ValueId without replacement ValueEvent or spurious DeleteEvent;
 - representation-only change uses codec + `keep`;
