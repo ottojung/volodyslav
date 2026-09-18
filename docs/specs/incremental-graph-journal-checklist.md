@@ -83,7 +83,7 @@ Acceptance:
 - partial deletion, rollback to an older local state, mixed snapshots, partial restoration, or direct external mutation are corrupted/unsupported rather than new recovery cases (`$id-6158827469032147`);
 - a crash/interruption of a supported transition exposes only a state permitted by that transition's atomicity/crash rules;
 - installation recovery source is queried only for an absent local database and before fresh fingerprint generation;
-- source exists -> restore/adopt `localWriter` only when the held snapshot establishes a **continuation-safe head** as defined by `database-lifecycle.md` §4.1;
+- source exists -> restore/adopt `localWriter` only when the held snapshot establishes a **continuation-safe head** as defined by `incremental-graph-journal-lifecycle.md` §4.1;
 - continuation-safe means no higher record for that writer can later re-enter supported history after absent-state restoration;
 - source definitely absent -> fresh creation allowed;
 - source read/query failure -> fail, no fresh fallback;
@@ -153,7 +153,7 @@ Acceptance:
 - compatibility from held source snapshot;
 - every missing **foreign-writer** suffix imported;
 - overlap verified;
-- own-writer-ahead handling matches `database-lifecycle.md` §5 and `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is unsupported state;
+- own-writer-ahead handling matches `incremental-graph-journal-lifecycle.md` §5 and `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is unsupported state;
 - fork rejected;
 - transfer streamable;
 - imported records unchanged;
@@ -176,7 +176,7 @@ Acceptance:
 Acceptance:
 
 - source target/compatibility from one held snapshot;
-- own-writer-ahead reset behavior matches `incremental-graph-journal-reset.md` §Preconditions and `database-lifecycle.md` §5;
+- own-writer-ahead reset behavior matches `incremental-graph-journal-reset.md` §Preconditions and `incremental-graph-journal-lifecycle.md` §5;
 - unchanged target occurrence preserves ValueId;
 - new ValueEvent only for actual occurrence replacement;
 - for every removed incoming edge `D -> K` of preserved V, reset authors `Invalidate(scope=proof(V,D),reason=reset)`;
