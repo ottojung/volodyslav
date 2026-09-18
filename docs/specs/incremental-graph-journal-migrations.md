@@ -564,21 +564,25 @@ Migration-authored semantic events are causally after that closed frontier plus 
 Let:
 
 ```text
-BeforePresent   = present keys in Gbefore
-TargetPresent   = present keys in Gtarget
-MigrationDomain = BeforePresent union TargetPresent
+ConvertedBeforePresent = present keys in GconvertedBefore
+TargetPresent          = present keys in Gtarget
+MigrationDomain        = ConvertedBeforePresent union TargetPresent
 ```
 
-A key absent before and after needs no semantic event solely because historical records exist. Its old history is still retained/re-encoded by the total codec.
+Both sets are therefore in the target NodeKey representation.
+
+A key absent from both `GconvertedBefore` and `Gtarget` needs no semantic event solely because historical records exist. Its old history is still retained/re-encoded by the total codec.
 
 ## 15. Pass M1 — target values / absence
 
 For each target-present K:
 
-- occurrence-preserving decision -> `targetValueId(K) = valueId_Gbefore(K)`, no ValueEvent;
+- occurrence-preserving decision -> require K in `ConvertedBeforePresent`, set `targetValueId(K) = valueId_GconvertedBefore(K)`, and author no ValueEvent;
 - genuine create/replace -> author `ValueEvent(reason="migration")`, use its ID.
 
-For each K in `BeforePresent - TargetPresent`, author one required `DeleteEvent(reason="migration")` unless converted history already selects absence.
+For each K in `ConvertedBeforePresent - TargetPresent`, author one required `DeleteEvent(reason="migration")` unless converted history already selects absence.
+
+A non-identity representation rewrite `Ks -> Kt` therefore does not make `Ks` look deleted and `Kt` look newly created: only `Kt` participates in semantic-repair bookkeeping, and its preserved occurrence keeps the original ValueId.
 
 Call replay after M1 `P1`.
 
