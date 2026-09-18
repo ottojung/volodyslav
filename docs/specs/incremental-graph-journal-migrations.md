@@ -437,12 +437,28 @@ Jconverted = rewriteJournalFormat(
 )
 ```
 
+For semantic-repair bookkeeping, also define a conceptual target-key view of the pre-migration projection:
+
+```text
+GconvertedBefore =
+    transportProjectionThroughCodec(
+        Gbefore,
+        journalFormatCodec
+    )
+```
+
+For every source-present semantic node `Ks`, let `Kt = rewriteNodeKey(Ks)`. `GconvertedBefore` represents that same selected occurrence under `Kt` and preserves its `ValueId`, `NodeIdentifier`, timestamps, freshness, and occurrence identity; payload representation is rewritten with `rewriteComputedValue(Ks,...)`, and dependency/validity endpoints are rewritten through `rewriteNodeKey`.
+
+This is a conceptual bookkeeping view, not a second persisted migration and not a replay under the target semantic schema. It expresses the **source semantic state in target NodeKey representation** before semantic migration decisions are applied.
+
 Then compute semantic target graph `Gtarget` and append only records required so:
 
 ```text
 Jafter = Jconverted + migration-authored records
 project(Jafter, targetSchema) == Gtarget
 ```
+
+From this point onward, semantic-repair key comparisons and occurrence-preservation lookups operate in the target key space represented by `GconvertedBefore` and `Gtarget`; they do not directly index source-keyed `Gbefore` by a target NodeKey.
 
 Replicas migrate independently; no canonical migration participant is required.
 
