@@ -188,6 +188,7 @@ Acceptance:
 - own-writer-ahead reset behavior matches `incremental-graph-journal-reset.md` §Preconditions and `incremental-graph-journal-lifecycle.md` §5;
 - raw receiver/source union is inspected through `selectedHeads(J0)`; reset does not require `project(J0)` before Pass 1 structural repair;
 - Pass 1 makes selected presence/immutable occurrence state equal the valid source target before the first full `project(J1)`;
+- reset Pass 1/2/3 Journal-derived domains, eligible-certificate scans, and propagation worklists satisfy `$id-4924739474925738`; complete reset/change/closure sets are not required as one in-RAM collection;
 - unchanged target occurrence preserves ValueId;
 - new ValueEvent only for actual occurrence replacement;
 - reset computes `eligibleEffectiveProofUnion(K)` from the fixed post-value-repair cut and barriers every non-target edge any eligible retained certificate could expose, using `Invalidate(scope=proof(V,D),reason=reset)`;
