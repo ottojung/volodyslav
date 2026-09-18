@@ -129,7 +129,7 @@ Ordinary sync:
 4. authors only required receiver normalization;
 5. replays and atomically cuts over.
 
-If an ordinary peer exposes a longer prefix of the receiver's **own writer**, sync stops with `JournalWriterBehindError` before import/authorship. Under the supported lifecycle model this means the existing receiver has somehow gone backwards and is unsupported/corrupt; ordinary synchronization does not repair it.
+The own-writer-ahead boundary is owned by `database-lifecycle.md` §5 and the synchronization behavior by `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is unsupported state.
 
 Sync normalization may author only:
 
