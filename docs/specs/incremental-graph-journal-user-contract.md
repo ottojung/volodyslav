@@ -171,7 +171,7 @@ If maintenance merely removes incoming validity while preserving V, it first con
 Invalidate(K, scope=proof(V,D), reason=migration)
 ```
 
-for each removed edge `D -> K`.
+for every non-target edge `D -> K` that any eligible retained certificate for the preserved ValueId could expose.
 
 A proof-edge barrier removes only that edge from certificates targeting V until causally re-proved. Concurrent barriers compose by subtracting the union of named edges; they do not destroy unrelated proof or affect V2.
 
