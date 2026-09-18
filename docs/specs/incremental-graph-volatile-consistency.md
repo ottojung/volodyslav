@@ -66,7 +66,7 @@ It mirrors the persisted state:
 | `globalSublevel` | `GlobalSublevelType` | Global sublevel handle. |
 | `schemaStorage` | `SchemaStorage` | Typed accessors for all node-data sublevels. |
 | `identifierLookup` | `IdentifierLookup` | Bijection `NodeKeyString ↔ NodeIdentifier`. |
-| `lastNodeIndex` | `number` | Greatest durably-retired allocation index. |
+| `lastNodeIndex` | `number` | Allocation watermark for the current retained local-writer history. |
 | `fingerprint` | `string` | Machine-local database fingerprint. |
 
 All replica-derived runtime state lives in `_computed`. No other long-lived field of
