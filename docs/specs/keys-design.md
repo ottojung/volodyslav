@@ -59,7 +59,7 @@ Migration code is internal storage logic, so migrations are fully `NodeIdentifie
 
 - Migration callbacks must receive and return concrete-node references as `NodeIdentifier` values.
 - Migration-produced `valid` must contain only `NodeIdentifier` values.
-- Migration control decisions (`keep`, `override`, `invalidate`, `create`, `delete`) operate on `NodeIdentifier`-addressed state, with `NodeKey` used only via the lookup bijection when needed for schema/head filtering or inspection.
+- Migration control decisions (`keep`, `invalidate`, `create`, `delete`) operate on `NodeIdentifier`-addressed state, with `NodeKey` used only via the lookup bijection when needed for schema/head filtering or inspection. Representation-only changes use `keep` plus the canonical Journal format codec defined in `migration.md`.
 
 There is no mixed-mode migration API: `NodeKey`-addressed migration payloads are out of scope and unsupported.
 
