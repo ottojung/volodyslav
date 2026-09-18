@@ -191,6 +191,8 @@ resetTo(source: JournalSyncSource) -> Promise<ResetResult>
 
 Reset requires an established writable receiver and one held compatible snapshot.
 
+`ResetResult.changed` is false only when the receiver already retains the complete source snapshot frontier and reset authors no semantic repair records. Importing any missing source record counts as a persistent reset change even when the projected graph is unchanged.
+
 If that snapshot is ahead for the receiver's own writer, reset follows `incremental-graph-journal-reset.md` §Preconditions and the shared lifecycle boundary in `incremental-graph-journal-lifecycle.md` §5.
 
 Reset may form a compatible raw receiver/source union whose selected Value/Delete heads are temporarily not dependency-closed. It inspects that staging union through `selectedHeads(J0)` and does not require full `project(J0)` before Pass 1 occurrence/presence repair. Full projection begins only after Pass 1 has restored the source target's dependency-closed selected presence.
