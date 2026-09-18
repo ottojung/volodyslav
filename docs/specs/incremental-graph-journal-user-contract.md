@@ -187,7 +187,7 @@ resetTo(source)
 
 requires an established writable receiver and one held compatible source snapshot.
 
-If the reset source is ahead for the receiver's own local writer, reset fails `JournalWriterBehindError` before importing or authoring anything. This is unsupported existing-state rollback and does not enter absent-installation restoration or another automatic same-writer recovery path.
+If the reset source is ahead for the receiver's own writer, the user-visible failure follows `incremental-graph-journal-reset.md` §Preconditions and the lifecycle boundary in `database-lifecycle.md` §5.
 
 Reset retains history and establishes the source projection relative to all history it observed.
 
