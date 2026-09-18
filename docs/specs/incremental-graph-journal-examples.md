@@ -345,6 +345,28 @@ Receiver/source union selects same B1 occurrence. Receiver has `{A:A1,C:C1}` val
 
 Reset authors `Invalidate(B,scope=proof(B1,A),reason=reset)` and, if needed, a target validation. The old certificate may still prove C but cannot reintroduce A. A concurrent/later B2 certificate is not tainted by B1's barrier.
 
+## Trace 36a: reset barriers cover losing certificates too
+
+Preserved occurrence V of K has current direct inputs A1/B1 and two eligible retained certificates:
+
+```text
+C1 higher authority: basis { A:A1, B:B0 }   effective proof {A}
+C2 lower authority:  basis { A:A0, B:B1 }   effective proof {B}
+```
+
+C1 initially wins, so replay's current validity is only A->K. The reset target preserves V but requires **no** incoming validity.
+
+Using only the selected certificate would barrier A and then expose B when C2 becomes the winner. Journal 3 instead computes:
+
+```text
+PotentialValid(K) = eligibleEffectiveProofUnion(K) = {A,B}
+TargetValid(K) = {}
+```
+
+and authors both `proof(V,A)` and `proof(V,B)` reset barriers from the same P1 cut. Every pre-reset eligible certificate is then unable to expose a non-target edge. If a target validation is still needed it is authored causally after both barriers with an all-`"unknown"` basis.
+
+A repeated reset to the same target finds no new non-target edge and authors no additional proof barrier.
+
 ## Trace 37: reset persists target propagated staleness
 
 Reset target stores A stale and B stale with complete B proof. Reset ensures value-scoped marker for final B ValueId even if replay is already recursively stale through A. Later `A -> Unchanged` does not freshen B.
