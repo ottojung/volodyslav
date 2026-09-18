@@ -59,7 +59,7 @@ Migration code is internal storage logic, so migrations are fully `NodeIdentifie
 
 - Migration callbacks must receive and return concrete-node references as `NodeIdentifier` values.
 - Migration-produced `valid` must contain only `NodeIdentifier` values.
-- Migration control decisions (`keep`, `invalidate`, `create`, `delete`) operate on `NodeIdentifier`-addressed state, with `NodeKey` used only via the lookup bijection when needed for schema/head filtering or inspection. Representation-only changes use `keep` plus the canonical Journal format codec defined in `migration.md`.
+- Migration control decisions (`keep`, `override`, `invalidate`, `create`, `delete`) operate on `NodeIdentifier`-addressed state, with `NodeKey` used only via the lookup bijection when needed for schema/head filtering or inspection.
 
 There is no mixed-mode migration API: `NodeKey`-addressed migration payloads are out of scope and unsupported.
 
@@ -77,8 +77,8 @@ HTTP concrete-node routes remain `head + args` based to preserve existing API be
 A `NodeIdentifier` is a deterministic, globally-namespaced identifier with the
 following properties:
 
-- unique across all supported retained histories that can coexist or later enter one another
-- stable for the lifetime of that materialized node in supported retained state
+- globally and forever unique
+- stable for the lifetime of that materialized node in storage
 - round-trippable as a nominal type
 - suitable for direct use as persisted key content and as a filesystem path segment
 - matches `/^[0-9a-z]+-[a-z]{9,}$/` (full-string match)
@@ -126,16 +126,11 @@ internal boundaries would be redundant.
 ### Allocation
 
 Identifiers are allocated as `${nextIndex.toString(36)}-${fingerprint}` where
-`nextIndex` is monotone while an existing database and its retained local-writer
-stream continue, and `fingerprint` is the machine-local database fingerprint
-(see `docs/specs/incremental-graph-fingerprint.md`).
+`nextIndex` is a monotonic counter starting at `1` and `fingerprint` is the
+machine-local database fingerprint (see `docs/specs/incremental-graph-fingerprint.md`).
 
 Gaps in the index sequence are acceptable (caused by failed or interleaved
-transactions). The `last_node_index` watermark tracks the largest allocation
-reserved by the current retained local-writer history. Continuation-safe restoration
-of a completely absent installation may reconstruct an older watermark and reuse
-indices allocated only in a discarded suffix that cannot later re-enter supported
-retained history; see `docs/specs/database-lifecycle.md` §4.1.
+transactions). The `last_node_index` watermark tracks the largest committed index.
 
 ## Persisted storage model
 
@@ -213,14 +208,14 @@ Delete removes:
 - `nodeKeyToId(nodeKey)`
 - `nodeIdToKey(id)`
 
-Migration preserves identifiers for `keep` and `invalidate`, and allocates
-fresh identifiers for `create` using the same fingerprint/index scheme. Representation-only changes preserve the occurrence through `keep` plus the canonical codec in `migration.md`.
+Migration preserves identifiers for `keep`, `override`, and `invalidate`, and allocates
+fresh identifiers for `create` using the same fingerprint/index scheme.
 
 ### last_node_index
 
 The `last_node_index` watermark (see `docs/specs/incremental-graph-last-node-index.md`)
 is stored at the active replica's global sublevel under the key `"last_node_index"`.
-It is monotone for an existing database and retained writer stream, not a node count. Continuation-safe absent restoration follows the exception defined in `docs/specs/incremental-graph-last-node-index.md` and `docs/specs/database-lifecycle.md` §4.1. Gaps are acceptable.
+It is a monotonic allocation watermark, not a node count. Gaps are acceptable.
 
 ## Determinism
 
