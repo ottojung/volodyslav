@@ -104,11 +104,11 @@ Bootstrap journals the **persisted legacy graph directly**. Before the canonical
 
 Thus canonical creation and creator-resume do not regenerate execution-dependent migration results. If actual graph/schema/representation migration is required, it runs only after Journal bootstrap as Journal-aware migration.
 
-### Canonical creation and creator-resume crash window
+### Canonical publication and creator-resume crash window
 
-The canonical artifact becomes durable before ordinary Journal authoring is enabled.
+Ordinary Journal authoring is not enabled until conditional canonical publication has selected a durable artifact and local creator cutover succeeds.
 
-If artifact publication succeeds but creator local active cutover fails, restart may find pre-Journal local state plus the artifact with the same creator writer.
+If publication succeeds but its response or creator local active cutover is lost, restart may find pre-Journal local state plus a staged candidate while the canonical source already contains an artifact. Restart re-queries: its own durable artifact enters creator-resume; another creator's artifact causes the staged candidate to be discarded and joined; definite absence permits retry of the same conditional candidate; indeterminate/error makes no active change.
 
 Creator-resume under exclusive maintenance:
 
