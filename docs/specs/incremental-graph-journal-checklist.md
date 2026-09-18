@@ -252,8 +252,8 @@ Acceptance:
 
 - one current format per active replica;
 - bootstrap artifact interpreted only by software explicitly supporting its target;
-- routine open of an already-current supported database satisfies `$id-7429043816351276`: Journal-specific work is `O(1 + G)` in current materialized/derived state size G and independent of retained Journal size H;
-- routine open reads only current version/schema, selected committed-pair metadata, local writer head, allocator watermark, authority high-water, and current graph/index state bounded by G; it does not scan/replay all retained history;
+- routine open of an already-current supported database satisfies `$id-7429043816351276`: Journal-specific work is `O(1 + G)`, where G is current graph plus graph-bounded current-state metadata and excludes history/history-proportional Journal indexes; the bound is independent of retained Journal size H;
+- routine open reads only current version/schema, constant-size/current-state committed-pair metadata, local writer head, allocator watermark, authority high-water, and current graph/index state bounded by G; it does not scan/replay all retained history or validate history-sized indexes;
 - full stream/context/reference/authority/replay-equality validation remains at history-admission/publication, synchronization/reset cutover, bootstrap, absent restoration, migration, and explicit rebuild/maintenance boundaries;
 - known graph/Journal mismatch not exposed;
 - valid authoritative Journal history may rebuild derived projection/indexes during explicit maintenance;
