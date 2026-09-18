@@ -140,9 +140,7 @@ This requirement covers ordinary propagation, synchronization, bootstrap, reset,
 
 ## Established local writer monotonicity and absent restoration
 
-For an existing supported database, the local writer head and `last_node_index` are monotone. A generic peer `JournalSnapshot` containing a longer agreeing prefix of the local writer is therefore evidence of unsupported existing-state rollback and causes `JournalWriterBehindError`; it is not a source for repairing that existing database.
-
-When the complete local database is absent, restoration may use `InstallationRecoverySource`. For writer A restored at head q, the returned snapshot must be continuation-safe: after restore no previously-authored A record with sequence greater than q may later enter supported retained history and collide with new allocation.
+Storage obeys the established-writer rollback and complete-absence restoration rules owned by `database-lifecycle.md` §§4–5. In particular, storage does not define a separate same-writer rollback-repair path.
 
 After absent restoration, storage reconstructs at least:
 
