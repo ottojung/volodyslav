@@ -53,7 +53,7 @@ If a selected occurrence has complete **effective** own proof but is stale becau
 
 ## Synchronization can reveal unsupported local rollback
 
-The user-visible result for the established-writer rollback condition is `JournalWriterBehindError`; the condition is defined in `database-lifecycle.md` §5 and synchronization behavior in `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is unsupported state.
+The user-visible result for the established-writer rollback condition is `JournalWriterBehindError`; the condition is defined in `incremental-graph-journal-lifecycle.md` §5 and synchronization behavior in `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is unsupported state.
 
 ## Absent-installation startup
 
@@ -187,7 +187,7 @@ resetTo(source)
 
 requires an established writable receiver and one held compatible source snapshot.
 
-If the reset source is ahead for the receiver's own writer, the user-visible failure follows `incremental-graph-journal-reset.md` §Preconditions and the lifecycle boundary in `database-lifecycle.md` §5.
+If the reset source is ahead for the receiver's own writer, the user-visible failure follows `incremental-graph-journal-reset.md` §Preconditions and the lifecycle boundary in `incremental-graph-journal-lifecycle.md` §5.
 
 Reset retains history and establishes the source projection relative to all history it observed.
 
