@@ -426,7 +426,7 @@ Start from:
 Gbefore = project(Jbefore, sourceSchema)
 ```
 
-First rewrite **all retained history** into the target representation using the directed source->target `JournalFormatCodec` defined in §10a:
+First rewrite **all retained history** into the target representation using the directed source->target `JournalFormatCodec` defined in §9a:
 
 ```text
 Jconverted = rewriteJournalFormat(
@@ -462,7 +462,7 @@ From this point onward, semantic-repair key comparisons and occurrence-preservat
 
 Replicas migrate independently; no canonical migration participant is required.
 
-## 10a. Journal format codec contract
+## 9a. Journal format codec contract
 
 Journal-aware representation change has exactly one representation-rewrite mechanism: a pure directed source->target `JournalFormatCodec`. The ordinary pre-Journal `MigrationStorage` API in `migration.md` describes shipped behavior and is not the owner of this Journal 3 codec.
 
@@ -514,7 +514,7 @@ An active source replica is entirely source-format. The inactive target replica 
 
 For every retained source record R with ID `(A,q)`, the source->target migration defines exactly one deterministic target-format record with the **same ID and historical meaning**.
 
-The normative codec contract and rewrite pipeline are in §10a. In summary, the rewrite:
+The normative codec contract and rewrite pipeline are in §9a. In summary, the rewrite:
 
 1. decodes under the source version;
 2. applies deterministic `rewriteNodeKey` to every embedded NodeKey;
