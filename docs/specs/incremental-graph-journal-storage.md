@@ -193,9 +193,15 @@ Transport implementation of these abstractions is outside Journal semantics.
 
 ## Startup validation
 
-Before history is trusted, storage/open validates current-format decoding, stream contiguity, exact own-prefix contexts, transitive closure, authority extension, ValueId reference causality, canonical validation bases/scopes, local allocator consistency, and Journal/projection equality or successful rebuild.
+Routine opening of an already-current supported database trusts the lifecycle-owned atomically committed Journal/projection pair rather than re-proving its complete retained history. This follows `$id-6158827469032147` and the routine-open performance requirement `$id-7429043816351276`.
 
-Malformed authoritative history is rejected rather than repaired from mutable graph bytes.
+Journal-specific routine open work is bounded by current state, not retained history: it reads current version/schema, local writer identity/head, allocator watermark, authority high-water, and the committed active-pair/generation metadata needed to establish that the selected Journal/projection pair is one atomically published state. It may validate or reconstruct current graph/index metadata with work bounded by current materialized/derived state.
+
+Routine open MUST NOT scan/replay all retained Journal records merely to revalidate stream contiguity, transitive contexts, authority extension, reference causality, validation bases/scopes, or Journal/projection equality. Those invariants are established when history enters or changes supported state.
+
+Full well-formedness/replay-equality validation remains mandatory at the relevant controlled boundaries: local publication finalization, synchronization/reset import and cutover, bootstrap, absent restoration, Journal-aware migration, and explicit projection rebuild/maintenance. A full-history rebuild may therefore be O(history); it is not the ordinary open path.
+
+If routine-open metadata is missing/inconsistent with a supported committed active pair, startup fails or enters an explicit supported maintenance/rebuild transition. It does not silently treat a full-history scan as routine validation. Malformed authoritative history encountered by such validation is rejected rather than repaired from mutable graph bytes.
 
 ## No destructive replay-history GC
 
