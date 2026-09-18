@@ -370,6 +370,16 @@ Journal records that transition using value-scoped InvalidateEvent for affected 
 
 Therefore replay does not make stale dependent fresh merely because all inputs later become fresh again. Dependent itself needs causally later validation covering its stale marker.
 
+```text
+selfProofReady(K) iff
+    present(K)
+    and certificate(K) exists
+    and effectiveBasisMatchCount(K, certificate(K)) == currentInputEdges(K).length
+    and coversValueInvalidations(K, certificate(K))
+```
+
+Every supported committed projection satisfies: if selfProofReady(K) and some direct input of K is not fresh, then an uncovered value-scoped InvalidateEvent for valueId(K) exists.
+
 Every authoring path which intentionally creates/reproduces a persistent fresh-to-stale flag must ensure this marker exists when the occurrence's own proof is otherwise complete:
 
 - ordinary emission for runtime propagated invalidation;

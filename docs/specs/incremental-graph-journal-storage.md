@@ -133,7 +133,7 @@ True explicit `invalidate(K)` remains node-scoped.
 When graph/lifecycle semantics persist K stale while K's own effective proof is otherwise complete, retained history contains an uncovered:
 
 ```text
-Invalidate(K, scope=value(currentValueId(K)), reason=...)
+Invalidate(K, scope=value(valueId(K)), reason=...)
 ```
 
 This requirement covers ordinary propagation, synchronization, bootstrap, reset, and migration. It prevents later upstream `Unchanged` from silently erasing a stored stale transition.

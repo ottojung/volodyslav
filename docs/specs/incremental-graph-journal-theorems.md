@@ -173,16 +173,9 @@ True migration `invalidate(K)` remains node-scoped. Bootstrap's exact-shared int
 
 ## Law 22: maintenance persistent staleness survives upstream Unchanged
 
-For selected certificate C define:
+Use `selfProofReady(K)` as defined in `incremental-graph-journal-replay.md` §Persistent propagated staleness, evaluated at this pass's replay cut.
 
-```text
-selfProofReady(K) iff
-    C exists
-    and effectiveBasisMatchCount(K,C) == numberOfDirectInputs(K)
-    and coversValueInvalidations(K,C)
-```
-
-If target state stores K stale while `selfProofReady(K)` is true, final history contains an uncovered `value(currentValueId(K))` marker unless one already exists—even when K is currently stale only through an input.
+If target state stores K stale while `selfProofReady(K)` is true, final history contains an uncovered `value(valueId(K))` marker unless one already exists—even when K is currently stale only through an input.
 
 Therefore a later upstream `Unchanged` cannot freshen K without K itself validating/recomputing.
 

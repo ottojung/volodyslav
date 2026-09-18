@@ -176,16 +176,7 @@ Compute:
 P1 = project(J1)
 ```
 
-For each present K let C be its replay-selected certificate under `incremental-graph-journal-replay.md` §Certificate selection. Synchronization does not redefine certificate ordering.
-
-Define:
-
-```text
-selfProofReady(K) iff
-    C exists
-    and effectiveBasisMatchCount(K,C) == numberOfDirectInputs(K)
-    and coversValueInvalidations(K,C)
-```
+Use `selfProofReady(K)` as defined in `incremental-graph-journal-replay.md` §Persistent propagated staleness, evaluated at this pass's replay cut.
 
 Node invalidation affects certificate eligibility; `proof(value,input)` barriers reduce effective proof edge-by-edge.
 

@@ -347,21 +347,14 @@ Thus a fresh joiner cannot clear canonical stale evidence, and a stale joiner ca
 
 After direct proof/stale roots, process present nodes in deterministic dependency-topological order.
 
-For each K, let C be its replay-selected certificate and define:
-
-```text
-selfProofReady(K) iff
-    C exists
-    and effectiveBasisMatchCount(K,C) == numberOfDirectInputs(K)
-    and coversValueInvalidations(K,C)
-```
+Use `selfProofReady(K)` as defined in `incremental-graph-journal-replay.md` §Persistent propagated staleness, evaluated at this pass's replay cut.
 
 If `selfProofReady(K)` and some direct input is stale, ensure an uncovered:
 
 ```text
 InvalidateEvent {
     node: K,
-    scope: { kind: "value", value: currentValueId(K) },
+    scope: { kind: "value", value: valueId(K) },
     reason: "bootstrap"
 }
 ```
@@ -753,14 +746,7 @@ Call replay after M2 `P2`.
 
 ## 17. Pass M3 — persistent target freshness
 
-For each present K let C be its replay-selected certificate and define:
-
-```text
-selfProofReady(K) iff
-    C exists
-    and effectiveBasisMatchCount(K,C) == numberOfDirectInputs(K)
-    and coversValueInvalidations(K,C)
-```
+Use `selfProofReady(K)` as defined in `incremental-graph-journal-replay.md` §Persistent propagated staleness, evaluated at this pass's replay cut.
 
 For target-fresh K, final replay must be fresh; causally later validation covers observed invalidations as needed.
 

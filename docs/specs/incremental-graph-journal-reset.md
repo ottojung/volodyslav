@@ -284,14 +284,9 @@ A new dependent ValueEvent is not needed merely to update or weaken proof.
 
 ## Pass 3: establish target freshness
 
-After Pass 2 compute replay `P2`. For each present K let C be the replay-selected certificate in P2 and define the same own-proof predicate used by synchronization normalization:
+After Pass 2 compute replay `P2`.
 
-```text
-selfProofReady(K) iff
-    C exists
-    and effectiveBasisMatchCount(K,C) == numberOfDirectInputs(K)
-    and coversValueInvalidations(K,C)
-```
+Use `selfProofReady(K)` as defined in `incremental-graph-journal-replay.md` §Persistent propagated staleness, evaluated at this pass's replay cut.
 
 Node-scoped invalidations affect certificate eligibility; proof-edge barriers affect the effective basis edge-by-edge. Thus `selfProofReady(K)` means K is not persistently stale because of its own proof deficiency, explicit node invalidation, proof-edge deficit, or current-value invalidation. It may nevertheless be recursively stale because a direct input is stale.
 
