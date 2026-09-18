@@ -211,7 +211,10 @@ Acceptance:
 - `create(Kt,...)` treats Kt as target representation and fails `CreateExistingNodeError` when Kt equals `rewriteNodeKey(Ks)` for any previously materialized source Ks;
 - non-identity `Ks -> Kt` plus `keep(id(Ks))` preserves the original ValueId and authors neither replacement ValueEvent nor spurious delete;
 - non-total/throwing source->target codec fails `JournalVersionCompatibilityError` before cutover;
-- same historical record rewrites identically across replicas;
+- same historical record rewrites identically across replicas for each canonical transition;
+- every supported older Journal version has one complete canonical successor chain to the running version;
+- skipped application releases still execute that canonical Journal chain semantically; no independent direct shortcut may change retained history;
+- any fused optimization produces exactly the same retained Journal, including intermediate migration-authored records, as stepwise canonical execution;
 - representation-only change uses `keep` plus the canonical codec;
 - the Journal 3 implementation must delete the legacy representation-rewrite path when this specification is implemented: `MigrationStorage.override()`, the `OverrideDecision` typedef, `OverrideConflictError`, and every `override` branch in `migration_runner.js` and `migration_validity.js`; no compatibility flag or unreachable duplicate mechanism remains;
 - `keep` preserves occurrence ValueId, timestamps, freshness, and target-shape-compatible source replay validity even when the node is stale;
