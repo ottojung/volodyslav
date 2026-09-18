@@ -280,13 +280,44 @@ Target has A stale and B stale with full B proof `{A:a1}`. Reset ensures final B
 
 ## Canonical bootstrap source decision tests
 
-Test:
+Test query behavior:
 
 1. compatible immutable artifact exists -> creator-resume or join by local fingerprint;
-2. definite absence -> create canonical artifact and freeze before ordinary authoring;
-3. indeterminate/read failure -> fail without canonical creation.
+2. definite absence -> stage a deterministic candidate and attempt conditional publication;
+3. indeterminate/read failure -> fail without canonical publication.
 
-If first-creator arbitration cannot establish definite absence, result is indeterminate. Distinct canonical artifacts are unsupported.
+`DefinitelyAbsent` alone MUST NOT authorize local Journal cutover.
+
+### Concurrent canonical creators
+
+Start pre-Journal installations X and Y in the same cohort. Arrange that both query before either publishes and both receive `DefinitelyAbsent`. Each stages its own deterministic canonical candidate, then race:
+
+```text
+publishCanonicalBootstrapIfAbsent(Xcandidate)
+publishCanonicalBootstrapIfAbsent(Ycandidate)
+```
+
+Require:
+
+- exactly one distinct candidate receives `Published`;
+- the loser receives `AlreadyExists(B)` naming the same durable winner;
+- the winner may creator-cut-over only after `Published`;
+- the loser discards its staged candidate and ordinary-joins B unless B has its own fingerprint, in which case it creator-resumes;
+- the canonical source contains exactly one accepted artifact;
+- no second canonical history is made durable or locally active.
+
+This is the regression for `$id-1847369205416728`.
+
+### Unknown publication outcome
+
+If conditional publication returns `IndeterminateOrError`, require no local cutover and keep the supported legacy database active. On retry/restart:
+
+- re-query `Exists(B)` with local creator writer -> creator-resume;
+- re-query `Exists(B)` with another creator -> discard local staging and join;
+- re-query `DefinitelyAbsent` -> retry the same deterministic candidate conditionally;
+- re-query indeterminate/error -> fail again without cutover.
+
+Distinct canonical artifacts discovered despite the conditional-publication contract remain unsupported.
 
 ## Bootstrap semantic-identity compatibility tests
 
