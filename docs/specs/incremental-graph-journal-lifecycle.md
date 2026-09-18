@@ -65,9 +65,9 @@ Conceptually startup performs:
 1. validate required operating context;
 2. determine whether supported local database state is completely absent or exists;
 3. if local state is absent, run the absent-state decision below;
-4. otherwise open the existing state sufficiently to read version metadata and validate the lifecycle boundary;
+4. otherwise open the existing state sufficiently to read version/current committed-pair metadata and validate the lifecycle boundary;
 5. run the migration/bootstrap gate when required;
-6. validate/rebuild Journal-derived projection state when applicable; and
+6. for an already-current supported database, perform only the bounded routine-open checks in §6; run full replay/rebuild only as part of an explicit transition which requires it; and
 7. expose IncrementalGraph APIs.
 
 Startup never silently reinterprets malformed, partially missing, rolled-back, incompatible, or otherwise unsupported existing state as absence or as a fresh database.
