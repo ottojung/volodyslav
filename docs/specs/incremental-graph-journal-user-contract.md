@@ -191,6 +191,8 @@ resetTo(source)
 
 requires an established writable receiver and one held compatible source snapshot.
 
+The reset result reports `changed = false` only when the receiver already retained the entire source snapshot frontier and reset authored no repair records. Missing source history makes the reset a persistent change even if the observable graph projection was already equal to the target.
+
 If the reset source is ahead for the receiver's own writer, the user-visible failure follows `incremental-graph-journal-reset.md` §Preconditions and the lifecycle boundary in `incremental-graph-journal-lifecycle.md` §5.
 
 Reset retains history and establishes the source projection relative to all history it observed. A compatible receiver/source union may be temporarily non-projectable because Value/Delete winners mix across replicas; reset uses raw deterministic head selection for its first occurrence/presence repair rather than sync-normalizing or rejecting that staging union.
