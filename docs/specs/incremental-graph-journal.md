@@ -193,7 +193,7 @@ Semantic migration:
 - `keep` preserves ValueId;
 - `invalidate(K)` preserves cached occurrence but authors true node-scoped invalidation;
 - proof/freshness/schema-only changes preserve ValueId;
-- each removed proof edge for preserved V uses `proof(V,D)`;
+- maintenance proof weakening for preserved V uses `proof(V,D)` for every non-target edge in `eligibleEffectiveProofUnion(K)`;
 - target persistent stale state uses `value(V)` when own effective proof is complete;
 - `create`/true replacement authors a new ValueEvent.
 
