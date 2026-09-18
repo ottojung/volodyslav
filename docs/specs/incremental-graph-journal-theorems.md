@@ -340,47 +340,10 @@ The law is per actual execution; counterfactual schedules which genuinely author
 
 ## Law 43: host-count bounded settling schedule
 
-For a quiescent compatible epoch of H >= 1 participating replicas, there exists a settling schedule using at most `2(H-1)` state-advancing successful pairwise synchronizations.
+The construction and operation-count definition are normative in `incremental-graph-journal-sync.md` §Host-count bounded settling schedule. That construction establishes that every quiescent compatible epoch of H >= 1 participating replicas admits settlement within at most `2(H-1)` state-advancing successful pairwise synchronizations, and therefore within the H^2 achievable bound required by `$id-5631842079463518`.
 
-Constructively, choose collector C:
+This law is a proof obligation for that owned synchronization rule; it does not restate the construction.
 
-1. C synchronizes from each other replica once while those replicas remain otherwise idle. After at most H-1 state-advancing gathers, C retains every participant's starting Journal history. Because each synchronization publishes only after computing the complete dependency-removal and propagated-staleness closures, C is fully normalized for the complete gathered history after the final gather.
-2. C then remains unchanged while every other replica synchronizes from C once. Each receiver's current Journal is a subset of C's Journal because C already gathered that receiver's complete starting state and the receiver authored nothing during gather. Therefore the union equals C's already-normalized Journal, no additional normalization is required, and the receiver adopts C's retained synchronized closure and projection.
+## Verification ownership
 
-After at most another H-1 state-advancing operations, every participant has the same retained synchronized Journal closure and equivalent projection; further synchronization is a semantic no-op.
-
-Hence for H >= 2:
-
-```text
-2(H-1) <= H^2
-```
-
-and for H = 1 the required count is zero.
-
-This is an achievable-schedule bound satisfying `$id-5631842079463518`. It is not a claim that every arbitrary fair ordering settles within H^2 state-advancing operations. History size and graph size may affect the cost of each operation but not this constructed operation count.
-
-## Required verification themes
-
-At minimum model/test:
-
-- deterministic replay and graph/Journal equality;
-- context transitivity and authority extension;
-- reference causality;
-- immutable prefix union/fork rejection;
-- lifecycle-owned writer monotonicity and unsupported own-writer-behind rejection;
-- continuation-safe complete-absence restoration;
-- reset own-writer-behind rejection before import/authorship;
-- node/value/proof-edge invalidation semantics;
-- concurrent same-ValueId proof-edge barriers;
-- selected-remote stale persistence;
-- structural deletion versus retained stale `oldValue`;
-- bootstrap original-cut/creator-resume/conflict authority;
-- exact-shared bootstrap proof intersection and symmetric stale merge;
-- bootstrap recursive stale persistence;
-- total replica-independent format rewrite including target-removed node families;
-- injective NodeKey transport and target-keyed occurrence-preserving migration bookkeeping;
-- representation migration through codec + `keep`;
-- independent replacement-migration trade-off;
-- minimal reset;
-- fair synchronization convergence; and
-- the `2(H-1)` gather/broadcast settling construction and its H^2 corollary.
+Concrete regression/property coverage is maintained in `incremental-graph-journal-testing.md`. This file states proof obligations only and is not a second regression inventory.
