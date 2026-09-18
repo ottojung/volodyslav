@@ -472,10 +472,11 @@ The normative codec contract and rewrite pipeline are in `migration.md` §Journa
 
 1. decodes under the source version;
 2. applies deterministic `rewriteNodeKey` to every embedded NodeKey;
-3. applies deterministic `rewriteComputedValue` to every retained ValueEvent payload;
-4. preserves Journal IDs, sequence, causal/reference identity, AuthorityTime meaning, NodeIdentifiers, and timestamps;
-5. re-canonicalizes target structures, including re-sorting ValidationBasis entries by target canonical NodeKey order; and
-6. encodes under the target version.
+3. requires `rewriteNodeKey` to be injective over all distinct source NodeKeys occurring in retained history, so two historical semantic nodes cannot collapse onto one target key;
+4. applies deterministic `rewriteComputedValue` to every retained ValueEvent payload;
+5. preserves Journal IDs, sequence, causal/reference identity, AuthorityTime meaning, NodeIdentifiers, and timestamps;
+6. re-canonicalizes target structures, including re-sorting ValidationBasis entries by target canonical NodeKey order; and
+7. encodes under the target version.
 
 The codec domain is **all retained source-version history**, including non-selected occurrences and historical records for node families absent from the target schema.
 
