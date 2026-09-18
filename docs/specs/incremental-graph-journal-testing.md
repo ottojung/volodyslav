@@ -471,6 +471,8 @@ Y MUST still execute Journal migration semantics v1 -> v2 -> v3, even though it 
 - ordinary synchronization succeeds without `JournalForkError`;
 - an independently defined direct v1 -> v3 shortcut which would produce different retained history is rejected/not a supported migration path.
 
+Also model a later release that changes the historical v1 -> v2 codec/semantic migration definition while still claiming v1 support. That release MUST be rejected as violating the canonical edge contract; the supported implementation must carry the frozen v1 -> v2 semantics used by earlier replicas. If it cannot, v1 must be unsupported.
+
 Also test that a source version with no complete canonical chain to the running version fails `JournalVersionCompatibilityError`.
 
 ### Migration proof weakening
