@@ -333,6 +333,27 @@ For finitely many supported replicas and a finite schema DAG, after non-normaliz
 
 The law is per actual execution; counterfactual schedules which genuinely authored different normalization histories need not be byte-identical.
 
+## Law 43: host-count bounded settling schedule
+
+For a quiescent compatible epoch of H >= 1 participating replicas, there exists a settling schedule using at most `2(H-1)` state-advancing successful pairwise synchronizations.
+
+Constructively, choose collector C:
+
+1. C synchronizes from each other replica once while those replicas remain otherwise idle. After at most H-1 state-advancing gathers, C retains every participant's starting Journal history. Because each synchronization publishes only after computing the complete dependency-removal and propagated-staleness closures, C is fully normalized for the complete gathered history after the final gather.
+2. C then remains unchanged while every other replica synchronizes from C once. Each receiver's current Journal is a subset of C's Journal because C already gathered that receiver's complete starting state and the receiver authored nothing during gather. Therefore the union equals C's already-normalized Journal, no additional normalization is required, and the receiver adopts C's retained synchronized closure and projection.
+
+After at most another H-1 state-advancing operations, every participant has the same retained synchronized Journal closure and equivalent projection; further synchronization is a semantic no-op.
+
+Hence for H >= 2:
+
+```text
+2(H-1) <= H^2
+```
+
+and for H = 1 the required count is zero.
+
+This is an achievable-schedule bound satisfying `$id-5631842079463518`. It is not a claim that every arbitrary fair ordering settles within H^2 state-advancing operations. History size and graph size may affect the cost of each operation but not this constructed operation count.
+
 ## Required verification themes
 
 At minimum model/test:
