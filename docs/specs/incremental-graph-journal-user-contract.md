@@ -53,9 +53,7 @@ If a selected occurrence has complete **effective** own proof but is stale becau
 
 ## Synchronization can reveal unsupported local rollback
 
-If an ordinary source contains a longer prefix of the receiver's **own** local writer, ordinary sync does not adopt that suffix and continue authoring.
-
-It fails `JournalWriterBehindError` before import/authorship. Under the supported lifecycle model, an existing local database cannot legitimately have lost part of its own committed writer stream, so this is unsupported/corrupt existing state requiring explicit operator/disaster handling—not a normal same-writer recovery case.
+The user-visible result for the established-writer rollback condition is `JournalWriterBehindError`; the condition is defined in `database-lifecycle.md` §5 and synchronization behavior in `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is unsupported state.
 
 ## Absent-installation startup
 
