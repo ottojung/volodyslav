@@ -312,7 +312,7 @@ JournalSourceReadError
 InvalidMigrationDecisionError
 ```
 
-`JournalWriterBehindError` is a corruption/unsupported-lifecycle diagnostic for an established receiver whose own writer history is demonstrably shorter than surviving supported history. It is not a request to run an existing-writer recovery protocol.
+`JournalWriterBehindError` denotes the established-writer rollback condition owned by `database-lifecycle.md` §5; operation-specific behavior is defined by the synchronization/reset specs.
 
 ## Locking ownership
 
