@@ -53,7 +53,7 @@ A successful pairwise synchronization conceptually:
 1. acquires/enters the required maintenance publication boundary;
 2. opens one stable source snapshot;
 3. verifies exact version/schema compatibility from that snapshot;
-4. verifies that the source does not prove the receiver behind its own local-writer stream; if it does, fail `JournalWriterBehindError` before import/authorship because the existing receiver is outside the supported lifecycle state space;
+4. applies the own-writer-ahead rule owned by `database-lifecycle.md` §5 and `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is unsupported state;
 5. transfers every missing immutable **foreign-writer** suffix needed through the captured frontier;
 6. validates overlap, contiguity, transitive causal closure, authority extension, and references;
 7. computes raw replay;
