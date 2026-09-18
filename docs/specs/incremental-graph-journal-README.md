@@ -53,6 +53,7 @@ Journal 3 specifies:
 - absent restoration allowed to rely on the supported backend model to rule out histories which cannot arise or later re-enter under that model;
 - transport locators such as hostnames and branch names excluded from IncrementalGraph-owned persistent state and semantic recovery APIs;
 - ordinary synchronization importing foreign-writer suffixes, while a longer receiver-local writer prefix triggers `JournalWriterBehindError` as unsupported existing-state rollback;
+- arbitrary fair synchronization schedules eventually converging after quiescence, plus an explicit gather/broadcast settling schedule requiring at most `2(H-1)` state-advancing pairwise synchronizations and therefore satisfying the H^2 achievable bound;
 - reset likewise rejecting an own-writer-ahead source rather than repairing a rolled-back receiver;
 - exact structural deletion only when a selected dependent loses a required materialized input; mixed input versions otherwise keep the cached value as legitimate `oldValue` and express hard/soft stale state through proof/freshness;
 - a frozen canonical bootstrap artifact for the original pre-Journal cut;
