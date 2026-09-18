@@ -105,6 +105,18 @@ After sync B=b2 is persistently stale. Later `A -> Unchanged` may freshen A but 
 
 For 2–4 replicas, stop non-normalization changes, synchronize in varying fair orders to fixed point, and require equivalent projections/no-op repeated sync within each actual schedule.
 
+Separately test the host-count bounded settling construction. For each generated quiescent compatible state with H participants:
+
+1. choose each participant in turn as collector C;
+2. hold all non-collector participants idle while C synchronizes from each of them once;
+3. hold C fixed while every other participant synchronizes from C once;
+4. count only successful synchronizations which import at least one new retained record or author at least one normalization record;
+5. require the count to be at most `2(H-1)`, and therefore at most `H^2` for H >= 2;
+6. require equal retained synchronized Journal closure/equivalent projection across participants; and
+7. require another complete synchronization round to be semantic no-op.
+
+The test must vary gather order. The operation-count assertion applies to this deliberate settling construction, not to arbitrary fair schedules, which are tested only for eventual convergence.
+
 ## Lifecycle fault-model tests
 
 The reference lifecycle state generator MUST be closed under supported Volodyslav transitions plus complete disappearance of the local database. It MUST NOT generate partial external rollback/damage as an ordinary recoverable input.
