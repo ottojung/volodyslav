@@ -57,17 +57,9 @@ Coverage and reference legality use causality, not merely total authority.
 
 ## Certificate proof order
 
-For eligible certificates of the current ValueId, replay maximizes:
+Certificate selection and effective-basis calculation are defined normatively in `incremental-graph-journal-replay.md` §Certificate selection and §Effective basis match.
 
-```text
-1. effectiveBasisMatchCount
-2. coversValueInvalidations
-3. authority
-```
-
-`effectiveBasisMatchCount` starts from basis/value matches and subtracts edges suppressed by uncovered `proof(V,D)` barriers.
-
-A later weaker certificate therefore cannot necessarily supersede older stronger positive proof merely by authority; maintenance expresses removed proof as explicit negative edge evidence.
+The algebraic consequence used here is that greater clock authority alone cannot make a weaker effective proof replace stronger current proof; maintenance represents removed proof as explicit negative edge evidence.
 
 ## Invalidation scopes have distinct roles
 
