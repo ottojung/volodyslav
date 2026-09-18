@@ -285,9 +285,11 @@ v = v0 -> v1 -> ... -> vn = t
 
 with each step determined by `canonicalNextJournalVersion`.
 
-Every replica starting from the same retained record body at v and reaching t through supported migration applies that same semantic chain. Therefore every pre-existing shared `JournalRecordId` has one byte-identical canonical body at t, independent of which application releases the replica happened to run between v and t.
+Every replica starting from the same retained record body at v and reaching t through supported migration applies that same semantic chain. Canonical edge semantics are frozen while their source version remains supported: a later release cannot silently change an old edge's codec or semantic migration definition and still claim compatibility with replicas that executed the earlier definition.
 
-A release may drop support for an old source version, but while support remains it cannot redefine that source's canonical successor path. Any fused migration implementation is valid only if its complete retained Journal is exactly the same as stepwise canonical execution.
+Therefore every pre-existing shared `JournalRecordId` has one byte-identical canonical body at t, independent of which application releases the replica happened to run between v and t.
+
+A release may drop support for an old source version, but while support remains it cannot redefine that source's canonical successor path or edge semantics. Any fused migration implementation is valid only if its complete retained Journal is exactly the same as stepwise canonical execution.
 
 Thus later synchronization of independently upgraded replicas does not turn supported version skipping into `JournalForkError`.
 
