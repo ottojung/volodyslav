@@ -86,6 +86,21 @@ For compatible generated writer histories assert immutable prefix union is idemp
 
 A `JournalSnapshot` binds exact persisted version/schema, localWriter, frontier, and records to one immutable source cut. Earlier mutable metadata cannot authorize a later incompatible snapshot.
 
+## Routine-open history-independence tests
+
+For an already-current supported database, open through an instrumented Journal/index storage interface which fails the test if routine startup requests:
+
+- full retained-Journal iteration;
+- per-writer historical range scans beyond constant-size committed head metadata;
+- history-proportional Journal-index validation; or
+- replay of retained history.
+
+Routine open must still succeed using current version/schema, committed active-pair metadata, local writer head, allocator watermark, authority high-water, and graph-bounded current-state metadata.
+
+Vary retained historical length H while holding current graph/graph-bounded metadata size G fixed and require the Journal-specific routine-open operation count/I/O shape to remain independent of H, as required by `$id-7429043816351276`.
+
+Run the same fixture through **explicit projection rebuild** and allow/require retained-history iteration there. This verifies that the history-sized validation path still exists at the explicit maintenance boundary rather than leaking into ordinary startup.
+
 ## Synchronization fixed-point and stale-persistence tests
 
 Synchronize generated receiver/source pairs twice against unchanged source and require second sync to author no records/change no projection.
