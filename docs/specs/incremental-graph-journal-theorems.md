@@ -60,17 +60,9 @@ For mutually compatible same-version causally closed prefix Journals, immutable 
 
 ## Law 9: established local writer history does not roll back
 
-For an established supported database with local writer A at head q, supported lifecycle transitions do not replace its own writer stream with a proper prefix or otherwise decrease the local writer head/allocator state.
+The established-writer rollback boundary is defined normatively by `database-lifecycle.md` §5; ordinary synchronization behavior is defined by `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is unsupported state.
 
-If ordinary synchronization or reset observes:
-
-```text
-source.frontier[A] > local.frontier[A]
-```
-
-for the receiver's own local writer, the receiver is outside the supported lifecycle state space. The operation fails `JournalWriterBehindError` before importing source history or authoring local history and leaves the active receiver unchanged. It does not invoke a same-writer recovery transition.
-
-Overlap disagreement is `JournalForkError`.
+The proof obligation is that supported lifecycle transitions never decrease an established local writer head/allocator state and that operations obey those owned failure rules rather than inventing a same-writer rollback-recovery transition.
 
 ## Law 10: absent-state restore preserves continuing writer identity safely
 
