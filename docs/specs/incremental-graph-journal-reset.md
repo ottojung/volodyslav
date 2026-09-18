@@ -42,9 +42,9 @@ Reset requires:
 
 Compatibility metadata must come from the same held `JournalSnapshot` used to derive the target and import source records.
 
-The shared own-writer rollback condition is defined by `database-lifecycle.md` §5. If the held source snapshot is ahead for the receiver's own writer, `resetTo()` fails `JournalWriterBehindError` before import/authorship and leaves the active receiver unchanged. Divergent overlap remains `JournalForkError`.
+The shared own-writer rollback condition is defined by `incremental-graph-journal-lifecycle.md` §5. If the held source snapshot is ahead for the receiver's own writer, `resetTo()` fails `JournalWriterBehindError` before import/authorship and leaves the active receiver unchanged. Divergent overlap remains `JournalForkError`.
 
-An installation with no local database/writer identity uses the absent-state restoration lifecycle in `database-lifecycle.md`; `resetTo()` does not invent a local writer identity for an absent receiver.
+An installation with no local database/writer identity uses the absent-state restoration lifecycle in `incremental-graph-journal-lifecycle.md`; `resetTo()` does not invent a local writer identity for an absent receiver.
 
 ## Source target
 
@@ -348,7 +348,7 @@ not:
 
 ## Own-writer rollback boundary
 
-Reset uses the shared boundary in `database-lifecycle.md` §5; no additional reset-specific recovery semantics exist.
+Reset uses the shared boundary in `incremental-graph-journal-lifecycle.md` §5; no additional reset-specific recovery semantics exist.
 
 ## Repeat-reset idempotence
 
