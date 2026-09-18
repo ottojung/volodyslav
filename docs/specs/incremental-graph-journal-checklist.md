@@ -210,7 +210,7 @@ Acceptance:
 - non-total/throwing source->target codec fails `JournalVersionCompatibilityError` before cutover;
 - same historical record rewrites identically across replicas;
 - representation-only change uses `keep` plus the canonical codec;
-- the Journal 3 implementation exposes no legacy migration `override` decision/call path; existing backend `MigrationStorage.override` machinery must be removed or retired when this specification is implemented;
+- the Journal 3 implementation must delete the legacy representation-rewrite path when this specification is implemented: `MigrationStorage.override()`, the `OverrideDecision` typedef, `OverrideConflictError`, and every `override` branch in `migration_runner.js` and `migration_validity.js`; no compatibility flag or unreachable duplicate mechanism remains;
 - `keep` preserves occurrence ValueId, timestamps, freshness, and target-shape-compatible source replay validity even when the node is stale;
 - stale `keep` alone does not create proof barriers or force recomputation;
 - explicit migration `invalidate(K)` preserves occurrence ValueId and authors true node-scoped invalidation;
