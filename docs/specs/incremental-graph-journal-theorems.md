@@ -351,7 +351,9 @@ relative to the history reset observed.
 
 ## Law 39: writer stream and writer-state monotonicity
 
-For writer A with head q, committed records are exactly `A:1..q`. Failed transactions consume no durable coordinate. Local writer-state watermark never decreases through supported lifecycle transitions; foreign writer-state records never replace local allocator state.
+For writer A with head q, committed records in one retained writer stream are exactly `A:1..q`. Failed transactions consume no durable coordinate. Within one retained stream of an established writer, the local writer-state watermark never decreases; foreign writer-state records never replace local allocator state.
+
+Continuation-safe absent restoration may reconstruct an older retained writer prefix and a lower allocator watermark exactly as permitted by `incremental-graph-journal-lifecycle.md` §4.1 and `incremental-graph-journal-types.md` §NodeIdentifier uniqueness basis.
 
 ## Law 40: replay rebuild safety
 
