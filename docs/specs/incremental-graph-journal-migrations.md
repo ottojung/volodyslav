@@ -529,7 +529,9 @@ until `vn` is reached. If the complete chain is not available, that source versi
 
 A machine may skip application releases, but it does **not** skip canonical Journal migration transitions. Thus if one replica historically migrated `v1 -> v2 -> v3`, another replica later upgrading from v1 to v3 must execute the same semantic chain `v1 -> v2 -> v3`; it must not substitute an independently defined direct `v1 -> v3` migration.
 
-Once a canonical successor edge has been used for supported Journal history, later releases which still claim support for that source version preserve that edge in the canonical chain. Removing an old source version from support is allowed; redefining its supported path while retaining support is not.
+Once a canonical successor edge has been used for supported Journal history, later releases which still claim support for that source version preserve **both the edge and its migration semantics**. The source/target version pair identifies a frozen canonical migration definition: its format codec, target semantic migration behavior, and any deterministic repair rules needed to reproduce that transition may not be silently changed by a later release.
+
+Therefore a release that still supports v1 through an old canonical edge v1 -> v2 must carry the canonical v1 -> v2 definition needed to reproduce what earlier replicas executed. If that definition is no longer available, v1 is no longer a supported source version. Removing an old source version from support is allowed; redefining its path or edge semantics while retaining support is not.
 
 Each chain step is a complete Journal-aware migration: whole-history codec rewrite, semantic repair, replay validation, and version cut to that intermediate version. Migration-authored records from an intermediate step are retained and are themselves rewritten by later canonical steps.
 
