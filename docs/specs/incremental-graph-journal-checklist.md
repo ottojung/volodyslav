@@ -67,7 +67,7 @@ Acceptance:
 - certificate shape compatibility deterministic;
 - whole-certificate eligibility rejects uncovered node invalidation;
 - proof-edge barriers are applied per basis edge rather than making the entire certificate ineligible;
-- certificate ordering is `effectiveBasisMatchCount`, then value-invalidation coverage, then authority;
+- certificate selection exactly matches `incremental-graph-journal-replay.md` §Certificate selection;
 - no positive certificate mixing;
 - multiple `proof(V,D)` barriers may accumulate negative edge evidence;
 - `proof(V,D)` affects only edge D of occurrence V; `value(V)` controls persistent freshness without itself removing validity;
