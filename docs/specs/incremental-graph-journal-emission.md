@@ -28,7 +28,7 @@ Finalization:
 6. resolves same-publication ValueId references in semantic dependency order;
 7. gives semantic `(W,q)` exact own-writer context `q-1` plus the complete causally closed foreign frontier semantically observed;
 8. allocates authority extending every predecessor; and
-9. atomically publishes graph + Journal records.
+9. atomically publishes graph + Journal records together with the updated local writer head, allocator watermark, and authority high-water committed-pair metadata.
 
 Failed transactions consume no durable sequence coordinate.
 
