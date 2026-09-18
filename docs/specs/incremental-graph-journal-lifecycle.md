@@ -187,24 +187,21 @@ The separate creator-resume rule in §8.2 is not an exception: it handles interr
 
 ## 6. Opening current Journal state
 
-Opening a current Journal database establishes one coherent pair:
+Opening a current Journal database selects one coherent atomically published pair:
 
 ```text
 (retained journal, materialized projection)
 ```
 
-Supported state requires at least:
+The pair is already required, by the lifecycle transitions that produced it, to satisfy contiguous writer streams, current-format decoding, causal/reference validity, replay equivalence, and allocator/authority invariants. Routine open does not re-prove those facts by scanning retained history.
 
-- contiguous writer streams;
-- one current record format selected by `global/version`;
-- transitively closed semantic-event contexts;
-- current version/schema compatible with running interpretation;
-- graph observationally equivalent to replay, or successfully rebuilt before exposure; and
-- local writer allocator state consistent with retained local history.
+Under `$id-7429043816351276`, routine Journal-specific open work for an already-current supported database is `O(1 + G)` in current materialized/derived state size G and independent of retained Journal size H. It checks only current version/schema compatibility, the selected committed active-pair/generation metadata, local writer head, allocator watermark, authority high-water, and any current graph/index consistency work bounded by G.
 
-Known graph/Journal disagreement is not exposed as ordinary current state.
+Routine open MUST NOT perform a full Journal replay or complete historical well-formedness scan solely to establish `graph == project(journal)`. That equality was established at the successful publication/import/bootstrap/restore/migration/reset cutover which selected the active pair.
 
-A local Journal stream with a missing/truncated tail is not normalized into a shorter valid history merely because the retained prefix is internally contiguous. If supported evidence shows that this installation previously authored a longer local prefix, the local state is corrupted/unsupported under §5.
+Known graph/Journal disagreement is not exposed as ordinary current state. Missing or inconsistent committed-pair metadata causes startup failure or an explicit supported maintenance/rebuild transition; explicit rebuild may replay/validate retained history before exposure and is not subject to the routine-open history-independence bound.
+
+A local Journal stream with a missing/truncated tail is not normalized into a shorter valid history merely because some retained prefix appears internally usable. If supported metadata/evidence shows that this installation previously authored a longer local prefix, the local state is corrupted/unsupported under §5.
 
 ## 7. Ordinary evolution
 
