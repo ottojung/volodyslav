@@ -280,6 +280,21 @@ The normative regression/property inventory is `incremental-graph-journal-testin
 
 Issue #1607 owns end-to-end change-sensitive synchronization complexity. Correctness must not be weakened for unstated performance goals.
 
+## 16a. Documentation cutover when Journal 3 lands
+
+The temporary shipped-vs-target documentation split exists only while Journal 3 is unimplemented. The implementation change is not complete until documentation is cut over with the code:
+
+- replace or rewrite `incremental-graph-synchronization.md` so the canonical synchronization spec describes shipped Journal 3 behavior;
+- fold any still-needed content from `incremental-graph-journal-sync-shell.md` into the canonical synchronization documentation, then remove the temporary target shell;
+- replace or rewrite `database-lifecycle.md` so the canonical lifecycle spec describes the shipped Journal 3 lifecycle;
+- fold `incremental-graph-journal-lifecycle.md` into the canonical lifecycle documentation, then remove the temporary target-design lifecycle file;
+- update `migration.md` together with the runtime migration implementation, deleting the legacy `override` API/error/decision documentation when the code path is deleted;
+- update superseded pre-Journal/current-code sections of `docs/database.md`, `incremental-graph-fingerprint.md`, and `incremental-graph-last-node-index.md` so they describe the implemented Journal 3 state rather than the pre-implementation system;
+- remove all “Journal 3 target design / not yet implemented / until implementation lands” status banners and other temporary shipped-vs-target routing text; and
+- re-run the normative-ownership/read-order audit so no canonical documentation points readers to a removed pre-Journal rule or temporary target file.
+
+There must be one obvious canonical shipped specification for synchronization, lifecycle, migration, fingerprint/identity, and allocator behavior after Journal 3 implementation lands.
+
 ## 17. Completion condition
 
 Journal 3 implementation is complete only when ordinary operations, startup/absent restore, bootstrap/migration, synchronization, reset, restart/open, and rebuild preserve:
