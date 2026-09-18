@@ -202,7 +202,8 @@ Acceptance:
 - target persistent stale with own effective proof ready gets value-scoped reset marker even if recursively stale already;
 - later upstream `Unchanged` does not freshen such target-stale K;
 - deterministic target absence delete;
-- repeat satisfied reset may no-op;
+- `changed == false` only when the source frontier is already covered and Passes 1–3 author nothing; projection-neutral import still returns `changed == true`;
+- repeat satisfied reset may no-op after the source frontier is covered;
 - receiver allocator remains local;
 - replay equals target semantic graph;
 - reset causal-later semantics never reused for bootstrap conflicts.
