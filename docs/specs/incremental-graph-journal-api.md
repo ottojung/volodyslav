@@ -286,7 +286,7 @@ Semantic migration then:
 
 - preserves ValueIds, freshness, and current-shape-compatible source replay proof for `keep`;
 - uses node scope for true explicit `invalidate(K)`;
-- uses one `proof(V,D)` barrier per removed incoming validity edge for maintenance-only proof weakening;
+- uses one `proof(V,D)` barrier for every non-target edge in `eligibleEffectiveProofUnion(K)` during maintenance-only proof weakening;
 - persists target propagated stale state with `value(V)` when own effective proof is otherwise complete; and
 - creates new ValueEvents only for genuine new/replaced occurrences.
 
