@@ -262,7 +262,7 @@ later WriterStateRecord.lastNodeIndex
 
 Replay rejects a decreasing watermark.
 
-This monotone watermark is also part of the existing NodeIdentifier uniqueness argument: once a local allocation index has been retired, later authoring under the same fingerprint must not allocate it again.
+NodeIdentifier allocation/reuse semantics are owned by `incremental-graph-journal-types.md` §NodeIdentifier uniqueness basis, including the continuation-safe absent-restoration exception in `incremental-graph-journal-lifecycle.md` §4.1.
 
 ## Imported-record validation
 
