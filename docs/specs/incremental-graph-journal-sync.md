@@ -303,6 +303,31 @@ With finite pre-existing positive history and a finite schema DAG, only finitely
 
 This is convergence of each actual fair execution, not counterfactual confluence between schedules that genuinely authored different normalization history.
 
+### Host-count bounded settling schedule
+
+The stronger operation-count requirement in `$id-5631842079463518` is an achievable-schedule property, not a bound on every arbitrary fair ordering.
+
+Call a successful pairwise synchronization **state-advancing** when it imports at least one retained record not already present at the receiver or authors at least one receiver normalization record.
+
+For a quiescent compatible participation epoch with H >= 1 replicas, choose any participating replica C as a collector and keep the other replicas idle except when they are the source or receiver of the following operations:
+
+1. **Gather.** For each other replica R, run `Sync(C,R)` once. After at most H-1 state-advancing operations, C contains every record present on every participant at the start of the settling schedule. Each gather operation computes the complete dependency-removal closure and propagated-staleness closure before publishing, so after the final gather C is normalized for the complete gathered history.
+2. **Broadcast.** Keep C unchanged and, for each other replica R, run `Sync(R,C)` once. R has authored no history during the gather, and C already imported R's complete starting history, so R's retained Journal is a subset of C's final Journal. The raw union is therefore exactly C's Journal. Because C is already fully normalized for that history, the broadcast requires no new semantic normalization; R adopts the same retained closure and projection.
+
+After the broadcast every participant has the same retained synchronized Journal closure and equivalent projection, and further synchronization is a semantic no-op.
+
+Thus settling is achievable within at most:
+
+```text
+2 * (H - 1)
+```
+
+state-advancing successful pairwise synchronizations. For H >= 2 this is at most H^2; for H = 1 it is zero.
+
+This bound is independent of the number of retained records and the size/depth of the schema DAG. Those quantities may affect the CPU, I/O, memory, and bytes transferred by each synchronization, but not this operation-count construction.
+
+Arbitrary fair schedules remain governed by the eventual-convergence rule above and are not claimed to satisfy the H^2 operation-count bound.
+
 ## Delayed/absent replicas
 
 Correctness never requires every peer to acknowledge or return. A delayed supported replica can later provide/import immutable foreign suffixes.
