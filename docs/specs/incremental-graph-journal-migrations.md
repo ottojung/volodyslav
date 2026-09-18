@@ -95,23 +95,39 @@ Otherwise bootstrap fails `JournalVersionCompatibilityError` before authoring hi
 
 No permanent decoder/migration ladder for every historical artifact is required.
 
-## 4. Canonical bootstrap source decision
+## 4. Canonical bootstrap source decision and publication arbitration
 
-The configured transport-neutral `CohortBootstrapSource` yields exactly one of:
+The configured transport-neutral `CohortBootstrapSource` supports both observation and atomic first-creator publication:
 
 ```text
-Exists(CanonicalBootstrapSnapshot)
-DefinitelyAbsent
-IndeterminateOrError
+queryCanonicalBootstrap() ->
+    Exists(CanonicalBootstrapSnapshot)
+  | DefinitelyAbsent
+  | IndeterminateOrError
+
+publishCanonicalBootstrapIfAbsent(candidate) ->
+    Published(CanonicalBootstrapSnapshot)
+  | AlreadyExists(CanonicalBootstrapSnapshot)
+  | IndeterminateOrError
 ```
 
-Semantics:
+This conditional publication is the arbitration required by `$id-1847369205416728`. The query is not the arbitration point.
+
+Query semantics:
 
 1. **Exists** — hold the immutable artifact and use creator-resume or ordinary join according to writer identity;
-2. **DefinitelyAbsent** — canonical creation is allowed only when the source's arbitration semantics make this a safe first-creator decision;
+2. **DefinitelyAbsent** — the installation may construct/stage a deterministic candidate, but MUST still call `publishCanonicalBootstrapIfAbsent`;
 3. **IndeterminateOrError** — fail and MUST NOT create competing canonical history.
 
-Distinct canonical artifacts for one cohort are unsupported bootstrap forks requiring explicit recovery; they are not payload-merged.
+Publication semantics:
+
+1. **Published(B)** — B is now the one durable canonical artifact for the cohort. The caller may perform local creator cutover only after validating that B is the published form of its staged candidate.
+2. **AlreadyExists(B)** — another publication already won, or an earlier attempt by this same creator succeeded and its response was lost. Discard the losing staged candidate. If `B.creatorWriter == local DatabaseFingerprint`, enter creator-resume; otherwise perform ordinary join.
+3. **IndeterminateOrError** — the publication outcome is unknown or failed. Do not cut over locally and do not publish another distinct artifact. Keep the supported pre-Journal database active and resolve the outcome by re-querying before retrying.
+
+Semantically, for one cohort canonical slot, concurrent distinct candidates cannot both obtain `Published`. Any transport mechanism is acceptable if it implements that conditional-publication property.
+
+Distinct canonical artifacts discovered despite this contract are unsupported bootstrap forks requiring explicit recovery; they are not payload-merged.
 
 No particular peer must reconcile, acknowledge, or return merely for bootstrap to finish, consistent with `$id-4719065396881648`.
 
