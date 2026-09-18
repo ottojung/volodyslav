@@ -73,6 +73,8 @@ Acceptance:
 - multiple `proof(V,D)` barriers may accumulate negative edge evidence;
 - `proof(V,D)` affects only edge D of occurrence V; `value(V)` controls persistent freshness without itself removing validity;
 - freshness/validity reproduce graph semantics;
+- every supported committed projection satisfies `selfProofReady(K) => fresh(K)`;
+- replay satisfies `$id-4924739474925738`: ordered/indexed iteration with bounded iterator/runtime buffers, no requirement to materialize complete Journal history, all per-node histories, or the complete changed-node set in RAM as one collection;
 - full rebuild works.
 
 ## 7. Lifecycle-owned storage and absent-installation restore
