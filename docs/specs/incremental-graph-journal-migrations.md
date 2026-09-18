@@ -554,7 +554,8 @@ plus whatever explicit future create/replace operation is separately specified.
 The Journal-aware migration callback is evaluated over a fixed source->target codec. Its addressing/checking rules are:
 
 - `get(nodeIdentifier)` and traversal methods address previous-version materialized nodes by their source `NodeIdentifier` and expose source-representation data;
-- for `keep(nodeIdentifier)` and `invalidate(nodeIdentifier)`, resolve the source NodeKey `Ks` for that identifier, compute `Kt = rewriteNodeKey(Ks)`, and perform target-schema functor/arity compatibility against **Kt**, not Ks;
+- every existing-node decision first resolves the source NodeKey `Ks` for that identifier and defines its semantic target key as `Kt = rewriteNodeKey(Ks)`;
+- `keep(nodeIdentifier)` and `invalidate(nodeIdentifier)` perform target-schema functor/arity compatibility against **Kt**, not Ks; `delete(nodeIdentifier)` likewise deletes the transported target node Kt rather than a source-spelling node Ks;
 - `create(nodeKeyString,...)` accepts a **target-representation** NodeKeyString. Before accepting creation, compare it against `rewriteNodeKey(Ks)` for every materialized source node `Ks` in the previous-version materialized set S. Equality means the target semantic node already exists through transported source state and MUST throw `CreateExistingNodeError`; it is not a new target node.
 
 Therefore a representation-only rename `Ks -> Kt` can use `keep(id(Ks))` even when Ks itself is absent from the target schema, provided Kt is target-compatible. Conversely, `create(Kt)` cannot manufacture a second occurrence merely because the source lookup table spells the existing node as Ks.
@@ -573,15 +574,15 @@ Representation-only changes for that occurrence come from the canonical whole-hi
 
 Preserves cached occurrence/ValueId, marks the node stale, and removes its incoming proof according to the migration framework.
 
-Because this is genuine explicit node invalidation, Journal authors:
+Because this is genuine explicit node invalidation, for source identifier `id(Ks)` let `Kt = rewriteNodeKey(Ks)` and author:
 
 ```text
-Invalidate(K, scope=node, reason="migration")
+Invalidate(Kt, scope=node, reason="migration")
 ```
 
 ### `delete`
 
-If converted history still selects a value, establish absence using:
+For source identifier `id(Ks)`, deletion applies to transported semantic target key `Kt = rewriteNodeKey(Ks)`. If converted history still selects a value at Kt, establish absence using:
 
 ```text
 DeleteEvent(reason="migration")
