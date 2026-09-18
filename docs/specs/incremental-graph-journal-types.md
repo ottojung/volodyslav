@@ -195,11 +195,13 @@ Conceptually a locally allocated NodeIdentifier combines:
 (DatabaseFingerprint, strictly increasing local allocation index)
 ```
 
-The database-fingerprint intent explicitly accepts the negligible probability of two independently-created hosts receiving the same fingerprint. Within one continuing fingerprint namespace, the durable `last_node_index` allocation watermark never moves backward and an allocated/retired local index is never reused.
+The database-fingerprint intent explicitly accepts the negligible probability of two independently-created hosts receiving the same fingerprint. Within one continuing fingerprint namespace, a local allocation index is never reallocated while the earlier allocation can exist in, or later enter, supported retained history.
 
-Therefore NodeIdentifiers are treated as globally and forever unique under the project's accepted fingerprint-collision assumption plus monotone local allocation.
+During normal operation and every supported transition of an existing database, `last_node_index` is monotone. Continuation-safe restoration of a completely absent installation is the deliberate exception: restoration may return to an older writer prefix and reconstruct the allocator watermark from that prefix. Indices allocated only in the discarded local suffix may be reallocated exactly when `database-lifecycle.md` §4.1 guarantees that the old suffix cannot later enter supported retained history.
 
-Same-writer restoration and migration must preserve/reconstruct the allocator watermark before that writer may allocate again. Observable current reuse of one physical identifier for incompatible semantic nodes remains corruption, but historical replay does not need a second independent uniqueness mechanism beyond the allocator/fingerprint invariant.
+Therefore NodeIdentifiers are treated as unique across every set of histories that can coexist in or later join supported retained state, under the project's accepted fingerprint-collision assumption plus this allocation rule.
+
+Restoration and migration must reconstruct the allocator watermark required by the retained local-writer history before that writer may allocate again. Observable reuse of one physical identifier for incompatible semantic nodes within supported retained history remains corruption, but historical replay does not need a second independent uniqueness mechanism beyond the allocator/fingerprint invariant.
 
 ## DeleteEvent
 
