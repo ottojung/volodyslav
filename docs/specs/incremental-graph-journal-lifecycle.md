@@ -195,7 +195,7 @@ Opening a current Journal database selects one coherent atomically published pai
 
 The pair is already required, by the lifecycle transitions that produced it, to satisfy contiguous writer streams, current-format decoding, causal/reference validity, replay equivalence, and allocator/authority invariants. Routine open does not re-prove those facts by scanning retained history.
 
-Under `$id-7429043816351276`, routine Journal-specific open work for an already-current supported database is `O(1 + G)` in current materialized/derived state size G and independent of retained Journal size H. It checks only current version/schema compatibility, the selected committed active-pair/generation metadata, local writer head, allocator watermark, authority high-water, and any current graph/index consistency work bounded by G.
+Under `$id-7429043816351276`, routine Journal-specific open work for an already-current supported database is `O(1 + G)`, where G is current materialized graph plus graph-bounded current-state metadata and excludes retained history/history-proportional Journal indexes. The bound is independent of retained Journal size H. Routine open checks only current version/schema compatibility, constant-size/current-state metadata identifying the selected atomically committed pair, local writer head, allocator watermark, authority high-water, and current graph/index consistency work bounded by G.
 
 Routine open MUST NOT perform a full Journal replay or complete historical well-formedness scan solely to establish `graph == project(journal)`. That equality was established at the successful publication/import/bootstrap/restore/migration/reset cutover which selected the active pair.
 
