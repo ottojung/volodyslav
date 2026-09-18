@@ -83,6 +83,8 @@ IndeterminateOrError
 
 Indeterminate/error does not authorize competing canonical creation.
 
+`DefinitelyAbsent` authorizes only staging a candidate. The cohort winner is selected by conditional `publishCanonicalBootstrapIfAbsent`: exactly one distinct candidate may be published, a losing creator adopts the returned existing artifact, and an indeterminate publication outcome leaves the legacy database active until re-query resolves the winner. This is the arbitration required by `$id-1847369205416728`.
+
 The artifact contains exactly the original bootstrap frontier/version/schema, not later cohort history.
 
 ### Bootstrap is semantic identity
