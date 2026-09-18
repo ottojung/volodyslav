@@ -147,19 +147,29 @@ Consequences:
 - unrelated edges are not destroyed;
 - barriers for V never taint replacement V2.
 
-## Law 21: maintenance proof weakening is edge-specific
+## Law 21: maintenance proof weakening is edge-specific and certificate-complete
 
-If reset/migration/bootstrap preserves V but target validity removes edge `D -> K`, maintenance authors:
+For a preserved current occurrence V of K at a fixed maintenance cut, define `eligibleEffectiveProofUnion(K)` as in replay: the union of effective incoming proof edges over every eligible retained certificate for V.
+
+If reset or migration targets validity `TargetValid(K)`, it authors one:
 
 ```text
 Invalidate(K, scope=proof(V,D), reason=...)
 ```
 
+for every:
+
+```text
+D in eligibleEffectiveProofUnion(K) - TargetValid(K)
+```
+
 unless another semantic operation already makes that edge impossible for an independent reason.
 
-A weaker ValidateEvent alone is insufficient because older stronger positive proof could otherwise win.
+This is a negative-analysis union only. Positive replay proof still comes from exactly one selected certificate. The complete barrier set prevents weakening the current winner from exposing an unwanted edge from a previously losing certificate. Because proof barriers do not make historical certificates newly eligible, and maintenance-authored target validation causally follows the barriers, one pass over this union is sufficient.
 
-True migration `invalidate(K)` remains node-scoped.
+A weaker ValidateEvent alone is insufficient because older positive proof could otherwise win or become newly selected.
+
+True migration `invalidate(K)` remains node-scoped. Bootstrap's exact-shared intersection remains governed by its frozen canonical baseline construction.
 
 ## Law 22: maintenance persistent staleness survives upstream Unchanged
 
