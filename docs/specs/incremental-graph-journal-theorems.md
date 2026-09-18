@@ -171,13 +171,17 @@ A weaker ValidateEvent alone is insufficient because older positive proof could 
 
 True migration `invalidate(K)` remains node-scoped. Bootstrap's exact-shared intersection remains governed by its frozen canonical baseline construction.
 
-## Law 22: maintenance persistent staleness survives upstream Unchanged
+## Law 22: committed own-proof readiness implies freshness
 
-Use `selfProofReady(K)` as defined in `incremental-graph-journal-replay.md` §Persistent propagated staleness, evaluated at this pass's replay cut.
+Every committed state produced by ordinary emission, synchronization, bootstrap, reset, or migration satisfies:
 
-If target state stores K stale while `selfProofReady(K)` is true, final history contains an uncovered `value(valueId(K))` marker unless one already exists—even when K is currently stale only through an input.
+```text
+selfProofReady(K) => fresh(K)
+```
 
-Therefore a later upstream `Unchanged` cannot freshen K without K itself validating/recomputing.
+The procedures establish this by evaluating `selfProofReady(K)` at their own pre-marker cut. When their target/settled semantics require K to remain persistently stale solely because of direct-input freshness, they ensure a current-value invalidation exists before publication. That marker makes `coversValueInvalidations` false in the committed state until K itself is causally revalidated.
+
+Therefore a later upstream `Unchanged` cannot freshen such K without K itself validating/recomputing.
 
 ## Law 23: canonical bootstrap source decision
 
