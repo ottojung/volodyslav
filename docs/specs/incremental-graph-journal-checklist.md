@@ -213,6 +213,7 @@ Acceptance:
 - non-total/throwing source->target codec fails `JournalVersionCompatibilityError` before cutover;
 - same historical record rewrites identically across replicas for each canonical transition;
 - every supported older Journal version has one complete canonical successor chain to the running version;
+- canonical edge semantics are frozen for as long as that source version remains supported; later releases carry the same codec/semantic migration definition rather than redefining an old edge;
 - skipped application releases still execute that canonical Journal chain semantically; no independent direct shortcut may change retained history;
 - any fused optimization produces exactly the same retained Journal, including intermediate migration-authored records, as stepwise canonical execution;
 - representation-only change uses `keep` plus the canonical codec;
