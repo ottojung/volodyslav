@@ -15,7 +15,7 @@ project final Journal
 atomically publish Journal + projection
 ```
 
-A completely absent installation uses the receiver-less restoration lifecycle in `database-lifecycle.md` before ordinary synchronization.
+A completely absent installation uses the receiver-less restoration lifecycle in `incremental-graph-journal-lifecycle.md` before ordinary synchronization.
 
 ## Semantic API
 
