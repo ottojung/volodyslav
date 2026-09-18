@@ -52,8 +52,8 @@ Gaps are acceptable and expected:
 - Failed transactions consume an index value, creating a gap.
 - Concurrent transactions that allocate indices and commit out of order
   can create gaps.
-- `last_node_index` is the watermark of the largest index known to be
-  retired; indices below it may not correspond to any materialized node.
+- `last_node_index` is the watermark of the largest index reserved by the
+  current retained local-writer history; indices below it may not correspond to any materialized node.
 
 ## Sync merge semantics
 
