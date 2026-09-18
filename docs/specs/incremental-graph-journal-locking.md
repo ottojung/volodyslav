@@ -91,8 +91,10 @@ Receiver-less restore applies only when the local database is completely absent.
 The bootstrap gate first obtains the cohort-bootstrap-source decision:
 
 - compatible immutable artifact -> creator-resume or ordinary join by local fingerprint;
-- definite absence suitable for first creation -> canonical creation;
+- definite absence -> stage a deterministic candidate, but do not cut over;
 - indeterminate/error -> fail without bootstrap history.
+
+A staged candidate becomes canonical only through `publishCanonicalBootstrapIfAbsent`. Conditional publication is the cross-installation arbitration boundary required by `$id-1847369205416728`; local maintenance locking does not substitute for it. `Published` permits creator cutover, `AlreadyExists(B)` redirects to creator-resume/join, and an indeterminate publication outcome leaves the active legacy database unchanged until re-query resolves the winner.
 
 A release which does not support the artifact target version/schema fails compatibility before staging.
 
