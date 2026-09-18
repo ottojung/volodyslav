@@ -62,7 +62,7 @@ Locking adds no special semantics here. The lifecycle condition is owned by `dat
 
 Reset runs as exclusive maintenance.
 
-If the held reset source is ahead for the receiver's own writer, reset fails `JournalWriterBehindError` before source import or reset authoring. This is unsupported existing-state rollback; reset is not retried through a same-writer recovery transition.
+Reset's own-writer-ahead precondition is owned by `incremental-graph-journal-reset.md` §Preconditions and `database-lifecycle.md` §5; locking only guarantees failure publishes no staged state.
 
 Otherwise reset stages only required Value/Delete/Validate/Invalidate records. Preserved ValueIds are not reallocated merely because reset is maintenance.
 
