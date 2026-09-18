@@ -151,9 +151,9 @@ The recovery source MUST NOT return continuation-safe `Exists`; absent restore f
 
 If A:901..905 existed only on the completely lost local database and no supported state can reintroduce them, their loss does not by itself make A:900 unsafe. The test oracle is future re-entry after complete local loss, not whether a coordinate was once locally committed.
 
-Allocator companion regression: let the recoverable A:1..900 prefix reconstruct `last_node_index = n`, while lost A:901..905 had advanced the destroyed local database to `m > n`. When the suffix cannot later re-enter supported retained history, absent restore reconstructs n and may allocate n+1 again even if that index was used only in the lost suffix. If the suffix or an earlier allocation from it can later re-enter supported retained history, A:900 is not continuation-safe and the restore MUST be rejected. At no supported retained state may one physical NodeIdentifier denote incompatible semantic nodes.
+Allocator companion regression: let the recoverable A:1..900 prefix reconstruct `last_node_index = n`, while lost A:901..905 had advanced the destroyed local database to `m > n`. When the suffix cannot later re-enter supported retained history, absent restore reconstructs n and may allocate n+1 again even if that index was used only in the lost suffix. If supported retained history containing any allocation from that suffix can later re-enter, A:900 is not continuation-safe and the restore MUST be rejected. At no supported retained state may one physical NodeIdentifier denote incompatible semantic nodes.
 
-Establishing continuation safety must not require contacting/discovering every possible peer; exercise a recovery-source implementation whose transport-level invariant can make the guarantee locally, consistent with `$id-4719065392439745`.
+Establishing continuation safety must not require contacting/discovering every possible peer; exercise a recovery-source implementation whose transport-level invariant can make the guarantee locally, consistent with `$id-4719065396881648`.
 
 This does not substitute for pre-Journal creator-resume.
 
