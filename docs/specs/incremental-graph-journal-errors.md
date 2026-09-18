@@ -110,7 +110,7 @@ Examples:
 - a current post-bootstrap snapshot is supplied where the original canonical bootstrap cut is required;
 - pre-Journal bootstrap would require a semantic/time/allocator-dependent migration before Journal identity is established;
 - a Journal-aware format migration's codec is not total over retained source-version history, including retained records for node families absent from the target schema;
-- `rewriteNodeKey` maps two distinct retained source semantic NodeKeys to one target NodeKey and therefore cannot preserve both historical identities.
+- the source->target `rewriteNodeKey` definition is non-injective over valid source semantic NodeKeys which may occur in supported source-version history; a locally observed collision is one concrete witness, but the incompatibility is codec-level even when colliding keys reside on different replicas.
 
 Fail before incompatible history is interpreted/authored or a migration target is cut over. Do not fall back to fresh creation.
 
