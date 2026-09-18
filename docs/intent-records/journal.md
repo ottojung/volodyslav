@@ -294,6 +294,20 @@ No uniqueness relationship is required between states that cannot coexist or eve
 
 ---
 
+$id-2567281946348705
+title: JournalRecordId uniqueness across compatible supported states
+date: 2026/09/18
+source: @ottojung
+kind: requirement
+
+Across any collection of supported database states that can coexist or later be combined through supported operations, a given `JournalRecordId` must identify the same journal record wherever it appears.
+
+Two distinct journal records must not use the same `JournalRecordId` within such a collection of states.
+
+No uniqueness relationship is required between states that cannot coexist or ever be combined in a supported execution.
+
+---
+
 $id-2863157490134726
 title: One current format per database replica
 date: 2026/09/14

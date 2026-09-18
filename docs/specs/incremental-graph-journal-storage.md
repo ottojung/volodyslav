@@ -90,7 +90,7 @@ Complete disappearance of the local database is supported and yields the lifecyc
 
 Outside explicit database-format migration, committed `(author,sequence)` meaning is immutable.
 
-Same-ID body disagreement is a fork. Representation migration is permitted only when it deterministically preserves JournalRecordId, historical semantic fact, causal/reference meaning, and writer coordinates.
+Across compatible supported states, `$id-2567281946348705` requires one `JournalRecordId` to identify the same journal record wherever it appears. Same-ID body disagreement is therefore a fork. Representation migration is permitted only when it deterministically preserves JournalRecordId, historical semantic fact, causal/reference meaning, and writer coordinates.
 
 ## Total whole-history format rewrite
 

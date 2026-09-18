@@ -47,7 +47,7 @@ A supported retained journal satisfies:
 
 1. record `(A,q)` has `id.author == A` and `id.sequence == q`;
 2. for every retained A, every sequence `1..frontier[A]` exists;
-3. one `JournalRecordId` has one canonical historical meaning;
+3. one `JournalRecordId` identifies one journal record across compatible supported states, as required by `$id-2567281946348705`;
 4. every retained semantic-event context is a causally closed frontier covered by the retained journal;
 5. every retained record is encoded in the one canonical format selected by the replica's current `global/version`.
 
@@ -120,6 +120,8 @@ ValueId = JournalRecordId
 A `ValueId` is valid only when its record is a `ValueEvent`.
 
 One ValueId denotes exactly one immutable semantic value occurrence for one semantic `NodeKey`.
+
+Because `ValueId = JournalRecordId`, ValueId inherits `$id-2567281946348705`: across compatible supported states, the same ValueId identifies the same ValueEvent/value occurrence, and distinct ValueEvents cannot share one ValueId.
 
 Payload equality never creates ValueId equality.
 

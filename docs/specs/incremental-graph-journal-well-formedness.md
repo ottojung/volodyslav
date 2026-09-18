@@ -23,7 +23,7 @@ A:1 .. A:q
 
 with no durable hole.
 
-Two records with one `JournalRecordId` must have identical canonical current-format meaning. Disagreement is a writer fork/corruption condition.
+Two records with one `JournalRecordId` must have identical canonical current-format meaning. This is the within-history check corresponding to `$id-2567281946348705`; disagreement is a writer fork/corruption condition.
 
 ## Current-format record validity
 

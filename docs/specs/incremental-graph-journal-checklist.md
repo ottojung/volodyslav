@@ -43,6 +43,7 @@ Acceptance:
 
 - failed transactions leave no durable sequence hole;
 - concurrent successes receive disjoint contiguous ranges;
+- within compatible supported states, one `JournalRecordId` always identifies the same journal record and two distinct records never receive one ID (`$id-2567281946348705`);
 - IDs/contexts/HLCs finalized under serialized publication;
 - own-writer context exact;
 - graph+Journal publish atomically;
@@ -85,7 +86,8 @@ Acceptance:
 - installation recovery source is queried only for an absent local database and before fresh fingerprint generation;
 - source exists -> restore/adopt `localWriter` only when the held snapshot establishes a **continuation-safe head** as defined by `incremental-graph-journal-lifecycle.md` §4.1;
 - continuation-safe means no higher record for that writer can later re-enter supported history after absent-state restoration;
-- NodeIdentifier uniqueness means unambiguous identity across every set of histories that can coexist in, or later join, supported retained state (`$id-4173361406347342`); it is not a never-issued-twice rule for allocations confined to a permanently discarded continuation-safe suffix;
+- JournalRecordId uniqueness follows `$id-2567281946348705`: across compatible supported states, the same ID identifies the same record; a discarded writer coordinate may be reused only when its prior record cannot later coexist with or be combined with the restored continuation;
+- NodeIdentifier uniqueness follows `$id-4173361406347342`: across compatible supported states, the same NodeIdentifier identifies the same materialization lineage and distinct lineages do not share one;
 - source definitely absent -> fresh creation allowed;
 - source read/query failure -> fail, no fresh fallback;
 - writer head/allocator watermark/authority high-water/projection reconstructed before new allocation;

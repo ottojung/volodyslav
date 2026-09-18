@@ -149,6 +149,8 @@ some supported surviving state can later reintroduce A:901..905
 
 The recovery source MUST NOT return continuation-safe `Exists`; absent restore fails indeterminate rather than resuming at A:901.
 
+This is the `$id-2567281946348705` regression: restoration must not permit a new A:901 record when the old A:901 can later coexist with, or be combined with, that restored continuation.
+
 If A:901..905 existed only on the completely lost local database and no supported state can reintroduce them, their loss does not by itself make A:900 unsafe. The test oracle is future re-entry after complete local loss, not whether a coordinate was once locally committed.
 
 Allocator companion regression: let the recoverable A:1..900 prefix reconstruct `last_node_index = n`, while lost A:901..905 had advanced the destroyed local database to `m > n`. When the suffix cannot later re-enter supported retained history, absent restore reconstructs n and may allocate n+1 again even if that index was used only in the lost suffix. If supported retained history containing any allocation from that suffix can later re-enter, A:900 is not continuation-safe and the restore MUST be rejected. At no supported retained state may one physical NodeIdentifier denote incompatible semantic nodes.

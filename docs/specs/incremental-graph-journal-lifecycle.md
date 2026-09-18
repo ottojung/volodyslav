@@ -104,6 +104,8 @@ The supported backend model is allowed to rule out histories which cannot actual
 
 A record that existed only on the completely lost local storage need not count against continuation safety when the supported backend model guarantees that no surviving copy can later reintroduce it. Conversely, if a higher A record remains admissible under the supported backend model and can later re-enter retained history, q is not continuation-safe.
 
+This is also the recovery boundary required by `$id-2567281946348705`: a writer coordinate beyond q may be reused only when its previous record cannot later coexist with, or be combined with, the restored continuation in a supported execution.
+
 Journal 3 does not require contacting or discovering every possible peer to establish continuation safety, consistent with `$id-4719065396881648`.
 
 #### Current Git-backed transport as an example

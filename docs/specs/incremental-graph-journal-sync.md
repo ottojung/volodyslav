@@ -103,7 +103,7 @@ This is distinct from:
 
 ## Immutable overlap law
 
-For every record ID retained on both sides, canonical current-format meaning must agree exactly. Disagreement is `JournalForkError`; it is not repaired using payload equality, event authority, source preference, Git ancestry, or record-ID remapping.
+For every record ID retained on both sides, canonical current-format meaning must agree exactly. This enforces `$id-2567281946348705` when supported states are combined. Disagreement is `JournalForkError`; it is not repaired using payload equality, event authority, source preference, Git ancestry, or record-ID remapping.
 
 ## Foreign records remain foreign
 
