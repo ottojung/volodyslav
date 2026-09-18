@@ -155,6 +155,8 @@ Semantic repair is then evaluated in the codec-transported **target NodeKey spac
 
 When ValueEvent payload representation changes, this codec is the sole source of target bytes across all replicas and all selected/historical occurrences. A selected semantic occurrence whose meaning survives uses `keep`.
 
+Supported Journal version upgrades follow the canonical version chain in `incremental-graph-journal-migrations.md` §9b. Skipping an application release does not skip its canonical Journal transition; this keeps pre-existing shared record bodies byte-identical when replicas later meet at the same target version.
+
 ### Semantic occurrence identity
 
 Occurrence-preserving decisions (`keep`, `invalidate`, proof/freshness/schema-only changes, representation-only format rewrite) preserve the ValueId. `keep` also preserves target-shape-compatible source replay proof and freshness even when the occurrence is recursively stale. A new ValueEvent is reserved for actual create/replace occurrence changes.
