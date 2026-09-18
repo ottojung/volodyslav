@@ -217,7 +217,7 @@ Acceptance:
 - `keep` preserves occurrence ValueId, timestamps, freshness, and target-shape-compatible source replay validity even when the node is stale;
 - stale `keep` alone does not create proof barriers or force recomputation;
 - explicit migration `invalidate(K)` preserves occurrence ValueId and authors true node-scoped invalidation;
-- maintenance-only proof weakening for preserved V uses one `proof(V,D)` barrier per removed incoming edge, not a whole-ValueId or node barrier;
+- maintenance-only proof weakening for preserved V barriers every `D` in `eligibleEffectiveProofUnion(K) - TargetValid(K)`, not merely edges of the initially selected certificate and not a whole-ValueId or node barrier;
 - two replicas independently weakening the same V to the same partial proof retain that partial proof after synchronization;
 - barriers for different inputs compose to the intended intersection;
 - proof barrier for `(V,D)` does not taint V2 or unrelated V edges;
