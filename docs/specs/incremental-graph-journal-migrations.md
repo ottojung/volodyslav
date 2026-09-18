@@ -135,9 +135,11 @@ No particular peer must reconcile, acknowledge, or return merely for bootstrap t
 
 The canonical creator uses its existing durable `DatabaseFingerprint` as `JournalAuthor` and starts its Journal at frontier zero.
 
-### 5.1 Legacy value authority
+### 5.1 Deterministic canonical authority
 
-Each bootstrap ValueEvent converts one existing legacy occurrence and uses historical legacy authority:
+The canonical candidate uses the deterministic authority rules in `incremental-graph-journal-types.md` §Pre-Journal bootstrap ValueEvent authority exception / §Canonical creator post-value authority. It does not consult upgrade/publication wall clock.
+
+Each C1 bootstrap ValueEvent converts one existing legacy occurrence and uses historical legacy authority:
 
 ```text
 authorityTime = {
