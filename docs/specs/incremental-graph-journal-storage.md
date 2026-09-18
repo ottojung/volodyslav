@@ -195,7 +195,7 @@ Transport implementation of these abstractions is outside Journal semantics.
 
 Routine opening of an already-current supported database trusts the lifecycle-owned atomically committed Journal/projection pair rather than re-proving its complete retained history. This follows `$id-6158827469032147` and the routine-open performance requirement `$id-7429043816351276`.
 
-Journal-specific routine open work is bounded by current state, not retained history: it reads current version/schema, local writer identity/head, allocator watermark, authority high-water, and the committed active-pair/generation metadata needed to establish that the selected Journal/projection pair is one atomically published state. It may validate or reconstruct current graph/index metadata with work bounded by current materialized/derived state.
+Journal-specific routine open work is bounded by current state, not retained history: it reads current version/schema, local writer identity/head, allocator watermark, authority high-water, and constant-size/current-state committed-pair metadata sufficient to identify one atomically published Journal/projection state. It may validate or reconstruct only current graph metadata/index state whose size is bounded by the current graph; history-proportional Journal indexes are not part of that routine-open bound.
 
 Routine open MUST NOT scan/replay all retained Journal records merely to revalidate stream contiguity, transitive contexts, authority extension, reference causality, validation bases/scopes, or Journal/projection equality. Those invariants are established when history enters or changes supported state.
 
