@@ -203,7 +203,8 @@ Acceptance:
 - `rewriteNodeKey` and `rewriteComputedValue` are synchronous, deterministic, and capability-free;
 - rewrite is total over retained source history, including records for node families absent from target schema and non-selected ValueEvents;
 - every embedded NodeKey is rewritten, including record keys, validation-basis inputs, and proof-scope inputs;
-- `rewriteNodeKey` is injective over distinct retained source NodeKeys; collisions fail `JournalVersionCompatibilityError`;
+- `rewriteNodeKey` is a codec-level injective mapping over every valid source semantic NodeKey which may occur in supported source-version Journal history, independent of one replica's retained subset;
+- local migration scans reject any collision they actually observe, but are not treated as proof of the global injectivity contract;
 - rewritten ValidationBasis entries are re-sorted by the target canonical NodeKeyString order;
 - semantic migration repair uses the codec-transported source projection in target key space, not source-keyed `Gbefore` directly;
 - non-identity `Ks -> Kt` plus `keep` preserves the original ValueId and authors neither replacement ValueEvent nor spurious delete;
