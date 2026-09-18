@@ -457,6 +457,22 @@ Identity-specific cases:
 - `create`/genuine semantic replacement creates new ValueId;
 - independent true replacements may later stale dependents naming losing occurrence.
 
+### Canonical migration-chain regression
+
+Start replicas X and Y with the same shared v1 Journal history, including at least one immutable record R with the same `JournalRecordId` and body.
+
+- X upgrades through the supported canonical sequence v1 -> v2 -> v3.
+- Y remains offline while v2 is current, then later starts under v3 from stored v1.
+
+Y MUST still execute Journal migration semantics v1 -> v2 -> v3, even though it skipped the v2 application release. Once both replicas are at v3:
+
+- every pre-existing shared record ID has a byte-identical v3 body on X and Y;
+- any intermediate migration-authored records required by Y's canonical chain are retained normally under Y's writer;
+- ordinary synchronization succeeds without `JournalForkError`;
+- an independently defined direct v1 -> v3 shortcut which would produce different retained history is rejected/not a supported migration path.
+
+Also test that a source version with no complete canonical chain to the running version fails `JournalVersionCompatibilityError`.
+
 ### Migration proof weakening
 
 For maintenance-only weakening of preserved V:
