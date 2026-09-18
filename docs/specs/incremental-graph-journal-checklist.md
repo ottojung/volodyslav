@@ -249,40 +249,7 @@ Journal-aware migration incompatibility includes a format migration whose codec 
 
 ## 15. Reference model / property verification
 
-Priority regressions/properties:
-
-- deterministic replay;
-- causal transitivity and authority extension;
-- prefix-union algebra;
-- local emission preservation;
-- invalidation-aware certificate selection;
-- proof-edge barriers compose on the same V without destroying unrelated proof;
-- maintenance stale state survives later upstream `Unchanged`;
-- stable snapshot compatibility;
-- selected-remote stale persistence;
-- repeat-sync no-op and normalization convergence;
-- complete local database loss enters Absent and can restore/fresh-create through the controlled lifecycle;
-- partial local loss/rollback is unsupported and never silently reclassified as Absent;
-- ordinary peer revealing a longer local-writer prefix fails `JournalWriterBehindError` before sync publication and does not trigger same-writer recovery;
-- reset own-writer-behind source fails before import/authoring and remains unsupported rather than recover-and-retry;
-- canonical bootstrap source decision/original cut;
-- bootstrap graph-semantic identity and rejection of semantic/time/allocator-dependent pre-bootstrap migration;
-- creator crash resumes exact artifact without migration callback rerun;
-- bootstrap mixed-winner edge preserves the joiner's actual input ValueId and leaves the dependent hard stale;
-- joining bootstrap writer order extends `(modifiedAt, canonical NodeKey)` authority order;
-- exact shared canonical-stale + joining-fresh remains stale;
-- exact shared proof intersection preserves joining explicit invalidation;
-- joining stale shared input persistently stales canonical dependent;
-- late-join negative evidence is cleared only by a causally later validation;
-- legacy conflict uses persisted modifiedAt rather than upgrade time;
-- legacy absence does not fabricate delete;
-- accepted non-canonical identity split;
-- unsupported historical target fails compatibility;
-- total pure format rewrite over selected/non-selected/target-removed history;
-- target NodeKey rewrite re-canonicalizes validation basis order;
-- recursively stale `keep` preserves compatible proof;
-- independent replacement migration trade-off;
-- minimal deterministic reset.
+The normative regression/property inventory is `incremental-graph-journal-testing.md`. Completion of this checklist requires that the implementation/reference model satisfy that inventory; this checklist does not maintain a second copy.
 
 ## 16. Performance boundary
 
