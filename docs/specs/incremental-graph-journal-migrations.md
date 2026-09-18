@@ -205,15 +205,29 @@ InvalidateEvent {
 }
 ```
 
-### 5.5 Pass C4 — writer state
+### 5.5 Pass C4 — writer state and conditional publication
 
 Record the creator's legacy `last_node_index` using `WriterStateRecord`.
 
-The resulting frontier is frozen as `bootstrapFrontier` and durably published as the canonical artifact **before** ordinary post-bootstrap authoring is enabled.
+Freeze the resulting staged candidate at `bootstrapFrontier`. Staging does not make it canonical and does not authorize local cutover.
 
-## 6. Creator resume after artifact publication
+Call:
 
-A crash may occur after the canonical artifact is durable but before the creator has cut over its local active database.
+```text
+publishCanonicalBootstrapIfAbsent(candidate)
+```
+
+and handle the result exactly as §4 requires:
+
+- `Published(B)`: validate B is the published candidate, then and only then install/cut over locally and enable ordinary post-bootstrap authoring;
+- `AlreadyExists(B)`: discard the staged candidate and use creator-resume or ordinary join according to B's creator writer;
+- `IndeterminateOrError`: leave the supported pre-Journal database active and make no local cutover.
+
+Thus no query result alone can make a candidate canonical, and no local creator becomes Journal-active before conditional publication has selected the durable cohort artifact.
+
+## 6. Creator resume and unknown publication outcome
+
+A crash may occur after conditional publication succeeds but before the creator receives the result or cuts over its local active database. It may therefore restart with supported pre-Journal state plus a staged candidate while the publication outcome is unknown.
 
 If:
 
