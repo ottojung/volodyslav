@@ -425,7 +425,7 @@ WriterState values must be monotone nondecreasing within the retained writer str
 
 Foreign writer-state records do not change this database's local watermark.
 
-Before continuing local allocation, the reconstructed watermark must cover every local index retired by the retained local-writer history. Migration preserves retained history and therefore preserves that watermark. Continuation-safe absent restoration may reconstruct an older watermark together with an older writer prefix; indices allocated only in the discarded suffix may be reallocated exactly when `database-lifecycle.md` §4.1 guarantees that suffix cannot later enter supported retained history.
+Before continuing local allocation, the reconstructed watermark must cover every local index retired by the retained local-writer history. Migration preserves retained history and therefore preserves that watermark. Continuation-safe absent restoration may reconstruct an older watermark together with an older writer prefix; indices allocated only in the discarded suffix may be reallocated exactly when `incremental-graph-journal-lifecycle.md` §4.1 guarantees that suffix cannot later enter supported retained history.
 
 ## Replay equality
 
