@@ -56,11 +56,7 @@ Receiver normalization is finalized after the imported frontier it normalizes. I
 
 ### Same-writer-behind boundary
 
-An ordinary `JournalSyncSource` may reveal that the receiver is behind its own writer stream. For example, receiver writer A may retain `A:1..900` while the source retains an agreeing `A:1..905`.
-
-Under `$id-6158827469032147`, an existing supported database cannot legitimately have rolled back part of its own committed writer stream. Therefore this observation is evidence of unsupported/corrupt lifecycle state, not a recoverable maintenance condition.
-
-Ordinary synchronization does **not** activate the longer own-writer suffix and does not author anything. It fails with `JournalWriterBehindError` and leaves the active receiver unchanged. Recovery of a completely absent installation is a different lifecycle path. Divergent overlap is `JournalForkError`.
+Locking adds no special semantics here. The lifecycle condition is owned by `database-lifecycle.md` §5 and synchronization behavior by `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is unsupported state. The locking requirement is only that a failed operation publish no staged import/normalization state.
 
 ## Reset
 
