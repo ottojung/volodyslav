@@ -504,9 +504,38 @@ The whole-history rewrite pipeline:
 
 The codec is total over all retained source-version history. If any retained record has no deterministic valid target representation, or a locally observed NodeKey collision witnesses violation of the codec contract, migration fails `JournalVersionCompatibilityError` before cutover.
 
-Two replicas applying the same source->target transition to the same historical record must produce the same target-format record body.
+Two replicas applying the same canonical source->target transition to the same historical record must produce the same target-format record body.
 
 Representation-only selected state uses semantic `keep`; there is no second value-producing migration decision for representation rewriting. A stale kept occurrence does not lose source-replay proof merely because it is stale: Journal provenance distinguishes explicit node invalidation, value-scoped stale state, proof-edge barriers, and recursive staleness. Target-shape changes are handled explicitly by semantic repair.
+
+## 9b. Canonical Journal migration chain
+
+Per-edge codec determinism is not enough when a replica can reach the same target version through different version paths. Immutable retained records keep their `JournalRecordId`, so every supported upgrade from one Journal version to another MUST have one canonical transition sequence.
+
+For every supported non-current Journal version `v`, the release lineage defines at most one:
+
+```text
+canonicalNextJournalVersion(v)
+```
+
+A supported migration from stored version `v0` to running version `vn` follows exactly:
+
+```text
+v0 -> v1 -> ... -> vn
+where vi+1 = canonicalNextJournalVersion(vi)
+```
+
+until `vn` is reached. If the complete chain is not available, that source version is unsupported and startup fails `JournalVersionCompatibilityError`.
+
+A machine may skip application releases, but it does **not** skip canonical Journal migration transitions. Thus if one replica historically migrated `v1 -> v2 -> v3`, another replica later upgrading from v1 to v3 must execute the same semantic chain `v1 -> v2 -> v3`; it must not substitute an independently defined direct `v1 -> v3` migration.
+
+Once a canonical successor edge has been used for supported Journal history, later releases which still claim support for that source version preserve that edge in the canonical chain. Removing an old source version from support is allowed; redefining its supported path while retaining support is not.
+
+Each chain step is a complete Journal-aware migration: whole-history codec rewrite, semantic repair, replay validation, and version cut to that intermediate version. Migration-authored records from an intermediate step are retained and are themselves rewritten by later canonical steps.
+
+An implementation MAY fuse or optimize multiple canonical steps internally only when the resulting retained Journal—including all intermediate migration-authored semantic records and every pre-existing immutable record body—is exactly the same as executing the canonical steps in order. The canonical chain, not a shortcut implementation, defines semantics.
+
+Consequently, if replicas X and Y share historical record R at v1 and both later reach v3 through supported migration, their v3 body for R is byte-identical even if X upgraded while v2 was current and Y skipped directly from the v1 application release to the v3 application release.
 
 ## 10. One-format / total-codec invariant
 
