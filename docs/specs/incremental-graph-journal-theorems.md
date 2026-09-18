@@ -302,7 +302,7 @@ Let `J0 = union(receiver,source)`, `P0 = project(J0)`, and `PS = project(sourceS
 
 Reset preserves P0 ValueId when the requested occurrence already matches, creates ValueEvent only when the occurrence itself must change, uses DeleteEvent exactly when target requires absence, repairs removed validity with `proof(V,D)`, and persists target stale flags according to Law 22.
 
-If the held reset source is ahead for the receiver's own local writer, reset authors/imports nothing and fails `JournalWriterBehindError`; the existing receiver is unsupported and no normal same-writer recovery is attempted.
+Reset's own-writer-ahead precondition is the one defined in `incremental-graph-journal-reset.md` and the lifecycle boundary in `database-lifecycle.md` §5.
 
 After reset:
 
