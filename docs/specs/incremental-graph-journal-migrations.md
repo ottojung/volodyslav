@@ -877,6 +877,7 @@ At minimum cover:
 - frozen original bootstrap cut, never later current history;
 - artifact target mismatch -> `JournalVersionCompatibilityError` before history;
 - semantic/time/allocator-dependent pre-bootstrap transformation is rejected;
+- staging the canonical creator twice from identical persisted legacy state yields a byte-identical artifact, including C2/C3 AuthorityTimes and record IDs/order;
 - creator artifact durable before ordinary authoring;
 - creator crash/lost publication response resumes exact artifact without rerunning callbacks;
 - creator mismatch -> `JournalBootstrapForkError`;
