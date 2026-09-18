@@ -55,7 +55,7 @@ A successful pairwise synchronization conceptually:
 1. acquires/enters the required maintenance publication boundary;
 2. opens one stable source snapshot;
 3. verifies exact version/schema compatibility from that snapshot;
-4. applies the own-writer-ahead rule owned by `database-lifecycle.md` §5 and `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is unsupported state;
+4. applies the own-writer-ahead rule owned by `incremental-graph-journal-lifecycle.md` §5 and `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is unsupported state;
 5. transfers every missing immutable **foreign-writer** suffix needed through the captured frontier;
 6. validates overlap, contiguity, transitive causal closure, authority extension, and references;
 7. computes raw replay;
@@ -74,7 +74,7 @@ An already-established receiver with frontier zero uses the same suffix-transfer
 
 ## Same-writer rollback boundary
 
-The lifecycle classification is defined normatively in `database-lifecycle.md` §5 and the pairwise synchronization failure rule in `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is unsupported state. This IncrementalGraph-facing shell adds no separate rollback-recovery semantics.
+The lifecycle classification is defined normatively in `incremental-graph-journal-lifecycle.md` §5 and the pairwise synchronization failure rule in `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is unsupported state. This IncrementalGraph-facing shell adds no separate rollback-recovery semantics.
 
 ## Projection rather than fieldwise merge
 
