@@ -257,7 +257,7 @@ Join is historical merge, not reset. It:
 
 ## Journal-aware migration API boundary
 
-The directed source->target `JournalFormatCodec` is defined normatively in `migration.md` §Journal format codec:
+The directed source->target `JournalFormatCodec` is defined normatively in `incremental-graph-journal-migrations.md` §10a:
 
 ```text
 JournalFormatCodec {
