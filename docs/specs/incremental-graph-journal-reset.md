@@ -181,6 +181,9 @@ CurrentValid(K) = {
     D | P1 contains semantic validity edge D -> K
 }
 
+PotentialValid(K) =
+    eligibleEffectiveProofUnion_P1(K)
+
 TargetValid(K) = {
     D | PS contains semantic validity edge D -> K
 }
