@@ -492,9 +492,20 @@ Require:
 - source proof/dependency endpoints are rewritten to target NodeKeys;
 - `project(Jafter,targetSchema) == Gtarget`.
 
-Also generate two distinct retained source NodeKeys Ks1/Ks2 whose codec maps both to one Kt. Migration MUST fail `JournalVersionCompatibilityError` before cutover; a representation codec may not merge historical semantic-node identities.
+Also generate two distinct retained source NodeKeys Ks1/Ks2 whose codec maps both to one Kt. If one replica retains both, migration MUST fail `JournalVersionCompatibilityError` before cutover as a defensive observed-collision check.
 
-Assert `rewriteComputedValue(sourceKey,payload)` runs for selected and non-selected retained ValueEvents. Codec functions receive no mutable capabilities and are deterministic. A thrown transform, invalid target representation, or retained-domain NodeKey collision fails `JournalVersionCompatibilityError` before cutover.
+More importantly, add the distributed disjoint-history regression. Define a source NodeKey semantic domain containing distinct K1/K2 and a deliberately invalid codec with:
+
+```text
+rewriteNodeKey(K1) = T
+rewriteNodeKey(K2) = T
+```
+
+Replica A retains only history for K1; replica B retains only history for K2. Verify that each replica-local retained-set scan by itself would see no collision, but the migration definition still violates the codec contract before those independent migrations are considered valid. The test/model MUST NOT accept both migrations merely because their local subsets are individually injective. This regression establishes that injectivity belongs to the source->target codec over the complete supported source semantic domain, not to one replica's retained set.
+
+When the source NodeKey domain is finite/enumerable in a test model, exhaustively check the injectivity law. For production domains which are too large or infinite to enumerate, injectivity remains a required property of the codec construction/specification rather than something inferred from local data.
+
+Assert `rewriteComputedValue(sourceKey,payload)` runs for selected and non-selected retained ValueEvents. Codec functions receive no mutable capabilities and are deterministic. A thrown transform, invalid target representation, or locally observed NodeKey collision fails `JournalVersionCompatibilityError` before cutover.
 
 ## Current-format codec tests
 
