@@ -508,7 +508,27 @@ The exception is valid because:
 2. each writer enumerates its bootstrap ValueEvents in nondecreasing `(modifiedAt, canonical NodeKey)` order;
 3. equal-time same-writer events remain strictly ordered by writer-local sequence in the total EventRef authority order;
 4. a joining legacy ValueEvent does not claim happened-before over the canonical conflicting occurrence merely because migration read it;
-5. later bootstrap Validate/Invalidate events return to ordinary HLC allocation after high-water is raised to include the canonical cut and all bootstrap ValueEvents they causally observe.
+5. canonical-creator bootstrap Validate/Invalidate events use the deterministic creator rule below; joining-bootstrap Validate/Invalidate events return to ordinary HLC allocation after high-water is raised to include the canonical cut and all joining bootstrap ValueEvents they causally observe.
+
+### Canonical creator post-value authority
+
+The canonical bootstrap candidate must be reproducible byte-for-byte from persisted legacy state. Therefore canonical-creator C2/C3 semantic records do **not** use publication wall clock.
+
+After all canonical C1 ValueEvents have been allocated, initialize `H` to the greatest C1 `AuthorityTime`. Then allocate every canonical C2 ValidateEvent followed by every canonical C3 InvalidateEvent in deterministic record order using:
+
+```text
+nextAuthorityTime = {
+    physical: H.physical,
+    logical: H.logical + 1
+}
+H = nextAuthorityTime
+```
+
+C2 records are ordered by canonical persisted NodeKey. C3 records are ordered by canonical persisted NodeKey. C1 already uses nondecreasing `(modifiedAt, canonical NodeKey)`.
+
+Thus, including writer sequence/context allocation under the deterministic bootstrap record order, the canonical candidate is a pure function of the persisted legacy bootstrap state (including its durable writer fingerprint/allocator state) and contains no upgrade-time clock input.
+
+This deterministic rule applies only to the **canonical creator candidate**. Joining-bootstrap proof/stale records are authored after observing the canonical cut and use the ordinary authority-allocation rule; they are not reconstruction of the canonical candidate.
 
 No ordinary pull, sync, reset, or later Journal-aware migration may use this exception.
 
