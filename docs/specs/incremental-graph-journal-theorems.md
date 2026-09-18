@@ -270,13 +270,14 @@ The rewrite domain is **all retained source-version history**, including records
 
 ## Law 33a: NodeKey transport preserves semantic-node identity
 
-For a source->target format codec, `rewriteNodeKey` is injective over distinct NodeKeys occurring in retained source history. If `Ks1 != Ks2`, then:
+For a supported source->target format codec, let `SourceNodeKeyDomain(sourceVersion)` be every distinct valid canonical semantic NodeKey which may occur in supported source-version Journal history, including keys not retained by the replica currently migrating. For all `Ks1`, `Ks2` in that domain:
 
 ```text
-rewriteNodeKey(Ks1) != rewriteNodeKey(Ks2)
+Ks1 != Ks2
+    => rewriteNodeKey(Ks1) != rewriteNodeKey(Ks2)
 ```
 
-Otherwise the format rewrite cannot preserve both historical semantic-node identities and migration fails `JournalVersionCompatibilityError` before cutover.
+This injectivity law belongs to the codec definition itself and is independent of replica-local retained history. A local migration may detect an observed collision and fail `JournalVersionCompatibilityError`, but a successful local scan does not establish this distributed law. Without global injectivity, two independently migrated replicas could collapse different historical semantic nodes onto one target key and later merge them incorrectly.
 
 Let `GconvertedBefore = transportProjectionThroughCodec(Gbefore,...)`. Semantic migration repair operates in this target-keyed view: if `Kt = rewriteNodeKey(Ks)`, an occurrence-preserving decision at Kt obtains the same ValueId that Gbefore selected at Ks. A pure key-representation change therefore creates neither a replacement ValueEvent nor a DeleteEvent for Ks.
 
