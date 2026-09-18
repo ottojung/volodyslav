@@ -116,7 +116,7 @@ Fail before incompatible history is interpreted/authored or a migration target i
 
 ## JournalWriterBehindError
 
-This category names the established-writer rollback condition defined normatively in `database-lifecycle.md` §5. Ordinary synchronization handling is defined in `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is unsupported state; reset handling is defined in `incremental-graph-journal-reset.md` §Preconditions.
+This category names the established-writer rollback condition defined normatively in `incremental-graph-journal-lifecycle.md` §5. Ordinary synchronization handling is defined in `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is unsupported state; reset handling is defined in `incremental-graph-journal-reset.md` §Preconditions.
 
 The taxonomy does not define a separate recovery rule: this error is not a request to repair an existing receiver by importing its missing own-writer suffix.
 
