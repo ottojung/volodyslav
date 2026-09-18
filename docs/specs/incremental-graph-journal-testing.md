@@ -481,11 +481,12 @@ Add the combined selected-occurrence regression:
 source selected key Ks has ValueId V
 rewriteNodeKey(Ks) = Kt
 Ks != Kt
-migration decision for Kt = keep
+migration decision on id(Ks) = keep
 ```
 
 Require:
 
+- `keep(id(Ks))` performs schema compatibility against Kt, not Ks, so a codec functor/arity rename succeeds when Kt is valid in the target schema even if Ks is not;
 - the conceptual `GconvertedBefore` contains Kt with ValueId V and does not expose Ks as a semantic-repair key;
 - final selected node is Kt;
 - final ValueId is still V;
@@ -493,6 +494,8 @@ Require:
 - no DeleteEvent is authored merely because Ks differs from Kt;
 - source proof/dependency endpoints are rewritten to target NodeKeys;
 - `project(Jafter,targetSchema) == Gtarget`.
+
+Add the complementary create-collision regression: with materialized source Ks and non-identity `rewriteNodeKey(Ks)=Kt`, a Journal-aware callback call `create(Kt,...)` MUST throw `CreateExistingNodeError`. The collision check is against the transported target-key view of all materialized source keys, not the literal source-key lookup table.
 
 Also generate two distinct retained source NodeKeys Ks1/Ks2 whose codec maps both to one Kt. If one replica retains both, migration MUST fail `JournalVersionCompatibilityError` before cutover as a defensive observed-collision check.
 
