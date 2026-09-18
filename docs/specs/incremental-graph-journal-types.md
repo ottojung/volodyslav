@@ -197,7 +197,7 @@ Conceptually a locally allocated NodeIdentifier combines:
 
 The database-fingerprint intent explicitly accepts the negligible probability of two independently-created hosts receiving the same fingerprint. Within one continuing fingerprint namespace, a local allocation index is never reallocated while the earlier allocation can exist in, or later enter, supported retained history.
 
-During normal operation and every supported transition of an existing database, `last_node_index` is monotone. Continuation-safe restoration of a completely absent installation is the deliberate exception: restoration may return to an older writer prefix and reconstruct the allocator watermark from that prefix. Indices allocated only in the discarded local suffix may be reallocated exactly when `database-lifecycle.md` §4.1 guarantees that the old suffix cannot later enter supported retained history.
+During normal operation and every supported transition of an existing database, `last_node_index` is monotone. Continuation-safe restoration of a completely absent installation is the deliberate exception: restoration may return to an older writer prefix and reconstruct the allocator watermark from that prefix. Indices allocated only in the discarded local suffix may be reallocated exactly when `incremental-graph-journal-lifecycle.md` §4.1 guarantees that the old suffix cannot later enter supported retained history.
 
 Therefore NodeIdentifiers are treated as unique across every set of histories that can coexist in or later join supported retained state, under the project's accepted fingerprint-collision assumption plus this allocation rule.
 
