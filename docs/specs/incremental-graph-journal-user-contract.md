@@ -165,7 +165,7 @@ Independent genuine replacement migrations may create different replacement Valu
 
 True migration `invalidate(K)` remains node-scoped.
 
-If maintenance merely removes incoming validity while preserving V, it authors one:
+If maintenance merely removes incoming validity while preserving V, it first considers every effective edge of every eligible retained certificate for V. For each such edge absent from the target it authors one:
 
 ```text
 Invalidate(K, scope=proof(V,D), reason=migration)
