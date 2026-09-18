@@ -46,7 +46,9 @@ Each semantic rule has one normative owner. Other Journal documents may summariz
 - pairwise synchronization import, normalization, convergence, and the host-count settling construction: `incremental-graph-journal-sync.md`;
 - lifecycle fault model, established-writer rollback boundary, and absent-installation restoration: `incremental-graph-journal-lifecycle.md`;
 - shipped/pre-Journal migration API semantics: `migration.md`;
-- Journal bootstrap, Journal-aware migration procedure, and Journal format codec: `incremental-graph-journal-migrations.md` §10a;
+- pre-Journal bootstrap: `incremental-graph-journal-migrations.md` Part I (§§1–8);
+- Journal-aware migration procedure: `incremental-graph-journal-migrations.md` Part II (§§9–22);
+- Journal format codec: `incremental-graph-journal-migrations.md` §9a;
 - reset procedure: `incremental-graph-journal-reset.md`;
 - local Journal persistence/codec requirements: `incremental-graph-journal-storage.md`;
 - error categories and names: `incremental-graph-journal-errors.md`, with trigger semantics owned by the relevant rule file above;
