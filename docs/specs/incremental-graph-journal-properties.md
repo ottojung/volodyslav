@@ -114,7 +114,7 @@ J0 = Jreceiver join Jsource
 Jafter = J0 + required reset events
 ```
 
-Reset first requires that an ordinary reset source is not ahead for the receiver's own local writer. If it is, reset fails `JournalWriterBehindError` before import/authorship because the existing receiver is outside the supported lifecycle state space. Reset does not repair such rollback.
+Reset's own-writer-ahead precondition is defined in `incremental-graph-journal-reset.md` §Preconditions and `database-lifecycle.md` §5.
 
 Reset preserves an occurrence when target immutable occurrence state already matches. For every incoming edge removed from preserved V, reset authors `proof(V,D)` negative evidence; it does not invalidate the whole occurrence proof. Target persistent stale state gets `value(V)` marker when own effective proof is otherwise complete. Target absence gets DeleteEvent only when J0 selects a value.
 
