@@ -288,7 +288,7 @@ Ks != Kt
 
 Whole-history rewrite changes every retained reference from Ks representation to Kt representation while preserving V. The conceptual transported source projection therefore contains Kt with ValueId V.
 
-Semantic migration chooses `keep` for Kt. M1 reads V from the transported target-key view, authors no replacement ValueEvent, and does not treat Ks as a removed target key. Rewritten proof/dependency endpoints use target NodeKeys. Final replay selects Kt with V.
+Semantic migration calls `keep(id(Ks))`. The callback resolves source key Ks, transports it through the codec to Kt for target-schema compatibility, and therefore does not reject the keep merely because Ks itself is absent from the target schema. M1 reads V from the transported target-key view, authors no replacement ValueEvent, and does not treat Ks as a removed target key. Rewritten proof/dependency endpoints use target NodeKeys. Final replay selects Kt with V. A callback call `create(Kt,...)` would instead fail `CreateExistingNodeError` because transported source state already contains Kt.
 
 If instead distinct retained Ks1 and Ks2 both rewrite to Kt, the codec is incompatible and migration fails `JournalVersionCompatibilityError` before cutover.
 
