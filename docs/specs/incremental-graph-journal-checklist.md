@@ -163,7 +163,7 @@ Acceptance:
 - overlap verified;
 - own-writer-ahead handling matches `incremental-graph-journal-lifecycle.md` §5 and `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is unsupported state;
 - fork rejected;
-- transfer streamable;
+- transfer/replay processing satisfies `$id-4924739474925738`; missing suffixes are incrementally iterable and never require the complete suffix/history in RAM;
 - imported records unchanged;
 - no computor execution or transport acknowledgement event.
 
