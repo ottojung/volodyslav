@@ -183,6 +183,19 @@ Expected:
 - reset is not retried merely to repair the local rollback;
 - divergent A overlap is `JournalForkError`.
 
+### Reset projection-neutral import still reports changed
+
+Let receiver R already have the same projected graph as source snapshot S, and let S contain at least one compatible foreign Journal record beyond R's retained frontier which does not alter that projection.
+
+Reset imports the missing source record(s), Passes 1–3 author no receiver semantic records, and final projection remains unchanged.
+
+Require:
+
+- the missing source record(s) become durably retained;
+- `ResetResult.changed == true`;
+- outer persistence/publication logic is therefore not allowed to skip the committed Journal advance;
+- repeating reset against the now-covered same source frontier authors/imports nothing and returns `changed == false`.
+
 ### Reset raw-union dependency-closure regression
 
 Use schema `D -> K`.
