@@ -68,7 +68,7 @@ Journal 3 specifies:
 - the accepted conservative late-join negative-evidence trade-off `$id-4465456703882268`;
 - bounded bootstrap compatibility rather than permanent support for every old artifact;
 - a total deterministic whole-history database-format rewrite, including records for target-removed node families;
-- one pure directed `JournalFormatCodec` with deterministic, retained-domain-injective `rewriteNodeKey` / deterministic `rewriteComputedValue`, followed by target re-canonicalization such as ValidationBasis re-sorting;
+- one pure directed `JournalFormatCodec` with deterministic `rewriteNodeKey` that is injective over the complete supported source NodeKey semantic domain, plus deterministic `rewriteComputedValue`, followed by target re-canonicalization such as ValidationBasis re-sorting;
 - semantic migration bookkeeping in the codec-transported target NodeKey space, so non-identity key representation rewrites preserve occurrence identity without spurious create/delete;
 - Journal-aware `keep` preserving occurrence identity, freshness, and target-shape-compatible source replay proof even when recursively stale;
 - representation-only Journal migration through the canonical codec + `keep`;
