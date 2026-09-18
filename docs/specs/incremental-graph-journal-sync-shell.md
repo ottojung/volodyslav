@@ -100,23 +100,7 @@ Thus a mixed state such as one input being ahead and another behind does not its
 
 ## Persistent propagated staleness
 
-After union/structural normalization, let K's replay-selected certificate be C. If K's own effective proof is complete for every selected direct input and covers current-value invalidations, but at least one direct input is stale, K is stale solely through recursive input freshness.
-
-Synchronization then ensures K has an uncovered value-scoped:
-
-```text
-InvalidateEvent(
-    node=K,
-    scope={kind:"value", value=currentValueId(K)},
-    reason="sync"
-)
-```
-
-unless an applicable marker already exists.
-
-This applies even when the selected occurrence was newly imported/selected. It preserves the graph's persistent propagated-stale flag so a later upstream `Unchanged` cannot silently make K fresh without K itself validating/recomputing.
-
-No extra sync marker is required merely for a current effective-proof deficit, an uncovered node invalidation, or an already-uncovered value-scoped marker; those are already persistent own-state reasons for staleness.
+The synchronization-authored persistent-staleness rule is defined normatively in `incremental-graph-journal-sync.md` §Phase 2: persist staleness caused only by stale direct inputs. This shell adds no second marker rule.
 
 ## Atomic publication
 
@@ -146,19 +130,4 @@ An outer procedure may process source snapshots sequentially. Each successful pa
 
 ## Reset, restore, bootstrap, migration
 
-These are separate lifecycle transitions:
-
-- **absent restore** — when the complete local database is gone, recovers this installation's continuing writer identity/history through a continuation-safe recovery source before ordinary sync;
-- **reset** — rebaselines an established receiver to a source projection relative to observed history; if source is ahead for the receiver's own writer it fails before import/authorship because the existing receiver is outside the supported lifecycle model; for every removed incoming edge `D -> K` of preserved occurrence V it uses edge-specific `proof(V,D)` negative evidence, while persistent target stale flags use current-value invalidation;
-- **pre-Journal bootstrap** — uses one frozen canonical cut for a supported semantic-identity bootstrap target; creator may resume an interrupted first cutover; equal occurrences reuse canonical ValueIds, exact shared proof is conservatively intersected with joining proof via `proof(V,D)` barriers, divergent values are concurrent historical facts using legacy `modifiedAt`, stale shared/recursive state is preserved conservatively, and local absence is not deletion evidence;
-- **Journal-aware migration** — rewrites retained records through one total canonical per-record format transformation, preserves ValueIds for occurrence-preserving changes, uses edge-specific proof barriers/persistent stale markers when graph flags require them, and may independently author new ValueIds for genuine replacements.
-
-A non-total Journal format codec is `JournalVersionCompatibilityError` before cutover.
-
-Two independent late bootstrap joiners may assign distinct ValueIds to the same non-canonical legacy occurrence; this accepted trade-off may later stale dependents naming the losing occurrence.
-
-Bootstrap lifecycle does not reuse reset semantics or import post-bootstrap current history. Ordinary synchronization begins only after the local lifecycle reaches a current version exactly compatible with the source snapshot.
-
-Independent genuine replacement migrations may later stale dependents after synchronization when certificates name a losing replacement ValueId. This is accepted; no canonical migration participant is required.
-
-Ordinary synchronization itself never performs these lifecycle transitions implicitly.
+These are separate Journal lifecycle transitions owned by `incremental-graph-journal-lifecycle.md`. Reset details are normative in `incremental-graph-journal-reset.md`; pre-Journal bootstrap and Journal-aware migration are normative in `incremental-graph-journal-migrations.md`. This synchronization shell does not restate their semantics.
