@@ -181,6 +181,8 @@ On `Exists(S)`:
 
 `DefinitelyAbsent` permits fresh identity creation. Query/read/continuation-safety uncertainty does not.
 
+This absent-installation decision does not arbitrate two concurrent processes independently claiming ownership of the same installation. Concurrent live ownership of one installation/database is outside the supported lifecycle/locking model; outer installation ownership must exclude it. The cohort-bootstrap case is different because multiple legitimate legacy installations may race for one shared canonical cohort artifact, so it requires the explicit conditional-publication arbitration above.
+
 ## Reset API
 
 ```text
