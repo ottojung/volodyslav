@@ -49,7 +49,7 @@ Metadata is stored separately in sublevels keyed by fixed string keys:
 | Sublevel | Key | Value |
 |----------|-----|-------|
 | `global` | `'identifiers_keys_map'` | identifier ↔ key bijection |
-| `global` | `'last_node_index'` | greatest durably-retired allocation index |
+| `global` | `'last_node_index'` | allocation watermark for the current retained local-writer history |
 | `global` | `'fingerprint'` | local allocation fingerprint |
 | `_meta` | `'current_replica'` | active replica name (`'x'` or `'y'`) |
 
