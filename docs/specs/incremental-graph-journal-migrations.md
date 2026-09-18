@@ -229,6 +229,13 @@ Thus no query result alone can make a candidate canonical, and no local creator 
 
 A crash may occur after conditional publication succeeds but before the creator receives the result or cuts over its local active database. It may therefore restart with supported pre-Journal state plus a staged candidate while the publication outcome is unknown.
 
+On retry/restart, first re-query the canonical source:
+
+- `Exists(B)` with `B.creatorWriter == local DatabaseFingerprint` -> validate B and use creator-resume;
+- `Exists(B)` with another creator -> discard any staged local candidate and ordinary-join B;
+- `DefinitelyAbsent` -> if a deterministic staged/reconstructed candidate is available, retry **that same** conditional publication; do not invent a second distinct candidate;
+- `IndeterminateOrError` -> fail without cutover.
+
 If:
 
 ```text
