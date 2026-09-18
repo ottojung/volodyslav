@@ -458,7 +458,7 @@ No ordinary pull, synchronization, reset, or Journal-aware migration may use thi
 
 ## Ordinary authority allocation
 
-Each writable database maintains/derives an observed semantic-authority high-water H equal to at least the greatest `AuthorityTime` among semantic events it has observed.
+Each writable database maintains an observed semantic-authority high-water H equal to at least the greatest `AuthorityTime` among semantic events it has observed. H is persisted as committed-pair metadata and is not derived from retained history during routine open.
 
 For an ordinary new semantic event choose `seedPhysical`:
 
