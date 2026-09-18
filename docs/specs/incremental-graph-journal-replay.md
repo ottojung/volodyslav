@@ -77,6 +77,26 @@ modifiedAt(K)     = head(K).modifiedAt
 
 A losing ValueEvent remains historical but supplies no current payload merely because its payload is deeply equal to winner.
 
+## Raw selected-head view
+
+For maintenance which must repair a compatible raw Journal union **before** that union is structurally projectable, define:
+
+```text
+selectedHeads(J)
+```
+
+as exactly the deterministic ValueEvent/DeleteEvent head selection above for every semantic NodeKey in J.
+
+For each K it exposes only:
+
+- whether the selected head is ValueEvent, DeleteEvent, or absent;
+- the selected head's JournalRecordId/ValueId when applicable; and
+- for a selected ValueEvent, its immutable occurrence fields: NodeIdentifier, payload, createdAt, modifiedAt.
+
+`selectedHeads(J)` does **not** require dependency closure and does not evaluate certificates, validity, freshness, or graph materializability. It is therefore not a graph projection, not publishable state, and MUST NOT be substituted for `project(J)` after structural repair.
+
+Its purpose is narrow: synchronization, reset, and other maintenance may inspect deterministic raw head winners in staging storage in order to author the semantic records that make the selected head set structurally projectable.
+
 ## Dependency closure is a publishable-state condition
 
 Legacy IncrementalGraph requires materialized nodes to be dependency-closed under current schema.
