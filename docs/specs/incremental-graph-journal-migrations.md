@@ -778,10 +778,12 @@ At minimum cover:
 - `keep` preserves ValueId, freshness, and current-shape-compatible incoming validity even when the node is recursively stale;
 - stale `keep` alone authors no proof barriers;
 - total pure format codec rewrites selected/non-selected/target-removed history identically across replicas;
-- `rewriteNodeKey` applies to every embedded NodeKey and ValidationBasis is re-sorted by target canonical NodeKey order;
+- `rewriteNodeKey` applies to every embedded NodeKey, is injective over distinct retained source NodeKeys, and ValidationBasis is re-sorted by target canonical NodeKey order;
 - `rewriteComputedValue` applies to every retained ValueEvent, including non-selected history;
 - codec functions are synchronous, deterministic, and capability-free;
-- non-total/throwing codec fails `JournalVersionCompatibilityError` before cutover;
+- non-total/throwing/colliding codec fails `JournalVersionCompatibilityError` before cutover;
+- semantic repair compares `GconvertedBefore` and `Gtarget` in target NodeKey space;
+- non-identity `Ks -> Kt` representation rewrite plus `keep` preserves the old ValueId without replacement ValueEvent or spurious DeleteEvent;
 - representation-only change uses codec + `keep`;
 - explicit `invalidate()` preserves ValueId and authors node invalidation;
 - per-edge `proof(V,D)` barriers remove exactly target-retired validity;
