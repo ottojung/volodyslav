@@ -166,19 +166,34 @@ Legacy absence does not manufacture DeleteEvent. Joining historical values may u
 
 Journal provenance, causal metadata, proof barriers, and synchronization state are not embedded into existing `values`, `freshness`, `valid`, `timestamps`, or identifier formats. Replay lowers semantic state into those existing representations.
 
+## Committed-pair metadata
+
+The following state is part of the atomically published active Journal/projection pair and is **not** an optional rebuildable cache:
+
+- `global/version`;
+- `global/graph_scheme`;
+- local writer identity;
+- local writer head;
+- allocator watermark (`last_node_index`);
+- authority high-water; and
+- active-pair identifier/generation metadata sufficient to identify the selected atomic Journal/projection state.
+
+Every ordinary local publication and every maintenance cutover which selects a new active pair updates/persists the applicable values atomically with that pair. Routine open reads this metadata directly; it does not reconstruct local writer head, allocator watermark, or authority high-water by scanning retained Journal history.
+
 ## Derived indexes
 
 Optional rebuildable indexes may include:
 
-- per-writer heads/frontiers;
+- foreign-writer heads/frontiers;
 - node history;
 - candidate head/certificate/invalidation indexes;
 - reverse structural edges;
-- authority high-water;
 - context-closure summaries; and
 - replay checkpoint references.
 
 They never become independent authority.
+
+When an optional history-proportional index is used to obtain the change-bounded validation/replay costs required by the Journal intents, it is maintained incrementally with each publication/cutover that changes the indexed Journal state, or updated in durable staging before that state becomes active. A missing/stale optional index may be rebuilt only through an explicit rebuild/maintenance transition; ordinary publication, sync/reset, and routine open do not silently fall back to scanning unrelated retained history.
 
 ## Stable local snapshots
 
@@ -199,7 +214,11 @@ Journal-specific routine open work is bounded by current state, not retained his
 
 Routine open MUST NOT scan/replay all retained Journal records merely to revalidate stream contiguity, transitive contexts, authority extension, reference causality, validation bases/scopes, or Journal/projection equality. Those invariants are established when history enters or changes supported state.
 
-Full well-formedness/replay-equality validation remains mandatory at the relevant controlled boundaries: local publication finalization, synchronization/reset import and cutover, bootstrap, absent restoration, Journal-aware migration, and explicit projection rebuild/maintenance. A full-history rebuild may therefore be O(history); it is not the ordinary open path.
+Ordinary local publication validates only its newly allocated records and projection delta: exact own-prefix/context rules, closure of the contexts those new records claim, authority against the persisted high-water, basis/scope/reference legality, and the resulting graph/Journal delta. It MUST NOT scan or re-validate unrelated retained history.
+
+Synchronization/reset validation is change-bounded: validate newly admitted source records plus receiver-authored normalization/reset records and affected projection work, using retained indexes/committed metadata as needed; unrelated retained history is not rescanned.
+
+Whole-retained-history validation is part of Journal-aware migration, whose canonical format rewrite already traverses retained history. Bootstrap and absent restoration validate their own source/artifact/cutover contracts without adding an unrelated full-history revalidation pass. Explicit projection rebuild/maintenance may scan retained history because reconstruction is the requested operation, not an ordinary validation path.
 
 If routine-open metadata is missing/inconsistent with a supported committed active pair, startup fails or enters an explicit supported maintenance/rebuild transition. It does not silently treat a full-history scan as routine validation. Malformed authoritative history encountered by such validation is rejected rather than repaired from mutable graph bytes.
 
