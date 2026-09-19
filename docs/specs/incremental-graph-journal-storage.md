@@ -216,7 +216,7 @@ Routine open MUST NOT scan/replay all retained Journal records merely to revalid
 
 Ordinary local publication validates only its newly allocated records and projection delta: exact own-prefix/context rules, closure of the contexts those new records claim, authority against the persisted high-water, basis/scope/reference legality, and the resulting graph/Journal delta. It MUST NOT scan or re-validate unrelated retained history.
 
-Synchronization/reset validation is change-bounded: validate newly admitted source records plus receiver-authored normalization/reset records and affected projection work, using retained indexes/committed metadata as needed; unrelated retained history is not rescanned.
+Synchronization/reset validation is change-bounded under `$id-6845129073418625`: validate newly admitted source records plus receiver-authored normalization/reset records and affected projection work, using retained indexes/committed metadata as needed; unrelated retained history is not rescanned.
 
 Whole-retained-history validation is part of Journal-aware migration, whose canonical format rewrite already traverses retained history. Bootstrap and absent restoration validate their own source/artifact/cutover contracts without adding an unrelated full-history revalidation pass. Explicit projection rebuild/maintenance may scan retained history because reconstruction is the requested operation, not an ordinary validation path.
 
