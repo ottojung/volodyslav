@@ -186,13 +186,15 @@ Because every reset-authored Pass 1 head is causally later than the complete J0 
 
 PS is a valid source projection and is dependency-closed under the current schema. Hence J1's selected-present head set is dependency-closed as well. Its selected NodeIdentifiers/immutable occurrence state also match PS for every present node.
 
-Only now is full replay/projection required:
+Only now is the projection defined:
 
 ```text
 P1 = project(J1)
 ```
 
-This is the first full projection of the raw receiver/source union path. Failure here means some invariant other than the pre-repair dependency-closure mix remains invalid; reset does not treat such corruption as a repair opportunity.
+A conforming implementation computes the required P1 state as a delta over the reset-affected closure using retained projection/index state, observationally equal to `project(J1)`. It does not replay or revalidate unrelated retained history; reset validation remains O(C) with respect to Journal history under `$id-6845129073418625`.
+
+Failure while validating the newly admitted/authored records or affected closure means an invariant other than the pre-repair dependency-closure mix remains invalid; reset does not treat such corruption as a repair opportunity.
 
 ## Pass 2: establish target validity/proof
 
@@ -284,7 +286,7 @@ A new dependent ValueEvent is not needed merely to update or weaken proof.
 
 ## Pass 3: establish target freshness
 
-After Pass 2 compute replay `P2`.
+After Pass 2, let `P2 = project(J2)` denote the resulting projection state needed for the affected reset closure. Implementations obtain that affected state incrementally from retained projection/index state rather than replaying unrelated retained history (`$id-6845129073418625`).
 
 Use `selfProofReady(K)` as defined in `incremental-graph-journal-replay.md` §Persistent propagated staleness, evaluated at this pass's replay cut.
 
@@ -322,16 +324,18 @@ Pass 1 domain traversal, Pass 2 eligible-certificate/`PotentialValid(K)` evaluat
 
 `PotentialValid(K)` is computed per node by streaming/folding that node's eligible certificate and invalidation history; the declarative union does not imply a global in-memory set.
 
-As with synchronization, graph-sized derived graph/index state independently required by IncrementalGraph correctness is allowed, and whole-replica work may still occur. This is a memory/streaming constraint, not the deferred change-sensitive running-time requirement.
+As with synchronization, graph-sized derived graph/index state independently required by IncrementalGraph correctness is allowed, and graph-sized whole-replica **non-validation** work may still occur where correctness requires it. Historical validation/replay attributable to reset remains bounded by newly admitted/affected state C under `$id-6845129073418625`; unrelated retained Journal history is not rescanned. This is compatible with the deferred end-to-end running-time work in `$id-3572255392439745`, because that deferral does not permit history-wide revalidation.
 
 ## Resulting projection
 
-Let:
+Let, denotationally:
 
 ```text
 Jreset = J0 + reset-authored records
 Preset = project(Jreset)
 ```
+
+The implementation reaches this projection by applying/validating the reset delta over the affected closure and maintained indexes; the equality does not require a whole-history replay during reset.
 
 The reset theorem is:
 
