@@ -170,11 +170,13 @@ This is the ordinary synchronization case which destroys a cached dependent beca
 
 ## Phase 2: persist staleness caused only by stale direct inputs
 
-Compute:
+Denotationally compute:
 
 ```text
 P1 = project(J1)
 ```
+
+A conforming implementation derives the needed P1 state incrementally over the affected dependency closure using retained projection/index state; this notation does not authorize a full retained-history replay during synchronization (`$id-6845129073418625`).
 
 Use `selfProofReady(K)` as defined in `incremental-graph-journal-replay.md` §Persistent propagated staleness, evaluated at this pass's replay cut.
 
@@ -213,23 +215,24 @@ Call the result `Jfinal`.
 
 ## Final replay and validation
 
+The checks below apply to newly imported records, receiver-authored normalization records, and the affected projection/index closure. Unrelated retained history is not rescanned or revalidated, as required by `$id-6845129073418625`.
+
 Before cutover require:
 
 - held source version/schema exactly matched receiver metadata;
-- every retained writer stream is contiguous;
-- overlaps have one meaning;
-- contexts have exact own prefix and transitive closure;
-- happened-before implies increasing authority;
-- ValueId references satisfy reference causality;
-- validation bases are canonical and duplicate-free;
-- selected-present heads are dependency-closed;
-- selected NodeIdentifiers are bijective;
-- replay-selected certificates obey current schema and proof-edge barriers;
-- every occurrence stale solely through stale direct inputs has persistent current-value stale history;
-- local writer allocator/high-water state remains consistent with its retained local stream; and
-- all IncrementalGraph invariants and `oldValue` safety hold.
+- newly admitted writer suffixes are contiguous with their retained prefixes and contain no conflicting overlap;
+- contexts of newly admitted/authored records have exact own prefix and transitive closure against retained context summaries/indexes;
+- authority of newly admitted/authored records extends happened-before using persisted/derived high-water and causal indexes;
+- ValueId references introduced by newly admitted/authored records satisfy reference causality;
+- newly admitted/authored validation bases are canonical and duplicate-free;
+- affected selected-present heads are dependency-closed;
+- affected selected NodeIdentifiers remain bijective;
+- replay-selected certificates for affected nodes obey current schema and proof-edge barriers;
+- the committed projection satisfies `selfProofReady(K) => fresh(K)` (`incremental-graph-journal-replay.md` §Persistent propagated staleness);
+- local writer allocator/high-water metadata remains consistent after this cutover; and
+- affected IncrementalGraph invariants and `oldValue` safety hold.
 
-The target graph is exactly `project(Jfinal)` lowered to existing storage.
+Denotationally, the target graph is exactly `project(Jfinal)` lowered to existing storage. A conforming implementation establishes that result by validating/updating the affected closure and durable indexes/checkpoints; it does not obtain the result by rescanning unrelated retained history.
 
 ## Synchronization-authored allocation
 
@@ -268,7 +271,7 @@ Missing foreign suffixes are consumed incrementally and must not require the ful
 
 Normalization may use graph-sized derived graph/index state where IncrementalGraph correctness independently requires it, but Journal-derived work such as the dependency-removal closure, stale-propagation worklist, or complete changed-node set must be incrementally iterable. It may live in durable/indexed staging or an equivalent bounded-memory work-queue representation; the algorithm MUST NOT require the complete closure/change set to exist as one in-RAM collection.
 
-This streamability requirement is independent of the deferred end-to-end running-time bound in `$id-3572255392439745`: synchronization may still perform whole-replica work for correctness.
+This streamability requirement is independent of the deferred end-to-end running-time bound in `$id-3572255392439745`. Synchronization may still perform graph-sized whole-replica **non-validation** work where correctness requires it, but historical validation/replay work attributable to the synchronization remains bounded by newly admitted/affected state C under `$id-6845129073418625`; unrelated retained Journal history is not rescanned.
 
 ## Pairwise result law
 
