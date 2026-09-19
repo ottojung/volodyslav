@@ -423,6 +423,17 @@ Join sees only frozen cut, reuses K=v1 identity, creates no delete for N, and la
 - canonical-present/local-absent authors no delete;
 - local-present/canonical-absent authors historical joining ValueEvent.
 
+### Canonical creator writer-order regression
+
+Create canonical legacy occurrences with distinct/equal `modifiedAt` values and NodeKeys deliberately supplied in a different traversal order. Stage the canonical bootstrap candidate.
+
+Require:
+
+- canonical C1 ValueEvents are allocated in nondecreasing `(modifiedAt, canonical NodeKey)` order;
+- equal-`modifiedAt` ties use canonical NodeKey order;
+- writer sequence therefore agrees with the bootstrap authority order;
+- repeating staging from the same persisted legacy state produces the same C1 record order and IDs.
+
 ### Joining bootstrap writer-order regression
 
 Create two joining-only/different legacy occurrences with `modifiedAt` 10 and 5 and intentionally attempt to allocate the 10 record first. The resulting same-writer stream is authority-inconsistent and MUST be rejected.
@@ -461,6 +472,18 @@ Validate(Kj, basis={D:Dj})
 ```
 
 not `{D:Dc}`. `joiningOccurrenceValueId(D)` names Dj even though Dj lost conflict selection. Replay therefore sees a basis mismatch against current Dc, `D -> Kj` is not valid, and Kj is hard stale until K itself revalidates/recomputes. Bootstrap MUST NOT manufacture freshness for a cross-replica combination no legacy replica possessed.
+
+### Joining writer identity and allocator regression
+
+Fixture: canonical artifact was created by writer C with fingerprint `Fc` and canonical writer-state watermark `Nc`. A distinct legacy installation J joins with fingerprint `Fj != Fc` and persisted legacy `last_node_index = Nj`.
+
+Require:
+
+- every Journal record newly authored by J uses `JournalAuthor = Fj`;
+- J's joining `WriterStateRecord` records `lastNodeIndex = Nj`;
+- J does not adopt Fc as its local writer identity;
+- J does not adopt Nc as its local allocator watermark;
+- canonical records retain their original C/Fc authorship unchanged.
 
 ### Exact shared proof intersection
 
@@ -551,11 +574,12 @@ Every migration verifies deterministic whole-history format rewrite, one target 
 Identity-specific cases:
 
 - `keep` preserves selected ValueId;
+- `keep` preserves the occurrence's freshness when target semantics do not explicitly change freshness;
 - a recursively stale `keep` preserves source-replay incoming validity when its certificate remains target-shape-compatible;
 - stale `keep` alone does not author proof barriers or force recomputation;
 - representation-only rewrite uses `keep` plus the canonical codec;
 - explicit `invalidate()` preserves cached occurrence ValueId and authors a true node-scoped invalidation;
-- schema/proof/freshness-only changes preserve ValueId;
+- schema/proof/freshness-only changes preserve ValueId and author no replacement ValueEvent unless the semantic occurrence itself is genuinely replaced/created;
 - `create`/genuine semantic replacement creates new ValueId;
 - independent true replacements may later stale dependents naming losing occurrence.
 
@@ -603,6 +627,16 @@ target: A stale; B persistently stale, proof retained
 
 Migration persists value-scoped stale B marker even though replay at cut is already recursively stale. Later `A -> Unchanged` does not freshen B.
 
+### Historical migration callbacks are not replay behavior
+
+Use a migration callback instrumented to fail if invoked after successful migration cutover. Open/replay/synchronize the migrated Journal and rebuild its projection from retained history.
+
+Require:
+
+- replay obtains all historical value/proof state from retained Journal records;
+- the historical migration callback is never invoked;
+- projection rebuild and later synchronization remain correct without access to that callback.
+
 ## Canonical per-record rewrite regressions
 
 Replicas X/Y retain historical V, selected only on X. Same migration must rewrite V identically on both. Representation-only migration uses `keep` for selected semantic state and the canonical codec for every retained V. Later sync must not report `JournalForkError` for V.
@@ -646,7 +680,7 @@ Replica A retains only history for K1; replica B retains only history for K2. Ve
 
 When the source NodeKey domain is finite/enumerable in a test model, exhaustively check the injectivity law. For production domains which are too large or infinite to enumerate, injectivity remains a required property of the codec construction/specification rather than something inferred from local data.
 
-Assert `rewriteComputedValue(sourceKey,payload)` runs for selected and non-selected retained ValueEvents. Codec functions receive no mutable capabilities and are deterministic. A thrown transform, invalid target representation, or locally observed NodeKey collision fails `JournalVersionCompatibilityError` before cutover.
+Assert `rewriteComputedValue(sourceKey,payload)` runs for selected and non-selected retained ValueEvents. Codec functions are synchronous, deterministic, and receive no mutable capabilities; a Promise/async transform is rejected as an invalid codec definition. A thrown transform, invalid target representation, or locally observed NodeKey collision fails `JournalVersionCompatibilityError` before cutover.
 
 ## Current-format codec tests
 
