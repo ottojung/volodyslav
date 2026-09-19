@@ -276,6 +276,13 @@ The receiver must not rewrite/re-author the source event to make it fit its curr
 
 `project(J)` is defined only for a supported well-formed retained journal J.
 
-Replay may validate well-formedness eagerly during import, publication, migration, bootstrap, absent restoration, or explicit rebuild, or lazily as referenced records are consumed during such validation, but any discovered violation is an error rather than an alternative conflict-resolution path.
+Validation timing follows `$id-6845129073418625`.
 
-Routine opening of an already-current supported database does not perform this retained-history validation; see `$id-7429043816351276`.
+- Journal-aware migration and explicit projection rebuild may validate the complete retained Journal.
+- Synchronization/reset import validates newly admitted records, receiver-authored maintenance records, and their affected projection/index consequences; unrelated retained history is not rescanned.
+- Ordinary local publication validates only its newly allocated batch and projection delta.
+- Bootstrap and absent restoration validate their own source/artifact/cutover contracts without adding a full retained-history validation pass merely to re-prove already committed history.
+
+Within those scopes, validation may be eager or lazy as referenced records are consumed, but any discovered violation is an error rather than an alternative conflict-resolution path.
+
+Routine opening of an already-current supported database does not perform retained-history validation; see `$id-7429043816351276`.
