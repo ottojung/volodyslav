@@ -176,7 +176,7 @@ Acceptance:
 
 - structural closure authors explicit sync deletes;
 - dependency-removal/stale-propagation worklists and complete changed-node sets are iterator/durable-index backed or equivalently bounded-memory; normalization does not require one complete closure/change set in RAM;
-- every selected occurrence stale solely through direct-input staleness gets/retains current-value sync invalidation;
+- Phase 2 ensures the required current-value marker at its pre-marker cut for occurrences stale solely through direct-input staleness; the committed result satisfies `selfProofReady(K) => fresh(K)`;
 - includes newly selected remote ValueIds;
 - proof deficiency/node invalidation/already-uncovered value marker do not create unnecessary duplicate marker;
 - repeat sync no-op;
