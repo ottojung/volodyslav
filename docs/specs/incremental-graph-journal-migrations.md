@@ -866,59 +866,7 @@ Failure leaves the previous active pair selected.
 
 ## 23. Required tests
 
-At minimum cover:
-
-### Bootstrap
-
-- canonical source exists / definitely absent / indeterminate query decisions;
-- `DefinitelyAbsent` permits staging but never local cutover by itself;
-- two concurrent creators which both observed absence race through `publishCanonicalBootstrapIfAbsent`: exactly one distinct candidate is `Published`, the loser receives `AlreadyExists(B)`, and only the winner artifact is accepted;
-- indeterminate publication outcome leaves legacy state active and is resolved by re-query before retry/cutover;
-- frozen original bootstrap cut, never later current history;
-- artifact target mismatch -> `JournalVersionCompatibilityError` before history;
-- semantic/time/allocator-dependent pre-bootstrap transformation is rejected;
-- staging the canonical creator twice from identical persisted legacy state yields a byte-identical artifact, including C2/C3 AuthorityTimes and record IDs/order;
-- creator artifact durable before ordinary authoring;
-- creator crash/lost publication response resumes exact artifact without rerunning callbacks;
-- creator mismatch -> `JournalBootstrapForkError`;
-- canonical and joining bootstrap ValueEvents use nondecreasing `(modifiedAt, canonical NodeKey)` writer order; an out-of-order joining stream is authority-inconsistent and rejected;
-- exact canonical-equal occurrence reuses canonical ValueId;
-- a local dependent whose legacy-valid input loses to another selected occurrence keeps the losing local input ValueId in its basis and is hard stale; bootstrap never manufactures validity against the winner;
-- exact-shared validity intersection via `proof(V,D)` barriers;
-- joining-only proof cannot strengthen shared occurrence;
-- stale on either exact-shared side remains persistently stale;
-- recursive-only bootstrap stale dependent receives `value(V)` marker;
-- older/newer divergent legacy values resolve by persisted `modifiedAt`, not upgrade time;
-- legacy absence does not fabricate delete;
-- local-only and canonical-only materializations survive;
-- joining writer keeps own fingerprint/watermark;
-- accepted non-canonical ValueId split is exercised;
-- a post-bootstrap validation unseen by a late join is concurrent with the join's negative proof/stale evidence and does not clear it until a causally later validation occurs.
-
-### Journal-aware migration
-
-- `keep` preserves ValueId, freshness, and current-shape-compatible incoming validity even when the node is recursively stale;
-- stale `keep` alone authors no proof barriers;
-- total pure format codec rewrites selected/non-selected/target-removed history identically across replicas;
-- `rewriteNodeKey` applies to every embedded NodeKey and satisfies the codec-level injectivity contract over every valid source semantic NodeKey which may occur in supported source-version Journal history; a per-replica retained-key scan is only a defensive collision check; ValidationBasis is re-sorted by target canonical NodeKey order;
-- `rewriteComputedValue` applies to every retained ValueEvent, including non-selected history;
-- codec functions are synchronous, deterministic, and capability-free;
-- non-total/throwing/colliding codec fails `JournalVersionCompatibilityError` before cutover;
-- supported skipped-version upgrades execute the same canonical Journal migration chain as stepwise upgrades; missing chain fails `JournalVersionCompatibilityError`;
-- shared pre-existing record IDs end byte-identical after stepwise versus skipped-release upgrade to the same target version;
-- semantic repair compares `GconvertedBefore` and `Gtarget` in target NodeKey space;
-- non-identity `Ks -> Kt` representation rewrite plus `keep` preserves the old ValueId without replacement ValueEvent or spurious DeleteEvent;
-- representation-only change uses codec + `keep`;
-- explicit `invalidate()` preserves ValueId and authors node invalidation;
-- maintenance proof weakening barriers every non-target edge in `eligibleEffectiveProofUnion(K)`, including edges exposed only by a previously losing certificate;
-- concurrent same-V barriers preserve unrelated proof and compose by edge union;
-- proof/freshness/schema-only changes create no ValueEvent;
-- migration-propagated stale dependent remains stale after upstream `Unchanged`;
-- true create/replacement creates new ValueId;
-- independent genuine replacements may later stale dependents;
-- target replay exactly equals migration target;
-- failure before cutover leaves source selected;
-- replay never reruns historical migration callbacks.
+Required regressions for bootstrap and Journal-aware migration are owned by `incremental-graph-journal-testing.md`.
 
 ## Non-goals
 
