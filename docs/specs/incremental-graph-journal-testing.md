@@ -681,6 +681,20 @@ At minimum:
 
 These tests verify processing shape and semantic equivalence, not asymptotic elapsed-time bounds.
 
+## Change-bounded historical validation tests
+
+Validation-cost behavior is a correctness requirement under `$id-6845129073418625`, distinct from the deferred end-to-end synchronization runtime work in `$id-3572255392439745`.
+
+Construct fixtures with a very large unrelated retained-history prefix H and a small affected set C. Through an instrumented Journal/index interface:
+
+- synchronization may read/validate only imported source suffix records, receiver-authored normalization records, retained summaries/index entries they reference, and the affected projection/index closure; a request to rescan unrelated old records fails the test;
+- reset has the same constraint for imported source records, reset-authored records, and its affected closure;
+- ordinary local publication validates only its new batch/projection delta and must not request unrelated retained history;
+- bootstrap publication/cutover and absent restoration validate their own source/artifact/cutover contract without adding a full retained-history pass;
+- Journal-aware migration and explicit rebuild are the only paths in this fixture permitted to iterate/validate the complete retained Journal.
+
+Vary H while holding the newly admitted/affected set C fixed and require synchronization/reset historical-validation work to remain unchanged with respect to H. The test may still observe graph-sized **non-validation** work permitted by `$id-3572255392439745`; that work must not be misclassified as historical revalidation.
+
 ## Performance tests are separate from correctness
 
 Issue #1607 owns future synchronization performance bounds. Whole-journal migration cost is separately accepted. Correctness/property tests must not be weakened for optimization.
