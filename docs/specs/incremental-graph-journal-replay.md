@@ -498,15 +498,15 @@ Temporary paths, inactive replica-slot names, transport metadata, LevelDB intern
 
 Definitions above are declarative.
 
-Replay processing MUST satisfy `$id-4924739474925738`. A conforming implementation may scan the complete retained history, but it must not require the complete Journal, the complete incremental changed-node set, or all per-node histories to be materialized in RAM as one collection.
+Replay processing MUST satisfy `$id-4924739474925738`. Complete-history replay remains a valid algorithm for Journal-aware migration, explicit rebuild/maintenance, and the reference oracle, but ordinary publication, synchronization/reset, and routine open additionally obey the change-bounded validation contract in `$id-6845129073418625`; those transitions MUST NOT use complete-history replay/validation as a fallback for unrelated retained history.
 
 Head selection, eligible-certificate evaluation, invalidation/barrier evaluation, writer-state reconstruction, and projection lowering must be implementable through ordered/indexed iteration, bounded iterator/runtime buffers, per-node streaming/folding, durable derived indexes/checkpoints, or observationally equivalent incremental mechanisms.
 
-Declarative notation such as `History(K)`, `HeadCandidates(K)`, or the set of eligible certificates does not require constructing those complete sets in memory. An implementation may use graph-sized derived state independently required by IncrementalGraph correctness and may perform whole-replica validation; the prohibition is on making complete Journal history or complete changed-node/work sets one in-RAM collection merely to replay them.
+Declarative notation such as `History(K)`, `HeadCandidates(K)`, or the set of eligible certificates does not require constructing those complete sets in memory. An implementation may use graph-sized derived state independently required by IncrementalGraph correctness. Whole-replica **non-validation** graph work may occur where the owning transition permits it, but historical validation/replay of unrelated retained records remains forbidden on the change-bounded paths above.
 
 Record arrival/chunking order must not change the final result for one final supported Journal.
 
-A clear whole-history **streaming scan** should remain available as the reference/test oracle; "whole-history" here describes how much history is read, not how much must coexist in RAM.
+A clear whole-history **streaming scan** should remain available as the migration/rebuild/reference-test path; "whole-history" here describes how much history is read, not how much must coexist in RAM.
 
 ## Replay checkpoint correctness
 
