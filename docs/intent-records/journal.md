@@ -292,9 +292,33 @@ Let G denote the size of the current materialized IncrementalGraph state plus cu
 
 Routine open may read constant-size/current-version metadata and may perform checks or reconstruction bounded by G. The persisted representation must contain enough constant-size/current-state committed-pair metadata to identify the atomically published Journal/projection state and its local writer head, allocator watermark, and authority high-water without scanning historical records.
 
-This bound applies only to routine opening of an already-current supported database. Explicit migration, synchronization/import validation of newly received history, bootstrap, absent restoration, local publication/cutover validation, and explicit projection rebuild/maintenance may perform work over retained or transferred history as required by their own contracts. If routine open finds metadata inconsistent with a supported committed state, it may fail or enter an explicitly requested maintenance/rebuild transition; it must not silently fall back to a full-history scan as the normal open path.
+This bound applies only to routine opening of an already-current supported database. Explicit migration, synchronization/import validation of newly received history, bootstrap, absent restoration, maintenance cutover validation, and explicit projection rebuild/maintenance may perform work over retained or transferred state as required by their own contracts. If routine open finds metadata inconsistent with a supported committed state, it may fail or enter an explicitly requested maintenance/rebuild transition; it must not silently fall back to a full-history scan as the normal open path.
 
 This performance requirement relies on the lifecycle-owned-state assumption in `$id-6158827469032147`: supported committed states have already satisfied their transition invariants, and arbitrary external mutation is not part of the supported state space.
+
+---
+
+$id-6845129073418625
+title: Journal validation cost is bounded by newly affected state
+date: 2026/09/19
+source: @ottojung
+kind: requirement
+
+Validation must not repeatedly re-prove unrelated retained Journal history.
+
+Let H be total retained Journal history. Let C be the size of history/state newly admitted or semantically affected by one synchronization/reset, including the imported records, receiver-authored normalization/reset records, and affected projection/index work. Let B be the size of one ordinary local publication's newly authored Journal batch plus its projection delta.
+
+The supported validation-cost contract is:
+
+- Journal-aware migration may perform O(H) historical validation because the migration itself rewrites the complete retained Journal into the target format.
+- Synchronization/reset validation is O(C) with respect to Journal history: it validates newly admitted/affected records and projection consequences, and does not rescan unrelated retained history.
+- Ordinary local publication has O(1) **historical-validation overhead with respect to H**. It validates only its own new batch/projection delta, so total validation may be O(B) but is independent of unrelated old history.
+- Routine current-database open, bootstrap publication/cutover, and absent restoration likewise do not add a full retained-history validation pass merely to re-prove already committed history. Their source transfer/construction work may have other size bounds, but historical-validation overhead is O(1) in H unless they explicitly enter a heavier transition above.
+- Explicit projection rebuild/maintenance is reconstruction rather than an ordinary validation path and may scan H by definition.
+
+Thus the only normal lifecycle validation path allowed to validate every retained historical record is Journal-aware migration. Explicit rebuild is the separate user/system-requested reconstruction exception.
+
+Any history-proportional derived index needed to achieve these bounds must be maintained incrementally/durably as Journal state changes, or rebuilt only through an explicit maintenance transition. Missing optional indexes do not authorize an ordinary local publication, sync/reset, or routine open to fall back to scanning unrelated retained history.
 
 ---
 
