@@ -247,7 +247,7 @@ This does not combine positive proof from multiple certificates. `PotentialValid
 
 The barrier is required only for proof weakening/removal. If reset merely adds validity edges, the later stronger certificate naturally wins by effective basis-match count and no barrier is needed solely for that addition.
 
-After any required barriers, evaluate replay under the current schema.
+After any required barriers, evaluate the affected replay state under the current schema using retained projection/index state; this step does not rescan unrelated retained history.
 
 Reuse the selected certificate only if replay already yields exactly `TargetValid(K)` and has the causal coverage required for PS's target freshness.
 
@@ -286,7 +286,7 @@ A new dependent ValueEvent is not needed merely to update or weaken proof.
 
 ## Pass 3: establish target freshness
 
-After Pass 2, let `P2 = project(J2)` denote the resulting projection state needed for the affected reset closure. Implementations obtain that affected state incrementally from retained projection/index state rather than replaying unrelated retained history (`$id-6845129073418625`).
+Let `J2 = J1 + Pass-2-authored proof barriers/ValidateEvents`. After Pass 2, let `P2 = project(J2)` denote the resulting projection state needed for the affected reset closure. Implementations obtain that affected state incrementally from retained projection/index state rather than replaying unrelated retained history (`$id-6845129073418625`).
 
 Use `selfProofReady(K)` as defined in `incremental-graph-journal-replay.md` §Persistent propagated staleness, evaluated at this pass's replay cut.
 
