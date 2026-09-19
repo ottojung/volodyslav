@@ -258,7 +258,11 @@ Acceptance:
 - bootstrap artifact interpreted only by software explicitly supporting its target;
 - routine open of an already-current supported database satisfies `$id-7429043816351276`: Journal-specific work is `O(1 + G)`, where G is current graph plus graph-bounded current-state metadata and excludes history/history-proportional Journal indexes; the bound is independent of retained Journal size H;
 - routine open reads only current version/schema, constant-size/current-state committed-pair metadata, local writer head, allocator watermark, authority high-water, and current graph/index state bounded by G; these metadata were persisted atomically by the publication/cutover which selected the active pair, and routine open does not scan/replay all retained history or validate history-sized indexes;
-- full stream/context/reference/authority/replay-equality validation remains at history-admission/publication, synchronization/reset cutover, bootstrap, absent restoration, migration, and explicit rebuild/maintenance boundaries;
+- history admission by synchronization/reset validates only newly admitted/affected records and projection consequences, with O(C) validation cost under `$id-6845129073418625`; unrelated retained history is not rescanned;
+- ordinary local publication validates only newly allocated records and the projection delta, with O(1) historical-validation overhead in retained history H (total validation may be O(B) in its own new batch);
+- Journal-aware migration is the normal lifecycle path permitted O(H) historical validation;
+- bootstrap/absent-restoration cutover does not add a full retained-history revalidation pass merely to re-prove already committed history;
+- explicit rebuild/maintenance may scan H because reconstruction itself is requested;
 - known graph/Journal mismatch not exposed;
 - valid authoritative Journal history may rebuild derived projection/indexes during explicit maintenance;
 - rebuild is not permitted to repair missing/truncated authoritative Journal history or local rollback;
