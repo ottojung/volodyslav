@@ -717,6 +717,18 @@ At minimum:
 
 These tests verify processing shape and semantic equivalence, not asymptotic elapsed-time bounds.
 
+## Counted eligible-proof summary tests
+
+For one current occurrence V of K and input D, retain two independently eligible/effective certificates which both prove D. The derived summary must report:
+
+```text
+eligibleProofEdgeCount(K,V,D) == 2
+```
+
+Apply a new invalidation/barrier/input-head change which makes exactly one certificate ineligible or its D entry ineffective. After incremental index maintenance, require count 1 and require D to remain in `eligibleEffectiveProofUnion(K)`. Apply another change which removes the second contribution; require count 0 and D absent from the union.
+
+Run the same transitions through ordinary publication and through staged synchronization/reset cutover. No case may recompute the count by scanning retained certificate history. Explicit rebuild may reconstruct the summary from history and must reproduce the same counts.
+
 ## Change-bounded historical validation tests
 
 Validation-cost behavior is a correctness requirement under `$id-6845129073418625`, distinct from the deferred end-to-end synchronization runtime work in `$id-3572255392439745`.
