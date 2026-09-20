@@ -560,6 +560,37 @@ Expected:
 
 Also test a joining-only proof edge when canonical lacks it: join does not strengthen canonical proof, so the edge remains absent.
 
+### Exact shared K with changed input and legacy Unchanged
+
+Fixture:
+
+```text
+D -> K
+
+canonical:
+    D = D0
+    K = V, fresh, valid against D0
+
+joining legacy:
+    D = D1, newer than D0
+    K = exact same immutable occurrence V
+    K was recomputed against D1 and returned Unchanged
+    K fresh, D -> K valid
+```
+
+Both legacy graphs contain D -> K and both mark K fresh, but their proof provenance names different D occurrences.
+
+Require:
+
+- K reuses the canonical ValueId V;
+- D1 wins current D selection by ordinary bootstrap authority;
+- `SharedAdmissibleValid(K)` contains D -> K because both legacy edge sets contain it;
+- bootstrap does not retarget V's canonical certificate from D0 to D1 and authors no joining strengthening validation for exact-shared V;
+- final replay sees canonical basis D0 mismatch selected D1, so D -> K is invalid and K is hard stale;
+- `joinedSharedStaleEvidence(K)` is false because neither legacy side stored direct stale state, demonstrating that final replay staleness can arise in addition to the stale-OR marker rule.
+
+This preserves actual input-occurrence provenance rather than manufacturing proof for a cross-occurrence combination.
+
 ### Exact shared stale is symmetric
 
 Case A:
@@ -629,8 +660,8 @@ Every migration verifies deterministic whole-history format rewrite, one target 
 Identity-specific cases:
 
 - `keep` preserves selected ValueId;
-- `keep` preserves the occurrence's freshness when target semantics do not explicitly change freshness;
-- a recursively stale `keep` preserves source-replay incoming validity when its certificate remains target-shape-compatible;
+- `keep` preserves source proof/freshness only where §11a occurrence provenance remains valid; changing a required target input occurrence makes the kept dependent stale even without an explicit freshness decision;
+- a recursively stale `keep` preserves unaffected source-replay incoming validity where the relevant target input occurrences are preserved;
 - stale `keep` alone does not author proof barriers or force recomputation;
 - representation-only rewrite uses `keep` plus the canonical codec;
 - explicit `invalidate()` preserves cached occurrence ValueId and authors a true node-scoped invalidation;
@@ -655,6 +686,34 @@ Y MUST still execute Journal migration semantics v1 -> v2 -> v3, even though it 
 Also model a later release that changes the historical v1 -> v2 codec/semantic migration definition while still claiming v1 support. That release MUST be rejected as violating the canonical edge contract; the supported implementation must carry the frozen v1 -> v2 semantics used by earlier replicas. If it cannot, v1 must be unsupported.
 
 Also test that a source version with no complete canonical chain to the running version fails `JournalVersionCompatibilityError`.
+
+### Migration replacement invalidates preserved dependent proof
+
+Fixture:
+
+```text
+A -> B
+source:
+    A = 1 fresh
+    B = 2 fresh
+    B proof = { A:a1 }
+    semantic relation: B = 2 * A
+
+migration decisions:
+    replace(A, 2)
+    keep(B)
+```
+
+Require target-state construction under §11a before M1–M3:
+
+- A receives a new migration ValueId `a2`;
+- B preserves its old ValueId and payload 2;
+- B's carried A -> B proof edge is absent from `TargetValid(B)` because its source proof named a1 while target A is a2;
+- B is hard stale; migration does not claim B=2 is fresh for A=2;
+- M2 does not author a validation for old B with basis `{A:a2}` merely to make target replay fresh;
+- if migration intends a fresh B=4 under A=2, it must explicitly `replace(B,4)` or use a separately specified future revalidation operation which semantically establishes that proof.
+
+Also cover a multi-input B where only one input is replaced: unaffected provenance-valid edges remain usable as partial proof while the replaced-input edge is lost.
 
 ### Migration proof weakening
 
