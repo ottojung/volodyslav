@@ -567,8 +567,6 @@ Therefore a release that still supports v1 through an old canonical edge v1 -> v
 
 Each chain step is a complete Journal-aware migration: whole-history codec rewrite, semantic repair, replay validation, and version cut to that intermediate version. Migration-authored records from an intermediate step are retained and are themselves rewritten by later canonical steps.
 
-An implementation MAY fuse or optimize multiple canonical steps internally only when the resulting retained Journal—including all intermediate migration-authored semantic records and every pre-existing immutable record body—is exactly the same as executing the canonical steps in order. The canonical chain, not a shortcut implementation, defines semantics.
-
 Consequently, if replicas X and Y share historical record R at v1 and both later reach v3 through supported migration, their v3 body for R is byte-identical even if X upgraded while v2 was current and Y skipped directly from the v1 application release to the v3 application release.
 
 ## 10. One-format / total-codec invariant
