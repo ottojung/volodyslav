@@ -181,6 +181,12 @@ Such an operation must fail without authoring new A records or silently repairin
 
 Likewise, overlap disagreement for one writer coordinate is a writer fork and is unsupported.
 
+More strongly, supported lifecycle closure implies **writer-prefix comparability** across any states which may coexist or later combine: for each writer A, one retained A stream is a prefix of the other, and every shared coordinate has the same immutable record. A partial fork—two such states agreeing through A:1..k and then retaining distinct A:k+1 records—is therefore impossible in supported state.
+
+This follows from serialized append-only authoring, immutable foreign-record import, continuation-safe absent restoration, canonical bootstrap arbitration, deterministic canonical migration, and the exclusion of rollback/cloning/external mutation. The accepted fingerprint-collision tradeoff in `$id-9051842763146802` does not weaken this supported-state rule: an actually observed same-fingerprint divergent pair is classified unsupported.
+
+Ordinary sync/reset may rely on this lifecycle consequence and need not rescan unrelated historical overlap merely to re-prove it; `incremental-graph-journal-theorems.md` Laws 8 and 8a state the derived proof obligations.
+
 Two independently live installations intentionally authoring under one fingerprint are unsupported.
 
 The separate creator-resume rule in §8.2 is not an exception: it handles interruption of the one controlled pre-Journal bootstrap transition before an active Journal database exists, and its permitted states are explicitly defined by that transition.
