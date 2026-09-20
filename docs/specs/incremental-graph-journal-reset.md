@@ -116,7 +116,7 @@ selectedPresent(H0) = {
 }
 ```
 
-Historical records outside the current source projection remain retained, but current selected state over this domain must become source-target-equivalent.
+Historical keys which are selected-absent in H0 and absent in PS require no reset action and are not in ResetDomain. Historical records outside the current source projection remain retained. Enumerating ResetDomain may use current projection/head state and graph-sized iteration; it MUST NOT require scanning historical Value/Delete records merely to rediscover keys which are currently absent.
 
 ## Pass 1: establish target presence/value occurrences
 
