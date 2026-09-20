@@ -263,7 +263,7 @@ A definite-absence query is not first-creator arbitration. The creator must cond
 
 1. **Published(B)** — B is the one durable canonical artifact; after validating that B is the staged candidate, local creator cutover may proceed;
 2. **AlreadyExists(B)** — another attempt already selected the canonical artifact; discard the losing candidate and use creator-resume iff B belongs to the local fingerprint, otherwise ordinary join;
-3. **IndeterminateOrError** — do not cut over. Keep the supported pre-Journal database active and re-query before any retry.
+3. **IndeterminateOrError** — do not cut over. Keep the supported pre-Journal database selected on disk, but fail startup before graph APIs are exposed and re-query before any retry; no Journal-3-controlled legacy mutation occurs while the publication outcome is unresolved.
 
 This conditional publication is the arbitration required by `$id-1847369205416728`: concurrent distinct candidates cannot both become accepted canonical histories for one cohort.
 
