@@ -225,9 +225,7 @@ Acceptance:
 - local migration scans reject any collision they actually observe, but are not treated as proof of the global injectivity contract;
 - rewritten ValidationBasis entries are re-sorted by the target canonical NodeKeyString order;
 - semantic migration repair uses the codec-transported source projection in target key space, not source-keyed `Gbefore` directly;
-- Journal-aware `get`/traversal remain source-NodeIdentifier/source-representation operations;
-- `keep(id(Ks))` and `invalidate(id(Ks))` perform target-schema compatibility against `rewriteNodeKey(Ks)`, not Ks;
-- `create(Kt,...)` treats Kt as target representation and fails `CreateExistingNodeError` when Kt equals `rewriteNodeKey(Ks)` for any previously materialized source Ks;
+- Journal-aware callback addressing, target-key transport, schema compatibility, `create` collision behavior, and the explicit `replace` decision match `incremental-graph-journal-migrations.md` §11; this checklist does not maintain a second callback-key-space definition;
 - non-identity `Ks -> Kt` plus `keep(id(Ks))` preserves the original ValueId and authors neither replacement ValueEvent nor spurious delete;
 - non-total/throwing source->target codec fails `JournalVersionCompatibilityError` before cutover;
 - same historical record rewrites identically across replicas for each canonical transition;
