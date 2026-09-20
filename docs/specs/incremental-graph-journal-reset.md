@@ -209,7 +209,7 @@ After Pass 1 every source-present node has a final target occurrence `resetValue
 For each source-present K define:
 
 ```text
-PotentialValid(K) = {
+eligibleEffectiveProofUnion_P1(K) = {
     D | eligibleProofEdgeCount_P1(
             K,
             resetValueId(K),
@@ -238,7 +238,7 @@ Replay intentionally prefers certificates with greater effective basis applicabi
 For every incoming edge that **any eligible retained certificate** for the preserved occurrence can currently prove, but the reset target must not expose:
 
 ```text
-D in PotentialValid(K) - TargetValid(K)
+D in eligibleEffectiveProofUnion_P1(K) - TargetValid(K)
 ```
 
 reset MUST author one barrier:
@@ -261,9 +261,9 @@ A proof-edge barrier retires the exact incoming edge `D -> K` for the exact pres
 
 The barrier is occurrence-scoped on purpose. Reset is weakening proof for the preserved occurrence; it is not semantically issuing an explicit node invalidation which should taint certificates for an unseen concurrent/later replacement ValueId.
 
-The barrier set is computed from the fixed P1 cut **before** authoring any reset proof barriers. Because it covers every effective unwanted edge of every certificate eligible at P1, weakening one certificate cannot reveal an unwanted edge from a previously losing certificate. Proof barriers do not make an ineligible historical certificate eligible, and every reset-authored target validation is causally after the new barriers, so one pass over `PotentialValid(K) - TargetValid(K)` is complete; no iterative barrier-discovery loop is required.
+The barrier set is computed from the fixed P1 cut **before** authoring any reset proof barriers. Because it covers every effective unwanted edge of every certificate eligible at P1, weakening one certificate cannot reveal an unwanted edge from a previously losing certificate. Proof barriers do not make an ineligible historical certificate eligible, and every reset-authored target validation is causally after the new barriers, so one pass over `eligibleEffectiveProofUnion_P1(K) - TargetValid(K)` is complete; no iterative barrier-discovery loop is required.
 
-This does not combine positive proof from multiple certificates. `PotentialValid` is used only to choose negative barriers. Replay continues to obtain all positive validity edges from exactly one selected certificate.
+This does not combine positive proof from multiple certificates. `eligibleEffectiveProofUnion_P1` is used only to choose negative barriers. Replay continues to obtain all positive validity edges from exactly one selected certificate.
 
 The barrier is required only for proof weakening/removal. If reset merely adds validity edges, the later stronger certificate naturally wins by effective basis-match count and no barrier is needed solely for that addition.
 
@@ -340,9 +340,9 @@ Thus reset freshness changes are represented as persistent freshness/proof histo
 
 Reset's Journal/replay processing MUST satisfy `$id-4924739474925738`.
 
-Pass 1 domain traversal, Pass 2 eligible-certificate/`PotentialValid(K)` evaluation, and Pass 3 freshness propagation must be implementable as ordered/indexed iteration with bounded iterator/runtime buffers. Journal-derived worklists or changed-node/closure sets may use durable/indexed staging or an equivalent bounded-memory queue, but reset MUST NOT require the complete retained Journal, complete reset domain, complete eligible-certificate population, or complete changed-node/propagation closure to be materialized in RAM as one collection.
+Pass 1 domain traversal, Pass 2 eligible-certificate/`eligibleEffectiveProofUnion_P1(K)` evaluation, and Pass 3 freshness propagation must be implementable as ordered/indexed iteration with bounded iterator/runtime buffers. Journal-derived worklists or changed-node/closure sets may use durable/indexed staging or an equivalent bounded-memory queue, but reset MUST NOT require the complete retained Journal, complete reset domain, complete eligible-certificate population, or complete changed-node/propagation closure to be materialized in RAM as one collection.
 
-`PotentialValid(K)` is read from the incrementally maintained per-occurrence eligible-proof-edge summary. Reset MUST NOT reconstruct that summary by folding retained certificate/invalidation history. Imported/authored records and affected head/input/proof changes update the staged summary incrementally before cutover. If the required summary is missing/stale, reset fails or requires explicit rebuild/maintenance rather than falling back to an unrelated-history scan.
+`eligibleEffectiveProofUnion_P1(K)` is read from the incrementally maintained per-occurrence eligible-proof-edge summary. Reset MUST NOT reconstruct that summary by folding retained certificate/invalidation history. Imported/authored records and affected head/input/proof changes update the staged summary incrementally before cutover. If the required summary is missing/stale, reset fails or requires explicit rebuild/maintenance rather than falling back to an unrelated-history scan.
 
 As with synchronization, graph-sized derived graph/index state independently required by IncrementalGraph correctness is allowed, and graph-sized whole-replica **non-validation** work may still occur where correctness requires it. Historical validation/replay attributable to reset remains bounded by newly admitted/affected state C under `$id-6845129073418625`; unrelated retained Journal history is not rescanned. This is compatible with `$id-3572255392439745`: that intent defers only end-to-end running time, while the historical-validation bound comes from `$id-6845129073418625`.
 
@@ -418,7 +418,7 @@ exactly when the source snapshot frontier is already covered by the receiver's r
 
 Thus `changed` describes whether reset publishes any persistent Journal/database change, not merely whether the receiver authors a new semantic record.
 
-After one successful reset, every pre-reset eligible certificate is already barriered on every non-target edge it could expose, and any reset-authored target certificate is causally after those barriers and proves only target edges. Therefore a second reset to the unchanged source computes no new unwanted edge in `PotentialValid - TargetValid`; if the selected certificate already has the required target proof/freshness coverage, it authors no barrier or validation.
+After one successful reset, every pre-reset eligible certificate is already barriered on every non-target edge it could expose, and any reset-authored target certificate is causally after those barriers and proves only target edges. Therefore a second reset to the unchanged source computes no new unwanted edge in `eligibleEffectiveProofUnion_P1 - TargetValid`; if the selected certificate already has the required target proof/freshness coverage, it authors no barrier or validation.
 
 Repeated reset therefore cannot create an unbounded chain of equivalent ValueEvents/ValidateEvents/Deletes.
 
