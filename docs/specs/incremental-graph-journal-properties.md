@@ -142,16 +142,7 @@ Two independent joiners may split identity for the same non-canonical occurrence
 
 ### Exact-shared proof/freshness merge
 
-For exact shared occurrence V:
-
-```text
-joinedValid = canonicalValid intersect joiningValid
-joinedStale = canonicalStale OR joiningStale
-```
-
-Canonical certificate remains the positive proof basis. Join adds `proof(V,D)` barriers for canonical edges missing on the joining side; joining-only proof never strengthens canonical proof.
-
-After direct proof/stale roots are represented, bootstrap persists recursive-only stale dependents using value-scoped markers when own effective proof is complete.
+The exact-shared merge is defined by `incremental-graph-journal-migrations.md` §§7.3–7.4. This derived-properties document adds no competing merge rule.
 
 ## Creator resume is exact identity continuation
 
