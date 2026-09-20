@@ -308,13 +308,14 @@ Validation must not repeatedly re-prove unrelated retained Journal history.
 
 Let H be total retained Journal history. Let C be the size of history/state newly admitted or semantically affected by one synchronization/reset, including the imported records, receiver-authored normalization/reset records, and affected projection/index work. Let B be the size of one ordinary local publication's newly authored Journal batch plus its projection delta.
 
-The supported validation-cost contract is:
+The supported **historical-validation** cost contract, measured against retained history H, is:
 
-- Journal-aware migration may perform O(H) historical validation because the migration itself rewrites the complete retained Journal into the target format.
-- Synchronization/reset validation is O(C) with respect to Journal history: it validates newly admitted/affected records and projection consequences, and does not rescan unrelated retained history.
-- Ordinary local publication has O(1) **historical-validation overhead with respect to H**. It validates only its own new batch/projection delta, so total validation may be O(B) but is independent of unrelated old history.
-- Routine current-database open, bootstrap publication/cutover, and absent restoration likewise do not add a full retained-history validation pass merely to re-prove already committed history. Their source transfer/construction work may have other size bounds, but historical-validation overhead is O(1) in H unless they explicitly enter a heavier transition above.
-- Explicit projection rebuild/maintenance is reconstruction rather than an ordinary validation path and may scan H by definition.
+- Journal-aware migration is the only normal lifecycle validation path permitted O(H), because the migration itself rewrites the complete retained Journal into the target format.
+- Synchronization/reset validation is O(C), where C is newly admitted/affected state: it validates those records and projection/index consequences and does not rescan unrelated retained history.
+- Every other normal lifecycle validation path has O(1) overhead with respect to H. Ordinary local publication still validates its own new batch/projection delta, so its total validation may be O(B), but it is O(1) in unrelated retained history H. Routine open, bootstrap publication/cutover, and absent restoration likewise may perform their own current/source/artifact checks without a history-proportional revalidation pass.
+- Explicit projection rebuild/maintenance is reconstruction, not a normal validation path, and may scan H by definition.
+
+Thus, excluding explicit rebuild/reconstruction, the asymptotic historical-validation classes are exactly: migration O(H), synchronization/reset O(C), and everything else O(1) in H.
 
 Thus the only normal lifecycle validation path allowed to validate every retained historical record is Journal-aware migration. Explicit rebuild is the separate user/system-requested reconstruction exception.
 
