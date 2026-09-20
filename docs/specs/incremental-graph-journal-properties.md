@@ -13,9 +13,9 @@ These layers have different algebraic behavior.
 
 ## Same-version retained-information order
 
-For compatible retained journals J and K in one current format, `J <= K` iff every writer prefix in J is a prefix of the same writer in K and overlapping records have identical canonical meaning.
+For compatible supported retained journals J and K in one current format, `J <= K` iff every writer prefix in J is a prefix of the same writer in K.
 
-Overlap disagreement is a fork, not another graph conflict.
+Shared-prefix canonical equality is supplied by `incremental-graph-journal-theorems.md` Laws 8 and 8a; it is not an additional per-operation overlap scan. Same-ID disagreement, if encountered outside that supported domain, is corruption rather than another graph conflict.
 
 ## Causally closed prefix journals
 
