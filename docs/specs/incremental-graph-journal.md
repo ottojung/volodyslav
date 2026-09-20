@@ -110,8 +110,6 @@ Conceptually, positive proof comes from one replay-selected certificate while pr
 
 ## Hard stale, soft stale, and deletion
 
-Journal 3 has enough provenance to avoid the old input-arity keep/delete heuristic.
-
 For current cached K:
 
 - if a required direct input is absent -> K is structurally non-materializable and synchronization authors DeleteEvent over the dependent closure;
