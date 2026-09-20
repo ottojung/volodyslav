@@ -732,7 +732,7 @@ Call replay after M1 `P1`.
 For each target-present K define:
 
 ```text
-PotentialValid(K) = eligibleEffectiveProofUnion_P1(K)
+eligibleEffectiveProofUnion_P1(K)
 TargetValid(K)    = semantic incoming validity edges in Gtarget
 ```
 
@@ -755,7 +755,7 @@ This is semantic node invalidation, not a certificate-selection trick.
 Otherwise, for every incoming edge that any eligible retained certificate for the preserved occurrence can currently prove but the migration target must not expose:
 
 ```text
-D in PotentialValid(K) - TargetValid(K)
+D in eligibleEffectiveProofUnion_P1(K) - TargetValid(K)
 ```
 
 author:
@@ -772,7 +772,7 @@ A `proof(V,D)` barrier retires only `D -> K` for exact occurrence V until causal
 
 Concurrent barriers compose by removing the union of their named edges. Therefore independent migrations weakening the same preserved occurrence do not destroy unrelated proof.
 
-Compute the barrier set from the fixed P1 cut before authoring M2 barriers. Since `PotentialValid(K)` is the union of effective proof edges over **all** P1-eligible certificates for the preserved ValueId, every already-retained certificate is prevented from exposing a non-target edge after certificate selection changes. Proof barriers do not make an ineligible certificate eligible. A later migration-authored target certificate is causally after the barriers and may re-prove only target edges. Thus one barrier pass over `PotentialValid(K) - TargetValid(K)` is complete.
+Compute the barrier set from the fixed P1 cut before authoring M2 barriers. Since `eligibleEffectiveProofUnion_P1(K)` is the union of effective proof edges over **all** P1-eligible certificates for the preserved ValueId, every already-retained certificate is prevented from exposing a non-target edge after certificate selection changes. Proof barriers do not make an ineligible certificate eligible. A later migration-authored target certificate is causally after the barriers and may re-prove only target edges. Thus one barrier pass over `eligibleEffectiveProofUnion_P1(K) - TargetValid(K)` is complete.
 
 This union is negative-maintenance analysis only; migration still never combines positive proof from different certificates.
 
