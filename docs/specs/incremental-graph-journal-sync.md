@@ -9,7 +9,7 @@ For an already-established writable receiver the conceptual operation is:
 ```text
 open one stable compatible JournalSnapshot
 copy every missing foreign-writer suffix
-validate immutable history and causal closure
+validate newly admitted history/causal closure while relying on supported-prefix identity
 normalize only required IncrementalGraph semantic transitions
 project final Journal
 atomically publish Journal + projection
