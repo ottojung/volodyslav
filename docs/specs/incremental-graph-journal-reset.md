@@ -324,7 +324,7 @@ Pass 1 domain traversal, Pass 2 eligible-certificate/`PotentialValid(K)` evaluat
 
 `PotentialValid(K)` is computed per node by streaming/folding that node's eligible certificate and invalidation history; the declarative union does not imply a global in-memory set.
 
-As with synchronization, graph-sized derived graph/index state independently required by IncrementalGraph correctness is allowed, and graph-sized whole-replica **non-validation** work may still occur where correctness requires it. Historical validation/replay attributable to reset remains bounded by newly admitted/affected state C under `$id-6845129073418625`; unrelated retained Journal history is not rescanned. This is compatible with the deferred end-to-end running-time work in `$id-3572255392439745`, because that deferral does not permit history-wide revalidation.
+As with synchronization, graph-sized derived graph/index state independently required by IncrementalGraph correctness is allowed, and graph-sized whole-replica **non-validation** work may still occur where correctness requires it. Historical validation/replay attributable to reset remains bounded by newly admitted/affected state C under `$id-6845129073418625`; unrelated retained Journal history is not rescanned. This is compatible with `$id-3572255392439745`: that intent defers only end-to-end running time, while the historical-validation bound comes from `$id-6845129073418625`.
 
 ## Resulting projection
 
