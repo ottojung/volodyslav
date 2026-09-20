@@ -36,8 +36,7 @@ For ValueEvent at least:
 - NodeKey is canonical/valid;
 - NodeIdentifier is valid;
 - payload is valid current-version `ComputedValue`;
-- timestamps are valid canonical instants;
-- `createdAt <= modifiedAt`;
+- timestamps are valid canonical instants; their relative order is unconstrained;
 - reason is valid.
 
 Other event/record variants likewise validate all enum/body fields for the current version.
