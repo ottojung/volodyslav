@@ -141,7 +141,7 @@ Supported Journal version upgrades follow the canonical version chain in `increm
 
 ### Semantic occurrence identity
 
-Occurrence-preserving decisions (`keep`, `invalidate`, proof/freshness/schema-only changes, representation-only format rewrite) preserve the ValueId. `keep` also preserves target-shape-compatible source replay proof and freshness even when the occurrence is recursively stale. A new ValueEvent is reserved for actual create/replace occurrence changes.
+Occurrence-preserving decisions (`keep`, `invalidate`, proof/freshness/schema-only changes, representation-only format rewrite) preserve the ValueId. For `keep`, source proof/freshness survives only under the occurrence-provenance rule in `incremental-graph-journal-migrations.md` §11a: a preserved value is never certified against a newly created/replaced input occurrence it did not observe. A new ValueEvent is reserved for actual create/replace occurrence changes.
 
 Independent genuine replacement migrations may create different replacement ValueIds; later synchronization selects normally and may stale dependents naming a losing replacement. This is accepted.
 
