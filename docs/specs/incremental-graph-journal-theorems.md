@@ -254,25 +254,29 @@ When local pre-Journal fingerprint equals `artifact.creatorWriter`, creator-resu
 
 A joining legacy occurrence which did not observe the canonical occurrence remains concurrent with it even though bootstrap code reads the artifact. Its conflict authority derives from persisted legacy `modifiedAt`, not upgrade time.
 
-## Law 28: exact-shared bootstrap validity is conservative intersection
+## Law 28: exact-shared bootstrap proof is conservative and occurrence-sensitive
 
 For an exact occurrence V shared by canonical and joining legacy state:
 
 ```text
-JoinedValid(K) = CanonicalValid(K) intersect JoiningValid(K)
+SharedAdmissibleValid(K) =
+    CanonicalValid(K) intersect JoiningValid(K)
 ```
 
-Canonical certificate remains the positive basis. For every canonical edge D absent from joining proof, bootstrap authors `proof(V,D)`. Joining-only proof never strengthens the shared occurrence.
+This is the maximum edge set bootstrap may preserve, not a claim that every such edge is valid after conflict selection. Canonical proof remains occurrence-specific: final replay requires the retained certificate basis ValueId for D to equal the currently selected ValueId of D. If a joining input occurrence wins while canonical V's certificate names another occurrence, the edge is invalid and V may become hard stale.
 
-## Law 29: exact-shared bootstrap freshness is conservative union of stale evidence
+For every canonical edge D absent from joining proof, bootstrap authors `proof(V,D)`. Joining-only proof never strengthens the shared occurrence, and bootstrap does not retarget the canonical certificate to a different joining input occurrence.
+
+## Law 29: exact-shared bootstrap stale evidence is conservative
 
 For exact shared V:
 
 ```text
-joinedStale(V) = canonicalStale(V) OR joiningStale(V)
+joinedSharedStaleEvidence(V) =
+    canonicalStale(V) OR joiningStale(V)
 ```
 
-An uncovered value-scoped bootstrap invalidation remains/gets authored after proof-edge barriers when required. A fresh joining copy cannot clear canonical stale evidence.
+An uncovered value-scoped bootstrap invalidation remains/gets authored after proof-edge barriers when this direct stale evidence is present. This is not an exact equation for final replay freshness: V may also be stale because its retained proof basis does not match a selected input occurrence or because an input is stale. A fresh joining copy cannot clear canonical stale evidence.
 
 ## Law 30: bootstrap persists recursive-only staleness
 
