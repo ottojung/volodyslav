@@ -601,7 +601,7 @@ Identity-specific cases:
 - representation-only rewrite uses `keep` plus the canonical codec;
 - explicit `invalidate()` preserves cached occurrence ValueId and authors a true node-scoped invalidation;
 - schema/proof/freshness-only changes preserve ValueId and author no replacement ValueEvent unless the semantic occurrence itself is genuinely replaced/created;
-- `create`/genuine semantic replacement creates new ValueId;
+- exercise the explicit `replace` decision according to `incremental-graph-journal-migrations.md` §11 and require the M1–M3/postcondition behavior defined there;
 - independent true replacements may later stale dependents naming losing occurrence.
 
 ### Canonical migration-chain regression
