@@ -262,7 +262,6 @@ Acceptance:
 - Journal-aware migration is the normal lifecycle path permitted O(H) historical validation;
 - bootstrap/absent-restoration cutover does not add a full retained-history revalidation pass merely to re-prove already committed history;
 - explicit rebuild/maintenance may scan H because reconstruction itself is requested;
-- known graph/Journal mismatch not exposed;
 - valid authoritative Journal history may rebuild derived projection/indexes during explicit maintenance;
 - rebuild is not permitted to repair missing/truncated authoritative Journal history or local rollback;
 - invalid/known-incomplete history encountered by explicit validation is rejected;
