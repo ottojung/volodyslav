@@ -253,21 +253,14 @@ The running release is not required to retain legacy bootstrap support forever. 
 
 Replicas expected to synchronize after Journal introduction use one canonical semantic bootstrap history as the shared ValueId basis for occurrences equal to the canonical cut.
 
-The configured transport-neutral cohort bootstrap source first answers:
+Canonical-bootstrap query/publication arbitration is specified normatively in `incremental-graph-journal-migrations.md` §4.
 
-1. **canonical artifact exists** — validate it, then choose creator-resume or ordinary join based on writer identity;
-2. **source definitively does not exist** — stage a deterministic canonical candidate, but do not cut over;
-3. **query failed or result is indeterminate** — fail and MUST NOT create competing canonical history.
+The lifecycle consequences are:
 
-A definite-absence query is not first-creator arbitration. The creator must conditionally publish the staged candidate through `publishCanonicalBootstrapIfAbsent`, whose semantic outcomes are:
-
-1. **Published(B)** — B is the one durable canonical artifact; after validating that B is the staged candidate, local creator cutover may proceed;
-2. **AlreadyExists(B)** — another attempt already selected the canonical artifact; discard the losing candidate and use creator-resume iff B belongs to the local fingerprint, otherwise ordinary join;
-3. **IndeterminateOrError** — do not cut over. Keep the supported pre-Journal database selected on disk, but fail startup before graph APIs are exposed and re-query before any retry; no Journal-3-controlled legacy mutation occurs while the publication outcome is unresolved.
-
-This conditional publication is the arbitration required by `$id-1847369205416728`: concurrent distinct candidates cannot both become accepted canonical histories for one cohort.
-
-The creator freezes its candidate at the exact frontier immediately after bootstrap. Ordinary Journal authoring remains disabled until conditional publication returns `Published` and local cutover succeeds.
+- no local Journal cutover or ordinary Journal authoring occurs until that owned procedure has selected a durable canonical artifact;
+- an unresolved publication outcome leaves the supported pre-Journal database selected and startup fails before graph APIs are exposed;
+- retry re-queries/resolves the canonical artifact through the owned procedure before another publication attempt or cutover; and
+- no Journal-3-controlled legacy mutation occurs while the publication outcome is unresolved.
 
 Before create-resume/join interpretation require:
 
