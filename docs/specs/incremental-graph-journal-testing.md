@@ -552,7 +552,8 @@ joining: exact same V but K was explicitly invalidated, so D->K absent and K sta
 Expected:
 
 - V is reused;
-- joined validity is `canonicalValid ∩ joiningValid`, so D->K is invalid;
+- `canonicalValid ∩ joiningValid` is the maximum admissible edge set; final replay validity also requires the retained certificate's basis ValueId to match the selected input occurrence;
+- here D->K is invalid because joining lacks the edge;
 - join authors `proof(V,D)` bootstrap barrier rather than a strengthening validation;
 - joined V is persistently stale;
 - `pull(K)` cannot take cache-revalidation solely from the canonical proof; K must recompute/revalidate according to the remaining effective proof.
