@@ -164,14 +164,9 @@ One immutable `CanonicalBootstrapSnapshot` captures exactly the original creator
 
 ### Join proof and freshness
 
-For exact shared occurrence V:
+For exact shared occurrence V, bootstrap uses the canonical/joining validity intersection only as the **maximum admissible edge set**, and canonical OR joining stale state as direct stale-marker evidence. Final validity/freshness remain replay-derived and occurrence-sensitive.
 
-```text
-joinedValid = canonicalValid intersect joiningValid
-joinedStale = canonicalStale OR joiningStale
-```
-
-Canonical certificate remains the positive basis. `proof(V,D)` barriers remove canonical edges absent on the joining side; joining-only proof never strengthens the shared occurrence merely because that host upgrades later.
+Canonical certificate remains the positive basis. `proof(V,D)` barriers remove canonical edges absent on the joining side; joining-only proof never strengthens or retargets the shared occurrence. If a different joining input occurrence wins selection, the retained canonical basis may mismatch it and make V hard stale even though both legacy graphs contained that semantic edge.
 
 After direct roots, bootstrap persists recursive-only stale dependents with `value(V)` markers when own effective proof is complete.
 
