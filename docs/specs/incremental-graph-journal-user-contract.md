@@ -177,7 +177,7 @@ If the reset source is ahead for the receiver's own writer, the user-visible fai
 
 Reset retains history and establishes the source projection relative to all history it observed. A compatible receiver/source union may be temporarily non-projectable because Value/Delete winners mix across replicas; reset uses raw deterministic head selection for its first occurrence/presence repair rather than sync-normalizing or rejecting that staging union.
 
-- matching target occurrence -> preserve ValueId;
+- raw-union selected occurrence already matches target immutable occurrence state -> preserve that raw-union selected ValueId, even if the source projection names a different ValueId;
 - actual occurrence difference -> new reset ValueEvent;
 - every `D in eligibleEffectiveProofUnion(K) - TargetValid(K)` for preserved V -> `proof(V,D)` barrier;
 - exact target proof -> validation as needed;
