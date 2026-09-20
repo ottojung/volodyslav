@@ -510,7 +510,7 @@ interface IncrementalGraph {
 **REQ-IFACE-07 (getModificationTime):** `getModificationTime(nodeName, bindings?)` MUST return the `DateTime` at which the node instance's stored semantic value last changed. MUST throw `MissingTimestampError` if the node instance has never been computed or if no timestamp record exists for it.
 
 **REQ-IFACE-08 (Timestamp Invariants):**
-* `getCreationTime(N, B) <= getModificationTime(N, B)` for any materialized node instance `N@B`.
+* `getCreationTime(N, B)` and `getModificationTime(N, B)` are persisted physical timestamps; no ordering relation between them is required. Synchronization may import a future-skewed creation time and a later local recomputation may record an earlier wall-clock modification time.
 * `getCreationTime(N, B)` MUST NOT change once set.
 * `getModificationTime(N, B)` is a version timestamp for the stored semantic value.
 * A **new timestamp record** is created when a semantic value is first stored for a node (including migration `create` and the node's initial computation). `createdAt` and `modifiedAt` are both set to the current time at this point.
