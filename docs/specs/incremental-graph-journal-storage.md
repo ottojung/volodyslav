@@ -180,6 +180,30 @@ The following state is part of the atomically published active Journal/projectio
 
 Every ordinary local publication and every maintenance cutover which selects a new active pair updates/persists the applicable values atomically with that pair. Routine open reads this metadata directly; it does not reconstruct local writer head, allocator watermark, or authority high-water by scanning retained Journal history.
 
+## Change-bounded proof summary
+
+To satisfy `$id-6845129073418625` without rescanning retained certificate history, active/staged Journal state provides an incrementally maintained derived summary equivalent to:
+
+```text
+eligibleProofEdgeCount(K,V,D) =
+    number of current-shape-compatible ValidateEvents C
+    for node K and occurrence V
+    which are eligible under current node-invalidations
+    and for which basis entry D is effective against
+    the current input occurrence and proof barriers
+```
+
+For the currently selected occurrence V of K:
+
+```text
+D in eligibleEffectiveProofUnion(K)
+    iff eligibleProofEdgeCount(K,V,D) > 0
+```
+
+Counts are required rather than a boolean because one certificate may cease to be eligible/effective while another still proves the same edge. The summary is derived state, never semantic authority.
+
+The active summary, or an observationally equivalent indexed representation, is updated incrementally/durably whenever publication or maintenance changes a relevant certificate, invalidation/barrier, selected occurrence, current input ValueId, or schema/input shape. Imported/reset-authored records update a staged summary before cutover. Journal-aware migration may rebuild it while traversing H. A missing/stale summary requires explicit rebuild/maintenance; reset/synchronization/routine open MUST NOT fall back to scanning unrelated retained history.
+
 ## Derived indexes
 
 Optional rebuildable indexes may include:
