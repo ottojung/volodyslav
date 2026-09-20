@@ -207,8 +207,13 @@ After Pass 1 every source-present node has a final target occurrence `resetValue
 For each source-present K define:
 
 ```text
-PotentialValid(K) =
-    eligibleEffectiveProofUnion_P1(K)
+PotentialValid(K) = {
+    D | eligibleProofEdgeCount_P1(
+            K,
+            resetValueId(K),
+            D
+        ) > 0
+}
 
 TargetValid(K) = {
     D | PS contains semantic validity edge D -> K
