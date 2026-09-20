@@ -418,7 +418,7 @@ exactly when the source snapshot frontier is already covered by the receiver's r
 
 Thus `changed` describes whether reset publishes any persistent Journal/database change, not merely whether the receiver authors a new semantic record.
 
-After one successful reset, every pre-reset eligible certificate is already barriered on every non-target edge it could expose, and any reset-authored target certificate is causally after those barriers and proves only target edges. Therefore a second reset to the unchanged source computes no new unwanted edge in `eligibleEffectiveProofUnion_P1 - TargetValid`; if the selected certificate already has the required target proof/freshness coverage, it authors no barrier or validation.
+After one successful reset, every pre-reset eligible certificate is already barriered on every non-target edge it could expose, and any reset-authored target certificate is causally after those barriers and proves only target edges. Therefore a second reset to the unchanged source computes no new unwanted edge in `eligibleEffectiveProofUnion_P1(K) - TargetValid(K)`; if the selected certificate already has the required target proof/freshness coverage, it authors no barrier or validation.
 
 Repeated reset therefore cannot create an unbounded chain of equivalent ValueEvents/ValidateEvents/Deletes.
 
