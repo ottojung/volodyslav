@@ -221,7 +221,7 @@ When an optional history-proportional index is used to obtain the change-bounded
 
 ## Stable local snapshots
 
-A local `JournalSyncSource` supplies one immutable committed state containing exact version/schema, localWriter, frontier, and corresponding records.
+A local `JournalSyncSource` supplies one immutable committed state containing exact version/schema, localWriter, frontier, corresponding records, and the matching committed materialized projection exposed through `JournalSnapshot.projection`.
 
 That ordinary snapshot is distinct from both:
 
