@@ -194,7 +194,7 @@ D in eligibleEffectiveProofUnion(K)
     iff eligibleProofEdgeCount(K,V,D) > 0
 ```
 
-Counts are required rather than a boolean because one certificate may cease to be eligible/effective while another still proves the same edge. The summary is derived state, never semantic authority.
+`eligibleProofEdgeCount` is only the incrementally maintained index representation of replay's `eligibleEffectiveProofUnion`; it is not a third semantic proof relation. Counts are required rather than a boolean because one certificate may cease to be eligible/effective while another still proves the same edge. The summary is derived state, never semantic authority.
 
 The active summary, or an observationally equivalent indexed representation, is updated incrementally/durably whenever publication or maintenance changes a relevant certificate, invalidation/barrier, selected occurrence, current input ValueId, or schema/input shape. Imported/reset-authored records update a staged summary before cutover. Journal-aware migration may rebuild it while traversing H. A missing/stale summary requires explicit rebuild/maintenance; reset/synchronization/routine open MUST NOT fall back to scanning unrelated retained history.
 
