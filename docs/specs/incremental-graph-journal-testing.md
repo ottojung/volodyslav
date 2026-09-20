@@ -311,7 +311,7 @@ C2 lower authority:  {A:A0, B:B1} -> effective {B}
 target validity: {}
 ```
 
-C1 initially wins. Reset MUST compute `PotentialValid(K)={A,B}` across all eligible certificates, author `proof(V,A)` and `proof(V,B)` barriers, and finish with zero incoming validity. It MUST NOT barrier only A and allow C2 to expose B. Positive replay proof still comes from one certificate; the union is used only for negative barrier selection.
+C1 initially wins. Reset MUST compute `eligibleEffectiveProofUnion_P1(K)={A,B}` across all eligible certificates, author `proof(V,A)` and `proof(V,B)` barriers, and finish with zero incoming validity. It MUST NOT barrier only A and allow C2 to expose B. Positive replay proof still comes from one certificate; the union is used only for negative barrier selection.
 
 Repeat the same reset against the unchanged source and require no new proof barrier or ValidateEvent.
 
@@ -760,7 +760,7 @@ Construct fixtures with a very large unrelated retained-history prefix H and a s
 
 - synchronization may read/validate only imported source suffix records, receiver-authored normalization records, retained summaries/index entries they reference, and the affected projection/index closure; a request to rescan unrelated old records fails the test;
 - reset reads its target from the same-cut committed source projection, may iterate graph-sized projection state as non-validation work, and may read source Journal records only from missing imported ranges; requesting old source history merely to compute PS fails the test;
-- reset derives its current/target domain from current-head/projection state rather than historical Value/Delete scans, and obtains `PotentialValid` from the maintained counted proof summary; any fallback which folds unrelated certificate/invalidation history fails the test;
+- reset derives its current/target domain from current-head/projection state rather than historical Value/Delete scans, and obtains `eligibleEffectiveProofUnion_P1` from the maintained counted proof summary; any fallback which folds unrelated certificate/invalidation history fails the test;
 - reset otherwise has the same constraint for imported source records, reset-authored records, and its affected closure;
 - ordinary local publication validates only its new batch/projection delta and must not request unrelated retained history;
 - bootstrap publication/cutover and absent restoration validate their own source/artifact/cutover contract without adding a full retained-history pass;
