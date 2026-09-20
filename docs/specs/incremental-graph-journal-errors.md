@@ -137,14 +137,6 @@ Examples:
 
 Fail candidate cutover; mutable graph bytes are not repair authority.
 
-## JournalProjectionMismatchError
-
-Meaning:
-
-> Existing derived graph bytes disagree with `project(retainedJournal)` while authoritative history may still be valid.
-
-Ordinary graph exposure stops until derived state is rebuilt/validated. If replay itself fails, surface the underlying authoritative error.
-
 ## JournalPublicationError
 
 Meaning:
