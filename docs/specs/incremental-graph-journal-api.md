@@ -28,11 +28,17 @@ A committed database pairs one retained Journal with its matching projection and
 ## JournalSnapshot
 
 ```text
+ProjectionReader {
+    get(nodeKey) -> ProjectedNodeState | absent
+    iteratePresentKeys() -> AsyncIterable<NodeKey>
+}
+
 JournalSnapshot {
     databaseVersion: Version
     graphSchemeString: string
     localWriter: JournalAuthor
     frontier: JournalFrontier
+    projection: ProjectionReader
 
     get(author, sequence) -> JournalRecord | undefined
     iterate(author, afterExclusive, throughInclusive)
