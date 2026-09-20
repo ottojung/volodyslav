@@ -399,7 +399,7 @@ C1 initially wins, so replay's current validity is only A->K. The reset target p
 Using only the selected certificate would barrier A and then expose B when C2 becomes the winner. Journal 3 instead computes:
 
 ```text
-PotentialValid(K) = eligibleEffectiveProofUnion(K) = {A,B}
+eligibleEffectiveProofUnion_P1(K) = eligibleEffectiveProofUnion(K) = {A,B}
 TargetValid(K) = {}
 ```
 
