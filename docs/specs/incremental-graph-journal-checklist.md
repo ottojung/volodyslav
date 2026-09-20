@@ -245,7 +245,7 @@ Acceptance:
 - proof barrier for `(V,D)` does not taint V2 or unrelated V edges;
 - proof/freshness/schema change alone creates no ValueEvent;
 - target persistent stale with own effective proof ready gets value marker even if recursive input staleness already makes replay stale;
-- genuine create/replace creates new ValueId;
+- the explicit `replace` decision is implemented according to `incremental-graph-journal-migrations.md` §11 and covered through M1–M3;
 - independent replacements may later conflict/stale dependents as accepted;
 - no particular peer required for migration;
 - target replay equals migration target including stale persistence;
