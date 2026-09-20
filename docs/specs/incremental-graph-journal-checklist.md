@@ -188,6 +188,7 @@ Acceptance:
 Acceptance:
 
 - source target/compatibility from one held snapshot;
+- compatible supported receiver/source writer histories are prefix-comparable and fork-free by `incremental-graph-journal-theorems.md` Laws 8/8a; reset does not rescan historical overlap;
 - target PS is read from the same-cut committed `JournalSnapshot.projection`; reset does not replay source history to derive PS;
 - own-writer-ahead reset behavior matches `incremental-graph-journal-reset.md` §Preconditions and `incremental-graph-journal-lifecycle.md` §5;
 - raw receiver/source union is inspected through `selectedHeads(J0)`; reset does not require `project(J0)` before Pass 1 structural repair;
