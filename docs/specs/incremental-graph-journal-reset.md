@@ -116,7 +116,9 @@ selectedPresent(H0) = {
 }
 ```
 
-Historical keys which are selected-absent in H0 and absent in PS require no reset action and are not in ResetDomain. Historical records outside the current source projection remain retained. Enumerating ResetDomain may use current projection/head state and graph-sized iteration; it MUST NOT require scanning historical Value/Delete records merely to rediscover keys which are currently absent.
+Historical keys which are selected-absent in H0 and absent in PS require no reset action and are not in ResetDomain. Historical records outside the current source projection remain retained.
+
+A conforming implementation derives `selectedPresent(H0)` by starting from the receiver's already-materialized/current-head state and applying the imported Value/Delete delta for affected keys; adding records cannot make a previously losing older Value/Delete event become a new head. Enumerating `present(PS)` uses the source snapshot's committed projection. Graph-sized projection iteration is permitted as non-validation work, but reset MUST NOT scan historical Value/Delete records merely to rediscover currently absent keys.
 
 ## Pass 1: establish target presence/value occurrences
 
