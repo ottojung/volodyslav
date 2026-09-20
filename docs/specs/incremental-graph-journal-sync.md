@@ -224,7 +224,7 @@ The checks below apply to newly imported records, receiver-authored normalizatio
 Before cutover require:
 
 - held source version/schema exactly matched receiver metadata;
-- newly admitted writer suffixes are contiguous with their retained prefixes and contain no conflicting overlap;
+- newly admitted writer suffixes are contiguous with their retained prefixes; shared historical overlap is not rescanned because Laws 8/8a guarantee prefix identity for compatible supported inputs;
 - contexts of newly admitted/authored records have exact own prefix and transitive closure against retained context summaries/indexes;
 - authority of newly admitted/authored records extends happened-before using persisted/derived high-water and causal indexes;
 - ValueId references introduced by newly admitted/authored records satisfy reference causality;
