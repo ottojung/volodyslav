@@ -191,7 +191,7 @@ This does not substitute for pre-Journal creator-resume.
 
 ## Reset tests
 
-Generated reset tests cover held-snapshot compatibility, old-history retention, repeat no-op, ValueId preservation, exact target absence, partial validity, stale persistence, and unseen later concurrency.
+Generated reset tests cover held-snapshot compatibility, old-history retention, repeat no-op, preservation of the matching raw-union selected ValueId, exact target absence, partial validity, stale persistence, and unseen later concurrency.
 
 ### Reset own-writer-behind rejection
 
