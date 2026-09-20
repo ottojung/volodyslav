@@ -286,7 +286,7 @@ Every replica starting from the same retained record body at v and reaching t th
 
 Therefore every pre-existing shared `JournalRecordId` has one byte-identical canonical body at t, independent of which application releases the replica happened to run between v and t.
 
-A release may drop support for an old source version, but while support remains it cannot redefine that source's canonical successor path or edge semantics. Any fused migration implementation is valid only if its complete retained Journal is exactly the same as stepwise canonical execution.
+A release may drop support for an old source version, but while support remains it cannot redefine that source's canonical successor path or edge semantics. Supported migration executes each canonical edge stepwise.
 
 Thus later synchronization of independently upgraded replicas does not turn supported version skipping into `JournalForkError`.
 
