@@ -54,9 +54,50 @@ happenedBefore(E,F) => authorityCompare(E,F) < 0
 
 Every ValueId reference names a ValueEvent in the referencing event's causal past and for the expected semantic node. This includes validation targets/bases, `value(V)` invalidations, and `proof(V,D)` barriers.
 
-## Law 8: compatible prefix union
+## Law 8: supported writer histories are fork-free
 
-For mutually compatible same-version causally closed prefix Journals, immutable prefix union is idempotent, commutative, and associative. Same-ID disagreement is a fork.
+Let R and S be Journal states which are both reachable through supported lifecycle transitions and which may coexist or later be combined by a supported operation.
+
+For every writer A and every sequence coordinate q retained by both states:
+
+```text
+R[A:q] == S[A:q]
+```
+
+in canonical current-format semantic meaning.
+
+Equivalently, the retained history for one writer is prefix-comparable across compatible supported states: one retained writer stream is a prefix of the other. Therefore two supported states cannot share A:1..k and then contain different records at A:k+1, nor can they disagree at any earlier coordinate below both frontiers.
+
+This follows from the lifecycle/identity rules rather than an overlap scan:
+
+- one established writer appends through serialized immutable publication and never rewrites an existing coordinate;
+- synchronization/reset retain foreign records unchanged and never author under a foreign writer;
+- independently live clones of one writer identity are unsupported;
+- continuation-safe absent restoration may resume an older prefix only when every discarded suffix is unable to re-enter any supported history;
+- bootstrap first-creator arbitration prevents two canonical creator histories from both becoming accepted;
+- Journal-aware migration follows one frozen deterministic canonical migration chain and preserves record IDs/meaning;
+- arbitrary rollback, partial restoration, mixed storage, and direct external mutation are outside the supported lifecycle; and
+- accidental `DatabaseFingerprint` collision is an accepted negligible risk under `$id-9051842763146802`; if distinct continuing histories with one fingerprint are actually observed, that pair is unsupported rather than a counterexample to this supported-state theorem.
+
+This is the distributed form of `$id-2567281946348705`.
+
+## Law 8a: partial writer forks are impossible in supported state
+
+For compatible supported R and S and any writer A, define:
+
+```text
+m = min(frontierR[A], frontierS[A])
+```
+
+Then their prefixes A:1..m are identical. In particular there is no supported state pair with an agreeing prefix A:1..k followed by distinct A:k+1 records while both continuations remain eligible to coexist or later combine.
+
+Thus ordinary synchronization/reset may rely on shared-prefix identity and validate only newly admitted/affected state as required by `$id-6845129073418625`; they are not required to rescan historical overlap merely to re-prove this lifecycle theorem.
+
+If conflicting same-ID evidence is nevertheless encountered while validating newly affected state or during explicit rebuild/maintenance, the input is corrupted/unsupported and is rejected as `JournalForkError`. The implementation does not reconcile such evidence using payload equality, authority, source preference, Git ancestry, or ID remapping.
+
+## Law 8b: compatible prefix union
+
+For compatible supported same-version causally closed prefix Journals, immutable prefix union is idempotent, commutative, and associative. Laws 8 and 8a establish that their shared overlap already agrees.
 
 ## Law 9: established local writer history does not roll back
 
