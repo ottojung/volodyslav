@@ -338,7 +338,6 @@ JournalRecordValidationError
 JournalVersionCompatibilityError
 JournalWriterBehindError
 JournalProjectionError
-JournalProjectionMismatchError
 JournalPublicationError
 JournalSourceReadError
 InvalidMigrationDecisionError
