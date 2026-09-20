@@ -174,7 +174,7 @@ The codec's totality and global NodeKey-injectivity contract is owned by `increm
 
 Representation-only change is performed by the canonical whole-history codec. A selected occurrence whose semantic meaning survives uses `keep`; there is no second value-producing representation decision.
 
-Journal-aware semantic changes use `invalidate`, `delete`, `create`, or another explicit semantic transition rather than redefining immutable historical bytes.
+Journal-aware semantic decision semantics, including genuine replacement, are owned by `incremental-graph-journal-migrations.md` §11 rather than redefined here.
 
 ## Migration preserves occurrence identity when occurrence survives
 
