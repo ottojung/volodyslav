@@ -320,6 +320,8 @@ Thus the only normal lifecycle validation path allowed to validate every retaine
 
 Any history-proportional derived index needed to achieve these bounds must be maintained incrementally/durably as Journal state changes, or rebuilt only through an explicit maintenance transition. Missing optional indexes do not authorize an ordinary local publication, sync/reset, or routine open to fall back to scanning unrelated retained history.
 
+For reset specifically, the held source snapshot exposes the source's already-committed projection for the same immutable cut, and the receiver maintains/indexes enough certificate/invalidation summary state to answer maintenance proof-union queries without folding unrelated retained history. These are mechanisms for satisfying the O(C) historical-validation contract; if the required derived state is unavailable, explicit rebuild/maintenance is required rather than relaxing the bound.
+
 ---
 
 $id-4173361406347342
