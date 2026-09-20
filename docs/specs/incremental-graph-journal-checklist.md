@@ -231,7 +231,6 @@ Acceptance:
 - every supported older Journal version has one complete canonical successor chain to the running version;
 - canonical edge semantics are frozen for as long as that source version remains supported; later releases carry the same codec/semantic migration definition rather than redefining an old edge;
 - skipped application releases still execute that canonical Journal chain semantically; no independent direct shortcut may change retained history;
-- any fused optimization produces exactly the same retained Journal, including intermediate migration-authored records, as stepwise canonical execution;
 - representation-only change uses `keep` plus the canonical codec;
 - the Journal 3 implementation must delete the legacy representation-rewrite path when this specification is implemented: `MigrationStorage.override()`, the `OverrideDecision` typedef, `OverrideConflictError`, and every `override` branch in `migration_runner.js` and `migration_validity.js`; no compatibility flag or unreachable duplicate mechanism remains;
 - `keep` preserves occurrence ValueId, timestamps, freshness, and target-shape-compatible source replay validity even when the node is stale;
