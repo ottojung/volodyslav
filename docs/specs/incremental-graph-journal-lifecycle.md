@@ -274,28 +274,7 @@ and require the semantic-identity bootstrap contract from §8.1. Incompatibility
 
 #### Creator resume
 
-If:
-
-```text
-canonical.creatorWriter == local DatabaseFingerprint
-and local state is still supported pre-Journal state
-```
-
-startup resumes interrupted canonical creation rather than joining as a second writer.
-
-It:
-
-1. reads exactly artifact records through `bootstrapFrontier`;
-2. projects the artifact with `localWriter = artifact.creatorWriter`;
-3. validates the still-local persisted legacy graph directly under the semantic-identity bootstrap interpretation; it does **not** rerun a migration callback;
-4. requires equality of presence, payloads, NodeIdentifiers, timestamps, freshness, validity, and allocator state required by the bootstrap contract;
-5. on mismatch fails `JournalBootstrapForkError` and authors/cuts over nothing;
-6. on equality installs exactly artifact history, reconstructs writer head/`last_node_index`/authority high-water/projection/indexes, and atomically cuts over; and
-7. resumes the ordinary migration gate from the installed Journal version.
-
-This closes both publication crash windows: publication may have succeeded before local cutover, or its response may have been lost. On restart the installation first re-queries the canonical source. If the durable artifact has the local creator writer, creator-resume applies; if another writer won, discard local staging and join; if the source still reports definite absence, retry the same deterministic candidate through conditional publication; indeterminate/error fails without cutover.
-
-A different fingerprint MUST NOT use creator-resume.
+Creator resume is specified by `incremental-graph-journal-migrations.md` §6.
 
 #### Ordinary joining installation
 
