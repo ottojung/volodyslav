@@ -70,7 +70,7 @@ A successful pairwise synchronization conceptually:
 
 Imported records retain their original writer identity/body. Receipt itself creates no adoption/acknowledgement event.
 
-A source may contain already-known local-writer records through the receiver's current local head; matching overlap is validated normally. A longer local-writer prefix is not imported into an existing receiver.
+A source may contain already-known local-writer records through the receiver's current local head. Matching historical overlap is guaranteed by `incremental-graph-journal-theorems.md` Laws 8 and 8a for compatible supported states and is not rescanned by ordinary synchronization. A longer local-writer prefix is not imported into an existing receiver.
 
 ## Full synchronization
 
