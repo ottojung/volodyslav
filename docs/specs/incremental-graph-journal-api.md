@@ -280,16 +280,7 @@ Bootstrap journals the already-persisted supported legacy graph directly; it doe
 
 Creator-resume is valid only for `artifact.creatorWriter`, installs exactly the artifact, compares directly against unchanged persisted legacy semantics, and authors no duplicate history.
 
-Join is historical merge, not reset. It:
-
-- reuses canonical ValueIds for exact shared occurrences;
-- converts local-only/different legacy occurrences as historical concurrent bootstrap values using legacy `modifiedAt` authority;
-- records locally-authored proof against the joining host's own legacy input occurrence ValueIds, not whichever input occurrences later win conflict selection;
-- treats legacy absence as no deletion evidence;
-- intersects exact-shared positive validity: canonical proof is the basis and `proof(V,D)` barriers remove canonical edges the joining side lacks;
-- never adds joining-only proof to an exact shared occurrence;
-- preserves exact-shared stale state if either side is stale; and
-- persists recursive-only stale dependents after direct proof/stale roots are represented.
+Join is historical merge, not reset. The exact-shared identity/proof/freshness merge and recursive stale handling are owned by `incremental-graph-journal-migrations.md` §§7.2–7.4; this API does not redefine those rules. Local-only/different legacy occurrences remain historical joining-writer evidence, and legacy absence remains non-deletion evidence as defined there.
 
 ## Journal-aware migration API boundary
 
