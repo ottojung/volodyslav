@@ -78,9 +78,16 @@ Generate small DAGs and short histories across 2–3 writers. Explore concurrent
 
 For every supported generated history assert deterministic replay and the laws in `incremental-graph-journal-theorems.md`.
 
-## Prefix-union property tests
+## Prefix-union and fork-impossibility property tests
 
-For compatible generated writer histories assert immutable prefix union is idempotent, commutative, associative, and rejects overlapping body disagreement.
+Generate states only through supported lifecycle transitions and, for every pair which may coexist or later combine, assert `incremental-graph-journal-theorems.md` Laws 8 and 8a:
+
+- for every writer A, the two retained A histories are prefix-comparable;
+- every coordinate below both frontiers has identical canonical meaning;
+- no generated pair can agree through A:1..k and diverge at A:k+1;
+- immutable prefix union is therefore idempotent, commutative, and associative without rescanning historical overlap.
+
+Separately inject an explicitly unsupported/corrupt same-ID disagreement and require explicit rebuild/maintenance validation to report `JournalForkError`. This corruption fixture is not a supported pairwise-sync/reset state and does not authorize O(H) historical overlap scanning in those operations.
 
 ## Stable source compatibility tests
 
