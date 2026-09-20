@@ -123,7 +123,7 @@ Publication semantics:
 
 1. **Published(B)** — B is now the one durable canonical artifact for the cohort. The caller may perform local creator cutover only after validating that B is the published form of its staged candidate.
 2. **AlreadyExists(B)** — another publication already won, or an earlier attempt by this same creator succeeded and its response was lost. Discard the losing staged candidate. If `B.creatorWriter == local DatabaseFingerprint`, enter creator-resume; otherwise perform ordinary join.
-3. **IndeterminateOrError** — the publication outcome is unknown or failed. Do not cut over locally and do not publish another distinct artifact. Keep the supported pre-Journal database active and resolve the outcome by re-querying before retrying.
+3. **IndeterminateOrError** — the publication outcome is unknown or failed. Do not cut over locally and do not publish another distinct artifact. Keep the supported pre-Journal database selected as the persisted active state, but fail this startup before graph APIs are exposed; resolve the outcome by re-querying before retrying. No Journal-3-controlled legacy mutation occurs while the publication outcome is unresolved.
 
 Semantically, for one cohort canonical slot, concurrent distinct candidates cannot both obtain `Published`. Any transport mechanism is acceptable if it implements that conditional-publication property.
 
