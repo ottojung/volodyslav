@@ -48,13 +48,14 @@ JournalSnapshot {
 
 Snapshot laws:
 
-1. version/schema, `localWriter`, frontier, and records belong to one immutable committed source cut;
+1. version/schema, `localWriter`, frontier, records, and `projection` belong to one immutable committed source cut;
 2. all remain stable for snapshot lifetime;
 3. `iterate(A,p,q)` yields exactly `A:(p+1)..q` when q is inside the captured frontier;
 4. ranges never silently skip coordinates;
 5. semantic events have immutable same-format bodies/contexts;
 6. retained history is contiguous and contexts are transitively closed;
-7. reads never invoke computors or mutate state.
+7. `projection` exposes the committed materialized IncrementalGraph projection for that exact cut and is observationally equal to `project(records through frontier)`; this equality is a committed-state invariant, not a requirement to replay the source history when opening the snapshot;
+8. reads never invoke computors or mutate state.
 
 A generic `JournalSnapshot` says nothing about whether it is suitable for restoring a completely absent installation and safely resuming the restored local writer.
 
