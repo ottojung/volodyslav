@@ -391,7 +391,7 @@ Canonical bootstrap: construct valid persisted legacy state containing K with `c
 
 Joining bootstrap: construct a joining legacy occurrence with `createdAt > modifiedAt` which differs from the canonical occurrence. J1 MUST author the historical joining ValueEvent with both joining legacy timestamps preserved exactly.
 
-Neither path may reject, reorder, clamp, or synthesize these timestamps merely to impose `createdAt <= modifiedAt`.
+Neither path may reject, reorder, clamp, or synthesize these timestamps merely to impose chronological ordering between the two persisted fields.
 
 ## Canonical bootstrap artifact tests
 
