@@ -163,9 +163,9 @@ Acceptance:
 
 - compatibility from held source snapshot;
 - every missing **foreign-writer** suffix imported;
-- overlap verified;
+- compatible supported inputs satisfy fork-free/prefix-comparable writer histories by `incremental-graph-journal-theorems.md` Laws 8/8a; ordinary sync does not rescan historical overlap;
 - own-writer-ahead handling matches `incremental-graph-journal-lifecycle.md` §5 and `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is unsupported state;
-- fork rejected;
+- same-ID disagreement actually encountered during bounded validation is rejected as unsupported corruption;
 - transfer/replay processing satisfies `$id-4924739474925738`; missing suffixes are incrementally iterable and never require the complete suffix/history in RAM;
 - imported records unchanged;
 - no computor execution or transport acknowledgement event.
