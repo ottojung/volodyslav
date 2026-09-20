@@ -103,7 +103,11 @@ This is distinct from:
 
 ## Immutable overlap law
 
-For every record ID retained on both sides, canonical current-format meaning must agree exactly. This enforces `$id-2567281946348705` when supported states are combined. Disagreement is `JournalForkError`; it is not repaired using payload equality, event authority, source preference, Git ancestry, or record-ID remapping.
+Shared-prefix identity is a **supported-lifecycle theorem**, not an O(history) synchronization check. For compatible supported receiver/source states, `incremental-graph-journal-theorems.md` Laws 8 and 8a guarantee that every writer's overlap is already identical and that partial writer forks cannot exist.
+
+Ordinary synchronization therefore does not rescan or compare the complete retained overlap merely to re-prove `$id-2567281946348705`. This is required by the change-bounded validation contract `$id-6845129073418625`.
+
+If same-ID disagreement is actually encountered while validating newly admitted/affected records or during explicit rebuild/maintenance, at least one input is outside the supported lifecycle domain. The operation rejects that evidence as `JournalForkError`; it is not repaired using payload equality, event authority, source preference, Git ancestry, or record-ID remapping.
 
 ## Foreign records remain foreign
 
