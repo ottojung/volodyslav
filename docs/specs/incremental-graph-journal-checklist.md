@@ -195,7 +195,7 @@ Acceptance:
 - ResetDomain is `selectedPresent(H0) ∪ present(PS)`; historical keys absent in both are not rediscovered by scanning Value/Delete history;
 - Pass 1 makes selected presence/immutable occurrence state equal the valid source target before the first affected-closure projection state observationally equal to `project(J1)`; unrelated retained history is not replayed/revalidated;
 - reset Pass 1/2/3 Journal-derived domains and propagation worklists satisfy `$id-4924739474925738`; complete reset/change/closure sets are not required as one in-RAM collection;
-- unchanged target occurrence preserves ValueId;
+- when H0 already has the target immutable occurrence state, reset preserves H0's selected ValueId; it does not require equality with PS.valueId(K);
 - new ValueEvent only for actual occurrence replacement;
 - reset obtains `eligibleEffectiveProofUnion(K)` from the required incrementally maintained per-occurrence/per-edge counted proof summary at the fixed post-value-repair cut; it does not fold retained certificate/invalidation history, and barriers every non-target edge any eligible retained certificate could expose using `Invalidate(scope=proof(V,D),reason=reset)`;
 - old proof cannot reintroduce a barriered edge;
