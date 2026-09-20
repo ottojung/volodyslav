@@ -337,17 +337,17 @@ If that local K occurrence was stale, follow its validation with `value(V)` boot
 
 #### Exact shared occurrences
 
-For an exact occurrence shared with the canonical basis, keep the canonical ValueId and merge positive proof by conservative intersection:
+For an exact occurrence shared with the canonical basis, keep the canonical ValueId and compute the **maximum admissible proof-edge set** conservatively:
 
 ```text
-CanonicalValid(K) = canonical semantic validity edges into K
-JoiningValid(K)   = joining legacy validity edges into K
-JoinedValid(K)    = CanonicalValid(K) intersect JoiningValid(K)
+CanonicalValid(K)       = canonical semantic validity edges into K
+JoiningValid(K)         = joining legacy validity edges into K
+SharedAdmissibleValid(K)= CanonicalValid(K) intersect JoiningValid(K)
 ```
 
-The canonical certificate remains the positive basis. Joining-only proof never strengthens it.
+This intersection is an edge-admissibility ceiling, **not** an assertion that every edge in it is valid in the final replay. Positive proof remains occurrence-sensitive.
 
-For every:
+The canonical certificate remains the positive basis. For every:
 
 ```text
 D in CanonicalValid(K) - JoiningValid(K)
@@ -363,12 +363,14 @@ InvalidateEvent {
 }
 ```
 
-No joining ValidateEvent is authored merely to strengthen proof for an exact shared occurrence.
+No joining ValidateEvent is authored merely to retarget an exact-shared occurrence's proof to a different joining input occurrence. Joining-only proof never strengthens it.
 
-Shared stale state is symmetric/conservative:
+After conflict selection, an admissible edge `D -> K` is actually valid only if replay's selected certificate for K names the **currently selected ValueId of D**. Thus if canonical K's certificate names D0 but a newer joining D1 wins, K's D edge is invalid and K is hard stale even when both legacy graphs contained a D -> K validity edge. Bootstrap does not manufacture proof for the cross-occurrence combination.
+
+Shared direct stale evidence is symmetric/conservative:
 
 ```text
-joinedSharedStale(K) =
+joinedSharedStaleEvidence(K) =
     canonicalStale(K) OR joiningStale(K)
 ```
 
@@ -378,9 +380,9 @@ After proof-edge barriers, ensure an **uncovered**:
 Invalidate(K, scope=value(Pc.valueId(K)), reason="bootstrap")
 ```
 
-exists whenever `joinedSharedStale(K)` is true.
+exists whenever `joinedSharedStaleEvidence(K)` is true.
 
-Thus a fresh joiner cannot clear canonical stale evidence, and a stale joiner can stale a canonical-fresh shared occurrence without changing its ValueId.
+This OR describes direct persisted stale evidence only; final freshness is still replay-derived. K may additionally be stale because the selected input occurrence does not match the retained proof basis or because an input is stale. Thus a fresh joiner cannot clear canonical stale evidence, a stale joiner can stale a canonical-fresh shared occurrence, and mixed input winners cannot manufacture freshness without changing K's ValueId.
 
 ### 7.4 Pass J2b — persist recursive-only staleness
 
@@ -483,7 +485,9 @@ For every source-present semantic node `Ks`, let `Kt = rewriteNodeKey(Ks)`. `Gco
 
 This is a conceptual bookkeeping view, not a second persisted migration and not a replay under the target semantic schema. It expresses the **source semantic state in target NodeKey representation** before semantic migration decisions are applied.
 
-Then compute semantic target graph `Gtarget` and append only records required so:
+Collect the Journal-aware semantic migration decisions, then construct semantic target graph `Gtarget` from `GconvertedBefore` according to §11a **before** M1–M3 author repair history. M1–M3 encode that already-sound target; they do not invent additional proof/freshness merely to make replay equal a desired graph.
+
+Then append only records required so:
 
 ```text
 Jafter = Jconverted + migration-authored records
@@ -624,9 +628,11 @@ These rules are Journal 3 target behavior. They do not redefine the currently sh
 
 ### `keep`
 
-Preserves the selected semantic occurrence and therefore its ValueId, timestamps, freshness, and every source-replay incoming validity edge whose certificate remains current-shape-compatible under the target input set.
+Preserves the selected semantic occurrence and therefore its ValueId and timestamps.
 
-A stale kept occurrence does **not** lose proof merely because it is stale. Journal history already distinguishes node invalidation, value-scoped stale state, proof-edge barriers, and recursive staleness. If target schema removes/changes an input edge, the resulting shape/proof difference is handled explicitly by M2 rather than by a generic stale-node heuristic.
+It does **not** assert that the preserved occurrence was validated against newly created/replaced target input occurrences. Source proof/freshness is carried into `Gtarget` only under the occurrence-provenance rule in §11a. A stale kept occurrence does not lose otherwise-valid proof merely because it is stale, but a fresh kept occurrence may become stale when a required target input occurrence changes.
+
+If target schema removes/changes an input edge, §11a determines which source proof edges remain semantically supportable and M2 encodes exactly that target proof; M2 is not allowed to repair a preserved occurrence by substituting a different input ValueId.
 
 Representation-only changes for that occurrence come from the canonical whole-history codec.
 
@@ -656,7 +662,9 @@ Resolve the source node `Ks` from `nodeIdentifier`, then `Kt = rewriteNodeKey(Ks
 - sets `modifiedAt` to the migration publication/finalization physical time;
 - authors a new `ValueEvent(reason="migration")` at Kt and therefore a new ValueId.
 
-The new occurrence then participates in M2/M3 exactly like any other target-present occurrence. Historical certificates for the old ValueId do not certify the replacement. Target proof/freshness is established by M2/M3, and dependents whose target proof names an input occurrence are repaired against the replacement ValueId through the ordinary target-repair rules.
+The new occurrence then participates in M2/M3 exactly like any other target-present occurrence. Historical certificates for the old ValueId do not certify the replacement. Because the replacement payload is explicit semantic migration-callback output, the new occurrence itself may receive target proof/freshness according to §11a.
+
+A preserved dependent is **not** repaired against this replacement ValueId merely because its target schema still contains the edge. If K is occurrence-preserved and one of its required inputs is replaced/created, §11a removes that edge from K's carried proof and K becomes stale unless K itself is explicitly created/replaced (or a future explicitly specified revalidation operation establishes new proof). M2 MUST NOT certify the old K occurrence against the replacement input occurrence.
 
 `replace` is semantic occurrence replacement, not representation rewrite. Pure representation changes remain codec + `keep`.
 
@@ -681,6 +689,41 @@ ValueEvent(reason="migration")
 and therefore a new ValueId. `create` allocates the new materialization identity according to the migration allocator rules; `replace` preserves the existing materialization identity as specified above.
 
 Schema/proof/freshness/database-format changes alone do not create a new ValueEvent.
+
+## 11a. Constructing Gtarget: occurrence and proof provenance
+
+Migration decisions determine target presence and occurrence identity before M1–M3:
+
+- `keep` and `invalidate` preserve the selected occurrence/ValueId;
+- `replace` and `create` establish a new target occurrence;
+- `delete` establishes absence.
+
+For an occurrence-preserved K which is not explicitly invalidated, target positive proof is derived from the **actual source proof provenance**, not from the desired target input list alone.
+
+For each direct target input edge `D -> K`:
+
+```text
+D in TargetValid(K)
+```
+
+may hold for preserved K only when:
+
+1. the transported source projection had an effective valid edge `D -> K` for K's preserved source occurrence; and
+2. D's target selected occurrence is the **same occurrence** as the transported source selected occurrence which that proof edge named.
+
+Equivalently, an occurrence-preserving input decision may carry the old proof edge forward; `create(D,...)` or `replace(D,...)` changes the input occurrence and therefore cannot be substituted into the proof of a kept K.
+
+Target-schema edge removal may project away old proof. Target-schema edge addition does not manufacture proof for the new edge. Unaffected source-provenance edges may remain partially valid.
+
+For a kept K, target freshness is therefore not copied blindly from source freshness. K may be target-fresh only if its own source stale state permits freshness, every required target edge is proven under the rule above, and every target input is fresh. A changed input occurrence makes preserved K hard stale until K itself is semantically re-established.
+
+An explicit `invalidate(K)` preserves K's occurrence but makes K target-stale under node invalidation semantics.
+
+A `create(K,...)` or `replace(K,...)` produces a new occurrence from explicit target-version migration-callback output. That new occurrence may be validated against the target-selected input occurrences because the migration decision itself is the semantic production of that value at the migration cut; this does not transfer proof from the old occurrence.
+
+If a migration callback/target builder requests validity or freshness for a preserved occurrence beyond these provenance rules, the migration is invalid and fails `InvalidMigrationDecisionError` before cutover.
+
+M2 and M3 are representation/repair passes for this already-constructed `Gtarget`. They MUST NOT add an edge or freshness fact which §11a does not permit.
 
 ## 12. Independent genuine replacements
 
