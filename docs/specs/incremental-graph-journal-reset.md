@@ -108,8 +108,12 @@ Define:
 
 ```text
 ResetDomain =
-    keys having any ValueEvent/DeleteEvent in J0
-    union keys present in PS
+    selectedPresent(H0)
+    union present(PS)
+
+selectedPresent(H0) = {
+    K | H0 selects a ValueEvent for K
+}
 ```
 
 Historical records outside the current source projection remain retained, but current selected state over this domain must become source-target-equivalent.
