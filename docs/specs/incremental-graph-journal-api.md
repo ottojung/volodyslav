@@ -71,6 +71,10 @@ JournalSyncSource {
 
 Synchronization/reset obtain compatibility metadata from the returned held snapshot itself. Earlier mutable metadata is insufficient.
 
+For ordinary synchronization/reset, the receiver and held source snapshot must belong to the same supported compatibility domain. By `incremental-graph-journal-lifecycle.md` §5 and `incremental-graph-journal-theorems.md` Laws 8/8a, their shared writer prefixes are already identical and prefix-comparable. `JournalSyncSource` is not an API for proving arbitrary untrusted historical bytes fork-free by rescanning retained overlap.
+
+If explicit validation encounters same-ID disagreement, that evidence is unsupported corruption and is reported as `JournalForkError`; ordinary change-bounded sync/reset need not search unrelated old overlap for it.
+
 A generic sync source does not repair or redefine the receiver's own local-writer history.
 
 ## JournalPublication
