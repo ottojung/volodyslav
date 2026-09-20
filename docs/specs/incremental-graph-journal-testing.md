@@ -695,7 +695,9 @@ For each current database version test golden fixtures, round trip, malformed-fi
 
 ## Corruption tests
 
-At the supported boundary which newly admits/constructs the offending records or explicitly validates retained history—ordinary local publication for its new batch, synchronization/reset import for newly admitted records, bootstrap construction/join, Journal-aware migration, or explicit rebuild/maintenance—reject stream gaps, same-ID disagreement, missing/transitively-open context, wrong own-prefix, authority not extending causality, bad validation references/bases, illegal ordinary `"unknown"`, invalid value/proof scope references, NodeIdentifier collision, decreasing writer-state watermark, mixed record formats, and evidence that an existing local writer has lost a surviving suffix.
+At the supported boundary which newly admits/constructs offending records—ordinary local publication for its new batch, synchronization/reset import for newly admitted records, bootstrap construction/join, or Journal-aware migration—reject structural/causal defects in that newly affected state: stream gaps, missing/transitively-open context, wrong own-prefix, authority not extending causality, bad validation references/bases, illegal ordinary `"unknown"`, invalid value/proof scope references, NodeIdentifier collision, decreasing writer-state watermark, mixed record formats, and evidence that an existing local writer has lost a surviving suffix.
+
+Same-ID body disagreement across historical overlap is different: Laws 8/8a prove it impossible for compatible supported lifecycle states. Ordinary sync/reset do not rescan old overlap to rediscover it. An explicitly injected/corrupt fork fixture is rejected when explicit rebuild/maintenance validation actually reads the conflicting history.
 
 Routine open and ordinary absent restoration of an already-committed trusted snapshot are not required to rediscover these conditions by rescanning retained history; their source/committed-state contracts must already hold.
 
