@@ -311,14 +311,6 @@ without deleting retained history.
 
 If the held reset source is ahead for the receiver's own local writer, reset fails `JournalWriterBehindError` before importing/authorship. This is the same corrupted/unsupported lifecycle condition as §5; reset does not repair it and there is no existing-writer rollback-recovery transition.
 
-Reset preserves an already-selected value occurrence when immutable semantic occurrence state already matches target. It authors new ValueEvents only where occurrence itself must change.
-
-When reset weakens incoming validity for a preserved occurrence V, it barriers every non-target edge that any eligible retained certificate could expose before any target validation. It does not use a node-scoped invalidation merely as a certificate-selection device.
-
-If reset target stores a node stale while its own effective proof is otherwise complete, reset persists that stale state with a value-scoped invalidation even when recursive replay is already stale through an input.
-
-An unseen concurrent event may later affect ordinary synchronization normally; a reset proof-edge barrier for one ValueId/input does not taint unrelated proof or certificates for another occurrence.
-
 A completely absent installation does not use reset. Pre-Journal bootstrap join is also not reset: divergent bootstrap values represent pre-existing legacy facts and do not inherit reset's causally-later target-repair semantics.
 
 ## 11. Projection rebuild
