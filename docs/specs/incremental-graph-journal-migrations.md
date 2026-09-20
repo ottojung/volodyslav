@@ -732,8 +732,11 @@ Call replay after M1 `P1`.
 For each target-present K define:
 
 ```text
-eligibleEffectiveProofUnion_P1(K)
-TargetValid(K)    = semantic incoming validity edges in Gtarget
+eligibleEffectiveProofUnion_P1(K) =
+    eligibleEffectiveProofUnion(K) evaluated at replay cut P1
+
+TargetValid(K) =
+    semantic incoming validity edges in Gtarget
 ```
 
 ### 16.1 Explicit node invalidation
