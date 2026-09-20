@@ -421,8 +421,8 @@ Required result:
 - local-only and canonical-only materializations survive;
 - conflicting values are selected by normal authority;
 - local proof names the joining legacy occurrences it actually depended on, so mixed conflict winners cannot manufacture fresh cross-replica combinations;
-- exact-shared validity is the proof intersection;
-- exact-shared stale evidence is conservative across both sides;
+- exact-shared proof is capped by the canonical/joining edge intersection, while final validity remains occurrence-sensitive to the retained certificate basis and selected input ValueIds;
+- exact-shared direct stale evidence is conservative across both sides, while final replay may additionally be stale from basis mismatch or stale inputs;
 - recursive-only stale transitions are persisted; and
 - joining fingerprint/allocator state remains local.
 
