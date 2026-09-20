@@ -278,40 +278,7 @@ Creator resume is specified by `incremental-graph-journal-migrations.md` §6.
 
 #### Ordinary joining installation
 
-Join uses exactly the frozen canonical cut, never later current cohort history.
-
-A divergent legacy value is not made causally later merely because its host upgrades later. Join:
-
-- reuses canonical ValueId for exact equal occurrences;
-- converts local-only/different persisted legacy occurrences into historical joining-writer bootstrap ValueEvents seeded by their own legacy `modifiedAt`;
-- uses normal Journal authority for conflicting concurrent occurrences;
-- does not treat one legacy cache's absence as deletion evidence; and
-- preserves the joining writer fingerprint/allocator watermark.
-
-For an **exact shared occurrence**, positive validity is merged conservatively by intersection:
-
-```text
-joinedValid(K) = canonicalValid(K) intersect joiningValid(K)
-```
-
-The canonical certificate remains the positive proof basis. For every canonical incoming edge absent from the joining legacy proof, join authors an occurrence-and-input-specific `proof(value,input)` barrier. Join never adds an edge missing on the canonical side merely because the joining side has it, and it does not author a causally-later validation merely to strengthen the joining host's proof.
-
-Shared freshness is also conservative:
-
-```text
-joined shared occurrence stale
-    iff canonical legacy copy stale OR joining legacy copy stale
-```
-
-An uncovered value-scoped bootstrap invalidation is retained/authored after those proof-edge barriers when required, so a fresh joining copy cannot clear canonical stale state and a stale joining copy can make a canonical-fresh shared occurrence stale without changing ValueId.
-
-After direct stale/proof roots are represented, join performs the bootstrap propagated-staleness pass over the selected dependency DAG. If selected K has complete own **effective** proof (`selfProofReady`) but is stale because a direct input is stale, join ensures an uncovered value-scoped bootstrap invalidation exists for current `valueId(K)`. This applies to canonical-only, joining, and shared selected occurrences. Consequently a later upstream `Unchanged` cannot silently freshen a dependent which became persistently stale during bootstrap merge.
-
-Two independent late joiners with the same occurrence that differs from the canonical cut may assign distinct bootstrap ValueIds. Later synchronization may stale dependents naming the losing occurrence. This accepted limitation is `$id-1635227135166767`.
-
-After the bootstrap-target pair is installed, startup continues through Journal-aware migrations explicitly supported by the running release. Post-bootstrap cohort history enters later through ordinary synchronization once versions are compatible.
-
-No particular remote host needs to reconcile, acknowledge, or return merely for bootstrap to complete.
+Joining is specified by `incremental-graph-journal-migrations.md` §7.
 
 ### 8.3 Journal-aware migration
 
