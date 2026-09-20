@@ -293,17 +293,7 @@ snapshot.databaseVersion == receiver global/version
 snapshot.graphSchemeString == receiver global/graph_scheme
 ```
 
-A pairwise sync:
-
-1. enters required maintenance ownership;
-2. opens one stable source snapshot;
-3. checks compatibility from that snapshot;
-4. if the source has a longer prefix of the receiver's own local writer, fails `JournalWriterBehindError` as evidence of corrupted/unsupported lifecycle state under §5;
-5. streams missing immutable foreign-writer suffixes;
-6. validates overlap, contiguity, causal closure, authority, and references;
-7. performs required receiver-authored semantic normalization;
-8. replays/validates final projection; and
-9. atomically publishes Journal + projection.
+The procedure is specified by `incremental-graph-journal-sync.md`.
 
 No computor executes during sync.
 
