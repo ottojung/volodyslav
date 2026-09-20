@@ -125,7 +125,7 @@ Ordinary sync:
 
 1. opens one stable compatible `JournalSnapshot`;
 2. imports missing **foreign-writer** suffixes unchanged;
-3. validates immutable overlap, causal closure, references, and projection preconditions;
+3. relies on the supported-prefix identity theorem for historical overlap and validates newly admitted/affected records, their causal/reference closure, and affected projection preconditions;
 4. authors only required receiver normalization;
 5. replays and atomically cuts over.
 
