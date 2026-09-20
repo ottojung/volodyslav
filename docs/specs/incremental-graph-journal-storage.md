@@ -210,7 +210,7 @@ Optional rebuildable indexes may include:
 
 - foreign-writer heads/frontiers;
 - node history;
-- candidate head/certificate/invalidation indexes;
+- candidate head/certificate/invalidation indexes other than the required change-bounded proof summary above;
 - reverse structural edges;
 - context-closure summaries; and
 - replay checkpoint references.
