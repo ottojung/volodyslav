@@ -37,12 +37,12 @@ Reset requires:
 - a valid writable Journal 3 receiver;
 - one stable causally closed source snapshot;
 - exact compatibility between the source snapshot's `databaseVersion` / `graphSchemeString` and the receiver's active `global/version` / `global/graph_scheme`;
-- exclusive maintenance ownership of the receiver;
-- no conflicting content for overlapping `JournalRecordId`s.
+- exclusive maintenance ownership of the receiver; and
+- receiver/source snapshots are compatible supported lifecycle states, so their shared writer prefixes satisfy `incremental-graph-journal-theorems.md` Laws 8 and 8a.
 
-Compatibility metadata must come from the same held `JournalSnapshot` used to derive the target and import source records.
+Compatibility metadata must come from the same held `JournalSnapshot` used to derive the target and import source records. Reset does not rescan historical overlap merely to re-prove the fork-free lifecycle theorem.
 
-The shared own-writer rollback condition is defined by `incremental-graph-journal-lifecycle.md` §5. If the held source snapshot is ahead for the receiver's own writer, `resetTo()` fails `JournalWriterBehindError` before import/authorship and leaves the active receiver unchanged. Divergent overlap remains `JournalForkError`.
+The shared own-writer rollback condition is defined by `incremental-graph-journal-lifecycle.md` §5. If the held source snapshot is ahead for the receiver's own writer, `resetTo()` fails `JournalWriterBehindError` before import/authorship and leaves the active receiver unchanged. If conflicting same-ID evidence is actually encountered during bounded validation or explicit maintenance, that evidence is unsupported corruption and is rejected as `JournalForkError`.
 
 An installation with no local database/writer identity uses the absent-state restoration lifecycle in `incremental-graph-journal-lifecycle.md`; `resetTo()` does not invent a local writer identity for an absent receiver.
 
