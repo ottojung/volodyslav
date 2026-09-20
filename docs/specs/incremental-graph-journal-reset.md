@@ -66,7 +66,7 @@ Reset targets observable IncrementalGraph semantics:
 - freshness;
 - semantic validity edges.
 
-It does not require the receiver to end with the same ValueIds as the source when a replacement occurrence must be authored locally.
+ValueId equality with the source is not a reset postcondition. When the raw-union selected occurrence already has the target immutable occurrence state, reset preserves that selected ValueId even if the source projection names a different ValueId for the same semantic occurrence. A new local ValueId is authored only when Pass 1 must actually create/replace the semantic occurrence.
 
 ## First retain the observed history
 
