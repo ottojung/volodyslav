@@ -372,7 +372,7 @@ for:
 - freshness;
 - semantic validity edges.
 
-ValueIds may differ only where reset had to create a new semantic value occurrence.
+ValueIds are intentionally excluded from source-projection equality. For each target-present K, reset preserves H0's selected ValueId whenever H0 already has the target immutable occurrence state; that preserved ValueId may differ from PS.valueId(K). Reset authors a new ValueId only when Pass 1 must create/replace the semantic occurrence.
 
 The equivalence is stable under later ordinary `Unchanged` revalidation of an upstream input: a dependent which reset established as persistently stale does not become fresh unless that dependent itself later validates/recomputes.
 
