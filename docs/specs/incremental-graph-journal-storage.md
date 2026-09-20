@@ -154,9 +154,7 @@ The artifact is immutable while a release claims support for that bootstrap targ
 
 Creator-resume installs exactly artifact history only after direct persisted-legacy equality validation.
 
-Ordinary joining retains the canonical cut verbatim and may add joining-writer historical values, truthful locally-authored validation bases naming the joining host's own legacy input occurrences, `proof(V,D)` barriers for exact-shared canonical proof edges missing on the joining side, `value(V)` stale markers, and local WriterState history.
-
-Legacy absence does not manufacture DeleteEvent. Joining historical values may use the controlled non-causal bootstrap context rule and legacy `modifiedAt` authority.
+Ordinary bootstrap-join semantics, including exact-shared identity/proof/freshness handling, legacy absence, and historical joining-value causality, are owned by `incremental-graph-journal-migrations.md` §§7.1–7.4. Storage persists the records produced by those rules and does not redefine the merge.
 
 ## Existing graph sublevels remain projection
 
