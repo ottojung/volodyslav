@@ -97,23 +97,7 @@ If the canonical artifact belongs to the still-pre-Journal local fingerprint, st
 
 ### Exact shared occurrence
 
-If joining legacy host has exactly the canonical occurrence, it reuses the canonical ValueId.
-
-Positive proof merges conservatively:
-
-```text
-joinedValid = canonicalValid intersect joiningValid
-```
-
-Canonical certificate remains the positive basis. For every canonical incoming edge missing from joining legacy proof, join authors `proof(V,D)` negative edge evidence. Joining-only proof never strengthens the exact shared occurrence merely because that host upgrades later.
-
-Freshness is likewise conservative:
-
-```text
-joinedStale = canonicalStale OR joiningStale
-```
-
-After proof-edge barriers, an uncovered `value(V)` bootstrap marker is retained/authored whenever either side was stale.
+Exact-shared bootstrap identity/proof/freshness semantics are defined normatively by `incremental-graph-journal-migrations.md` §7.3. This user contract relies on that result and does not maintain a second merge formula.
 
 ### Divergent values and legacy absence
 
