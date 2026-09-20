@@ -134,11 +134,9 @@ ModifiedTime = fixed-width canonical whole-millisecond epoch instant
 
 Canonical conversion from legacy timestamp strings is pure/timezone-independent.
 
-Supported records reject malformed or non-exactly-representable timestamps and value occurrences with:
+Supported records reject malformed or non-exactly-representable timestamps. `createdAt` and `modifiedAt` are persisted physical timestamp data, not an ordering invariant: clock skew, backward wall-clock movement, or recomputation after adopting a future-skewed remote `createdAt` may legitimately produce `createdAt > modifiedAt`.
 
-```text
-createdAt > modifiedAt
-```
+Conflict authority is carried separately by `AuthorityTime`; replay and bootstrap MUST NOT reject an otherwise valid value occurrence solely because its two persisted timestamps are out of chronological order.
 
 Physical time is fixed-width for asymptotic accounting. History growth appears in journal sequence and HLC logical coordinates.
 
