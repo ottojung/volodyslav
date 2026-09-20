@@ -244,6 +244,7 @@ Acceptance:
 - proof/freshness/schema change alone creates no ValueEvent;
 - target persistent stale with own effective proof ready gets value marker even if recursive input staleness already makes replay stale;
 - the explicit `replace` decision is implemented according to `incremental-graph-journal-migrations.md` §11 and covered through M1–M3;
+- target-state construction follows §11a before M1–M3; replacing/creating an input invalidates carried proof for any occurrence-preserved dependent on that input, and M2 may not certify the old dependent against the new input ValueId;
 - independent replacements may later conflict/stale dependents as accepted;
 - no particular peer required for migration;
 - target replay equals migration target including stale persistence;
