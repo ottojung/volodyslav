@@ -146,9 +146,9 @@ Acceptance:
 - maintain `joiningOccurrenceValueId(K)` for every joining legacy materialization: canonical ValueId when exact-shared, otherwise the joining ValueEvent ID even if that occurrence loses selection;
 - locally-authored validation bases use the joining host's own legacy input occurrence ValueIds, never a different occurrence merely because it won conflict selection;
 - local dependent whose legacy-valid input loses to a newer selected occurrence is hard stale, not fresh;
-- exact shared validity is `canonicalValid ∩ joiningValid`;
-- every canonical proof edge absent on the joining side gets a `proof(sharedV,input)` bootstrap barrier; joining-only proof never strengthens canonical proof;
-- exact shared occurrence is stale if canonical OR joining legacy copy is stale, with uncovered value-scoped bootstrap marker as required after proof-edge barriers;
+- exact-shared `canonicalValid ∩ joiningValid` is the maximum admissible edge set, not unconditional final validity; final replay also requires the retained certificate's input ValueId to match the selected input occurrence;
+- every canonical proof edge absent on the joining side gets a `proof(sharedV,input)` bootstrap barrier; joining-only proof never strengthens canonical proof and exact-shared proof is not retargeted to a different joining input occurrence;
+- canonical OR joining stale state requires the shared value marker, but final exact-shared replay may additionally be stale because selected input occurrences mismatch the retained proof basis or because an input is stale;
 - a joining explicit invalidation on a canonical-fresh shared occurrence therefore remains hard stale and cannot cache-revalidate from canonical proof alone;
 - after direct proof/stale roots, deterministic topological J2b pass persists every selected occurrence stale solely through a stale input;
 - later upstream `Unchanged` cannot silently freshen such bootstrap-stale dependent;
