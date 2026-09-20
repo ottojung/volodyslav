@@ -595,7 +595,7 @@ Y MUST still execute Journal migration semantics v1 -> v2 -> v3, even though it 
 - every pre-existing shared record ID has a byte-identical v3 body on X and Y;
 - any intermediate migration-authored records required by Y's canonical chain are retained normally under Y's writer;
 - ordinary synchronization succeeds without `JournalForkError`;
-- an independently defined direct v1 -> v3 shortcut which would produce different retained history is rejected/not a supported migration path.
+- Y executes the frozen v1 -> v2 edge and then the frozen v2 -> v3 edge; there is no supported direct v1 -> v3 migration path.
 
 Also model a later release that changes the historical v1 -> v2 codec/semantic migration definition while still claiming v1 support. That release MUST be rejected as violating the canonical edge contract; the supported implementation must carry the frozen v1 -> v2 semantics used by earlier replicas. If it cannot, v1 must be unsupported.
 
