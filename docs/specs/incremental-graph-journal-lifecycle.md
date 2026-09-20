@@ -282,27 +282,7 @@ Joining is specified by `incremental-graph-journal-migrations.md` §7.
 
 ### 8.3 Journal-aware migration
 
-A Journal-aware migration:
-
-1. validates source Journal/projection under source version;
-2. deterministically rewrites **every retained record**, including history for node families removed from the target schema, into target representation while preserving IDs/meaning;
-3. applies one pure per-record payload rewrite to every affected retained ValueEvent regardless of selected status;
-4. computes target graph under isolated target storage;
-5. preserves ValueIds for occurrence-preserving semantic decisions such as `keep` and `invalidate`; representation-only change is handled by the canonical whole-history codec;
-6. creates new ValueEvents only for actual new/replaced semantic occurrences;
-7. preserves true explicit `invalidate(K)` as a node-scoped invalidation;
-8. when maintenance merely weakens proof for preserved occurrence V, computes the union of effective proof edges over all eligible retained certificates and authors one occurrence-and-input-specific `scope={kind:"proof",value:V,input:D}` barrier for every non-target edge in that union rather than a node-wide or whole-certificate invalidation;
-9. persists target propagated-stale state with value-scoped invalidation whenever a target-stale occurrence's own effective proof is otherwise complete, even when it is already recursively stale through an input;
-10. verifies target replay; and
-11. atomically cuts over.
-
-The representation codec MUST be total over retained source-version history. If any retained record—including one for a node family absent from the target schema—has no deterministic target representation, migration fails `JournalVersionCompatibilityError` before cutover.
-
-Proof-edge barriers affect only the named input edge of the named ValueId. Concurrent barriers for the same V compose by removing the union of the edges they name; they do not destroy unrelated proof entries or proof for another replacement ValueId.
-
-Journal-aware migration does not require a canonical migration participant. Independently migrated replicas may author different ValueIds for genuinely replaced occurrences; later synchronization may stale dependents which named a losing occurrence. This is accepted.
-
-Future replay does not rerun historical migration callbacks.
+Journal-aware migration is specified by `incremental-graph-journal-migrations.md` Part II (§§9–22). The lifecycle requirement is only that it runs as exclusive maintenance and cuts over atomically; failure leaves the previous active pair selected.
 
 ## 9. Synchronization
 
