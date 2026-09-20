@@ -652,7 +652,7 @@ Resolve the source node `Ks` from `nodeIdentifier`, then `Kt = rewriteNodeKey(Ks
 
 - preserves the existing materialization `NodeIdentifier`;
 - preserves the existing `createdAt`;
-- uses the supplied target-version `ComputedValue` as the new payload;
+- uses the supplied target-version `ComputedValue` as the new payload; unlike `rewriteComputedValue`, this value is semantic migration-callback output and need not be a pure per-record function of `(sourceKey,payload)`;
 - sets `modifiedAt` to the migration publication/finalization physical time;
 - authors a new `ValueEvent(reason="migration")` at Kt and therefore a new ValueId.
 
