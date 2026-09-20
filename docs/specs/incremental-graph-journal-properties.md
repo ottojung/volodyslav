@@ -103,8 +103,6 @@ When a selected cached node loses a required materialized input, dependency clos
 
 When all required inputs remain present but their selected ValueIds/proof freshness differ from the cached dependent's certificate, the cached dependent remains a legitimate `oldValue`. Replay weakens its effective validity/freshness rather than deleting it merely because input histories are mixed.
 
-Thus the old input-arity keep/delete heuristic is unnecessary: retained ValueIds and explicit validation bases provide the exact provenance needed to distinguish structural absence, hard staleness, and recursive/soft staleness.
-
 ## Reset is monotone history plus semantic repair
 
 Conceptually:
