@@ -203,7 +203,7 @@ Expected:
 - receiver is classified corrupted/unsupported under the lifecycle fault model;
 - no `recoverExistingWriterFrom(...)` or equivalent same-writer recovery path is invoked;
 - reset is not retried merely to repair the local rollback;
-- divergent A overlap is `JournalForkError`.
+- the supported fixture assumes the shared A prefix is identical by Laws 8/8a; a separately injected historical same-ID disagreement belongs to explicit corruption-validation tests rather than this change-bounded reset path.
 
 ### Reset projection-neutral import still reports changed
 
