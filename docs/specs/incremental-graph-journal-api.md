@@ -309,15 +309,7 @@ Journal-aware version migration follows the canonical version chain defined in `
 
 Semantic repair compares the codec-transported source projection and target graph in the same target NodeKey space. A non-identity representation rewrite therefore preserves a kept occurrence's ValueId rather than appearing as a delete/create pair.
 
-Semantic migration then:
-
-- preserves ValueIds, freshness, and current-shape-compatible source replay proof for `keep`;
-- uses node scope for true explicit `invalidate(K)`;
-- uses one `proof(V,D)` barrier for every non-target edge in `eligibleEffectiveProofUnion(K)` during maintenance-only proof weakening;
-- persists target propagated stale state with `value(V)` when own effective proof is otherwise complete; and
-- creates new ValueEvents only for genuine new/replaced occurrences.
-
-Independent genuine replacement migrations may create distinct replacement ValueIds; later synchronization handles the normal conflict/staleness consequence.
+The Journal-aware semantic decision API—including explicit genuine occurrence replacement—is defined normatively by `incremental-graph-journal-migrations.md` §11, with M1–M3 defining the resulting Journal repair. This API boundary does not maintain a second decision-semantics definition.
 
 ## Error categories
 
