@@ -188,10 +188,12 @@ Acceptance:
 Acceptance:
 
 - source target/compatibility from one held snapshot;
+- target PS is read from the same-cut committed `JournalSnapshot.projection`; reset does not replay source history to derive PS;
 - own-writer-ahead reset behavior matches `incremental-graph-journal-reset.md` §Preconditions and `incremental-graph-journal-lifecycle.md` §5;
 - raw receiver/source union is inspected through `selectedHeads(J0)`; reset does not require `project(J0)` before Pass 1 structural repair;
+- ResetDomain is `selectedPresent(H0) ∪ present(PS)`; historical keys absent in both are not rediscovered by scanning Value/Delete history;
 - Pass 1 makes selected presence/immutable occurrence state equal the valid source target before the first affected-closure projection state observationally equal to `project(J1)`; unrelated retained history is not replayed/revalidated;
-- reset Pass 1/2/3 Journal-derived domains, eligible-certificate scans, and propagation worklists satisfy `$id-4924739474925738`; complete reset/change/closure sets are not required as one in-RAM collection;
+- reset Pass 1/2/3 Journal-derived domains and propagation worklists satisfy `$id-4924739474925738`; complete reset/change/closure sets are not required as one in-RAM collection;
 - unchanged target occurrence preserves ValueId;
 - new ValueEvent only for actual occurrence replacement;
 - reset computes `eligibleEffectiveProofUnion(K)` from the fixed post-value-repair cut and barriers every non-target edge any eligible retained certificate could expose, using `Invalidate(scope=proof(V,D),reason=reset)`;
