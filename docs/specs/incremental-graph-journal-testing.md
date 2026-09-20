@@ -224,6 +224,39 @@ Require:
 - outer persistence/publication logic is therefore not allowed to skip the committed Journal advance;
 - repeating reset against the now-covered same source frontier authors/imports nothing and returns `changed == false`.
 
+### Reset preserves matching raw-union occurrence despite split bootstrap ValueIds
+
+Exercise the accepted `$id-1635227135166767` identity split.
+
+Let source S and receiver R contain the same non-canonical legacy semantic occurrence for K with identical:
+
+```text
+NodeIdentifier
+payload
+createdAt
+modifiedAt
+```
+
+but independent late bootstrap assigned:
+
+```text
+PS.valueId(K) = Vs
+receiver/raw-union winner H0.valueId(K) = Vr
+Vr != Vs
+```
+
+Choose authority so Vr is the ValueEvent selected by `selectedHeads(J0)`.
+
+Reset MUST:
+
+- recognize H0's selected occurrence as already matching the source target's immutable occurrence state;
+- preserve `resetValueId(K) = Vr`;
+- author no replacement ValueEvent merely to force `Vr == Vs`;
+- establish source-equivalent payload/identifier/timestamp/freshness/validity semantics;
+- permit final `Preset.valueId(K) != PS.valueId(K)`.
+
+This verifies that source ValueId equality is not a reset postcondition.
+
 ### Reset raw-union dependency-closure regression
 
 Use schema `D -> K`.
