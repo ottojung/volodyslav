@@ -828,6 +828,8 @@ If migration only adds validity, no barrier is required solely for the addition.
 
 ### 16.3 Target validation
 
+`TargetValid(K)` here is the provenance-constrained target set constructed under §11a. M2 may encode that set but MUST NOT enlarge it. In particular, for a kept K, M2 cannot substitute a created/replaced input's new ValueId for the source input occurrence K was actually proven against.
+
 After required invalidation/barriers, if replay does not already provide exact target validity/freshness coverage, author one:
 
 ```text
