@@ -52,10 +52,10 @@ Let:
 
 ```text
 S  = held compatible source JournalSnapshot
-PS = project(S)
+PS = S.projection
 ```
 
-`PS` is the semantic graph target.
+`PS` is the source's committed materialized projection from the same immutable cut as S's frontier/records. By the `JournalSnapshot` law in `incremental-graph-journal-api.md`, it is observationally equal to `project(S)`, but reset reads the committed projection directly and does **not** replay the source's retained history to obtain its target.
 
 Reset targets observable IncrementalGraph semantics:
 
