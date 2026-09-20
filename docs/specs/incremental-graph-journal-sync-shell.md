@@ -61,7 +61,7 @@ A successful pairwise synchronization conceptually:
 3. verifies exact version/schema compatibility from that snapshot;
 4. applies the own-writer-ahead rule owned by `incremental-graph-journal-lifecycle.md` §5 and `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is unsupported state;
 5. transfers every missing immutable **foreign-writer** suffix needed through the captured frontier;
-6. validates overlap, contiguity, transitive causal closure, authority extension, and references;
+6. relies on the supported-prefix identity theorem for historical overlap and validates newly admitted contiguity, transitive causal closure, authority extension, and references;
 7. computes raw replay;
 8. authors only required receiver semantic normalization;
 9. deterministically replays/projects final retained history;
