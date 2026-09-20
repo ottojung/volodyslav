@@ -12,13 +12,15 @@ Meaning:
 
 > Two records claim the same `(author, sequence)` identity but have different canonical current-format meaning.
 
-Examples:
+Examples of unsupported/corrupt evidence:
 
-- receiver/source disagree on `A:42`;
-- two supported histories expose conflicting bodies for one writer coordinate;
-- two migrations rewrote one historical ID differently because the format transform depended on replica-local state.
+- two purportedly compatible histories expose different bodies for `A:42`;
+- an explicit rebuild/maintenance validation finds one writer coordinate with two canonical meanings;
+- a nonconforming migration implementation rewrote one historical ID differently because the format transform depended on replica-local state.
 
-Required behavior: do not merge by graph conflict authority or payload equality; fail before cutover.
+By `incremental-graph-journal-theorems.md` Laws 8 and 8a, no pair of compatible **supported** lifecycle states can contain such evidence, including a partial fork after an agreeing writer prefix. Ordinary change-bounded sync/reset therefore do not rescan unrelated historical overlap merely to search for a fork.
+
+If same-ID disagreement is actually encountered at a validation boundary which reads those records, required behavior is: do not merge by graph conflict authority or payload equality; fail before cutover.
 
 A deterministic whole-database format rewrite which preserves the ID/historical fact is not a fork.
 
