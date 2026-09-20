@@ -345,6 +345,14 @@ The whole-history codec is the sole source of target representation bytes. A sel
 
 A new ValueEvent is reserved for genuine create/replace occurrence changes.
 
+## Law 35a: occurrence preservation does not retarget proof across changed inputs
+
+For an occurrence-preserved K, an incoming target proof edge D -> K may survive migration only when the source proof actually established that edge for K and D's target occurrence is the same occurrence named by that source proof.
+
+If D is created/replaced, migration may not make old K fresh by authoring a new validation which substitutes D's new ValueId into K's old proof. K loses that edge and becomes stale unless K itself is semantically created/replaced or another explicitly specified target revalidation operation establishes new proof.
+
+M2/M3 encode this provenance-constrained target state; they do not choose a stronger one.
+
 ## Law 36: independent genuine replacement migrations are allowed
 
 Replicas may independently author distinct ValueIds for genuinely replaced occurrences. Later synchronization selects by normal authority and may stale dependents naming a losing replacement. This accepted behavior does not require one canonical migration participant.
