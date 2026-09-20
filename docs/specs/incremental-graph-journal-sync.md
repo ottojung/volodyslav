@@ -290,6 +290,8 @@ Successful `Sync(R,S)`:
 
 ## Convergence and termination
 
+This section discharges the synchronization-convergence requirement in `$id-4464408832385718`, including its definition of a settled participating set.
+
 After non-normalization graph-changing operations stop, synchronization may author only:
 
 ```text
