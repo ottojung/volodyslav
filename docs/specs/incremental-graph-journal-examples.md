@@ -25,7 +25,7 @@ X:6 Validate(A,value=X:5,basis=[])
 X:7 Invalidate(B,scope=value(X:3),reason=propagated)
 ```
 
-B retains cached X:3 but is persistently stale.
+B retains cached X:3 but is persistently stale. Here the value-scoped marker records the ordinary graph's actual propagated fresh->stale flag transition. Replay would already consider B stale from its basis mismatch against A=X:5, so the mismatch alone would not require an additional marker under the general no-duplicate-marker rule.
 
 ## Trace 3: explicit invalidate then Unchanged
 
