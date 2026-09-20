@@ -24,6 +24,12 @@ Cover first materialization, changed value, `Unchanged`, cache revalidation, exp
 
 Ordinary ValidateEvents use exactly current distinct direct input NodeKeys, no `"unknown"`, finalized current input ValueIds, and canonical NodeKeyString order.
 
+### Skewed value-timestamp regression
+
+Ordinary recompute must accept and persist a value occurrence with `createdAt > modifiedAt`.
+
+Fixture: materialize/synchronize K with persisted `createdAt = Tfuture`, then recompute K on a writer whose current wall clock produces `modifiedAt = Tnow < Tfuture`. Require the new ValueEvent to preserve `createdAt = Tfuture` and exact committed `modifiedAt = Tnow` without rejection or timestamp normalization. Conflict authority remains governed by `AuthorityTime`, not by ordering the two persisted timestamps.
+
 ## Causal-context closure tests
 
 Reject:
@@ -378,6 +384,14 @@ and does not invoke ordinary migration decisions before the canonical cut.
 Regression: configure a would-be legacy -> bootstrap path which would require fresh allocator identity plus execution-time timestamps. Startup must fail `JournalVersionCompatibilityError` before bootstrap history is authored. It must not generate the target state and then compare it.
 
 Likewise reject any pre-bootstrap path requiring semantic create/invalidate/delete, schema-semantic transformation, randomness, wall clock, or allocator-dependent graph output. Those transformations belong before the supported source state or after bootstrap as Journal-aware migration.
+
+### Bootstrap skewed timestamp preservation
+
+Canonical bootstrap: construct valid persisted legacy state containing K with `createdAt > modifiedAt`. Bootstrap MUST succeed and C1 must preserve both legacy timestamps exactly in the bootstrap ValueEvent.
+
+Joining bootstrap: construct a joining legacy occurrence with `createdAt > modifiedAt` which differs from the canonical occurrence. J1 MUST author the historical joining ValueEvent with both joining legacy timestamps preserved exactly.
+
+Neither path may reject, reorder, clamp, or synthesize these timestamps merely to impose `createdAt <= modifiedAt`.
 
 ## Canonical bootstrap artifact tests
 
