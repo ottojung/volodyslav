@@ -237,11 +237,11 @@ Invalidate(K,scope=proof(V,D),reason=bootstrap)
 Invalidate(K,scope=value(V),reason=bootstrap)
 ```
 
-The canonical certificate remains the positive basis, but D's edge is ineffective because of the proof-edge barrier. Thus joined proof is `canonicalValid ∩ joiningValid`.
+The canonical certificate remains the positive basis, but D's edge is ineffective because of the proof-edge barrier. The canonical/joining intersection is therefore the maximum admissible proof-edge set; final replay still requires the retained basis ValueId to match the selected input occurrence.
 
 A later `pull(K)` cannot cache-revalidate merely from the canonical D proof; the joining host's explicit invalidation has not been softened away.
 
-If joining has an edge absent canonically, join still does not strengthen canonical proof; intersection remains conservative.
+If joining has an edge absent canonically, join still does not strengthen canonical proof; the admissible intersection remains conservative.
 
 ## Trace 26: joining stale shared input persistently stales canonical dependent
 
