@@ -220,6 +220,15 @@ TargetValid(K) = {
 }
 ```
 
+For the selected occurrence, the maintained count is definitionally equivalent to replay's maintenance union:
+
+```text
+D in eligibleEffectiveProofUnion_P1(K)
+    iff eligibleProofEdgeCount_P1(K, resetValueId(K), D) > 0
+```
+
+The count is derived/index state, not semantic authority. Its storage/maintenance contract is defined by `incremental-graph-journal-storage.md` §Change-bounded proof summary.
+
 ### Proof weakening uses occurrence-and-input barriers
 
 Replay intentionally prefers certificates with greater effective basis applicability before authority. Therefore merely appending a later certificate with more `"unknown"` entries cannot by itself remove validity supplied by older proof.
