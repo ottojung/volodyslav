@@ -40,8 +40,6 @@ Success means:
 
 ### Keep versus delete under merged dependency state
 
-Journal 3 no longer uses input-count/arity as a proxy for whether a cached dependent is safe.
-
 - If a selected cached node loses a required materialized input, synchronization explicitly deletes that dependent closure. The node cannot remain materialized under IncrementalGraph structural semantics.
 - If every required input remains present, disagreement between current input ValueIds and the dependent's certificate does **not** by itself delete the cached value. The cache remains a legitimate `oldValue`; replay expresses hard/soft stale state through proof/freshness.
 
