@@ -688,7 +688,9 @@ For each current database version test golden fixtures, round trip, malformed-fi
 
 ## Corruption tests
 
-Reject stream gaps, same-ID disagreement, missing/transitively-open context, wrong own-prefix, authority not extending causality, bad validation references/bases, illegal ordinary `"unknown"`, invalid value/proof scope references, NodeIdentifier collision, decreasing writer-state watermark, graph/Journal mismatch, mixed record formats, and evidence that an existing local writer has lost a surviving suffix.
+At the supported boundary which newly admits/constructs the offending records or explicitly validates retained history—ordinary local publication for its new batch, synchronization/reset import for newly admitted records, bootstrap construction/join, Journal-aware migration, or explicit rebuild/maintenance—reject stream gaps, same-ID disagreement, missing/transitively-open context, wrong own-prefix, authority not extending causality, bad validation references/bases, illegal ordinary `"unknown"`, invalid value/proof scope references, NodeIdentifier collision, decreasing writer-state watermark, mixed record formats, and evidence that an existing local writer has lost a surviving suffix.
+
+Routine open and ordinary absent restoration of an already-committed trusted snapshot are not required to rediscover these conditions by rescanning retained history; their source/committed-state contracts must already hold.
 
 ## Transaction failure tests
 
