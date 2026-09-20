@@ -36,7 +36,7 @@ Synchronization requires:
 - transitively closed semantic-event contexts;
 - a valid receiver Journal/projection pair;
 - exclusive receiver maintenance ownership for staging/normalization/cutover; and
-- no conflicting canonical content under one `JournalRecordId`.
+- receiver/source snapshots are compatible supported lifecycle states, so their shared writer prefixes satisfy `incremental-graph-journal-theorems.md` Laws 8 and 8a.
 
 ## Snapshot compatibility cut
 
