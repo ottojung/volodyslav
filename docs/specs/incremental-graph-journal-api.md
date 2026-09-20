@@ -303,9 +303,7 @@ rewriteJournalFormat(
 ) -> TargetFormatJournal
 ```
 
-The format rewrite is deterministic over the **entire retained source-format record domain**, including historical records for node families absent from target schema. It decodes source records, rewrites embedded NodeKeys and retained ValueEvent payloads, re-canonicalizes target structures such as ValidationBasis order, preserves record IDs/historical meaning/references, and encodes the target format.
-
-Codec functions are synchronous, deterministic, capability-free, and identity by default when omitted. As a codec-level contract, `rewriteNodeKey` is injective over every valid source semantic NodeKey which may occur in supported source-version Journal history, regardless of which keys the current replica retains. A locally observed collision is `JournalVersionCompatibilityError`, but absence of one locally is not the proof of injectivity. A codec throw or any other inability to transform every retained source record into a valid target semantic record is likewise incompatible.
+The total deterministic rewrite, capability restrictions, target re-canonicalization, and global `rewriteNodeKey` injectivity contract are owned by `incremental-graph-journal-migrations.md` §9a. This API surface does not restate those codec validity rules.
 
 Journal-aware version migration follows the canonical version chain defined in `incremental-graph-journal-migrations.md` §9b. A replica which skips application releases still executes every canonical Journal migration transition stepwise.
 
