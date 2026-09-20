@@ -46,6 +46,8 @@ JournalSnapshot {
 }
 ```
 
+`ProjectedNodeState` exposes the committed observable semantic node state needed by maintenance: immutable occurrence fields, freshness, and semantic incoming validity edges. The projection reader may be backed by the existing materialized IncrementalGraph representation; it is not reconstructed by Journal replay when the snapshot is opened.
+
 Snapshot laws:
 
 1. version/schema, `localWriter`, frontier, records, and `projection` belong to one immutable committed source cut;
