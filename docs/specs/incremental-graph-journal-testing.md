@@ -724,7 +724,9 @@ Validation-cost behavior is a correctness requirement under `$id-684512907341862
 Construct fixtures with a very large unrelated retained-history prefix H and a small affected set C. Through an instrumented Journal/index interface:
 
 - synchronization may read/validate only imported source suffix records, receiver-authored normalization records, retained summaries/index entries they reference, and the affected projection/index closure; a request to rescan unrelated old records fails the test;
-- reset has the same constraint for imported source records, reset-authored records, and its affected closure;
+- reset reads its target from the same-cut committed source projection, may iterate graph-sized projection state as non-validation work, and may read source Journal records only from missing imported ranges; requesting old source history merely to compute PS fails the test;
+- reset derives its current/target domain from current-head/projection state rather than historical Value/Delete scans, and obtains `PotentialValid` from the maintained counted proof summary; any fallback which folds unrelated certificate/invalidation history fails the test;
+- reset otherwise has the same constraint for imported source records, reset-authored records, and its affected closure;
 - ordinary local publication validates only its new batch/projection delta and must not request unrelated retained history;
 - bootstrap publication/cutover and absent restoration validate their own source/artifact/cutover contract without adding a full retained-history pass;
 - Journal-aware migration and explicit rebuild are the only paths in this fixture permitted to iterate/validate the complete retained Journal.
