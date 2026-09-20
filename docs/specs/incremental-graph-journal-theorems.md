@@ -374,7 +374,7 @@ PS = project(sourceSnapshot)
 
 The raw union need not itself be dependency-closed, so reset MUST NOT require `project(J0)` before repair.
 
-Pass 1 compares H0's deterministic Value/Delete winners with PS. It preserves the H0 ValueId when the requested immutable occurrence already matches, creates a ValueEvent only when that occurrence itself must change, and uses DeleteEvent exactly when PS requires absence.
+Pass 1 compares H0's deterministic Value/Delete winners with PS. It preserves the H0 ValueId when the requested immutable occurrence already matches, even if PS names a different ValueId for the same immutable occurrence state. Source ValueId equality is not a reset postcondition. Reset creates a ValueEvent only when that occurrence itself must change, and uses DeleteEvent exactly when PS requires absence.
 
 Let J1 be J0 plus those Pass 1 occurrence/presence repairs. Because Pass 1 authors causally-later heads so selected presence and immutable occurrence state equal PS, and PS is a valid dependency-closed projection, J1 is dependency-closed and `P1 = project(J1)` is the first required full projection.
 
