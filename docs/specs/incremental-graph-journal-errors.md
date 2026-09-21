@@ -164,9 +164,11 @@ Examples:
 
 Partial staged state is not activated. Failure to read a known canonical artifact does not authorize another canonical creation.
 
-## InvalidMigrationDecisionError
+## Migration decision errors
 
-The existing migration framework may reject a migration decision whose semantic/cache-state contract is unsupported, such as an invalid `create()` assertion.
+Journal-aware migration reuses the existing callback-decision categories `DecisionConflictError`, `CreateExistingNodeError`, `UndecidedNodesError`, and `SchemaCompatibilityError` with the Journal 3 meanings owned by `incremental-graph-journal-migrations.md` §§11–11a.
+
+`InvalidMigrationDecisionError` denotes a decision whose requested semantic/proof/freshness state is impossible under those Journal-aware rules, such as an `"up-to-date"` create whose required target input is stale or a request to strengthen a preserved occurrence beyond its actual proof provenance.
 
 A non-total Journal format codec is **not** this category; it is `JournalVersionCompatibilityError` because the source/target database versions do not define a complete retained-history representation transition.
 
