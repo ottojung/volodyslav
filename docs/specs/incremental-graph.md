@@ -505,29 +505,29 @@ interface IncrementalGraph {
 
 **REQ-IFACE-05 (Timestamp API):** Implementations MUST record timestamps for each node instance when its value is first set or changed.
 
-**REQ-IFACE-06 (getCreationTime):** `getCreationTime(nodeName, bindings?)` MUST return the `DateTime` at which the node instance was first given a value. MUST throw `MissingTimestampError` if the node instance has never been computed or if no timestamp record exists for it.
+**REQ-IFACE-06 (getCreationTime):** `getCreationTime(nodeName, bindings?)` MUST return the persisted `createdAt` of the node's **currently selected materialization lineage**. Within one continuing lineage (the same materialization identity), `createdAt` is stable across semantic value replacements. MUST throw `MissingTimestampError` if the node is not materialized or if no timestamp record exists for its selected materialization.
 
-**REQ-IFACE-07 (getModificationTime):** `getModificationTime(nodeName, bindings?)` MUST return the `DateTime` at which the node instance's stored semantic value last changed. MUST throw `MissingTimestampError` if the node instance has never been computed or if no timestamp record exists for it.
+**REQ-IFACE-07 (getModificationTime):** `getModificationTime(nodeName, bindings?)` MUST return the persisted `modifiedAt` of the node's **currently selected semantic value occurrence**. MUST throw `MissingTimestampError` if the node is not materialized or if no timestamp record exists for its selected occurrence.
 
 **REQ-IFACE-08 (Timestamp Invariants):**
-* `getCreationTime(N, B)` and `getModificationTime(N, B)` are persisted physical timestamps; no ordering relation between them is required. Synchronization may import a future-skewed creation time and a later local recomputation may record an earlier wall-clock modification time.
-* `getCreationTime(N, B)` MUST NOT change once set.
-* `getModificationTime(N, B)` is a version timestamp for the stored semantic value.
-* A **new timestamp record** is created when a semantic value is first stored for a node (including migration `create` and the node's initial computation). `createdAt` and `modifiedAt` are both set to the current time at this point.
-* An existing `modifiedAt` is **updated** only when a computor produces a changed value that replaces the previous stored value. Successive `modifiedAt` values are not required to increase numerically; a later semantic value change may record an earlier wall-clock instant. `modifiedAt` MUST NOT change in any other circumstance.
-* Synchronization may replace a local node value and timestamp with another replica's existing value-version pair (the `take` decision). This copies the existing timestamp; it does not mint a new one. Synchronization MUST NOT replace a timestamp with the merge execution time or any other manufactured value.
-* `modifiedAt` MUST NOT change when:
+* `getCreationTime(N, B)` and `getModificationTime(N, B)` are persisted physical timestamps; no ordering relation between them is required. Synchronization may select a future-skewed materialization and a later local replacement in the same lineage may record an earlier wall-clock `modifiedAt`.
+* `createdAt` is a materialization-lineage timestamp. A local semantic value replacement which preserves the materialization identity—including a changed computor result or Journal-aware migration `replace`—MUST preserve that lineage's `createdAt`.
+* A genuinely new local materialization—including initial computation after semantic absence or Journal-aware migration `create`—allocates a new materialization identity and initializes `createdAt` and `modifiedAt` from that creation/finalization instant.
+* `modifiedAt` is a version timestamp for the selected semantic value occurrence. A changed computor result and Journal-aware migration `replace` create a new value occurrence and may therefore mint a new `modifiedAt`. Successive `modifiedAt` values are not required to increase numerically; a later semantic value change may record an earlier wall-clock instant.
+* Synchronization may select another replica's already-persisted value occurrence/materialization lineage. Reset may likewise establish a source-selected occurrence by copying its persisted `NodeIdentifier`, `createdAt`, and `modifiedAt`. These operations may therefore change the timestamps observable for the NodeKey, but they MUST adopt the selected occurrence's existing timestamp values rather than minting synchronization/reset execution-time timestamps.
+* Within one selected occurrence, freshness/proof/metadata changes do not mutate its timestamps. In particular, `modifiedAt` MUST NOT change when:
   * a node becomes `potentially-outdated` (invalidation);
   * invalidation propagates to dependent nodes;
   * validity flags are added, removed, transported, or rebuilt;
   * a computor returns `Unchanged`;
-  * synchronization keeps an existing value (the `keep` decision);
+  * synchronization keeps an existing occurrence;
+  * Journal-aware migration `keep` or `invalidate` preserves an existing occurrence;
   * identifier reconciliation occurs;
   * dependency identifiers are relowered;
   * a cached value is deleted because the old value is not valid for the final dependency structure;
   * freshness changes between `up-to-date` and `potentially-outdated`; no freshness record exists for unmaterialized nodes.
 
-* Migration invalidation (`migration.md`) follows the same invariant: invalidation of a cached node does not change `modifiedAt`. Freshness and validity are the mechanisms for representing uncertainty and recomputation requirements in migration, just as they are in runtime operations.
+* The shipped pre-Journal migration invalidation contract in `migration.md` follows the same occurrence rule: invalidation of a cached node does not change `modifiedAt`. Journal-aware migration `create`/`replace` timestamp semantics are owned by `incremental-graph-journal-migrations.md` §11.
 
 **REQ-IFACE-09 (MissingTimestampError):** Implementations MUST expose `makeMissingTimestampError(nodeKey)` factory and `isMissingTimestamp(value)` type guard. `MissingTimestampError` MUST have a stable `.name` property of `"MissingTimestampError"` and a `nodeKey: string` field identifying the node for which timestamps are missing.
 
