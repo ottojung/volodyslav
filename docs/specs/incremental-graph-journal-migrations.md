@@ -678,7 +678,12 @@ DeleteEvent(reason="migration")
 
 ### `create`
 
-`create(nodeKeyString,...)` creates a genuinely new materialization which did not exist in the transported previous-version materialized set.
+```text
+create(nodeKeyString, value, freshness)
+freshness = "up-to-date" | "potentially-outdated"
+```
+
+creates a genuinely new materialization which did not exist in the transported previous-version materialized set.
 
 Both `create` and `replace` author a new:
 
@@ -686,19 +691,79 @@ Both `create` and `replace` author a new:
 ValueEvent(reason="migration")
 ```
 
-and therefore a new ValueId. `create` allocates the new materialization identity according to the migration allocator rules; `replace` preserves the existing materialization identity as specified above.
+and therefore a new ValueId. `create` allocates a new materialization `NodeIdentifier` and initializes both `createdAt` and `modifiedAt` to the migration publication/finalization physical time. `replace` preserves the existing materialization identity and `createdAt` while assigning the new occurrence's `modifiedAt` as specified above.
 
 Schema/proof/freshness/database-format changes alone do not create a new ValueEvent.
 
-## 11a. Constructing Gtarget: occurrence and proof provenance
+## 11a. Constructing Gtarget from migration decisions
 
-Migration decisions determine target presence and occurrence identity before M1–M3:
+This section is the normative bridge from the Journal-aware callback decisions to the semantic target graph `Gtarget`. M1–M3 encode this graph; they do not decide what the graph means.
 
-- `keep` and `invalidate` preserve the selected occurrence/ValueId;
-- `replace` and `create` establish a new target occurrence;
-- `delete` establishes absence.
+Let S be the materialized source-node set represented by `GconvertedBefore`, with every source key already transported into target NodeKey representation for semantic comparisons.
 
-For an occurrence-preserved K which is not explicitly invalidated, target positive proof is derived from the **actual source proof provenance**, not from the desired target input list alone.
+### 11a.1 Decision collection, conflicts, and completeness
+
+For a source materialization, the callback may choose exactly one semantic decision family:
+
+```text
+keep | invalidate | replace | delete
+```
+
+Repeated `keep`, `invalidate`, or `delete` of the same source node is idempotent. A different decision for the same source node, or a second `replace`, fails `DecisionConflictError`.
+
+`create(K,...)` is target-keyed and does not decide a source node. Two creates for the same target key conflict. A create whose target key equals `rewriteNodeKey(Ks)` for any materialized source Ks fails `CreateExistingNodeError`, even if Ks is explicitly deleted; changing an existing semantic node uses `replace`, not delete-plus-create.
+
+`keep`, `invalidate`, and `replace` require the transported target key to exist with compatible functor/arity in the target schema. A source node incompatible with the target schema may only be deleted. `create` likewise requires a compatible target-schema node. Violations fail `SchemaCompatibilityError`.
+
+After structural delete propagation below, every source materialization must have either an explicit decision or a propagated delete. Any remaining undecided source node fails `UndecidedNodesError`.
+
+These are the existing migration decision/conflict categories reused by Journal 3. The removed `override` decision has no Journal-aware role.
+
+### 11a.2 Target structural presence and delete closure
+
+Initial target presence is:
+
+- `keep`, `invalidate`, and `replace`: present;
+- explicit `delete`: absent;
+- each successful `create`: present.
+
+Then compute the least dependency-closure deletion fixed point using the **target schema** and the planned target materializations.
+
+If a target-present source node K requires a concrete direct target input D which is target-absent:
+
+- if K has no explicit decision, assign propagated `delete(K)`;
+- if K is already explicitly deleted, it remains absent;
+- if K has explicit `keep`, `invalidate`, or `replace`, fail `DecisionConflictError`.
+
+If an explicitly created K requires a concrete direct target input D which is target-absent, fail `DecisionConflictError`; an explicit create is never silently discarded by propagation.
+
+Repeat until no newly absent materialization forces another dependent absent. This is the structural rule which makes:
+
+```text
+A -> B
+delete(A)
+keep(B)
+```
+
+invalid when the target schema still contains `A -> B`. If the target schema removed that edge, deleting A does not structurally force B absent.
+
+Unlike the shipped pre-Journal migration framework, explicit `invalidate(A)` does **not** assign an invalidate decision to B and does not conflict merely because B is explicitly kept. A remains present but stale; B may remain present and becomes recursively stale through replay if A is a stale input. Journal 3 represents propagated freshness separately from semantic migration decisions.
+
+After this fixed point and completeness check, target presence/absence is fully determined and dependency-closed.
+
+### 11a.3 Occurrence identity and timestamps
+
+For every target-present node:
+
+- `keep` and `invalidate` preserve the transported selected occurrence, ValueId, NodeIdentifier, `createdAt`, and `modifiedAt`;
+- `replace` establishes a new ValueId, preserves the existing NodeIdentifier and `createdAt`, and sets `modifiedAt` to migration publication/finalization physical time;
+- `create` establishes a new ValueId and NodeIdentifier and sets `createdAt == modifiedAt ==` migration publication/finalization physical time.
+
+These are semantic timestamp operations under REQ-IFACE-08; format-codec rewriting itself preserves historical timestamp values.
+
+### 11a.4 Target validity and freshness
+
+For an occurrence-preserved K selected by `keep`, target positive proof is derived from the **actual source proof provenance**, not from the desired target input list alone.
 
 For each direct target input edge `D -> K`:
 
@@ -711,19 +776,43 @@ may hold for preserved K only when:
 1. the transported source projection had an effective valid edge `D -> K` for K's preserved source occurrence; and
 2. D's target selected occurrence is the **same occurrence** as the transported source selected occurrence which that proof edge named.
 
-Equivalently, an occurrence-preserving input decision may carry the old proof edge forward; `create(D,...)` or `replace(D,...)` changes the input occurrence and therefore cannot be substituted into the proof of a kept K.
+Thus an occurrence-preserving input decision may carry the old proof edge forward; `create(D,...)` or `replace(D,...)` changes the input occurrence and cannot be substituted into the proof of a kept K. Target-schema edge removal may project away old proof. Target-schema edge addition does not manufacture proof for the new edge. Unaffected provenance-valid edges may remain partially valid.
 
-Target-schema edge removal may project away old proof. Target-schema edge addition does not manufacture proof for the new edge. Unaffected source-provenance edges may remain partially valid.
+For `keep(K)`, K is target-fresh only when its preserved source occurrence has no direct stale state which survives migration, every required target input edge is in `TargetValid(K)`, and every target input is target-fresh. Otherwise K is target-stale.
 
-For a kept K, target freshness is therefore not copied blindly from source freshness. K may be target-fresh only if its own source stale state permits freshness, every required target edge is proven under the rule above, and every target input is fresh. A changed input occurrence makes preserved K hard stale until K itself is semantically re-established.
+For `invalidate(K)`:
 
-An explicit `invalidate(K)` preserves K's occurrence but makes K target-stale under node invalidation semantics.
+```text
+TargetValid(K) = {}
+TargetFresh(K) = false
+```
 
-A `create(K,...)` or `replace(K,...)` produces a new occurrence from explicit target-version migration-callback output. That new occurrence may be validated against the target-selected input occurrences because the migration decision itself is the semantic production of that value at the migration cut; this does not transfer proof from the old occurrence.
+under node-invalidation semantics. Its dependents are not assigned migration decisions by propagation; their freshness is derived from their own decisions/proof plus K's target staleness.
 
-If a migration callback/target builder requests validity or freshness for a preserved occurrence beyond these provenance rules, the migration is invalid and fails `InvalidMigrationDecisionError` before cutover.
+For `replace(K,value)`, the migration decision is a semantic production of the new occurrence at the migration cut. It establishes full positive proof against every selected direct target input occurrence:
 
-M2 and M3 are representation/repair passes for this already-constructed `Gtarget`. They MUST NOT add an edge or freshness fact which §11a does not permit.
+```text
+TargetValid(K) = all direct target input edges of K
+```
+
+and K is target-fresh iff all of those target inputs are target-fresh. If an input is stale, K retains full own proof but is target-stale through that input.
+
+For `create(K,value,"up-to-date")`, the decision is a clean-cache assertion. It establishes full positive proof against every selected direct target input occurrence and is valid only when every direct target input is target-fresh. Otherwise fail `InvalidMigrationDecisionError`.
+
+For `create(K,value,"potentially-outdated")`, the new occurrence is target-stale and asserts no positive incoming validity edge:
+
+```text
+TargetValid(K) = {}
+TargetFresh(K) = false
+```
+
+For zero-input nodes the empty edge set is vacuously complete, but the explicit `"potentially-outdated"` freshness request still makes the occurrence stale; M3 persists that stale state when required by replay semantics.
+
+Compute target freshness in deterministic target dependency-topological order after structural presence and `TargetValid` are fixed.
+
+If a callback/target construction requests validity or freshness beyond these rules, fail `InvalidMigrationDecisionError` before cutover.
+
+M2 and M3 are representation/repair passes for this fully constructed `Gtarget`. They MUST NOT add an edge, occurrence, presence fact, or freshness fact which §11a does not permit.
 
 ## 12. Independent genuine replacements
 
