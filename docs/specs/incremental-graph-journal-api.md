@@ -317,6 +317,10 @@ JournalWriterBehindError
 JournalProjectionError
 JournalPublicationError
 JournalSourceReadError
+DecisionConflictError
+CreateExistingNodeError
+UndecidedNodesError
+SchemaCompatibilityError
 InvalidMigrationDecisionError
 ```
 
