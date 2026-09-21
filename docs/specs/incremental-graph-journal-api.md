@@ -297,7 +297,9 @@ Journal-aware version migration follows the canonical version chain defined in `
 
 Semantic repair compares the codec-transported source projection and target graph in the same target NodeKey space. A non-identity representation rewrite therefore preserves a kept occurrence's ValueId rather than appearing as a delete/create pair.
 
-The Journal-aware semantic decision API—including explicit genuine occurrence replacement—is defined normatively by `incremental-graph-journal-migrations.md` §11, with M1–M3 defining the resulting Journal repair. This API boundary does not maintain a second decision-semantics definition.
+The Journal-aware semantic decision API—including explicit genuine occurrence replacement—and the complete decision-to-`Gtarget` construction are defined normatively by `incremental-graph-journal-migrations.md` §§11–11a, with M1–M3 encoding the resulting target into Journal history. This API boundary does not maintain a second decision-semantics definition.
+
+Journal-aware callback failures reuse the migration decision errors defined by that owner, including `DecisionConflictError`, `CreateExistingNodeError`, `UndecidedNodesError`, and `SchemaCompatibilityError`, plus Journal 3's `InvalidMigrationDecisionError` for semantically impossible proof/freshness assertions.
 
 ## Error categories
 
