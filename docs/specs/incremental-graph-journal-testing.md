@@ -700,6 +700,30 @@ Also model a later release that changes the historical v1 -> v2 codec/semantic m
 
 Also test that a source version with no complete canonical chain to the running version fails `JournalVersionCompatibilityError`.
 
+### Journal migration target-construction regressions
+
+#### Delete closure and decision conflict
+
+Use target schema `A -> B` with both nodes materialized in the transported source state.
+
+- `delete(A)` with B left undecided propagates delete to B and produces a dependency-closed target absence.
+- `delete(A); keep(B)` fails `DecisionConflictError`; migration MUST NOT retain B with a missing required input.
+- if the **target schema removes** edge `A -> B`, then `delete(A); keep(B)` is structurally allowed and B is evaluated normally under its remaining target inputs/provenance.
+
+Also leave one unrelated source materialization undecided after delete closure and require `UndecidedNodesError`.
+
+#### Create freshness
+
+For `create(K,value,"up-to-date")` with all required target inputs present/fresh, require a new NodeIdentifier/ValueId, `createdAt == modifiedAt ==` migration finalization time, full target proof against the selected target input ValueIds, and target freshness.
+
+With any required target input stale, the same `"up-to-date"` create fails `InvalidMigrationDecisionError`.
+
+For `create(K,value,"potentially-outdated")`, require a new occurrence which is target-stale and asserts no positive incoming validity edges. For a zero-input K it remains explicitly stale and is represented accordingly by M2/M3.
+
+#### Replace timestamps and clean production
+
+Start with existing K carrying NodeIdentifier I, `createdAt=C`, and `modifiedAt=M0`. `replace(K,newValue)` must create a new ValueId while preserving I and C and setting `modifiedAt` to migration publication/finalization time M1. When all target inputs are fresh, the replacement carries full target proof and is target-fresh. The timestamp change is a semantic replacement under REQ-IFACE-08, not a format rewrite.
+
 ### Migration replacement invalidates preserved dependent proof
 
 Fixture:
