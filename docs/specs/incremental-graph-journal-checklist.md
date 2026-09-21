@@ -244,7 +244,12 @@ Acceptance:
 - proof/freshness/schema change alone creates no ValueEvent;
 - target persistent stale with own effective proof ready gets value marker even if recursive input staleness already makes replay stale;
 - the explicit `replace` decision is implemented according to `incremental-graph-journal-migrations.md` §11 and covered through M1–M3;
-- target-state construction follows §11a before M1–M3; replacing/creating an input invalidates carried proof for any occurrence-preserved dependent on that input, and M2 may not certify the old dependent against the new input ValueId;
+- target-state construction follows §11a before M1–M3, including decision completeness/conflicts, target-schema dependency-closure delete propagation, create collision/schema checks, and create freshness semantics;
+- `delete(A); keep(B)` conflicts when target B still requires A, while removal of that target edge removes the structural conflict;
+- Journal-aware invalidation does not assign downstream migration decisions: kept dependents remain materialized and replay-derived freshness propagates through stale inputs;
+- `create(...,"up-to-date")` establishes full proof only with fresh required inputs; `create(...,"potentially-outdated")` asserts no positive incoming proof and remains stale;
+- replacing/creating an input invalidates carried proof for any occurrence-preserved dependent on that input, and M2 may not certify the old dependent against the new input ValueId;
+- `replace` preserves NodeIdentifier/createdAt, creates a new ValueId/modifiedAt, and establishes target proof/freshness according to §11a;
 - independent replacements may later conflict/stale dependents as accepted;
 - no particular peer required for migration;
 - target replay equals migration target including stale persistence;
