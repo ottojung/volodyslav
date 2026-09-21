@@ -721,15 +721,18 @@ These are the existing migration decision/conflict categories reused by Journal 
 
 ### 11a.2 Target structural presence and delete closure
 
-Initial target presence is:
+Before the completeness check, an undecided source materialization is treated as **provisionally present only for structural propagation**; this does not satisfy its decision requirement.
+
+Initial planned target presence is therefore:
 
 - `keep`, `invalidate`, and `replace`: present;
+- undecided source materialization: provisionally present;
 - explicit `delete`: absent;
 - each successful `create`: present.
 
-Then compute the least dependency-closure deletion fixed point using the **target schema** and the planned target materializations.
+Then compute the least dependency-closure deletion fixed point using the **target schema** and these planned materializations.
 
-If a target-present source node K requires a concrete direct target input D which is target-absent:
+If a planned-present source node K requires a concrete direct target input D which is target-absent:
 
 - if K has no explicit decision, assign propagated `delete(K)`;
 - if K is already explicitly deleted, it remains absent;
