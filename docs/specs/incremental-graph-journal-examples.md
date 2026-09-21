@@ -212,11 +212,13 @@ Joining legacy host has the exact same occurrence V but marks it fresh with comp
 
 Join reuses V but does **not** author a joining ValidateEvent merely to strengthen the shared occurrence's proof. It preserves/ensures an uncovered value-scoped bootstrap invalidation for V because one side was stale.
 
-Therefore upgrade execution cannot produce a causally-later C2 which covers I and accidentally freshen K. Exact shared stale merge is symmetric:
+Therefore upgrade execution cannot produce a causally-later C2 which covers I and accidentally freshen K. Exact shared direct stale evidence is symmetric:
 
 ```text
-joined stale = canonical stale OR joining stale
+joinedSharedStaleEvidence(V) = canonicalStale(V) OR joiningStale(V)
 ```
+
+This is direct stale-marker evidence, not an equation for final freshness; final freshness remains replay-derived (see `incremental-graph-journal-migrations.md` §7.3).
 
 ## Trace 25: exact shared proof is the intersection
 
