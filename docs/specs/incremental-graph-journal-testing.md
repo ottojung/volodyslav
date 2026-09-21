@@ -294,6 +294,19 @@ Require:
 - K's matching ValueId is preserved;
 - final reset projection equals PS.
 
+### Reset timestamp adoption
+
+Let receiver R and source S both materialize semantic node K but select different materialization lineages/occurrences:
+
+```text
+receiver: NodeIdentifier Ir, createdAt Cr, modifiedAt Mr
+source:   NodeIdentifier Is, createdAt Cs, modifiedAt Ms
+```
+
+with at least one immutable occurrence field different so reset must establish the source occurrence.
+
+Require reset to author the replacement ValueEvent with exactly `Is/Cs/Ms` from the held source projection. The observable `getCreationTime(K)` / `getModificationTime(K)` after reset become `Cs/Ms`, even if they differ from the receiver's previous timestamps or are not numerically ordered. Reset MUST NOT substitute reset execution/finalization time for either timestamp.
+
 ### Reset proof weakening
 
 ```text
