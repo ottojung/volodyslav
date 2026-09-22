@@ -762,7 +762,7 @@ For every target-present node:
 - `replace` establishes a new ValueId, preserves the existing NodeIdentifier and `createdAt`, and sets `modifiedAt` to migration publication/finalization physical time;
 - `create` establishes a new ValueId and NodeIdentifier and sets `createdAt == modifiedAt ==` migration publication/finalization physical time.
 
-These are semantic timestamp operations under REQ-IFACE-08; format-codec rewriting itself preserves historical timestamp values.
+These are the Journal-aware migration timestamp semantics; format-codec rewriting itself preserves historical timestamp values.
 
 ### 11a.4 Target validity and freshness
 

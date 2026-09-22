@@ -140,13 +140,9 @@ No computor runs during sync.
 
 ## Absent-installation restoration
 
-When the complete local database is gone, the installation is `Absent`. Restoring its continuing writer A from recovered head q is safe only if no previously-authored `A:r`, `r > q`, can later re-enter supported retained history and collide with newly-authored coordinates.
+When the complete local database is gone, the installation is `Absent`. Continuation safety is defined in `incremental-graph-journal-lifecycle.md` §4.1.
 
-`InstallationRecoverySource` packages exactly that guarantee as a `ContinuationSafeSnapshot`. How the source establishes it belongs to the supported backend model, not to Journal semantics. The backend may use one storage location, several locations, Git publication rules, replicated metadata, consensus, or another protocol. Restoration may rely on backend invariants which make some hypothetical histories impossible.
-
-Records authored only on the completely lost local storage may be absent from the recovered snapshot and their coordinates may later be reused when the backend model guarantees that no surviving supported copy can reintroduce them. Conversely, if a higher record can later re-enter, the proposed recovered head is not continuation-safe.
-
-This mechanism applies only to complete local absence. It is not a way to repair an existing truncated or rolled-back database. Transport locators such as hostnames or branch names remain outside persisted IncrementalGraph state and outside the recovery semantic interface. `incremental-graph-journal-lifecycle.md` §4.1 gives the abstract rule and explains how the current Git-backed flow can satisfy it without making that transport topology normative.
+`InstallationRecoverySource` packages that lifecycle guarantee as a `ContinuationSafeSnapshot`; how a backend establishes it is transport-specific. This mechanism applies only to complete local absence, not to repair of an existing truncated or rolled-back database. Transport locators such as hostnames or branch names remain outside persisted IncrementalGraph state and outside the recovery semantic interface.
 
 ## Canonical pre-Journal bootstrap
 

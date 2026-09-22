@@ -38,8 +38,8 @@ Each semantic rule has one normative owner. Other Journal documents may summariz
 
 - core Journal-authority/projection model and global conceptual invariants: `incremental-graph-journal.md`;
 - record shapes, identity primitives, causal/authority data: `incremental-graph-journal-types.md`;
-- well-formedness, context/reference legality, certificate eligibility: `incremental-graph-journal-well-formedness.md`;
-- replay, effective proof, certificate selection, freshness/validity projection: `incremental-graph-journal-replay.md`;
+- well-formedness, context/reference legality, and record/basis validity: `incremental-graph-journal-well-formedness.md`;
+- replay, certificate eligibility and selection, effective proof, freshness/validity projection: `incremental-graph-journal-replay.md`;
 - ordinary-operation Journal emission: `incremental-graph-journal-emission.md`;
 - publication finalization, atomic graph+Journal cutover, and locking ownership: `incremental-graph-journal-locking.md`;
 - semantic API/snapshot/source boundaries: `incremental-graph-journal-api.md`;

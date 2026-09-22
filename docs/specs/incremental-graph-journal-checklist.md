@@ -299,6 +299,7 @@ The temporary shipped-vs-target documentation split exists only while Journal 3 
 - replace or rewrite `database-lifecycle.md` so the canonical lifecycle spec describes the shipped Journal 3 lifecycle;
 - fold `incremental-graph-journal-lifecycle.md` into the canonical lifecycle documentation, then remove the temporary target-design lifecycle file;
 - update `migration.md` together with the runtime migration implementation, deleting the legacy `override` API/error/decision documentation when the code path is deleted;
+- update `incremental-graph.md` REQ-IFACE-06..08 together with the runtime timestamp behavior so the canonical timestamp contract describes shipped Journal 3 semantics;
 - update superseded pre-Journal/current-code sections of `docs/database.md`, `keys-design.md`, `incremental-graph-fingerprint.md`, `incremental-graph-last-node-index.md`, `incremental-graph-volatile-consistency.md`, and `incremental-graph-flag-based-inverse-validity.md` so they describe the implemented Journal 3 state rather than the pre-implementation system;
 - remove all “Journal 3 target design / not yet implemented / until implementation lands” status banners and other temporary shipped-vs-target routing text; and
 - re-run the normative-ownership/read-order audit so no canonical documentation points readers to a removed pre-Journal rule or temporary target file.

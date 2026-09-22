@@ -61,7 +61,7 @@ A machine whose local database is completely absent queries an installation reco
 - definite absence -> fresh identity may be created;
 - read/query/continuation-safety uncertainty -> fail, no fresh fallback.
 
-For writer A at recovered head q, continuation-safe means that after recovery no previously authored `A:r` with `r > q` can later enter supported retained history. The persistence/recovery implementation may rely on guarantees of its supported backend model to establish this and need not account for hypothetical copies that cannot arise or later re-enter under that model. Records lost only with the completely lost local database and unable to re-enter do not make q unsafe.
+Continuation safety is defined in `incremental-graph-journal-lifecycle.md` §4.1.
 
 The recovery source abstraction does not require one server, one branch, one authority, or one storage topology. Transport locators such as hostnames or branch names remain outside IncrementalGraph-owned persisted state and semantic recovery APIs.
 

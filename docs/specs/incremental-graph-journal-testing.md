@@ -772,7 +772,7 @@ Add the same two-certificate fixture to maintenance-only migration proof weakeni
 ```text
 A -> B
 initial: both fresh, B proof {A:a1}
-migration: explicit invalidate(A)
+migration: explicit invalidate(A); keep(B)
 target: A stale; B persistently stale, proof retained
 ```
 

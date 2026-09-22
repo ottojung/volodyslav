@@ -115,7 +115,7 @@ localWriter_after_restore == S.localWriter
 
 The writer head, allocator watermark, authority high-water, Journal, and projection are restored before new authoring.
 
-For `S.localWriter = A` and `S.frontier[A] = q`, continuation safety means no previously-authored `A:r`, `r > q`, can later enter supported retained history after the restore. Records lost only with the completely destroyed local database do not violate this when the supported backend model guarantees that no surviving copy can later reintroduce them.
+Continuation safety is defined in `incremental-graph-journal-lifecycle.md` §4.1. This law assumes that lifecycle condition for S; writer-coordinate and allocator reuse after restoration is valid only where that owner permits it.
 
 Definite absence alone permits fresh identity generation. Read/continuation-safety uncertainty must not fall back to fresh creation.
 

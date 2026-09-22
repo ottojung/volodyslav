@@ -165,11 +165,7 @@ This semantic interface intentionally contains no hostname, Git branch name, rep
 
 `InstallationRecoverySource` does not imply a single server, branch, authority, or storage location. An implementation may consult one source, several sources, replicated metadata, a transport-specific publication path, or another backend protocol. Journal code only consumes the semantic answer.
 
-`ContinuationSafeSnapshot` contains an ordinary stable Journal snapshot plus the absent-restoration guarantee defined by `incremental-graph-journal-lifecycle.md` §4.1. For its `localWriter = A` and `frontier[A] = q`, after restoring the completely absent installation no previously authored A record with sequence greater than q may later enter supported retained history.
-
-How that guarantee is established belongs to the supported backend model. Restoration may rely on backend invariants which make some hypothetical histories impossible; it is not required to discover or defend against copies which cannot exist or later re-enter under that model. A source may return `Exists(ContinuationSafeSnapshot)` only when its backend-specific guarantees establish the property.
-
-Records authored only on the completely lost local storage do not make q unsafe when the backend model guarantees that no surviving copy can later reintroduce them. If continuation safety cannot be established, the source returns `IndeterminateOrError`.
+`ContinuationSafeSnapshot` contains an ordinary stable Journal snapshot plus the absent-restoration guarantee. Continuation safety is defined in `incremental-graph-journal-lifecycle.md` §4.1. A source may return `Exists(ContinuationSafeSnapshot)` only when its backend-specific guarantees establish that lifecycle condition; otherwise it returns `IndeterminateOrError`.
 
 This source is **not** an API for repairing an existing local database that is truncated, rolled back, partially restored, or otherwise missing some of its own writer history. Those states are outside the supported lifecycle model under `$id-6158827469032147`.
 
