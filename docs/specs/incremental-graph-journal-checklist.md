@@ -89,14 +89,10 @@ Acceptance:
 - a crash/interruption of a supported transition exposes only a state permitted by that transition's atomicity/crash rules;
 - installation recovery source is queried only for an absent local database and before fresh fingerprint generation;
 - source exists -> restore/adopt `localWriter` only when the held snapshot establishes a **continuation-safe head** as defined by `incremental-graph-journal-lifecycle.md` §4.1;
-- continuation-safe means no higher record for that writer can later re-enter supported history after absent-state restoration;
-- JournalRecordId uniqueness follows `$id-2567281946348705`: across compatible supported states, the same ID identifies the same record; a discarded writer coordinate may be reused only when its prior record cannot later coexist with or be combined with the restored continuation;
-- NodeIdentifier uniqueness follows `$id-4173361406347342`: across compatible supported states, the same NodeIdentifier identifies the same materialization lineage and distinct lineages do not share one;
+- JournalRecordId uniqueness follows `$id-2567281946348705` and NodeIdentifier uniqueness follows `$id-4173361406347342`; absent-restoration coordinate/index reuse and discarded-suffix handling follow the lifecycle-owned continuation-safety rule rather than a checklist-local criterion;
 - source definitely absent -> fresh creation allowed;
 - source read/query failure -> fail, no fresh fallback;
 - writer head/allocator watermark/authority high-water/projection reconstructed before new allocation;
-- allocator watermark is reconstructed from the same continuation-safe retained writer prefix; indices allocated only in a discarded suffix may be reused only when that suffix cannot later enter supported retained history;
-- records lost only with the completely lost local database and unable to re-enter supported history do not by themselves make the restored head unsafe;
 - establishing absent-restoration safety does not require contacting/discovering every possible peer (`$id-4719065396881648`);
 - an existing local database is never routed through absent restore merely because some of its data is missing or old.
 
