@@ -241,7 +241,7 @@ At serialized finalization:
 2. referencing records receive later positions;
 3. every semantic event receives an exact own-writer context coordinate equal to its sequence minus one;
 4. symbolic references resolve to those exact IDs;
-5. cross-writer context is copied from the complete causally closed frontier semantically observed by the publication and monotonically extended by any earlier same-publication semantic observations;
+5. semantic-event context construction follows `incremental-graph-journal-types.md` §Causal context;
 6. the resulting persisted records satisfy `happenedBefore` and authority monotonicity.
 
 No persisted forward ValueId reference within one writer publication is permitted.
