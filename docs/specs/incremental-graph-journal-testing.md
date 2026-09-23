@@ -347,6 +347,8 @@ Two replicas independently migrate/reset to the same partial proof `{A:a1,C:unkn
 
 Variant: one replica removes A and the other removes C. After union both edges are invalid: negative edge evidence composes as the union of removed edges.
 
+Concurrent same-ValueId revalidation regression: let another replica validate the same `b1` with full proof for a barriered edge without observing the reset/migration barrier. After union, that concurrent validation MUST NOT re-establish the barriered edge. Exercise this with both `reason="reset"` and `reason="migration"`. A new validation causally after the barrier which explicitly proves the edge MUST restore it. A certificate for replacement ValueId `b2` remains unaffected.
+
 ### Reset losing-certificate proof exposure regression
 
 Construct preserved occurrence V of K with current inputs A1/B1 and two eligible certificates:

@@ -286,6 +286,8 @@ eligibleEffectiveProofUnion(K) =
 
 A proof barrier for `(V,D)` is cleared for one certificate only when that certificate causally observes the barrier. A concurrent certificate may still prove other inputs, but it cannot re-establish D merely by having greater clock authority.
 
+Consequently, a concurrent validation for the same V which did not observe a reset- or migration-authored `proof(V,D)` barrier cannot re-establish D when the histories later meet. This is intentional causal semantics: that validation contains no evidence that D was revalidated after the maintenance weakening. D can be restored only by a validation causally after the barrier which explicitly proves it again. The effect remains scoped to exact V and D; a replacement ValueId V2 is unaffected.
+
 ## Certificate selection
 
 Journal 3 retains all certificates, so replay chooses strongest sound current proof rather than letting concurrent clock tie-break hide causally later revalidation.
