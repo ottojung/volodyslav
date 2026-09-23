@@ -121,22 +121,7 @@ The number of inputs is irrelevant.
 
 ## Ordinary synchronization
 
-Ordinary sync:
-
-1. opens one stable compatible `JournalSnapshot`;
-2. imports missing **foreign-writer** suffixes unchanged;
-3. relies on the supported-prefix identity theorem for historical overlap and validates newly admitted/affected records, their causal/reference closure, and affected projection preconditions;
-4. authors only required receiver normalization;
-5. replays and atomically cuts over.
-
-The own-writer-ahead boundary is owned by `incremental-graph-journal-lifecycle.md` §5 and the synchronization behavior by `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is unsupported state.
-
-Sync normalization may author only:
-
-- DeleteEvents required for dependency closure;
-- `value(V)` invalidations required to persist selected-occurrence staleness caused solely by stale inputs.
-
-No computor runs during sync.
+Ordinary synchronization semantics—including snapshot compatibility, immutable foreign-history import, receiver normalization, convergence, and operation-specific own-writer-ahead behavior—are owned by `incremental-graph-journal-sync.md`; the shared established-writer rollback classification is owned by `incremental-graph-journal-lifecycle.md` §5.
 
 ## Absent-installation restoration
 
@@ -146,57 +131,15 @@ When the complete local database is gone, the installation is `Absent`. Continua
 
 ## Canonical pre-Journal bootstrap
 
-Bootstrap journals the already-persisted supported legacy graph as semantic identity. It does not run an ordinary semantic migration before Journal identity exists.
-
-One immutable `CanonicalBootstrapSnapshot` captures exactly the original creator bootstrap frontier/version/schema. Later current Journal history is not part of that artifact.
-
-### Join value identity
-
-- exact canonical-equal occurrence -> reuse canonical ValueId;
-- local-only/different occurrence -> historical joining-writer bootstrap ValueEvent;
-- divergent legacy values remain concurrent unless genuine legacy causality says otherwise;
-- conflict authority is seeded by persisted legacy `modifiedAt`, not upgrade time;
-- legacy cache absence is not deletion evidence.
-
-### Join proof and freshness
-
-For exact shared occurrence V, bootstrap uses the canonical/joining validity intersection only as the **maximum admissible edge set**, and canonical OR joining stale state as direct stale-marker evidence. Final validity/freshness remain replay-derived and occurrence-sensitive.
-
-Canonical certificate remains the positive basis. `proof(V,D)` barriers remove canonical edges absent on the joining side; joining-only proof never strengthens or retargets the shared occurrence. If a different joining input occurrence wins selection, the retained canonical basis may mismatch it and make V hard stale even though both legacy graphs contained that semantic edge.
-
-After direct roots, bootstrap persists recursive-only stale dependents with `value(V)` markers when own effective proof is complete.
-
-Creator-resume installs exactly the frozen artifact when the still-pre-Journal creator's persisted graph still matches it; mismatch is `JournalBootstrapForkError`.
+Canonical pre-Journal bootstrap—including creator creation/resume, joining, exact-shared identity/proof/freshness, and first-creator arbitration—is owned by `incremental-graph-journal-migrations.md` Part I (§§1–8), with lifecycle gating owned by `incremental-graph-journal-lifecycle.md`.
 
 ## Journal-aware migration
 
-Journal-aware migration has two layers:
-
-1. total deterministic whole-history format rewrite;
-2. semantic target repair.
-
-Representation-only change uses the canonical codec plus `keep`.
-
-Semantic migration:
-
-- `keep` preserves ValueId;
-- `invalidate(K)` preserves cached occurrence but authors true node-scoped invalidation;
-- proof/freshness/schema-only changes preserve ValueId;
-- maintenance proof weakening for preserved V uses `proof(V,D)` for every non-target edge in `eligibleEffectiveProofUnion(K)`;
-- target persistent stale state uses `value(V)` when own effective proof is complete;
-- `create`/true replacement authors a new ValueEvent.
-
-Independent genuine replacements may create different ValueIds on different replicas. Later normal conflict selection may stale dependents naming a losing replacement; this accepted trade-off avoids mandatory canonical migration coordination.
+Journal-aware migration—including whole-history format rewriting, the semantic decision vocabulary, target construction, proof/freshness repair, and the canonical version chain—is owned by `incremental-graph-journal-migrations.md` Part II (§§9–22).
 
 ## Reset
 
-Reset retains observed receiver/source history and establishes the requested source projection relative to that observed history.
-
-Reset's own-writer-ahead behavior is defined by `incremental-graph-journal-reset.md` §Preconditions and the shared lifecycle boundary in `incremental-graph-journal-lifecycle.md` §5.
-
-Otherwise reset preserves an already-matching occurrence, creates/replaces only when semantic occurrence state differs, uses `proof(V,D)` for every `D in eligibleEffectiveProofUnion(K) - TargetValid(K)`, persists target stale flags with `value(V)`, and authors DeleteEvent for target absence when necessary.
-
-Reset repair is intentionally causally later than all history it observed. That rule is not reused for pre-Journal bootstrap conflict conversion.
+Reset semantics—including raw-union repair, occurrence preservation/replacement, proof weakening, target freshness, and operation-specific own-writer-ahead behavior—are owned by `incremental-graph-journal-reset.md`, with the shared rollback classification owned by `incremental-graph-journal-lifecycle.md` §5.
 
 ## History retention and scope
 
