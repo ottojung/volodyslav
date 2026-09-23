@@ -2,7 +2,7 @@
 
 ## Status and scope
 
-**Status:** this document specifies the Journal 3 target design. Journal 3 is not yet implemented in the current backend. Until implementation lands, existing non-Journal component specifications continue to describe shipped/pre-Journal behavior unless they explicitly identify themselves as target design. Journal-specific changes in this PR are normative for the future Journal 3 implementation, not claims about current runtime behavior.
+**Status:** this document specifies the Journal 3 target design. Journal 3 is not yet implemented in the current backend. Until implementation lands, existing non-Journal component specifications continue to describe shipped/pre-Journal behavior unless they explicitly identify themselves as target design. The Journal-owned specifications are normative for the Journal 3 implementation and make no claims about current runtime behavior.
 
 Journal 3 is the append-only replay history for IncrementalGraph state.
 
