@@ -140,7 +140,13 @@ Optimized replay/index/checkpoint implementations must remain observationally eq
 
 ```text
 synchronizeFrom(source: JournalSyncSource) -> Promise<SyncResult>
+
+SyncResult {
+    stateAdvancing: boolean
+}
 ```
+
+`SyncResult.stateAdvancing` exposes the state-advancing predicate owned by `incremental-graph-journal-sync.md` §Host-count bounded settling schedule; this API section does not redefine that predicate.
 
 Success means source compatibility came from the held snapshot, imported records were retained unchanged, normalization was complete, and active graph equals Journal replay.
 
