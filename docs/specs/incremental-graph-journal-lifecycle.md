@@ -366,6 +366,7 @@ Unsupported operations/states include:
 - changing one same-version record's semantic meaning while keeping its ID;
 - partial deletion of a local database;
 - replacing an existing local database with an older snapshot or backup;
+- restoring an existing local database from an earlier checkpoint, or rewinding its remote publication, as release rollback; Journal 3 release recovery is forward-only per `$id-5083197642258146`;
 - mixing records/files from different database moments;
 - partially restoring local storage while retaining some old state;
 - mixed record formats in one active replica;

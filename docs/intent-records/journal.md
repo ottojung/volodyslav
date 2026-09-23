@@ -406,3 +406,17 @@ The one-time transition from legacy state into a synchronization cohort's canoni
 The configured transport-neutral cohort bootstrap source must distinguish an existing canonical snapshot, definite absence suitable for first creation, and an indeterminate/error result. Indeterminate/error must fail rather than authorize creation.
 
 This requirement specifies lifecycle semantics only. It does not prescribe Git locking, a hosted backend, RPCs, or another transport mechanism. If distinct canonical bootstrap histories are nevertheless discovered, the state is unsupported and requires explicit recovery rather than payload-based reconciliation.
+
+---
+
+$id-5083197642258146
+title: Journal 3 release recovery is forward-only
+date: 2026/09/23
+source: @ottojung
+kind: accepted-tradeoff
+
+Journal 3 does not support release rollback by replacing an existing local database with an older checkpoint or by rewinding its remote publication to an earlier state. Either operation can make already-published writer coordinates disappear and later be re-authored while an older copy may still re-enter supported history, violating `$id-2567281946348705`.
+
+Recovery after a bad release moves retained history forward. A corrected release may use ordinary supported operations and, when a database-version transition is required, a new canonical Journal-aware migration step. When version/schema remain compatible, `resetTo()` may re-establish a known-good source projection while retaining all history already observed by the receiver; that is semantic rebaselining, not database rollback.
+
+Once Journal 3 ships, this trade-off supersedes the pre-Journal checkpoint-restore promise in `docs/release-safety.md`. Checkpoints may still support diagnosis or data inspection, but are not replacement authority for an existing Journal database. This is the release-recovery consequence of `$id-6158827469032147`; remote publication rewind likewise remains outside the supported recovery model.

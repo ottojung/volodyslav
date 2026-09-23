@@ -174,6 +174,7 @@ Cover:
 - injected process crashes at supported publication/cutover boundaries expose only states explicitly permitted by those transition rules;
 - complete deletion of the local database yields `Absent` and enters absent-state restore/fresh creation;
 - partial deletion of Journal/graph state, replacement with an older local snapshot, mixed old/new persistent state, and direct external mutation are corrupted/unsupported, not new lifecycle states;
+- deliberate bad-release rollback by restoring an earlier checkpoint or rewinding remote publication is likewise unsupported per `$id-5083197642258146`; recovery proceeds by forward fix/migration, or by `resetTo()` only when the known-good source is version/schema compatible;
 - an existing local writer A at 900 plus surviving supported A history through 905 is rejected as `JournalWriterBehindError` and never repaired by importing 901..905 into the existing receiver.
 
 ## Absent-installation restoration tests

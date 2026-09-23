@@ -53,6 +53,12 @@ If a selected occurrence has complete **effective** own proof but is stale becau
 
 The user-visible result for the established-writer rollback condition is `JournalWriterBehindError`; the condition is defined in `incremental-graph-journal-lifecycle.md` §5 and synchronization behavior in `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is unsupported state.
 
+## Release recovery
+
+Journal 3 release recovery is forward-only as accepted by `$id-5083197642258146`. Restoring an existing database from an earlier checkpoint or rewinding its remote publication is not a supported rollback path; the lifecycle classification is owned by `incremental-graph-journal-lifecycle.md` §14.
+
+A corrected release moves state forward through supported operations and, when needed, a canonical Journal-aware migration. If a known-good source remains version/schema compatible, `resetTo()` may restore its observable projection while retaining the receiver's already-observed history.
+
 ## Absent-installation startup
 
 A machine whose local database is completely absent queries an installation recovery source **before** generating a fresh fingerprint.
