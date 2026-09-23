@@ -133,6 +133,15 @@ After sync B=b2 is persistently stale. Later `A -> Unchanged` may freshen A but 
 
 Run pairwise synchronization with a configured hostname such as `test-host-xyz`. During staging and after cutover, enumerate every implementation-owned persisted sublevel name and key used by Journal 3 synchronization staging. Require that none contains the hostname string or the prefix `_h_`, per `$id-4373538486707762`. Application-defined NodeKeys and payloads are excluded.
 
+### Synchronization result reports state advancement
+
+`SyncResult.stateAdvancing` follows the predicate in `incremental-graph-journal-sync.md` §Host-count bounded settling schedule. Require:
+
+- a sync which imports at least one record not already retained by the receiver returns `stateAdvancing == true`;
+- an immediate repeat against the same unchanged source returns `stateAdvancing == false`;
+- a sync from a source whose retained Journal is a subset of the receiver's returns `stateAdvancing == false`;
+- a sync whose source is ahead for the receiver's own writer fails `JournalWriterBehindError` and returns no `SyncResult`.
+
 ## Synchronization convergence tests
 
 For 2–4 replicas, stop non-normalization changes, synchronize in varying fair orders to fixed point, and require equivalent projections/no-op repeated sync within each actual schedule.
