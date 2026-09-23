@@ -27,7 +27,7 @@ Finalization:
 3. reconciles the staged transition against committed state;
 4. allocates one contiguous local-writer range;
 5. orders records by semantic reference/dependency constraints;
-6. assigns exact own-writer context and the closed observed cross-writer frontier;
+6. assigns contexts according to `incremental-graph-journal-types.md` §Causal context from the complete committed retained frontier observed in step 2 plus earlier same-publication records;
 7. allocates AuthorityTimes after causal predecessors;
 8. atomically writes Journal records + graph mutations together with the resulting local writer head, allocator watermark, authority high-water, and committed active-pair metadata;
 9. updates volatile allocator/index caches only after durable success.
@@ -36,9 +36,9 @@ A failed ordinary operation consumes no durable Journal coordinate.
 
 ## Context finalization
 
-An ordinary event context represents complete semantic history observed by publication, not only explicitly referenced ValueIds.
+Locking supplies the serialized committed frontier used by the context rule in `incremental-graph-journal-types.md` §Causal context. Ordinary finalization does not reduce that frontier to only the history referenced by the staged computation.
 
-Pre-Journal historical ValueEvent conversion is the narrow exception: physical reading of the canonical artifact during upgrade does not invent causal succession between two already-existing divergent legacy values.
+The pre-Journal historical ValueEvent conversion exception remains owned by the context/bootstrap specifications.
 
 ## Same-publication ordering
 

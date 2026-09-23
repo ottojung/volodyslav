@@ -26,7 +26,7 @@ Finalization:
 4. constructs validation bases from the final current direct-input ValueIds;
 5. allocates one contiguous local writer range;
 6. resolves same-publication ValueId references in semantic dependency order;
-7. gives semantic `(W,q)` exact own-writer context `q-1` plus the complete causally closed foreign frontier semantically observed;
+7. assigns every semantic event's context according to `incremental-graph-journal-types.md` §Causal context, using the complete committed retained frontier observed at finalization plus earlier same-publication records;
 8. allocates authority extending every predecessor; and
 9. atomically publishes graph + Journal records together with the updated local writer head, allocator watermark, and authority high-water committed-pair metadata.
 
@@ -34,9 +34,9 @@ Failed transactions consume no durable sequence coordinate.
 
 ## Contexts are complete semantic observation
 
-If ordinary publication observes B:7 and B:7 observed A:11, the new context includes A through at least 11 even when its body references only B.
+Ordinary emission follows the context-construction rule owned by `incremental-graph-journal-types.md` §Causal context. Context is finalized from the complete committed retained frontier, not from the subset of history touched by the computation, validation basis, or event references.
 
-The narrow pre-Journal historical-value conversion exception is lifecycle-only; ordinary emission cannot omit observed ancestry.
+The narrow pre-Journal historical-value conversion exception remains the one exception defined by that owner; ordinary emission cannot use it.
 
 ## Fresh pull no-op
 

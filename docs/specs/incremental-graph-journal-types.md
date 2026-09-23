@@ -393,7 +393,9 @@ happenedBefore(E,F) iff
 
 Same-writer semantic order follows immutable writer-stream order even when non-semantic records lie between two events.
 
-For ordinary Journal authoring, a semantic event's `context` is a **causally closed journal frontier** describing every journal record the event's writer semantically observed before that event, extended with earlier records from the same atomic publication.
+For ordinary local Journal authoring, serialized finalization observes one complete committed retained frontier before allocating the publication's records. Every semantic event in that publication starts from that **entire committed retained frontier**, not merely the records, ValueIds, inputs, or nodes which the operation happened to read or reference.
+
+For an event authored by local writer W, every cross-writer coordinate therefore equals the corresponding coordinate of that committed frontier at finalization. The own-writer coordinate is then extended by writer-stream order so it includes the complete already-committed local prefix plus every earlier record allocated in the same atomic publication. Because every committed retained frontier is already causally closed, this produces a causally closed event context.
 
 For semantic event F with:
 

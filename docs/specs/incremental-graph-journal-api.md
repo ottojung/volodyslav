@@ -100,19 +100,18 @@ Serialized finalization:
 4. finalizes validation bases from final current input ValueIds;
 5. allocates one contiguous local sequence block;
 6. assigns IDs in deterministic semantic dependency order;
-7. gives every semantic `(W,q)` own-writer context `q-1`;
-8. starts cross-writer context from the complete causally closed frontier semantically observed;
-9. resolves same-publication references only to earlier records;
-10. allocates authority extending every causal predecessor; and
-11. atomically writes Journal + matching graph transition.
+7. assigns every semantic event's context according to `incremental-graph-journal-types.md` §Causal context, from the complete committed retained frontier at finalization plus earlier same-publication records;
+8. resolves same-publication references only to earlier records;
+9. allocates authority extending every causal predecessor; and
+10. atomically writes Journal + matching graph transition.
 
 Failed operations consume no durable Journal coordinate.
 
 ## Context construction
 
-A context is semantic history, not merely direct references. If a publication observes B:7 and B:7 observed A:11, its context contains A through at least 11.
+Context construction is owned by `incremental-graph-journal-types.md` §Causal context. In particular, ordinary publication starts from the complete committed retained frontier at finalization rather than deriving context from the operation's explicit references or validation basis.
 
-The only controlled exception is pre-Journal historical ValueEvent conversion described by the bootstrap spec; migration execution read order does not invent causality between pre-existing legacy values.
+The pre-Journal historical ValueEvent conversion exception is defined by that owner and the bootstrap specification.
 
 ## JournalImportTarget
 

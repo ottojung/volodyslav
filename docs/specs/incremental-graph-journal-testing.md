@@ -49,6 +49,12 @@ A:2 context={A:0,X:0}
 
 Generated tests assert transitive `happenedBefore` and causality -> increasing authority.
 
+### Ordinary publication uses the complete committed frontier
+
+Start with K carrying a valid current occurrence and certificate. Import and commit a foreign-writer node-scoped invalidation of K, along with at least one unrelated foreign record which the next computation does not otherwise reference. Then perform an ordinary local pull/revalidation of K after that import.
+
+Require every semantic event authored by the ordinary publication to start from the complete committed retained frontier at finalization: each foreign-writer context coordinate equals that frontier's coordinate, including both the K invalidation and the unrelated foreign history. The resulting ValidateEvent therefore causally covers the imported node invalidation and may make K eligible/fresh again when its basis and inputs otherwise permit it. A context built only from touched inputs, ValueIds, or referenced records fails this regression.
+
 The bootstrap historical-value exception is tested separately: a joining legacy ValueEvent may omit canonical foreign coordinates, but its actual context still has exact own-prefix and transitive closure over every coordinate included.
 
 ## Invalidation-scope tests
