@@ -165,7 +165,7 @@ Acceptance:
 - transfer/replay processing satisfies `$id-4924739474925738`; missing suffixes are incrementally iterable and never require the complete suffix/history in RAM;
 - imported records unchanged;
 - no computor execution or transport acknowledgement event.
-- the Journal 3 implementation must delete the hostname-keyed persisted synchronization staging surface: `backend/src/generators/incremental_graph/database/hostname_storage.js`; the `'_h_' + hostname` staging path in `synchronize.js`; `clearHostnameStorage` and the hostname-staging accessors/imports in `root_database.js`; and the `_h_<hostname>` top-level sublevel naming described in `render/scan.js`. Replace it with staging whose persisted sublevel names and keys contain no hostname or other transport locator, as required by `$id-4373538486707762`. Add regression coverage asserting that implementation-owned persisted sublevel names and keys used by Journal 3 synchronization staging contain no hostname;
+- the Journal 3 implementation must delete the hostname-keyed persisted synchronization staging surface: `backend/src/generators/incremental_graph/database/hostname_storage.js`; the `'_h_' + hostname` staging path in `synchronize.js`; `clearHostnameStorage` and the hostname-staging accessors/imports in `root_database.js`; and the `_h_<hostname>` top-level sublevel naming described in `render/scan.js`. Replace it with staging whose persisted sublevel names and keys contain no hostname or other transport locator, as required by `$id-4373538486707762`. The required regression is owned by `incremental-graph-journal-testing.md` §Synchronization staging contains no transport locator;
 
 ## 10. Synchronization normalization
 
@@ -231,7 +231,7 @@ Acceptance:
 - skipped application releases still execute every canonical Journal edge stepwise; there is no separate direct source-to-target migration path outside the chain;
 - representation-only change uses `keep` plus the canonical codec;
 - the Journal 3 implementation must delete the complete legacy `override` representation-rewrite surface when this specification is implemented: `MigrationStorage.override()`; `OverrideDecision` and its imports/usages in `migration_storage.js`, `migration_storage_class.js`, `migration_storage_schema.js`, and `migration_storage_dependencies.js`; the `OverrideDecision` member of the `Decision` union in `migration_decisions.js`; `OverrideConflictError` plus the `index.js` exports `makeOverrideConflictError` / `isOverrideConflict`; every `override` branch in `migration_runner.js`, `migration_validity.js`, schema/dependency handling, and decision dispatch; the `CreateExistingNodeError` message must direct existing-node semantic value changes to the Journal 3 `replace` decision rather than `override`; and override-specific coverage in `migration_storage.test.js`, `migration_runner.test.js`, `migration_runner_timestamps.test.js`, and `migration_integration.test.js` must be removed or rewritten for the replacement/codec model. No compatibility flag or unreachable duplicate mechanism remains;
-- `keep` preserves occurrence ValueId/timestamps, but carries source proof/freshness only where §11a provenance permits it; a created/replaced required input cannot be substituted into the proof of a kept dependent;
+- `keep` preserves occurrence ValueId/timestamps, but carries source proof/freshness only where `incremental-graph-journal-migrations.md` §11a provenance permits it; a created/replaced required input cannot be substituted into the proof of a kept dependent;
 - stale `keep` alone does not create proof barriers or force recomputation, while a kept dependent whose required input occurrence changes becomes hard stale unless the dependent is explicitly semantically re-established;
 - explicit migration `invalidate(K)` preserves occurrence ValueId and authors true node-scoped invalidation;
 - maintenance-only proof weakening for preserved V barriers every `D` in `eligibleEffectiveProofUnion(K) - TargetValid(K)`, not merely edges of the initially selected certificate and not a whole-ValueId or node barrier;
@@ -241,12 +241,12 @@ Acceptance:
 - proof/freshness/schema change alone creates no ValueEvent;
 - target persistent stale with own effective proof ready gets value marker even if recursive input staleness already makes replay stale;
 - the explicit `replace` decision is implemented according to `incremental-graph-journal-migrations.md` §11 and covered through M1–M3;
-- target-state construction follows §11a before M1–M3, including decision completeness/conflicts, target-schema dependency-closure delete propagation, create collision/schema checks, and create freshness semantics;
+- target-state construction follows `incremental-graph-journal-migrations.md` §11a before M1–M3, including decision completeness/conflicts, target-schema dependency-closure delete propagation, create collision/schema checks, and create freshness semantics;
 - `delete(A); keep(B)` conflicts when target B still requires A, while removal of that target edge removes the structural conflict;
 - Journal-aware invalidation does not assign downstream migration decisions: kept dependents remain materialized and replay-derived freshness propagates through stale inputs;
 - `create(...,"up-to-date")` establishes full proof only with fresh required inputs; `create(...,"potentially-outdated")` asserts no positive incoming proof and remains stale;
 - replacing/creating an input invalidates carried proof for any occurrence-preserved dependent on that input, and M2 may not certify the old dependent against the new input ValueId;
-- `replace` preserves NodeIdentifier/createdAt, creates a new ValueId/modifiedAt, and establishes target proof/freshness according to §11a;
+- `replace` preserves NodeIdentifier/createdAt, creates a new ValueId/modifiedAt, and establishes target proof/freshness according to `incremental-graph-journal-migrations.md` §11a;
 - independent replacements may later conflict/stale dependents as accepted;
 - no particular peer required for migration;
 - target replay equals migration target including stale persistence;
@@ -295,6 +295,7 @@ The temporary shipped-vs-target documentation split exists only while Journal 3 
 - fold any still-needed content from `incremental-graph-journal-sync-shell.md` into the canonical synchronization documentation, then remove the temporary target shell;
 - replace or rewrite `database-lifecycle.md` so the canonical lifecycle spec describes the shipped Journal 3 lifecycle;
 - fold `incremental-graph-journal-lifecycle.md` into the canonical lifecycle documentation, then remove the temporary target-design lifecycle file;
+- rewrite `docs/database-boot-sequence.md` so startup describes the shipped Journal 3 lifecycle: §7.1 (missing live DB) follows `incremental-graph-journal-lifecycle.md` §4 (`InstallationRecoverySource` query; restore only `Exists(ContinuationSafeSnapshot)`; fresh fingerprint only on `DefinitelyAbsent`; fail on indeterminate/error), deleting the `resetToHostname` attempt and the fallback to normal sync from an empty local database; §7.3 and the startup flow diagram follow the migration/bootstrap gate in `incremental-graph-journal-lifecycle.md` §8;
 - update `migration.md` together with the runtime migration implementation, deleting the legacy `override` API/error/decision documentation when the code path is deleted;
 - update `incremental-graph.md` REQ-IFACE-06..08 together with the runtime timestamp behavior so the canonical timestamp contract describes shipped Journal 3 semantics;
 - update superseded pre-Journal/current-code sections of `docs/database.md`, `keys-design.md`, `incremental-graph-fingerprint.md`, `incremental-graph-last-node-index.md`, `incremental-graph-volatile-consistency.md`, and `incremental-graph-flag-based-inverse-validity.md` so they describe the implemented Journal 3 state rather than the pre-implementation system;

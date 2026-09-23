@@ -129,6 +129,10 @@ receiver X: A=a1 stale
 
 After sync B=b2 is persistently stale. Later `A -> Unchanged` may freshen A but not B until B validates/recomputes.
 
+### Synchronization staging contains no transport locator
+
+Run pairwise synchronization with a configured hostname such as `test-host-xyz`. During staging and after cutover, enumerate every implementation-owned persisted sublevel name and key used by Journal 3 synchronization staging. Require that none contains the hostname string or the prefix `_h_`, per `$id-4373538486707762`. Application-defined NodeKeys and payloads are excluded.
+
 ## Synchronization convergence tests
 
 For 2–4 replicas, stop non-normalization changes, synchronize in varying fair orders to fixed point, and require equivalent projections/no-op repeated sync within each actual schedule.
@@ -675,7 +679,7 @@ Every migration verifies deterministic whole-history format rewrite, one target 
 Identity-specific cases:
 
 - `keep` preserves selected ValueId;
-- `keep` preserves source proof/freshness only where §11a occurrence provenance remains valid; changing a required target input occurrence makes the kept dependent stale even without an explicit freshness decision;
+- `keep` preserves source proof/freshness only where `incremental-graph-journal-migrations.md` §11a occurrence provenance remains valid; changing a required target input occurrence makes the kept dependent stale even without an explicit freshness decision;
 - a recursively stale `keep` preserves unaffected source-replay incoming validity where the relevant target input occurrences are preserved;
 - stale `keep` alone does not author proof barriers or force recomputation;
 - representation-only rewrite uses `keep` plus the canonical codec;
@@ -743,7 +747,7 @@ migration decisions:
     keep(B)
 ```
 
-Require target-state construction under §11a before M1–M3:
+Require target-state construction under `incremental-graph-journal-migrations.md` §11a before M1–M3:
 
 - A receives a new migration ValueId `a2`;
 - B preserves its old ValueId and payload 2;
