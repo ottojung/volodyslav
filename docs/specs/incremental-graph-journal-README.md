@@ -23,7 +23,6 @@ Journal 3 is split by semantic responsibility. For a first implementation pass, 
 
 Surrounding lifecycle specs:
 
-- `incremental-graph-journal-sync-shell.md` — IncrementalGraph-facing synchronization shell;
 - `incremental-graph-journal-lifecycle.md` — restore/open/bootstrap/migrate/sync/reset/rebuild lifecycle.
 
 ## One-sentence model

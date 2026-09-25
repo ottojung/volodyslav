@@ -214,7 +214,7 @@ Reset may form a compatible raw receiver/source union whose selected Value/Delet
 Reset maintenance semantics include:
 
 - one `Invalidate(scope={kind:"proof", value:V, input:D})` for every `D in eligibleEffectiveProofUnion(K) - TargetValid(K)` for a preserved occurrence V, as defined by `incremental-graph-journal-reset.md` §Pass 2; and
-- a `value(V)` stale marker when target freshness is persistently stale while V's own **effective** proof is complete.
+- persistent `value(V)` stale-marker authoring is owned by `incremental-graph-journal-reset.md` §Pass 3 using `selfProofReady(K)` from `incremental-graph-journal-replay.md` §Persistent propagated staleness; this API surface does not restate its condition or duplicate-marker rule.
 
 Proof-edge barriers retire only the named `(V,D)` edge. Concurrent barriers compose by subtracting the union of named edges; another ValueId is unaffected.
 

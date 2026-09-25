@@ -167,7 +167,7 @@ A proof-edge barrier removes only that edge from certificates targeting V until 
 
 ### Persistent target stale state
 
-If the target stores K stale while K's own effective proof is complete, migration persists a `value(V)` stale marker even when K is already recursively stale through an input. Later upstream `Unchanged` does not freshen K until K itself validates/recomputes.
+Migration persistent-stale marker authoring is owned by `incremental-graph-journal-migrations.md` §17 using `selfProofReady(K)` from `incremental-graph-journal-replay.md` §Persistent propagated staleness, including its no-duplicate rule. The user-visible consequence is that later upstream `Unchanged` does not erase required migration-persisted staleness.
 
 ## Reset
 
@@ -187,7 +187,7 @@ Reset retains history and establishes the source projection relative to all hist
 - actual occurrence difference -> new reset ValueEvent;
 - every `D in eligibleEffectiveProofUnion(K) - TargetValid(K)` for preserved V -> `proof(V,D)` barrier;
 - exact target proof -> validation as needed;
-- target persistent stale with effective own proof complete -> `value(V)` reset marker;
+- persistent target-stale marker handling -> `incremental-graph-journal-reset.md` §Pass 3 using `selfProofReady(K)` from `incremental-graph-journal-replay.md` §Persistent propagated staleness;
 - target absence while union selects value -> one DeleteEvent;
 - already-selected absence -> no redundant delete.
 

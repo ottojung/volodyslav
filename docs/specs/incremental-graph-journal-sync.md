@@ -25,6 +25,13 @@ synchronizeFrom(source: JournalSyncSource) -> SyncResult
 
 `JournalSyncSource` is transport-neutral. It does not repair or redefine the receiver's own writer history.
 
+## IncrementalGraph-facing behavior
+
+At the existing IncrementalGraph interface, public `pull(...)`, `invalidate(...)`, and `synchronize(...)` remain conceptually unchanged.
+
+Synchronization does not merge `values`, `freshness`, timestamps, `valid`, or identifier maps fieldwise as independent authorities. The resulting graph is the materialized `project(Jfinal)`.
+
+
 ## Preconditions
 
 Synchronization requires:

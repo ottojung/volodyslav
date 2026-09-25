@@ -292,7 +292,6 @@ Issue #1607 owns end-to-end change-sensitive synchronization complexity. Correct
 The temporary shipped-vs-target documentation split exists only while Journal 3 is unimplemented. The implementation change is not complete until documentation is cut over with the code:
 
 - replace or rewrite `incremental-graph-synchronization.md` so the canonical synchronization spec describes shipped Journal 3 behavior;
-- fold any still-needed content from `incremental-graph-journal-sync-shell.md` into the canonical synchronization documentation, then remove the temporary target shell;
 - replace or rewrite `database-lifecycle.md` so the canonical lifecycle spec describes the shipped Journal 3 lifecycle;
 - fold `incremental-graph-journal-lifecycle.md` into the canonical lifecycle documentation, then remove the temporary target-design lifecycle file;
 - rewrite `docs/database-boot-sequence.md` so startup describes the shipped Journal 3 lifecycle: §7.1 (missing live DB) follows `incremental-graph-journal-lifecycle.md` §4 (`InstallationRecoverySource` query; restore only `Exists(ContinuationSafeSnapshot)`; fresh fingerprint only on `DefinitelyAbsent`; fail on indeterminate/error), deleting the `resetToHostname` attempt and the fallback to normal sync from an empty local database; §7.3 and the startup flow diagram follow the migration/bootstrap gate in `incremental-graph-journal-lifecycle.md` §8;
