@@ -32,7 +32,7 @@ valid                : Map<NodeIdentifier, Array<NodeIdentifier>>
 - `identifiers_keys_map`, `values`, `freshness`, and `timestamps` share the same key set. A materialized node is exactly a cached node.
 - `values` is cached value storage.
 - `freshness` is the total materialized-node freshness table.
-- `timestamps` is the total materialized-node timestamp table. `createdAt` is when the materialized node identity was first created; `modifiedAt` is a version timestamp for the stored semantic value (it advances only when the semantic value changes, not when freshness, validity, or other record metadata changes).
+- `timestamps` is the total materialized-node timestamp table. `createdAt` is when the materialized node identity was first created; `modifiedAt` is a version timestamp for the stored semantic value (it is updated only when the semantic value changes, not when freshness, validity, or other record metadata changes; successive values are not required to increase numerically — see REQ-IFACE-08 in `incremental-graph.md`).
 - `valid` is the inverse proof relation for up-to-date cached values. `valid[D]` contains dependents `N` whose current cached value has a proof with respect to `D`'s current cached value; `valid[D]` is also the outgoing frontier traversed when `D` is invalidated.
 
 Terminology:
