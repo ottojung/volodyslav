@@ -47,7 +47,7 @@ So mixed input histories affect validity/freshness, not cache existence, unless 
 
 ### Persistent propagated stale state
 
-If a selected occurrence has complete **effective** own proof but is stale because an input is stale, sync persists `Invalidate(scope=value(currentValueId), reason="sync")`, including when that occurrence was newly selected from the source. Later upstream `Unchanged` cannot freshen the dependent automatically.
+Synchronization persistent-stale marker authoring is owned by `incremental-graph-journal-sync.md` §Phase 2 using `selfProofReady(K)` from `incremental-graph-journal-replay.md` §Persistent propagated staleness, including its no-duplicate rule. The user-visible consequence is that later upstream `Unchanged` cannot erase required sync-persisted staleness.
 
 ## Synchronization can reveal unsupported local rollback
 
@@ -124,7 +124,7 @@ Therefore a mixed-winner merge cannot manufacture a never-observed combination s
 
 ### Recursive bootstrap staleness
 
-After direct proof/stale evidence is represented, bootstrap walks the selected DAG. If selected K's effective own proof is complete but an input is stale, it persists `value(currentValueId(K))` stale history so later upstream `Unchanged` cannot silently freshen K.
+Bootstrap recursive-stale marker authoring is owned by `incremental-graph-journal-migrations.md` §7.4 using `selfProofReady(K)` from `incremental-graph-journal-replay.md` §Persistent propagated staleness. The user-visible consequence is that later upstream `Unchanged` cannot erase bootstrap-persisted recursive staleness.
 
 A validation authored after the frozen canonical cut but unseen by the late join is concurrent with late-join negative proof/stale evidence and therefore does not erase it until a causally later validation observes/re-proves that evidence. `$id-4465456703882268` accepts the resulting conservative revalidation/recomputation cost.
 

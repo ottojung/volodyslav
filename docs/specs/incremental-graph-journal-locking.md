@@ -78,7 +78,7 @@ Invalidate(
 
 before any target validation which re-proves retained edges. It does **not** use node scope merely as a certificate-selection barrier, and it does not retire unrelated proof edges for V.
 
-If target stores persistent stale V while its own effective proof is otherwise complete, reset stages a value-scoped stale marker even when recursive input staleness already makes replay stale.
+Reset persistent-stale marker authoring is owned by `incremental-graph-journal-reset.md` §Pass 3 using `selfProofReady(K)` from `incremental-graph-journal-replay.md` §Persistent propagated staleness. Locking only requires any resulting marker to participate in the same atomic reset publication.
 
 Reset-authored events causally follow the union they intentionally repair.
 

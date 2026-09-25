@@ -257,7 +257,7 @@ joining legacy:
     K absent (or different K loses authority)
 ```
 
-Pass J2 persists stale Dc. Kc remains selected and has complete own effective proof, so replay now reports K stale only recursively through D.
+Pass J2 persists stale Dc. Kc remains selected and `selfProofReady(Kc)` holds at the J2b pre-marker cut, so replay now reports K stale only recursively through D.
 
 Pass J2b therefore authors:
 

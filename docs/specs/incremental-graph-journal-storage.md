@@ -126,13 +126,13 @@ True explicit `invalidate(K)` remains node-scoped.
 
 ## Persistent stale records
 
-When graph/lifecycle semantics persist K stale while K's own effective proof is otherwise complete, retained history contains an uncovered:
+When an owning authoring path requires persistent stale history under `selfProofReady(K)` as defined by `incremental-graph-journal-replay.md` §Persistent propagated staleness, storage retains the resulting uncovered:
 
 ```text
 Invalidate(K, scope=value(valueId(K)), reason=...)
 ```
 
-This requirement covers ordinary propagation, synchronization, bootstrap, reset, and migration. It prevents later upstream `Unchanged` from silently erasing a stored stale transition.
+Storage does not independently decide when that marker is required. Retaining it prevents later upstream `Unchanged` from silently erasing a stored stale transition.
 
 ## Established local writer monotonicity and absent restoration
 

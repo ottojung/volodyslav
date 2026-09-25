@@ -280,7 +280,7 @@ An uncovered value-scoped bootstrap invalidation remains/gets authored after pro
 
 ## Law 30: bootstrap persists recursive-only staleness
 
-After direct bootstrap proof/stale roots, every selected K whose own effective proof is complete but which is stale through a direct input receives an uncovered current-value bootstrap invalidation. Later upstream `Unchanged` therefore cannot silently freshen K.
+At the bootstrap J2b pre-marker cut, every selected K for which `selfProofReady(K)` holds and which is stale through a direct input receives an uncovered current-value bootstrap invalidation. `selfProofReady` is defined by `incremental-graph-journal-replay.md` §Persistent propagated staleness and applied by `incremental-graph-journal-migrations.md` §7.4. Later upstream `Unchanged` therefore cannot silently freshen K.
 
 ## Law 31: canonical identity guarantee is limited to canonical-equal occurrences
 

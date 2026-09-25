@@ -666,7 +666,7 @@ joining: same D occurrence stale; K absent or a losing different occurrence
 Expected:
 
 1. J2 makes shared Dc persistently stale;
-2. canonical K remains selected and has complete own effective proof;
+2. canonical K remains selected and `selfProofReady(K)` holds at the J2b pre-marker cut;
 3. J2b detects K stale solely through D and authors `Invalidate(K,scope=value(Kc),reason=bootstrap)`;
 4. later `pull(D) -> Unchanged` may freshen D but MUST NOT freshen K;
 5. K becomes fresh only when K validates/recomputes.

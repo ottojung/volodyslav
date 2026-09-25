@@ -80,11 +80,11 @@ Consequences:
 
 ## Persistent freshness is separate from recursive freshness
 
-K may be replay-stale solely because an input is stale while K's own effective proof is complete.
+A node may be replay-stale solely because a direct input is stale.
 
-Whenever graph semantics persist that stale transition, Journal persists `value(Kcurrent)` stale history too. Otherwise a later upstream `Unchanged` could erase the stored stale flag without K itself validating/recomputing.
+Whether that recursive-only staleness requires a persistent `value(Kcurrent)` marker is defined by `selfProofReady(K)` in `incremental-graph-journal-replay.md` §Persistent propagated staleness and by the owning authoring path. This derived properties document does not restate that predicate.
 
-This applies to ordinary propagation, synchronization, bootstrap, reset, and migration.
+The consequence is persistent stale behavior: a later upstream `Unchanged` cannot erase a stale transition that the owning path required to persist without K itself validating/recomputing.
 
 ## Synchronization normalization is semantic authoring
 
