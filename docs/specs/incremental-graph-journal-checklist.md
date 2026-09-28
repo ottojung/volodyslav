@@ -1,0 +1,317 @@
+# IncrementalGraph Journal 3 Implementation Checklist
+
+## Purpose
+
+This checklist translates normative Journal 3 specifications into implementation milestones and acceptance checks. It is not a second design.
+
+## 1. Persisted journal primitives
+
+Implement durable current-version representations for `JournalRecordId`, `JournalFrontier`, `AuthorityTime`, Value/Delete/Validate/Invalidate events, and `WriterStateRecord`.
+
+Acceptance:
+
+- `global/version` is the only persisted format selector for an active replica;
+- no per-record version discriminator;
+- ordered per-writer range iteration;
+- canonical current-format codec;
+- validation bases are explicit, duplicate-free, canonical NodeKeyString order;
+- Invalidate scope distinguishes `node`, `value(ValueId)`, and `proof(ValueId,inputNodeKey)`;
+- no public arbitrary Journal mutation API.
+
+## 2. Causal context and reference validation
+
+Acceptance:
+
+- semantic `(W,q)` has `context[W] == q-1`;
+- every context coordinate is retained;
+- if F includes semantic E then `E.context <= F.context` componentwise;
+- malformed transitive omission rejected;
+- happened-before transitive and implies increasing authority;
+- value/proof scopes reference a causally prior ValueEvent for the same node;
+- proof scope carries a canonical semantic input NodeKey identifying the retired incoming edge;
+- bootstrap historical-value conversion may omit canonical foreign coordinates only under explicit lifecycle rule while its actual context remains closed.
+
+## 3. Journal snapshots
+
+Implement stable `JournalSnapshot` with exact `databaseVersion`, `graphSchemeString`, `localWriter`, frontier, and records from one committed source state.
+
+Do not reuse ordinary `JournalSnapshot` as canonical-bootstrap artifact.
+
+## 4. Local publication finalization
+
+Acceptance:
+
+- failed transactions leave no durable sequence hole;
+- concurrent successes receive disjoint contiguous ranges;
+- within compatible supported states, one `JournalRecordId` always identifies the same journal record and two distinct records never receive one ID (`$id-2567281946348705`);
+- IDs/contexts/HLCs finalized under serialized publication;
+- own-writer context exact;
+- graph+Journal publish atomically;
+- volatile allocator/index state advances only after durable success.
+
+## 5. Ordinary graph emission
+
+Cover fresh no-op, materialization, changed recompute, `Unchanged`, cache revalidation, explicit node invalidation, propagated value invalidation, deletion, and allocator advancement.
+
+For every successful case:
+
+```text
+project(journalAfter) == graphAfter
+```
+
+Publication atomically persists the resulting local writer head, allocator watermark, authority high-water, and committed active-pair metadata together with graph + Journal records.
+
+## 6. Replay engine
+
+Acceptance:
+
+- deterministic value/delete head selection;
+- transitive/reference causality enforced;
+- certificate shape compatibility deterministic;
+- whole-certificate eligibility rejects uncovered node invalidation;
+- proof-edge barriers are applied per basis edge rather than making the entire certificate ineligible;
+- certificate selection exactly matches `incremental-graph-journal-replay.md` §Certificate selection;
+- no positive certificate mixing;
+- multiple `proof(V,D)` barriers may accumulate negative edge evidence;
+- `proof(V,D)` affects only edge D of occurrence V; `value(V)` controls persistent freshness without itself removing validity;
+- freshness/validity reproduce graph semantics;
+- every supported committed projection satisfies `selfProofReady(K) => fresh(K)`;
+- replay satisfies `$id-4924739474925738`: ordered/indexed iteration with bounded iterator/runtime buffers, no requirement to materialize complete Journal history, all per-node histories, or the complete changed-node set in RAM as one collection;
+- full rebuild works.
+
+## 7. Lifecycle-owned storage and absent-installation restore
+
+Acceptance:
+
+- existing local persistent state is accepted only when produced by supported Volodyslav lifecycle transitions;
+- complete disappearance of the local database is the supported external-loss case and yields the `Absent` state;
+- partial deletion, rollback to an older local state, mixed snapshots, partial restoration, or direct external mutation are corrupted/unsupported rather than new recovery cases (`$id-6158827469032147`);
+- a crash/interruption of a supported transition exposes only a state permitted by that transition's atomicity/crash rules;
+- installation recovery source is queried only for an absent local database and before fresh fingerprint generation;
+- source exists -> restore/adopt `localWriter` only when the held snapshot establishes a **continuation-safe head** as defined by `incremental-graph-journal-lifecycle.md` §4.1;
+- JournalRecordId uniqueness follows `$id-2567281946348705` and NodeIdentifier uniqueness follows `$id-4173361406347342`; absent-restoration coordinate/index reuse and discarded-suffix handling follow the lifecycle-owned continuation-safety rule rather than a checklist-local criterion;
+- source definitely absent -> fresh creation allowed;
+- source read/query failure -> fail, no fresh fallback;
+- writer head/allocator watermark/authority high-water/projection reconstructed before new allocation;
+- establishing absent-restoration safety does not require contacting/discovering every possible peer (`$id-4719065396881648`);
+- an existing local database is never routed through absent restore merely because some of its data is missing or old.
+
+## 8. Pre-Journal bootstrap
+
+Acceptance:
+
+- cohort source query returns exactly exists / definitely absent / indeterminate-or-error;
+- exists returns immutable `CanonicalBootstrapSnapshot`, not current Journal snapshot;
+- definite absence permits staging only; it does not authorize local cutover;
+- staging the canonical creator candidate twice from identical persisted legacy state produces byte-identical records/artifact; canonical C2/C3 authority and record order contain no upgrade/publication wall-clock input;
+- `publishCanonicalBootstrapIfAbsent` is the first-creator arbitration boundary required by `$id-1847369205416728`;
+- concurrent distinct candidates cannot both receive `Published`; loser receives `AlreadyExists(B)` and joins/resumes B;
+- indeterminate query or publication outcome fails without local cutover or competing durable canonical history;
+- unknown publication outcome is resolved by re-query before retry/cutover;
+- artifact exposes exactly original `bootstrapFrontier` and expected target version/schema;
+- unsupported artifact target fails `JournalVersionCompatibilityError` before history;
+- no indefinite historical target support is required;
+- canonical artifact is durable before ordinary post-bootstrap authoring;
+
+### Bootstrap semantic-identity target
+
+- bootstrap journals the persisted legacy graph directly;
+- materialized NodeKeys, NodeIdentifiers, payloads, timestamps, freshness, validity, allocator watermark, and graph interpretation are preserved exactly at the cut;
+- no ordinary legacy migration callback runs before canonical bootstrap;
+- a path needing semantic `create`/`invalidate`/`delete`, schema-semantic transformation, wall clock, randomness, or allocator-dependent new graph identity is rejected as incompatible before bootstrap history;
+- actual graph/schema migration happens after bootstrap via Journal-aware migration.
+
+### Creator resume
+
+- artifact creatorWriter equal to local pre-Journal fingerprint -> creator-resume, not foreign join;
+- compare artifact projection directly with persisted legacy semantic graph; do not rerun migration callback;
+- install exactly artifact history and reconstruct writer head/watermark/high-water/projection;
+- matching state cuts over without duplicate semantic records;
+- mismatch fails `JournalBootstrapForkError`;
+- another fingerprint cannot use creator-resume.
+
+### Ordinary join
+
+- preserves joining fingerprint/watermark;
+- is historical legacy merge, not reset;
+- exact occurrences reuse canonical ValueIds;
+- local-only/different occurrences become historical joining ValueEvents using persisted legacy `modifiedAt` authority;
+- joining historical ValueEvents are allocated in nondecreasing `(modifiedAt, canonical NodeKey)` order before joining records whose contexts include canonical coordinates;
+- divergent values remain concurrent absent genuine legacy causality;
+- canonical-present/local-absent does not fabricate delete;
+- maintain `joiningOccurrenceValueId(K)` for every joining legacy materialization: canonical ValueId when exact-shared, otherwise the joining ValueEvent ID even if that occurrence loses selection;
+- locally-authored validation bases use the joining host's own legacy input occurrence ValueIds, never a different occurrence merely because it won conflict selection;
+- local dependent whose legacy-valid input loses to a newer selected occurrence is hard stale, not fresh;
+- exact-shared `canonicalValid ∩ joiningValid` is the maximum admissible edge set, not unconditional final validity; final replay also requires the retained certificate's input ValueId to match the selected input occurrence;
+- every canonical proof edge absent on the joining side gets a `proof(sharedV,input)` bootstrap barrier; joining-only proof never strengthens canonical proof and exact-shared proof is not retargeted to a different joining input occurrence;
+- canonical OR joining stale state requires the shared value marker, but final exact-shared replay may additionally be stale because selected input occurrences mismatch the retained proof basis or because an input is stale;
+- a joining explicit invalidation on a canonical-fresh shared occurrence therefore remains hard stale and cannot cache-revalidate from canonical proof alone;
+- after direct proof/stale roots, deterministic topological J2b pass persists every selected occurrence stale solely through a stale input;
+- later upstream `Unchanged` cannot silently freshen such bootstrap-stale dependent;
+- post-bootstrap validations unseen by a late join are concurrent with that join's negative proof/stale evidence and do not clear it until a causally later validation occurs;
+- two joiners may split same non-canonical occurrence ValueId as accepted by `$id-1635227135166767`;
+- stale partial validity uses controlled `"unknown"`;
+- cutover atomic.
+
+## 9. Pairwise synchronization
+
+Acceptance:
+
+- compatibility from held source snapshot;
+- every missing **foreign-writer** suffix imported;
+- compatible supported inputs satisfy fork-free/prefix-comparable writer histories by `incremental-graph-journal-theorems.md` Laws 8/8a; ordinary sync does not rescan historical overlap;
+- own-writer-ahead handling matches `incremental-graph-journal-lifecycle.md` §5 and `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is unsupported state;
+- same-ID disagreement actually encountered during bounded validation is rejected as unsupported corruption;
+- transfer/replay processing satisfies `$id-4924739474925738`; missing suffixes are incrementally iterable and never require the complete suffix/history in RAM;
+- imported records unchanged;
+- no computor execution or transport acknowledgement event.
+- the Journal 3 implementation must delete the hostname-keyed persisted synchronization staging surface: `backend/src/generators/incremental_graph/database/hostname_storage.js`; the `'_h_' + hostname` staging path in `synchronize.js`; `clearHostnameStorage` and the hostname-staging accessors/imports in `root_database.js`; and the `_h_<hostname>` top-level sublevel naming described in `render/scan.js`. Replace it with staging whose persisted sublevel names and keys contain no hostname or other transport locator, as required by `$id-4373538486707762`. The required regression is owned by `incremental-graph-journal-testing.md` §Synchronization staging contains no transport locator;
+
+## 10. Synchronization normalization
+
+Acceptance:
+
+- structural closure authors explicit sync deletes;
+- dependency-removal/stale-propagation worklists and complete changed-node sets are iterator/durable-index backed or equivalently bounded-memory; normalization does not require one complete closure/change set in RAM;
+- Phase 2 ensures the required current-value marker at its pre-marker cut for occurrences stale solely through direct-input staleness; the committed result satisfies `selfProofReady(K) => fresh(K)`;
+- includes newly selected remote ValueIds;
+- proof deficiency/node invalidation/already-uncovered value marker do not create unnecessary duplicate marker;
+- repeat sync no-op;
+- fair normalization reaches fixed point;
+- a quiescent H-replica gather-to-one/broadcast-from-one schedule settles within at most `2(H-1)` state-advancing successful pairwise synchronizations, implying the required H^2 achievable bound.
+
+## 11. Reset
+
+Acceptance:
+
+- source target/compatibility from one held snapshot;
+- compatible supported receiver/source writer histories are prefix-comparable and fork-free by `incremental-graph-journal-theorems.md` Laws 8/8a; reset does not rescan historical overlap;
+- target PS is read from the same-cut committed `JournalSnapshot.projection`; reset does not replay source history to derive PS;
+- own-writer-ahead reset behavior matches `incremental-graph-journal-reset.md` §Preconditions and `incremental-graph-journal-lifecycle.md` §5;
+- raw receiver/source union is inspected through `selectedHeads(J0)`; reset does not require `project(J0)` before Pass 1 structural repair;
+- ResetDomain is `selectedPresent(H0) ∪ present(PS)`; historical keys absent in both are not rediscovered by scanning Value/Delete history;
+- Pass 1 makes selected presence/immutable occurrence state equal the valid source target before the first affected-closure projection state observationally equal to `project(J1)`; unrelated retained history is not replayed/revalidated;
+- reset Pass 1/2/3 Journal-derived domains and propagation worklists satisfy `$id-4924739474925738`; complete reset/change/closure sets are not required as one in-RAM collection;
+- when H0 already has the target immutable occurrence state, reset preserves H0's selected ValueId; it does not require equality with PS.valueId(K);
+- new ValueEvent only for actual occurrence replacement;
+- reset obtains `eligibleEffectiveProofUnion(K)` from the required incrementally maintained per-occurrence/per-edge counted proof summary at the fixed post-value-repair cut; it does not fold retained certificate/invalidation history, and barriers every non-target edge any eligible retained certificate could expose using `Invalidate(scope=proof(V,D),reason=reset)`;
+- old proof cannot reintroduce a barriered edge;
+- concurrent barriers for different inputs compose by removing the union of named edges;
+- barrier for `(V,D)` does not invalidate unrelated proof or certificates for another ValueId V2;
+- proof additions require no barrier solely for being additions;
+- target proof uses exact ValueIds/`"unknown"` edge set;
+- target persistent stale with own effective proof ready gets value-scoped reset marker even if recursively stale already;
+- later upstream `Unchanged` does not freshen such target-stale K;
+- deterministic target absence delete;
+- `changed == false` only when the source frontier is already covered and Passes 1–3 author nothing; projection-neutral import still returns `changed == true`;
+- repeat satisfied reset may no-op after the source frontier is covered;
+- receiver allocator remains local;
+- replay equals target semantic graph;
+- reset causal-later semantics never reused for bootstrap conflicts.
+
+## 12. Journal-aware migration
+
+Acceptance:
+
+- retained old history deterministically rewritten into one target format preserving IDs/meaning;
+- directed source->target `JournalFormatCodec` is declared by the migration definition and defaults missing transforms to identity;
+- `rewriteNodeKey` and `rewriteComputedValue` are synchronous, deterministic, and capability-free;
+- rewrite is total over retained source history, including records for node families absent from target schema and non-selected ValueEvents;
+- every embedded NodeKey is rewritten, including record keys, validation-basis inputs, and proof-scope inputs;
+- `rewriteNodeKey` is a codec-level injective mapping over every valid source semantic NodeKey which may occur in supported source-version Journal history, independent of one replica's retained subset;
+- local migration scans reject any collision they actually observe, but are not treated as proof of the global injectivity contract;
+- rewritten ValidationBasis entries are re-sorted by the target canonical NodeKeyString order;
+- semantic migration repair uses the codec-transported source projection in target key space, not source-keyed `Gbefore` directly;
+- Journal-aware callback addressing, target-key transport, schema compatibility, `create` collision behavior, and the explicit `replace` decision match `incremental-graph-journal-migrations.md` §11; this checklist does not maintain a second callback-key-space definition;
+- non-identity `Ks -> Kt` plus `keep(id(Ks))` preserves the original ValueId and authors neither replacement ValueEvent nor spurious delete;
+- non-total/throwing source->target codec fails `JournalVersionCompatibilityError` before cutover;
+- same historical record rewrites identically across replicas for each canonical transition;
+- every supported older Journal version has one complete canonical successor chain to the running version;
+- canonical edge semantics are frozen for as long as that source version remains supported; later releases carry the same codec/semantic migration definition rather than redefining an old edge;
+- skipped application releases still execute every canonical Journal edge stepwise; there is no separate direct source-to-target migration path outside the chain;
+- representation-only change uses `keep` plus the canonical codec;
+- the Journal 3 implementation must delete the complete legacy `override` representation-rewrite surface when this specification is implemented: `MigrationStorage.override()`; `OverrideDecision` and its imports/usages in `migration_storage.js`, `migration_storage_class.js`, `migration_storage_schema.js`, and `migration_storage_dependencies.js`; the `OverrideDecision` member of the `Decision` union in `migration_decisions.js`; `OverrideConflictError` plus the `index.js` exports `makeOverrideConflictError` / `isOverrideConflict`; every `override` branch in `migration_runner.js`, `migration_validity.js`, schema/dependency handling, and decision dispatch; the `CreateExistingNodeError` message must direct existing-node semantic value changes to the Journal 3 `replace` decision rather than `override`; and override-specific coverage in `migration_storage.test.js`, `migration_runner.test.js`, `migration_runner_timestamps.test.js`, and `migration_integration.test.js` must be removed or rewritten for the replacement/codec model. No compatibility flag or unreachable duplicate mechanism remains;
+- `keep` preserves occurrence ValueId/timestamps, but carries source proof/freshness only where `incremental-graph-journal-migrations.md` §11a provenance permits it; a created/replaced required input cannot be substituted into the proof of a kept dependent;
+- stale `keep` alone does not create proof barriers or force recomputation, while a kept dependent whose required input occurrence changes becomes hard stale unless the dependent is explicitly semantically re-established;
+- explicit migration `invalidate(K)` preserves occurrence ValueId and authors true node-scoped invalidation;
+- maintenance-only proof weakening for preserved V barriers every `D` in `eligibleEffectiveProofUnion(K) - TargetValid(K)`, not merely edges of the initially selected certificate and not a whole-ValueId or node barrier;
+- two replicas independently weakening the same V to the same partial proof retain that partial proof after synchronization;
+- barriers for different inputs compose to the intended intersection;
+- proof barrier for `(V,D)` does not taint V2 or unrelated V edges;
+- proof/freshness/schema change alone creates no ValueEvent;
+- target persistent stale with own effective proof ready gets value marker even if recursive input staleness already makes replay stale;
+- the explicit `replace` decision is implemented according to `incremental-graph-journal-migrations.md` §11 and covered through M1–M3;
+- target-state construction follows `incremental-graph-journal-migrations.md` §11a before M1–M3, including decision completeness/conflicts, target-schema dependency-closure delete propagation, create collision/schema checks, and create freshness semantics;
+- `delete(A); keep(B)` conflicts when target B still requires A, while removal of that target edge removes the structural conflict;
+- Journal-aware invalidation does not assign downstream migration decisions: kept dependents remain materialized and replay-derived freshness propagates through stale inputs;
+- `create(...,"up-to-date")` establishes full proof only with fresh required inputs; `create(...,"potentially-outdated")` asserts no positive incoming proof and remains stale;
+- replacing/creating an input invalidates carried proof for any occurrence-preserved dependent on that input, and M2 may not certify the old dependent against the new input ValueId;
+- `replace` preserves NodeIdentifier/createdAt, creates a new ValueId/modifiedAt, and establishes target proof/freshness according to `incremental-graph-journal-migrations.md` §11a;
+- independent replacements may later conflict/stale dependents as accepted;
+- no particular peer required for migration;
+- target replay equals migration target including stale persistence;
+- replay never reruns historical migration callback;
+- whole-history rewrite may be O(history) and streamable.
+
+## 13. Open/rebuild lifecycle
+
+Acceptance:
+
+- one current format per active replica;
+- bootstrap artifact interpreted only by software explicitly supporting its target;
+- routine open of an already-current supported database satisfies `$id-7429043816351276`: Journal-specific work is `O(1 + G)`, where G is current graph plus graph-bounded current-state metadata and excludes history/history-proportional Journal indexes; the bound is independent of retained Journal size H;
+- routine open reads only current version/schema, constant-size/current-state committed-pair metadata, local writer head, allocator watermark, authority high-water, and current graph/index state bounded by G; these metadata were persisted atomically by the publication/cutover which selected the active pair, and routine open does not scan/replay all retained history or validate history-sized indexes;
+- history admission by synchronization/reset validates only newly admitted/affected records and projection consequences, with O(C) validation cost under `$id-6845129073418625`; unrelated retained history is not rescanned;
+- ordinary local publication validates only newly allocated records and the projection delta, with O(1) historical-validation overhead in retained history H (total validation may be O(B) in its own new batch);
+- Journal-aware migration is the normal lifecycle path permitted O(H) historical validation;
+- bootstrap/absent-restoration cutover does not add a full retained-history revalidation pass merely to re-prove already committed history;
+- explicit rebuild/maintenance may scan H because reconstruction itself is requested;
+- valid authoritative Journal history may rebuild derived projection/indexes during explicit maintenance;
+- rebuild is not permitted to repair missing/truncated authoritative Journal history or local rollback;
+- invalid/known-incomplete history encountered by explicit validation is rejected;
+- routine-open metadata inconsistency fails startup or enters explicit supported maintenance; it does not trigger a silent full-history routine-open scan.
+
+## 14. Error model
+
+Provide actionable categories for writer fork, bootstrap fork, stream gap, causal closure, reference causality, current-format validation, ordinary snapshot/bootstrap compatibility, own-writer-behind unsupported state, projection failure, publication/source-read failure.
+
+Bootstrap incompatibility specifically includes a would-be pre-Journal target requiring semantic/time/allocator-dependent migration before Journal identity exists.
+
+Journal-aware migration incompatibility includes a format migration whose codec is not total over retained source-format history, or a stored Journal version with no complete canonical migration chain to the running version; both fail `JournalVersionCompatibilityError`.
+
+## 15. Reference model / property verification
+
+The normative regression/property inventory is `incremental-graph-journal-testing.md`. Completion of this checklist requires that the implementation/reference model satisfy that inventory; this checklist does not maintain a second copy.
+
+## 16. Performance boundary
+
+Issue #1607 owns end-to-end change-sensitive synchronization complexity. Correctness must not be weakened for unstated performance goals.
+
+## 16a. Documentation cutover when Journal 3 lands
+
+The temporary shipped-vs-target documentation split exists only while Journal 3 is unimplemented. The implementation change is not complete until documentation is cut over with the code:
+
+- replace or rewrite `incremental-graph-synchronization.md` so the canonical synchronization spec describes shipped Journal 3 behavior;
+- replace or rewrite `database-lifecycle.md` so the canonical lifecycle spec describes the shipped Journal 3 lifecycle;
+- fold `incremental-graph-journal-lifecycle.md` into the canonical lifecycle documentation, then remove the temporary target-design lifecycle file;
+- rewrite `docs/database-boot-sequence.md` so startup describes the shipped Journal 3 lifecycle: §7.1 (missing live DB) follows `incremental-graph-journal-lifecycle.md` §4 (`InstallationRecoverySource` query; restore only `Exists(ContinuationSafeSnapshot)`; fresh fingerprint only on `DefinitelyAbsent`; fail on indeterminate/error), deleting the `resetToHostname` attempt and the fallback to normal sync from an empty local database; §7.3 and the startup flow diagram follow the migration/bootstrap gate in `incremental-graph-journal-lifecycle.md` §8;
+- update `migration.md` together with the runtime migration implementation, deleting the legacy `override` API/error/decision documentation when the code path is deleted;
+- update `incremental-graph.md` REQ-IFACE-06..08 together with the runtime timestamp behavior so the canonical timestamp contract describes shipped Journal 3 semantics;
+- update superseded pre-Journal/current-code sections of `docs/database.md`, `keys-design.md`, `incremental-graph-fingerprint.md`, `incremental-graph-last-node-index.md`, `incremental-graph-volatile-consistency.md`, and `incremental-graph-flag-based-inverse-validity.md` so they describe the implemented Journal 3 state rather than the pre-implementation system;
+- rewrite `docs/release-safety.md` so all pre-Journal promises of checkpoint/database rollback—including §Durable checkpoints and rollback, the rollback failure-mode language, contributor guidance, and policy checklist—describe Journal 3's forward-only release recovery per `$id-5083197642258146`; checkpoints may remain useful for diagnosis/inspection but must not be presented as replacement authority for an existing Journal database or as permission to rewind remote publication;
+- rewrite `docs/migration_testing.md` Layer 2 and Layer 3 so fixture startup follows the Journal 3 lifecycle gate—pre-Journal bootstrap and any required Journal-aware migration complete before ordinary synchronization—rather than saying synchronization runs migration;
+- update `backend/tests/migration_fixture_populated_remote.test.js`, `backend/tests/populated_incremental_database_remote_smoke.test.js`, and their fixtures to exercise the Journal 3 startup lifecycle; a fixture representing pre-Journal state must supply the configured `CohortBootstrapSource`/canonical-bootstrap path instead of depending on synchronization to perform migration;
+- remove all “Journal 3 target design / not yet implemented / until implementation lands” status banners and other temporary shipped-vs-target routing text; and
+- re-run the normative-ownership/read-order audit so no canonical documentation points readers to a removed pre-Journal rule or temporary target file.
+
+There must be one obvious canonical shipped specification for synchronization, lifecycle, migration, fingerprint/identity, and allocator behavior after Journal 3 implementation lands.
+
+## 17. Completion condition
+
+Journal 3 implementation is complete only when ordinary operations, startup/absent restore, bootstrap/migration, synchronization, reset, restart/open, and rebuild preserve:
+
+```text
+persistedGraph == project(retainedJournal)
+```
+
+with the lifecycle fault model, causal, identity, compatibility, proof, and persistent-freshness laws above covered by tests/models.
