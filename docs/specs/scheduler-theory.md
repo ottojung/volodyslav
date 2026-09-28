@@ -649,7 +649,7 @@ This ensures that `initialize()` calls made while the scheduler is in the "runni
 These **normative** axioms state progress guarantees.
 They prevent deadlocks, starvation, livelocks, and unbounded postponement of obligations.
 
-Progress is always read relative to the environment's willingness to provide compute. In fully freezing environments (see [Environment taxonomy](#environment-taxonomy-informative)), obligations may accumulate without violating safety; in eventually thawing or lower-bounded-density environments, the fairness assumptions below become reasonable or derivable premises for liveness. In other words, in some environments, a conformant scheduler may be useless.
+Progress is always read relative to the environment's willingness to provide compute. In fully freezing environments (see [Environment taxonomy](#environment-taxonomy)), obligations may accumulate without violating safety; in eventually thawing or lower-bounded-density environments, the fairness assumptions below become reasonable or derivable premises for liveness. In other words, in some environments, a conformant scheduler may be useless.
 
 ---
 
@@ -701,7 +701,7 @@ We work over a multi-sorted first-order signature $\Sigma_{\textsf{sch}}$ with t
 Function symbols include:
 
 * $\tau : \mathbb{N} \to \mathbb{T}$ (timestamp map over trace positions).
-* $\texttt{duration} : \mathcal{P}(\mathbb{T}) \to \mathbb{D}$ and $\texttt{compute} : \mathcal{P}(\mathbb{T}) \to \mathbb{P}$ (where $\texttt{compute}$ is defined via the $\texttt{Compute}$ predicate as described in [Environment Axioms](#environment-axioms)).
+* $\texttt{duration} : \mathcal{P}(\mathbb{T}) \to \mathbb{D}$ and $\texttt{compute} : \mathcal{P}(\mathbb{T}) \to \mathbb{P}$ (where $\texttt{compute}$ is defined via the $\texttt{Compute}$ predicate as described in [Environment Axioms](#core-environment-axioms)).
 * $\texttt{supernatural} : \mathbb{T} \to \mathcal{P}(\mathbb{S})$ (mapping time instants to sets of supernatural phenomenon types).
 * Task projections $\textsf{id}$, $\textsf{sch}$, $\textsf{cb}$, $\textsf{rd}$, $\textsf{key}$, list operations (length, indexing), and the environment parameters $\texttt{Due}$, $\texttt{RetryDue}$.
 
@@ -758,7 +758,7 @@ A trace over $\Sigma_{\textsf{env}} \cup \Sigma_{\textsf{sch}} \cup \Sigma_{\tex
 3. The supernatural function is interpreted via $\mathcal{N}$, mapping each time instant to the set of supernatural phenomenon types occurring at that instant.
 4. The structure satisfies every axiom in $T_{\textsf{env}} \cup T_{\textsf{sch}}(a,b,t_{\texttt{lag}})$.
 
-This perspective separates scheduler obligations from environmental truths (see [Environment Axioms](#environment-axioms)) and supernatural phenomena, anchoring liveness reasoning in the satisfaction relation defined above.
+This perspective separates scheduler obligations from environmental truths (see [Environment Axioms](#core-environment-axioms)) and supernatural phenomena, anchoring liveness reasoning in the satisfaction relation defined above.
 
 ## Conformance
 
