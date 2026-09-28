@@ -7,8 +7,8 @@
   },
   "dependencies": {
     "@docusaurus/core": "^3.10.2",
-    "@docusaurus/preset-classic": "^3.10.1",
-    "@docusaurus/theme-mermaid": "^3.10.1",
+    "@docusaurus/preset-classic": "^3.10.2",
+    "@docusaurus/theme-mermaid": "^3.10.2",
     "@mermaid-js/layout-elk": "^0.2.2",
     "katex": "^0.18.5",
     "react": "^19.2.4",
