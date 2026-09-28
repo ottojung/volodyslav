@@ -17,7 +17,12 @@
  *   • Factory Pattern - Exposes a make() function for easy dependency injection or mocking.
  */
 
-const { GoogleGenAI, createUserContent, createPartFromUri, ThinkingLevel } = require("@google/genai");
+const {
+    GoogleGenAI,
+    createUserContent,
+    createPartFromUri,
+    AudioTranscriptionConfigMode,
+} = require("@google/genai");
 const { OpenAI } = require("openai");
 const path = require("path");
 const memconst = require("../memconst");
@@ -49,9 +54,6 @@ const {
 /**
  * @typedef {object} TranscriptionStructured
  * @property {string} transcript - The verbatim transcript text.
- * @property {"full" | "partial"} coverage - Whether the transcript covers the full audio.
- * @property {string[]} warnings - Any warnings about the transcription.
- * @property {boolean} unclearAudio - Whether any audio was unclear.
  */
 
 /**
@@ -71,11 +73,21 @@ const {
 
 /** @typedef {import('./transcription_gemini').UploadedGeminiFile} UploadedGeminiFile */
 
-const TRANSCRIBER_MODEL = "gemini-3.7-flash";
+/**
+ * The dedicated Gemini speech-to-text model used for whole-file transcription.
+ * Its primary operation is exhaustive transcription, so the request needs no
+ * transcription prompt, response schema, or thinking configuration.
+ */
+const TRANSCRIBER_MODEL = "gemini-3.5-transcribe";
+
+/**
+ * Verbatim mode keeps filler words, repetitions, false starts, and the original
+ * languages of the recording, which is what preserves multilingual and
+ * code-switched speech instead of translating or normalizing it.
+ */
+const TRANSCRIPTION_MODE = AudioTranscriptionConfigMode.VERBATIM;
+
 const PRECISE_TRANSCRIBER_MODEL = "gpt-4o-transcribe";
-const MAX_OUTPUT_TOKENS = 65536;
-const TEMPERATURE = 0.0;
-const THINKING_LEVEL = ThinkingLevel.LOW;
 
 /** @type {Record<string, string>} */
 const MIME_TYPE_BY_EXTENSION = {
@@ -85,35 +97,6 @@ const MIME_TYPE_BY_EXTENSION = {
     ".ogg": "audio/ogg",
     ".flac": "audio/flac",
     ".webm": "audio/webm",
-};
-
-const TRANSCRIPTION_PROMPT =
-    "You are a transcription service. Your only task is to produce a verbatim transcript of the audio.\n" +
-    "Rules:\n" +
-    "- Transcribe exactly what is spoken. Do not paraphrase, summarize, rewrite, or clean up the speech.\n" +
-    "- Do not add commentary, analysis, or explanations.\n" +
-    "- Do not translate. Preserve multilingual and code-switched speech exactly as spoken.\n" +
-    "- Do not invent or infer speaker labels. Do not add diarization.\n" +
-    "- Preserve natural line breaks where they occur in speech.\n" +
-    "- If a portion of audio is unclear or inaudible, mark it as [unclear] in the transcript and set unclearAudio to true.\n" +
-    "- Do not add punctuation or capitalization that is not clearly implied by the speech.\n" +
-    "Return your response as JSON matching the required schema with fields: transcript, coverage, warnings, unclearAudio.";
-
-const RESPONSE_SCHEMA = {
-    type: "object",
-    properties: {
-        transcript: { type: "string" },
-        coverage: {
-            type: "string",
-            enum: ["full", "partial"],
-        },
-        warnings: {
-            type: "array",
-            items: { type: "string" },
-        },
-        unclearAudio: { type: "boolean" },
-    },
-    required: ["transcript", "coverage", "warnings", "unclearAudio"],
 };
 
 /**
@@ -184,9 +167,6 @@ async function transcribeStreamPreciseDetailed(makeClient, capabilities, fileStr
         responseId: null,
         structured: {
             transcript: rawResponse.text,
-            coverage: "full",
-            warnings: [],
-            unclearAudio: false,
         },
         rawResponse,
     };
@@ -212,7 +192,7 @@ async function transcribeStreamPrecise(makeClient, capabilities, fileStream, sig
 }
 
 /**
- * Transcribes audio with full metadata using the Gemini API.
+ * Transcribes audio with full metadata using the Gemini transcription model.
  * @param {function(string): GoogleGenAI} makeClient - A memoized function to create a Gemini client.
  * @param {Capabilities} capabilities - The capabilities object.
  * @param {import('fs').ReadStream} fileStream - The audio file stream to transcribe.
@@ -275,16 +255,11 @@ async function transcribeStreamDetailed(makeClient, capabilities, fileStream) {
                     model: TRANSCRIBER_MODEL,
                     contents: createUserContent([
                         createPartFromUri(audioFileUri, audioFileMimeType),
-                        TRANSCRIPTION_PROMPT,
                     ]),
                     config: {
-                        maxOutputTokens: MAX_OUTPUT_TOKENS,
-                        temperature: TEMPERATURE,
-                        thinkingConfig: {
-                            thinkingLevel: THINKING_LEVEL,
+                        audioTranscriptionConfig: {
+                            mode: TRANSCRIPTION_MODE,
                         },
-                        responseMimeType: "application/json",
-                        responseSchema: RESPONSE_SCHEMA,
                     },
                 });
             });
@@ -323,33 +298,12 @@ async function transcribeStreamDetailed(makeClient, capabilities, fileStream) {
         }
 
         const responseText = rawResponse.text;
-        if (!responseText) {
+        if (typeof responseText !== "string" || responseText.trim().length === 0) {
             throw new AITranscriptionError("Transcription response has no text", rawResponse);
         }
 
-        let structured;
-        try {
-            structured = JSON.parse(responseText);
-        } catch (error) {
-            throw new AITranscriptionError(
-                `Failed to parse transcription JSON response: ${error instanceof Error ? error.message : String(error)}`,
-                rawResponse
-            );
-        }
-
-        if (!structured || typeof structured !== "object") {
-            throw new AITranscriptionError("Transcription response is not a JSON object", rawResponse);
-        }
-
-        if (typeof structured.transcript !== "string") {
-            throw new AITranscriptionError("Transcription response is missing 'transcript'", rawResponse);
-        }
-
-        const normalizedWarnings = Array.isArray(structured.warnings) ? structured.warnings : [];
-        const normalizedUnclearAudio = typeof structured.unclearAudio === "boolean" ? structured.unclearAudio : false;
-
         return {
-            text: structured.transcript,
+            text: responseText,
             provider: "Google",
             model: TRANSCRIBER_MODEL,
             finishReason,
@@ -359,10 +313,7 @@ async function transcribeStreamDetailed(makeClient, capabilities, fileStream) {
             modelVersion,
             responseId,
             structured: {
-                transcript: structured.transcript,
-                coverage: structured.coverage,
-                warnings: normalizedWarnings,
-                unclearAudio: normalizedUnclearAudio,
+                transcript: responseText,
             },
             rawResponse,
         };
@@ -437,9 +388,5 @@ module.exports = {
     isAITranscriptionError,
     TRANSCRIBER_MODEL,
     PRECISE_TRANSCRIBER_MODEL,
-    MAX_OUTPUT_TOKENS,
-    TEMPERATURE,
-    THINKING_LEVEL,
-    TRANSCRIPTION_PROMPT,
-    RESPONSE_SCHEMA,
+    TRANSCRIPTION_MODE,
 };

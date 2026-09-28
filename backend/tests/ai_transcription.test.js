@@ -2,8 +2,8 @@
  * Unit tests for the ai/transcription module.
  *
  * These tests mock @google/genai and verify:
- *  - request construction (model, config, prompt, schema)
- *  - response validation (valid/invalid JSON, missing fields, partial coverage, MAX_TOKENS, no candidates)
+ *  - request construction (model, verbatim transcription mode, no prompt/schema/thinking)
+ *  - response validation (plain-text transcript, MAX_TOKENS, no candidates)
  *  - metadata preservation (usageMetadata, modelVersion, responseId, tokenCount, finishMessage)
  *  - file cleanup (on success, on failure, delete failure handling)
  *  - transcribeStream compatibility (returns Promise<string>)
@@ -29,12 +29,9 @@ const {
     isAITranscriptionError,
     TRANSCRIBER_MODEL,
     PRECISE_TRANSCRIBER_MODEL,
-    MAX_OUTPUT_TOKENS,
-    TEMPERATURE,
-    THINKING_LEVEL,
-    TRANSCRIPTION_PROMPT,
-    RESPONSE_SCHEMA,
+    TRANSCRIPTION_MODE,
 } = require("../src/ai/transcription");
+const { AudioTranscriptionConfigMode } = require("@google/genai");
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -79,37 +76,29 @@ function makeFileStream(filePath = "/tmp/test.mp3") {
     return { path: filePath };
 }
 
-function makeValidStructuredJson(overrides = {}) {
-    return JSON.stringify({
-        transcript: "Hello world",
-        coverage: "full",
-        warnings: [],
-        unclearAudio: false,
-        ...overrides,
-    });
-}
+const DEFAULT_TRANSCRIPT = "Hello world";
 
 function makeValidGeminiResponse(overrides = {}) {
-    const structured = overrides.structuredJson ?? makeValidStructuredJson();
+    const transcript = overrides.transcript ?? DEFAULT_TRANSCRIPT;
     const candidateOverride = overrides.candidate ?? {};
     const responseOverride = overrides.response ?? {};
     return {
         candidates: [
             {
-                content: { parts: [{ text: structured }] },
+                content: { parts: [{ text: transcript }] },
                 finishReason: "STOP",
                 finishMessage: null,
                 tokenCount: 100,
                 ...candidateOverride,
             },
         ],
-        text: structured,
+        text: transcript,
         usageMetadata: {
             totalTokenCount: 200,
             promptTokenCount: 100,
             candidatesTokenCount: 100,
         },
-        modelVersion: "gemini-3-flash-preview-0512",
+        modelVersion: "gemini-3.5-transcribe",
         responseId: "test-response-id-abc",
         ...responseOverride,
     };
@@ -166,7 +155,7 @@ describe("transcribeStreamDetailed: request construction", () => {
         jest.clearAllMocks();
     });
 
-    test("uses the correct model name", async () => {
+    test("uses the dedicated transcription model name", async () => {
         const { mockGenerateContent } = setupMockClient(
             makeUploadedFile(),
             makeValidGeminiResponse()
@@ -179,9 +168,10 @@ describe("transcribeStreamDetailed: request construction", () => {
         expect(mockGenerateContent).toHaveBeenCalledTimes(1);
         const call = mockGenerateContent.mock.calls[0][0];
         expect(call.model).toBe(TRANSCRIBER_MODEL);
+        expect(TRANSCRIBER_MODEL).toBe("gemini-3.5-transcribe");
     });
 
-    test("sets maxOutputTokens to 65536", async () => {
+    test("requests verbatim transcription mode", async () => {
         const { mockGenerateContent } = setupMockClient(
             makeUploadedFile(),
             makeValidGeminiResponse()
@@ -192,11 +182,12 @@ describe("transcribeStreamDetailed: request construction", () => {
         await ai.transcribeStreamDetailed(makeFileStream());
 
         const call = mockGenerateContent.mock.calls[0][0];
-        expect(call.config.maxOutputTokens).toBe(MAX_OUTPUT_TOKENS);
-        expect(MAX_OUTPUT_TOKENS).toBe(65536);
+        expect(call.config.audioTranscriptionConfig.mode).toBe(TRANSCRIPTION_MODE);
+        expect(TRANSCRIPTION_MODE).toBe("VERBATIM");
+        expect(TRANSCRIPTION_MODE).toBe(AudioTranscriptionConfigMode.VERBATIM);
     });
 
-    test("sets temperature to a low value (0.0)", async () => {
+    test("does not ask for smart transcription mode", async () => {
         const { mockGenerateContent } = setupMockClient(
             makeUploadedFile(),
             makeValidGeminiResponse()
@@ -207,11 +198,13 @@ describe("transcribeStreamDetailed: request construction", () => {
         await ai.transcribeStreamDetailed(makeFileStream());
 
         const call = mockGenerateContent.mock.calls[0][0];
-        expect(call.config.temperature).toBe(TEMPERATURE);
-        expect(TEMPERATURE).toBe(0.0);
+        expect(call.config.audioTranscriptionConfig.mode).not.toBe("SMART");
+        expect(call.config.audioTranscriptionConfig.mode).not.toBe(
+            AudioTranscriptionConfigMode.SMART
+        );
     });
 
-    test("sets thinkingLevel to 'low'", async () => {
+    test("omits language hints so multilingual and code-switched speech is preserved", async () => {
         const { mockGenerateContent } = setupMockClient(
             makeUploadedFile(),
             makeValidGeminiResponse()
@@ -222,12 +215,14 @@ describe("transcribeStreamDetailed: request construction", () => {
         await ai.transcribeStreamDetailed(makeFileStream());
 
         const call = mockGenerateContent.mock.calls[0][0];
-        expect(call.config.thinkingConfig).toBeDefined();
-        expect(call.config.thinkingConfig.thinkingLevel).toBe(THINKING_LEVEL);
-        expect(THINKING_LEVEL).toBe("LOW");
+        // Automatic language detection preserves the spoken languages; an explicit
+        // single language or vocabulary bias would coerce the transcript.
+        expect(call.config.audioTranscriptionConfig.languageCodes).toBeUndefined();
+        expect(call.config.audioTranscriptionConfig.languageHints).toBeUndefined();
+        expect(call.config.audioTranscriptionConfig.customVocabulary).toBeUndefined();
     });
 
-    test("sets responseMimeType to 'application/json'", async () => {
+    test("sends no text prompt alongside the audio", async () => {
         const { mockGenerateContent } = setupMockClient(
             makeUploadedFile(),
             makeValidGeminiResponse()
@@ -238,10 +233,13 @@ describe("transcribeStreamDetailed: request construction", () => {
         await ai.transcribeStreamDetailed(makeFileStream());
 
         const call = mockGenerateContent.mock.calls[0][0];
-        expect(call.config.responseMimeType).toBe("application/json");
+        expect(call.contents.parts).toHaveLength(1);
+        for (const part of call.contents.parts) {
+            expect(part.text).toBeUndefined();
+        }
     });
 
-    test("passes the response schema", async () => {
+    test("sends no response schema, response mime type, thinking config, temperature, or output token limit", async () => {
         const { mockGenerateContent } = setupMockClient(
             makeUploadedFile(),
             makeValidGeminiResponse()
@@ -252,36 +250,7 @@ describe("transcribeStreamDetailed: request construction", () => {
         await ai.transcribeStreamDetailed(makeFileStream());
 
         const call = mockGenerateContent.mock.calls[0][0];
-        expect(call.config.responseSchema).toEqual(RESPONSE_SCHEMA);
-        expect(RESPONSE_SCHEMA.required).toContain("transcript");
-        expect(RESPONSE_SCHEMA.required).toContain("coverage");
-        expect(RESPONSE_SCHEMA.required).toContain("warnings");
-        expect(RESPONSE_SCHEMA.required).toContain("unclearAudio");
-    });
-
-    test("sends the strict transcription prompt text", async () => {
-        const { mockGenerateContent } = setupMockClient(
-            makeUploadedFile(),
-            makeValidGeminiResponse()
-        );
-
-        const caps = makeMockCapabilities();
-        const ai = make(() => caps);
-        await ai.transcribeStreamDetailed(makeFileStream());
-
-        // Verify generateContent was called
-        expect(mockGenerateContent).toHaveBeenCalledTimes(1);
-        const call = mockGenerateContent.mock.calls[0][0];
-        // Ensure the strict transcription prompt is actually wired into the request payload
-        expect(call.contents.parts).toContainEqual(
-            expect.objectContaining({ text: TRANSCRIPTION_PROMPT })
-        );
-        // The prompt constant must forbid paraphrasing and require verbatim transcript
-        expect(TRANSCRIPTION_PROMPT).toMatch(/verbatim/i);
-        expect(TRANSCRIPTION_PROMPT).toMatch(/paraphrase/i);
-        expect(TRANSCRIPTION_PROMPT).toMatch(/transcript/i);
-        expect(TRANSCRIPTION_PROMPT).toMatch(/translate/i);
-        expect(TRANSCRIPTION_PROMPT).toMatch(/do not/i);
+        expect(call.config).toEqual({ audioTranscriptionConfig: { mode: TRANSCRIPTION_MODE } });
     });
 
     test("uploads the file from the stream path", async () => {
@@ -334,7 +303,7 @@ describe("transcribeStreamDetailed: response validation", () => {
         jest.clearAllMocks();
     });
 
-    test("returns normalized result for a valid structured JSON response", async () => {
+    test("returns the transcript as plain text for a valid response", async () => {
         setupMockClient(makeUploadedFile(), makeValidGeminiResponse());
 
         const caps = makeMockCapabilities();
@@ -345,15 +314,36 @@ describe("transcribeStreamDetailed: response validation", () => {
         expect(result.provider).toBe("Google");
         expect(result.model).toBe(TRANSCRIBER_MODEL);
         expect(result.structured.transcript).toBe("Hello world");
-        expect(result.structured.coverage).toBe("full");
-        expect(result.structured.warnings).toEqual([]);
-        expect(result.structured.unclearAudio).toBe(false);
     });
 
-    test("throws AITranscriptionError when response text is not valid JSON", async () => {
+    test("returns code-switched and disfluent text unchanged", async () => {
+        const codeSwitched = "Я кажу hello, це... um, значить, que todo bien, да?";
+        setupMockClient(makeUploadedFile(), makeValidGeminiResponse({ transcript: codeSwitched }));
+
+        const caps = makeMockCapabilities();
+        const ai = make(() => caps);
+        const result = await ai.transcribeStreamDetailed(makeFileStream());
+
+        expect(result.text).toBe(codeSwitched);
+        expect(result.structured.transcript).toBe(codeSwitched);
+    });
+
+    test("throws AITranscriptionError when the response text is empty", async () => {
         setupMockClient(
             makeUploadedFile(),
-            makeValidGeminiResponse({ structuredJson: "not-json{{{" })
+            makeValidGeminiResponse({ transcript: "" })
+        );
+
+        const caps = makeMockCapabilities();
+        const ai = make(() => caps);
+        const err = await expectAITranscriptionError(ai.transcribeStreamDetailed(makeFileStream()));
+        expect(err.message).toMatch(/no text/);
+    });
+
+    test("throws AITranscriptionError when the response text is only whitespace", async () => {
+        setupMockClient(
+            makeUploadedFile(),
+            makeValidGeminiResponse({ transcript: "   \n  " })
         );
 
         const caps = makeMockCapabilities();
@@ -361,25 +351,10 @@ describe("transcribeStreamDetailed: response validation", () => {
         await expectAITranscriptionError(ai.transcribeStreamDetailed(makeFileStream()));
     });
 
-    test("throws AITranscriptionError when transcript field is missing from JSON", async () => {
+    test("does not parse the transcript as JSON", async () => {
         setupMockClient(
             makeUploadedFile(),
-            makeValidGeminiResponse({
-                structuredJson: JSON.stringify({ coverage: "full", warnings: [], unclearAudio: false }),
-            })
-        );
-
-        const caps = makeMockCapabilities();
-        const ai = make(() => caps);
-        await expectAITranscriptionError(ai.transcribeStreamDetailed(makeFileStream()));
-    });
-
-    test("does not throw AITranscriptionError when coverage is 'partial'", async () => {
-        setupMockClient(
-            makeUploadedFile(),
-            makeValidGeminiResponse({
-                structuredJson: makeValidStructuredJson({ coverage: "partial" }),
-            })
+            makeValidGeminiResponse({ transcript: "not-json{{{ hello" })
         );
 
         const caps = makeMockCapabilities();
@@ -489,87 +464,6 @@ describe("transcribeStreamDetailed: response validation", () => {
         const ai = make(() => caps);
         const err = await expectAITranscriptionError(ai.transcribeStreamDetailed(makeFileStream()));
         expect(err.message).toMatch(/network error/);
-    });
-
-    test("normalizes missing warnings field to empty array", async () => {
-        setupMockClient(
-            makeUploadedFile(),
-            makeValidGeminiResponse({
-                structuredJson: JSON.stringify({ transcript: "Hello", coverage: "full", unclearAudio: false }),
-            })
-        );
-
-        const caps = makeMockCapabilities();
-        const ai = make(() => caps);
-        const result = await ai.transcribeStreamDetailed(makeFileStream());
-
-        expect(result.structured.warnings).toEqual([]);
-    });
-
-    test("normalizes non-array warnings field to empty array", async () => {
-        setupMockClient(
-            makeUploadedFile(),
-            makeValidGeminiResponse({
-                structuredJson: JSON.stringify({ transcript: "Hello", coverage: "full", warnings: "not an array", unclearAudio: false }),
-            })
-        );
-
-        const caps = makeMockCapabilities();
-        const ai = make(() => caps);
-        const result = await ai.transcribeStreamDetailed(makeFileStream());
-
-        expect(result.structured.warnings).toEqual([]);
-    });
-
-    test("normalizes missing unclearAudio field to false", async () => {
-        setupMockClient(
-            makeUploadedFile(),
-            makeValidGeminiResponse({
-                structuredJson: JSON.stringify({ transcript: "Hello", coverage: "full", warnings: [] }),
-            })
-        );
-
-        const caps = makeMockCapabilities();
-        const ai = make(() => caps);
-        const result = await ai.transcribeStreamDetailed(makeFileStream());
-
-        expect(result.structured.unclearAudio).toBe(false);
-    });
-
-    test("normalizes non-boolean unclearAudio field to false", async () => {
-        setupMockClient(
-            makeUploadedFile(),
-            makeValidGeminiResponse({
-                structuredJson: JSON.stringify({ transcript: "Hello", coverage: "full", warnings: [], unclearAudio: "yes" }),
-            })
-        );
-
-        const caps = makeMockCapabilities();
-        const ai = make(() => caps);
-        const result = await ai.transcribeStreamDetailed(makeFileStream());
-
-        expect(result.structured.unclearAudio).toBe(false);
-    });
-
-    test("preserves valid warnings array in structured result", async () => {
-        setupMockClient(
-            makeUploadedFile(),
-            makeValidGeminiResponse({
-                structuredJson: JSON.stringify({
-                    transcript: "Hello",
-                    coverage: "full",
-                    warnings: ["Some audio was low quality"],
-                    unclearAudio: true,
-                }),
-            })
-        );
-
-        const caps = makeMockCapabilities();
-        const ai = make(() => caps);
-        const result = await ai.transcribeStreamDetailed(makeFileStream());
-
-        expect(result.structured.warnings).toEqual(["Some audio was low quality"]);
-        expect(result.structured.unclearAudio).toBe(true);
     });
 });
 
@@ -722,14 +616,14 @@ describe("transcribeStreamDetailed: metadata preservation", () => {
     test("preserves modelVersion in result", async () => {
         setupMockClient(
             makeUploadedFile(),
-            makeValidGeminiResponse({ response: { modelVersion: "gemini-3-flash-preview-0517" } })
+            makeValidGeminiResponse({ response: { modelVersion: "gemini-3.5-transcribe" } })
         );
 
         const caps = makeMockCapabilities();
         const ai = make(() => caps);
         const result = await ai.transcribeStreamDetailed(makeFileStream());
 
-        expect(result.modelVersion).toBe("gemini-3-flash-preview-0517");
+        expect(result.modelVersion).toBe("gemini-3.5-transcribe");
     });
 
     test("preserves responseId in result", async () => {
@@ -805,7 +699,7 @@ describe("transcribeStreamDetailed: metadata preservation", () => {
                     finishReason: "STOP",
                 },
             ],
-            text: makeValidStructuredJson(),
+            text: DEFAULT_TRANSCRIPT,
         };
         setupMockClient(makeUploadedFile(), sparseResponse);
 
@@ -942,7 +836,7 @@ describe("transcribeStream: compatibility", () => {
         setupMockClient(
             makeUploadedFile(),
             makeValidGeminiResponse({
-                structuredJson: makeValidStructuredJson({ transcript: "Hello from transcribeStream" }),
+                transcript: "Hello from transcribeStream",
             })
         );
 
@@ -1036,5 +930,83 @@ describe("transcribeStreamPreciseDetailed/transcribeStreamPrecise", () => {
 
         const signal = new AbortController().signal;
         await expectAITranscriptionError(ai.transcribeStreamPreciseDetailed(makeFileStream("/tmp/fragment.mp3"), signal));
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Guard: the short/chunk path stays on OpenAI gpt-4o-transcribe.
+//
+// Whole-file transcription moved to a dedicated Gemini ASR model. These tests
+// pin the chunk path so that move cannot quietly drag the chunk path along:
+// they fail if the chunk backend, its model, its request shape, or its
+// provider changes.
+// ---------------------------------------------------------------------------
+
+describe("guard: short/chunk path stays on OpenAI gpt-4o-transcribe", () => {
+    beforeEach(() => {
+        jest.clearAllMocks();
+    });
+
+    test("the precise model constant is gpt-4o-transcribe and is not the whole-file model", () => {
+        expect(PRECISE_TRANSCRIBER_MODEL).toBe("gpt-4o-transcribe");
+        expect(TRANSCRIBER_MODEL).not.toBe(PRECISE_TRANSCRIBER_MODEL);
+    });
+
+    test("the chunk path never constructs a Gemini client", async () => {
+        const { createTranscription } = setupMockOpenAIClient({ text: "chunk" });
+
+        const caps = makeMockCapabilities();
+        const ai = make(() => caps);
+        await ai.transcribeStreamPreciseDetailed(
+            makeFileStream("/tmp/fragment.webm"),
+            new AbortController().signal
+        );
+
+        expect(createTranscription).toHaveBeenCalledTimes(1);
+        expect(GoogleGenAI).not.toHaveBeenCalled();
+    });
+
+    test("the chunk request carries no transcription-mode, language, or vocabulary parameters", async () => {
+        const { createTranscription } = setupMockOpenAIClient({ text: "chunk" });
+
+        const caps = makeMockCapabilities();
+        const ai = make(() => caps);
+        await ai.transcribeStreamPreciseDetailed(
+            makeFileStream("/tmp/fragment.webm"),
+            new AbortController().signal
+        );
+
+        // One audio part per request: no chunking or stitching parameters may appear here.
+        expect(Object.keys(createTranscription.mock.calls[0][0]).sort()).toEqual([
+            "file",
+            "model",
+            "response_format",
+        ]);
+    });
+
+    test("the chunk path forwards the abort signal unchanged", async () => {
+        const { createTranscription } = setupMockOpenAIClient({ text: "chunk" });
+
+        const caps = makeMockCapabilities();
+        const ai = make(() => caps);
+        const controller = new AbortController();
+        await ai.transcribeStreamPrecise(makeFileStream("/tmp/fragment.webm"), controller.signal);
+
+        expect(createTranscription.mock.calls[0][1]).toEqual({ signal: controller.signal });
+    });
+
+    test("the whole-file path never constructs an OpenAI client", async () => {
+        const { mockGenerateContent } = setupMockClient(
+            makeUploadedFile(),
+            makeValidGeminiResponse()
+        );
+        setupMockOpenAIClient({ text: "must not be used" });
+
+        const caps = makeMockCapabilities();
+        const ai = make(() => caps);
+        await ai.transcribeStreamDetailed(makeFileStream());
+
+        expect(mockGenerateContent).toHaveBeenCalledTimes(1);
+        expect(OpenAI).not.toHaveBeenCalled();
     });
 });
