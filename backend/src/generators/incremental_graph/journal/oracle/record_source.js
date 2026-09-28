@@ -92,7 +92,14 @@ function canonicalSequence(digits) {
  *
  * @typedef {object} JournalSource
  * @property {() => ReadonlyArray<JournalAuthor>} writers - The writers with a
- *   retained prefix, in ascending author order.
+ *   retained prefix, in ascending author order. The order is part of the
+ *   contract because callers enumerate the source: a source which returned its
+ *   writers in an arbitrary order would make a caller's own decisions
+ *   order-dependent. The oracle's own passes do not rely on it — each one sorts
+ *   before walking, so the defect the oracle reports is the same for every
+ *   enumeration order a source can produce — but a source author should still
+ *   return them sorted, because `makeUnionSource` and a caller's per-writer
+ *   aggregation do read this order directly.
  * @property {(author: JournalAuthor) => JournalSequence | undefined} retainedLengthOf -
  *   The greatest retained coordinate of one writer, or `undefined` when the
  *   writer is absent. A writer's length is one constant-size read, not a scan.

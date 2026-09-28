@@ -48,6 +48,7 @@ const {
     makeReplicaSource,
     makeUnionSource,
     projectRetainedJournal,
+    readerOverIterable,
     selectCertificates,
     selectSemanticHeads,
     selectedValueId,
@@ -599,20 +600,18 @@ describe("the authority tiebreak is observable only in the selected certificate,
     });
 });
 
-describe("where the arrival order is observable: which defect is reported", () => {
-    test("a journal with two independent defects reports whichever writer is read first", () => {
-        // This is the counterexample this front found, and it is reported rather
-        // than repaired. It is a real order-dependence in the oracle's failure
-        // channel, and it is exactly the kind of thing the prior front's method is
-        // for.
-        //
-        // The journal has one hole in writer A and one non-closed context in
-        // writer B. Both are genuine defects, so no interleaving of the retained
-        // journal is a supported journal, and the accept/reject decision is
-        // invariant. But *which* defect is reported depends on the order the
-        // source enumerates the writers in, because every pass stops at the first
-        // failure it meets.
-        const value = (writerName, sequence, nodeId, context, physical) =>
+describe("which defect is reported", () => {
+    /**
+     * A value event for one coordinate of one writer, with the context the test
+     * asks for, so that a defective context can be built directly.
+     * @param {string} writerName
+     * @param {number} sequence
+     * @param {number} nodeId
+     * @param {ReadonlyArray<[string, string]>} context
+     * @param {number} physical
+     * @returns {import("../src/generators/incremental_graph/journal").JournalRecord}
+     */
+    const value = (writerName, sequence, nodeId, context, physical) =>
             makeValueEvent(
                 {
                     id: writerName + ":" + String(sequence),
@@ -624,63 +623,180 @@ describe("where the arrival order is observable: which defect is reported", () =
                 { kind: "EventEntry", text: "v" + String(nodeId) },
                 "2020-01-01T00:00:00.000Z",
                 "2020-01-02T00:00:00.000Z",
-                "compute"
-            );
+            "compute"
+        );
 
-        // A retains A:1 and A:3, so A:2 is a hole.
-        const hole = [value("A", 1, 1, [], 100), value("A", 3, 1, [["A", "2"]], 300)];
-        // B retains B:1, whose context claims a coordinate no writer retains.
-        const unclosed = [value("B", 1, 2, [["Z", "9"]], 200)];
-        /** @type {Record<string, import("../src/generators/incremental_graph/journal").JournalRecord[]>} */
-        const streams = { A: hole, B: unclosed };
-        const authors = { A: makeJournalAuthor("A"), B: makeJournalAuthor("B") };
-        if (authors.A instanceof Error || authors.B instanceof Error) {
-            throw new Error("the counterexample built an author the record layer rejects");
+    /**
+     * A source over named per-writer retained streams which enumerates its
+     * writers in whatever order it is given.
+     *
+     * The order is a parameter rather than an accident because the order is the
+     * degree of freedom under test. A source which sorted internally could not
+     * exhibit the behaviour these tests are about, and would also hide it.
+     * @param {Record<string, import("../src/generators/incremental_graph/journal").JournalRecord[]>} streams
+     * @param {ReadonlyArray<string>} order
+     * @returns {import("../src/generators/incremental_graph/journal/oracle").JournalSource}
+     */
+    const sourceOver = (streams, order) => {
+        /** @type {Record<string, import("../src/generators/incremental_graph/journal").JournalAuthor>} */
+        const authors = {};
+        for (const writerName of Object.keys(streams)) {
+            const author = makeJournalAuthor(writerName);
+            if (author instanceof Error) {
+                throw new Error("the test built an author the record layer rejects");
+            }
+            authors[writerName] = author;
         }
-
-        /**
-         * @param {ReadonlyArray<string>} order
-         * @returns {ReturnType<typeof runOnce>}
-         */
-        const readInOrder = (order) => {
-            return runOnce({
-                source: {
-                    writers: () => order.map((writerName) => authors[writerName]),
-                    retainedLengthOf: (author) => {
-                        const writerName = journalAuthorToString(author);
-                        const records = streams[writerName];
-                        const last = records?.[records.length - 1];
-                        return last === undefined ? undefined : last.id.sequence;
-                    },
-                    prefixReaderOf: (author) => {
-                        const writerName = journalAuthorToString(author);
-                        const records = streams[writerName] ?? [];
-                        const last = records[records.length - 1];
-                        return require("../src/generators/incremental_graph/journal/oracle").readerOverIterable(
-                            writerName,
-                            records,
-                            last?.id.sequence ?? makeJournalSequence("0")
-                        );
-                    },
-                },
-                localWriterName: LOCAL_WRITER,
-            });
+        return {
+            writers: () => order.map((writerName) => authors[writerName]),
+            retainedLengthOf: (author) => {
+                const records = streams[journalAuthorToString(author)];
+                const last = records?.[records.length - 1];
+                return last === undefined ? undefined : last.id.sequence;
+            },
+            prefixReaderOf: (author) => {
+                const writerName = journalAuthorToString(author);
+                const records = streams[writerName] ?? [];
+                const last = records[records.length - 1];
+                return readerOverIterable(
+                    writerName,
+                    records,
+                    last === undefined ? makeJournalSequence("0") : last.id.sequence
+                );
+            },
         };
+    };
 
-        const holeFirst = readInOrder(["A", "B"]);
-        const closureFirst = readInOrder(["B", "A"]);
+    /**
+     * Every ordering of three writers.
+     * @param {string} a
+     * @param {string} b
+     * @param {string} c
+     * @returns {string[][]}
+     */
+    const allOrders = (a, b, c) => [
+        [a, b, c],
+        [a, c, b],
+        [b, a, c],
+        [b, c, a],
+        [c, a, b],
+        [c, b, a],
+    ];
 
-        // The decision is invariant: both orders reject, which is the claim the
-        // confluence test above makes and the reason this is a defect in the
-        // failure channel rather than a violation of Law 1.
-        expect(holeFirst.accepted).toBe(false);
-        expect(closureFirst.accepted).toBe(false);
+    /**
+     * A retained journal in which each of three writers carries a different
+     * genuine defect.
+     *
+     * - `A` retains `A:1` and `A:3`, so `A:2` is a hole;
+     * - `B` retains `B:1`, whose context claims a coordinate no writer retains,
+     *   so the context is not closed;
+     * - `C` retains `C:1`, whose own-writer context coordinate is not its
+     *   predecessor, so the context is not a complete local prefix.
+     *
+     * Every one of these is a real defect, so no enumeration order of this
+     * journal is a supported journal and the accept/reject decision is the same
+     * in all of them. Which of the three is *reported* is what used to move with
+     * the enumeration order, because every pass stops at the first failure it
+     * meets and every pass walked `writers()` order.
+     * @returns {Record<string, import("../src/generators/incremental_graph/journal").JournalRecord[]>}
+     */
+    const threeDefectiveStreams = () => ({
+        A: [value("A", 1, 1, [], 100), value("A", 3, 1, [["A", "2"]], 300)],
+        B: [value("B", 1, 2, [["Z", "9"]], 200)],
+        C: [value("C", 1, 3, [["C", "2"]], 400)],
+    });
+
+    test("a journal with two independent defects reports the same defect in either order", () => {
+        // The counterexample this front found, repaired rather than deleted. With
+        // a hole in `A` and a non-closed context in `B`, the two enumeration
+        // orders used to name different defects of the same retained journal:
+        // `A` first reported `JournalGapError` and `B` first reported
+        // `JournalCausalClosureError`. The accept/reject decision was invariant
+        // throughout, so the finding was a defect in the failure channel rather
+        // than in the decision.
+        //
+        // The test is kept, and kept as the same two orders, because those two
+        // orders disagreeing is the evidence the finding rested on. A test which
+        // only ever asked for one order would not notice the order-dependence
+        // returning.
+        const streams = {
+            A: [value("A", 1, 1, [], 100), value("A", 3, 1, [["A", "2"]], 300)],
+            B: [value("B", 1, 2, [["Z", "9"]], 200)],
+        };
+        const holeFirst = runOnce({ source: sourceOver(streams, ["A", "B"]), localWriterName: LOCAL_WRITER });
+        const closureFirst = runOnce({ source: sourceOver(streams, ["B", "A"]), localWriterName: LOCAL_WRITER });
+
+        // The decision is invariant, which is the claim the confluence test above
+        // makes and the reason the finding was a diagnosability defect rather
+        // than a violation of Law 1.
+        expect([holeFirst.accepted, closureFirst.accepted]).toEqual([false, false]);
+        // The report is invariant too, and it is the earlier writer's defect: the
+        // gap at `A:2`.
+        expect([holeFirst.value, closureFirst.value]).toEqual(["JournalGapError", "JournalGapError"]);
         expect(isJournalGapError(holeFirst.error)).toBe(true);
+        expect(isJournalCausalClosureError(closureFirst.error)).toBe(false);
+        expect(holeFirst.error?.message).toBe(closureFirst.error?.message);
+    });
 
-        // The reported defect is not invariant, and the two reports name different
-        // coordinates of the same retained journal.
-        expect(isJournalCausalClosureError(closureFirst.error)).toBe(true);
-        expect(holeFirst.value).not.toBe(closureFirst.value);
+    test("every enumeration order of a three-defect journal reports one defect", () => {
+        // The regression the finding calls for, and the assertion which goes red
+        // on a walk that reads the source's enumeration order. Three writers with
+        // three different defects, read in all six orders: every order must reject
+        // with the identical error, naming the identical defect of the identical
+        // coordinate.
+        //
+        // Comparing `error.message` rather than the error class is deliberate. A
+        // walk which normalised the class while still reporting a different
+        // record's defect would satisfy a class-only comparison, and which defect
+        // a caller is told about is the whole question.
+        const streams = threeDefectiveStreams();
+        /** @type {string[]} */
+        const reports = [];
+        for (const order of allOrders("A", "B", "C")) {
+            const outcome = runOnce({ source: sourceOver(streams, order), localWriterName: LOCAL_WRITER });
+            expect([order.join(""), outcome.accepted]).toEqual([order.join(""), false]);
+            if (outcome.error === undefined) {
+                throw new Error("a defective journal was rejected without an error");
+            }
+            reports.push(outcome.error.name + ": " + outcome.error.message);
+        }
+        // One distinct report across all six orders.
+        expect([...new Set(reports)]).toHaveLength(1);
+        expect(reports[0]).toBe(reports[1]);
+        expect(reports[0]).toBe(reports[2]);
+        expect(reports[0]).toBe(reports[3]);
+        expect(reports[0]).toBe(reports[4]);
+        expect(reports[0]).toBe(reports[5]);
+    });
+
+    test("the reported defect is the canonical-earliest writer's, not the first enumerated", () => {
+        // Which single defect the canonical walk reports, asserted directly, so
+        // the invariance above cannot be satisfied by reporting one fixed
+        // unrelated error for every order. The canonical-earliest writer is `A`
+        // and the order the source enumerates here is reverse-canonical, so the
+        // first writer the fold reaches is the last writer a caller would expect.
+        const streams = threeDefectiveStreams();
+        const outcome = runOnce({
+            source: sourceOver(streams, ["C", "B", "A"]),
+            localWriterName: LOCAL_WRITER,
+        });
+        expect(outcome.accepted).toBe(false);
+        if (outcome.error === undefined) {
+            throw new Error("a defective journal was rejected without an error");
+        }
+        expect(isJournalGapError(outcome.error)).toBe(true);
+        expect(outcome.error.message).toContain("A:2");
+
+        // The same journal read in canonical order reports the same defect, so
+        // the two differ only in what the source enumerated.
+        const canonical = runOnce({
+            source: sourceOver(streams, ["A", "B", "C"]),
+            localWriterName: LOCAL_WRITER,
+        });
+        if (canonical.error === undefined) {
+            throw new Error("a defective journal was rejected without an error");
+        }
+        expect(canonical.error.message).toBe(outcome.error.message);
     });
 
     test("the order-dependence cannot turn a rejection into an acceptance", () => {

@@ -135,17 +135,47 @@ function streamEveryRecord(source, visit) {
 }
 
 /**
+ * The source's writers in the one order every pass walks them.
+ *
+ * A pass reports the first failure it meets, so the defect a caller is told
+ * about is the defect belonging to the earliest writer this fold reaches. If that
+ * order came from the source, a journal with two independent defects would have
+ * two different reported defects depending only on how a source happened to
+ * enumerate its writers, and the accept/reject decision would be the sole part
+ * of the answer a caller could rely on.
+ *
+ * The walk therefore imposes its own order, ascending by canonical author name,
+ * rather than asking the source for one. A source is still expected to enumerate
+ * its writers in ascending author order, and `makeReplicaSource` and
+ * `makeUnionSource` still sort, because that is part of the `JournalSource`
+ * contract. But the order the *failure channel* depends on is decided here, in
+ * the one function which walks the source, so it holds for every source
+ * including a caller-supplied one which enumerates in another order.
+ * @param {JournalSource} source
+ * @returns {ReadonlyArray<JournalAuthor>}
+ */
+function canonicalWriterOrder(source) {
+    return [...source.writers()].sort((a, b) => {
+        const left = journalAuthorToString(a);
+        const right = journalAuthorToString(b);
+        return left < right ? -1 : left > right ? 1 : 0;
+    });
+}
+
+/**
  * Stream every retained record once, stopping at the first failure `visit`
  * reports as well as at the first structural failure.
  *
  * A pass which cannot trust its derived state must not keep folding into it, so
- * the walk ends where the visitor reports a failure.
+ * the walk ends where the visitor reports a failure. Which writer's failure is
+ * reported is decided by `canonicalWriterOrder`, not by the source's
+ * enumeration.
  * @param {JournalSource} source
  * @param {(record: JournalRecord) => JournalError | undefined} visit
  * @returns {JournalError | undefined}
  */
 function streamWithReport(source, visit) {
-    for (const author of source.writers()) {
+    for (const author of canonicalWriterOrder(source)) {
         const reader = source.prefixReaderOf(author);
         for (;;) {
             const record = reader.nextRecord();
