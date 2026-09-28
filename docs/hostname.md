@@ -4,7 +4,7 @@
 
 `VOLODYSLAV_HOSTNAME` is an environment variable that identifies the machine on which a Volodyslav instance is running.
 
-Because Volodyslav can be deployed and run on multiple hosts simultaneously, it is important to track *where* data was created. This variable provides that information at the source — both for event log entries and for nodes in the incremental computation graph.
+Because Volodyslav can be deployed and run on multiple hosts simultaneously, the hostname is useful for event-log provenance and deployment/transport coordination. It is not persisted as per-node IncrementalGraph provenance.
 
 ## How It Works
 
@@ -25,11 +25,11 @@ Every event in the event log carries a `creator` structure that records metadata
 
 The `hostname` field tells you which machine produced the event entry. This is helpful when you have multiple hosts all writing to the same shared event log repository, and you want to understand the provenance of each entry.
 
-### Incremental Graph Nodes
+### IncrementalGraph state
 
-The incremental computation graph caches computed node values in a database. Each node records `createdAt`, `modifiedAt`, and now also `createdBy` in its stored record. The `createdBy` field holds the hostname of the machine that first computed the node.
+`VOLODYSLAV_HOSTNAME` is not stored as a `createdBy` field on IncrementalGraph node records, and graph inspection does not expose per-node hostname provenance.
 
-Like `createdAt`, the `createdBy` value is **immutable** after first creation: subsequent recomputations on a different host will not change the recorded hostname. This ensures a stable record of where the computation originally took place.
+Hostnames are deployment/transport context rather than semantic IncrementalGraph identity. Journal 3 makes that boundary explicit: implementation-owned persistent graph/Journal state must not store hostnames or other transport locators; see `docs/intent-records/journal.md` `$id-4373538486707762`.
 
 ## Configuration
 
@@ -54,23 +54,6 @@ While Node.js exposes the system hostname via `os.hostname()`, relying on the OS
 - **Explicit is better than implicit**: Requiring the operator to set `VOLODYSLAV_HOSTNAME` forces a conscious choice and makes the deployment more self-documenting.
 
 By requiring an explicit environment variable, you can assign a stable, human-meaningful identifier regardless of the underlying infrastructure.
-
-## Visibility in the REST API
-
-The `createdBy` field is exposed through the graph inspection REST API alongside `createdAt` and `modifiedAt`:
-
-```json
-{
-  "head": "all_events",
-  "args": [],
-  "freshness": "up-to-date",
-  "createdAt": "2026-03-07T10:18:20.735Z",
-  "modifiedAt": "2026-03-07T10:18:20.735Z",
-  "createdBy": "my-server.example.com"
-}
-```
-
-This makes it easy to see, from outside, which host initially computed each graph node.
 
 ---
 
