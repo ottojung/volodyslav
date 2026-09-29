@@ -199,30 +199,30 @@ function validateOrdinaryBasisReasons(event) {
  * explicit input set no longer equals the current schema's input set, and a
  * certificate on a node family the current schema has removed, remain
  * structurally intelligible history; applying this rule to a retained history
- * would report exactly that history as corruption. Replay applies it per
- * certificate when it decides which candidate is eligible, and an authoring
- * transition applies it before it writes a new certificate.
+ * would report exactly that history as corruption. `isEligibleCertificate` is the
+ * one place which consumes this rule, and the two are the same predicate over the
+ * same inputs rather than two rules which can drift apart.
+ *
+ * The rule is `certificateInputs(C) == currentInputs(K)`, with nothing else in
+ * it. A validation reason does not exempt a certificate from it: the reason
+ * rules live in `validateOrdinaryBasisReasons`, which is where a baseline reason
+ * may name a retired input set, because that rule is about what the record says
+ * and this one is about whether the record is proof about the current graph.
+ * `currentInputs(K)` is empty for a node the current schema does not contain, so
+ * a zero-basis certificate on a removed node family is current-shape-compatible
+ * and a certificate on a removed family which still names inputs is not.
  * @param {ValidateEvent} event
  * @param {CurrentInputKeysOfNode} currentInputKeysOfNode
  * @returns {JournalError | undefined}
  */
 function validateCurrentShapeBasis(event, currentInputKeysOfNode) {
     const label = journalRecordIdToString(event.id);
-    if (isBaselineValidationReason(event.reason)) {
-        return undefined;
-    }
     const nodeKeyString = nodeKeyToCanonicalString(event.node);
     const current = currentInputKeysOfNode(nodeKeyString);
-    if (current === undefined) {
-        return makeJournalRecordValidationError(
-            "node " + nodeKeyString + " is not part of the current schema",
-            label
-        );
-    }
     const declared = event.basis
         .map((entry) => nodeKeyToCanonicalString(entry.input))
         .sort();
-    const expected = current.slice().sort();
+    const expected = (current === undefined ? [] : current).slice().sort();
     if (declared.join(",") !== expected.join(",")) {
         return makeJournalRecordValidationError(
             "validation basis does not name exactly the current direct input set",

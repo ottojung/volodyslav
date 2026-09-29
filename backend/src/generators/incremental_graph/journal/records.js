@@ -49,6 +49,7 @@ const {
     ownedNodeKey,
 } = require("./basis");
 const {
+    computedValueRejection,
     invalidBasisDetail,
     isCanonicalTimestamp,
     isComputedValue,
@@ -368,10 +369,7 @@ function makeValueEvent(fields, nodeIdentifier, payload, createdAt, modifiedAt, 
         return makeJournalRecordValidationError("node identifier is missing or malformed", label);
     }
     if (!isComputedValue(payload)) {
-        return makeJournalRecordValidationError(
-            "payload is not a valid current-version computed value",
-            label
-        );
+        return makeJournalRecordValidationError(computedValueRejection(payload), label);
     }
     if (!isCanonicalTimestamp(createdAt) || !isCanonicalTimestamp(modifiedAt)) {
         return makeJournalRecordValidationError(

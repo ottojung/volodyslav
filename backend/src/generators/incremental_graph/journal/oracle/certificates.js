@@ -25,6 +25,7 @@
 
 const { isValidateEvent } = require("../records");
 const { nodeKeyToCanonicalString } = require("../basis");
+const { validateCurrentShapeBasis } = require("../reference_rules");
 const { authorityCompare } = require("../ordering");
 const { journalRecordIdToString } = require("../types");
 const { streamWithReport } = require("./scan");
@@ -152,6 +153,13 @@ function effectiveInputsOf(candidate, summaries, occurrences, currentInputKeysOf
 
 /**
  * Is this candidate an eligible certificate for its node's selected occurrence?
+ *
+ * The current-shape clause of the specification's eligibility definition is
+ * `validateCurrentShapeBasis` itself, so this function calls that rule rather
+ * than re-deriving the input-set comparison. A second implementation of the same
+ * clause is a second answer to it: the two disagreed about baseline-reason
+ * certificates and about a node family the current schema has removed, and
+ * nothing in the suite could see which answer the oracle used.
  * @param {import("../records").ValidateEvent} candidate
  * @param {ReadonlyMap<string, InvalidationSummary>} summaries
  * @param {SelectedOccurrences} occurrences
@@ -167,18 +175,8 @@ function isEligibleCertificate(candidate, summaries, occurrences, currentInputKe
     if (journalRecordIdToString(candidate.value) !== journalRecordIdToString(selectedValueId)) {
         return false;
     }
-    const current = currentInputSet(currentInputKeysOfNode, nodeKeyString);
-    const declared = candidate.basis.map((entry) => nodeKeyToCanonicalString(entry.input));
-    if (new Set(declared).size !== declared.length) {
+    if (validateCurrentShapeBasis(candidate, currentInputKeysOfNode) !== undefined) {
         return false;
-    }
-    if (declared.length !== current.size) {
-        return false;
-    }
-    for (const inputKeyString of declared) {
-        if (!current.has(inputKeyString)) {
-            return false;
-        }
     }
     const summary = summaries.get(nodeKeyString);
     if (summary !== undefined && !summaryIsCovered(summary.nodeScoped, candidate.context, occurrences.authorOf)) {

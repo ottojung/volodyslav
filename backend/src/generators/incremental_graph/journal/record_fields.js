@@ -9,7 +9,7 @@
 
 const { isValidationBasisEntry } = require("./basis");
 const { deepFrozenCopy } = require("./immutable");
-const { COMPUTED_VALUE_TYPE_TAGS, isValidFingerprint } = require("../database");
+const { computedValueViolation, isValidFingerprint } = require("../database");
 const { makeJournalRecordValidationError } = require("./errors");
 const {
     isJournalRecordId,
@@ -67,25 +67,33 @@ function readEnumMember(label, allowed, value) {
 
 /**
  * The current format requires a value payload to be a JSON object which belongs
- * to the current `ComputedValue` union.
+ * to the current `ComputedValue` union, and belonging to a union member means
+ * carrying that member's declared members with that member's declared types.
  *
- * Which concrete union member a payload is belongs to the graph scheme that
- * authored the value, so this predicate decides exactly what the record layer can
- * decide by itself and no more: the payload is an object, and it carries the
- * `type` discriminant of one current union member. A payload which names no
- * current union member is not a current-version `ComputedValue` at all, so
- * persisted history containing one is rejected instead of being carried forward
- * as a value occurrence with no representation. The inner members of the named
- * variant are the graph scheme's own contract, not this layer's.
+ * Nothing downstream of the record layer re-validates a payload, so a payload
+ * which names a current union member but does not match its shape survives the
+ * canonical codec and is then consumed as the real value it claims to be, which
+ * turns persisted history into a silently wrong number. The union and all
+ * eighteen member typedefs are declared in this repository, in the file this
+ * layer already takes its discriminant set from, and the well-formedness
+ * specification names this layer as the owner of record validity, so the member
+ * shape behind the discriminant is decided here rather than delegated to whoever
+ * reads the payload.
  * @param {unknown} value
  * @returns {value is ComputedValue}
  */
 function isComputedValue(value) {
-    if (!isPlainRecord(value)) {
-        return false;
-    }
-    const tag = value["type"];
-    return typeof tag === "string" && COMPUTED_VALUE_TYPE_TAGS.has(tag);
+    return computedValueViolation(value) === undefined;
+}
+
+/**
+ * The rejection detail for a payload which is not a current-version
+ * `ComputedValue`, naming the member of the union member which was wrong.
+ * @param {unknown} value
+ * @returns {string}
+ */
+function computedValueRejection(value) {
+    return "payload is not a valid current-version computed value: " + computedValueViolation(value);
 }
 
 /**
@@ -225,6 +233,7 @@ function contextToText(context) {
 }
 
 module.exports = {
+    computedValueRejection,
     contextToText,
     invalidBasisDetail,
     isComputedValue,

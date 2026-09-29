@@ -406,35 +406,17 @@ function versionToString(Version) {
  * @typedef {AllEventsEntry | SortedEventsDescendingEntry | SortedEventsAscendingEntry | LastNEntriesEntry | FirstNEntriesEntry | EventsCountEntry | ConfigEntry | MetaEventsEntry | EventContextDatabaseEntry | EventEntry | BasicContextEntry | CaloriesEntry | TranscriptionEntry | EventTranscriptionEntry | EventAudiosListEntry | EntryDescriptionEntry | DiaryMostImportantInfoSummaryEntry | OntologyEntry} ComputedValue
  */
 
+const { COMPUTED_VALUE_TYPE_TAGS } = require("./computed_value");
+
 /**
- * The `type` discriminant of every member of the `ComputedValue` union.
+ * The `type` discriminant of every member of the `ComputedValue` union, derived
+ * from the executable form of the union in `./computed_value.js`.
  *
  * A value which belongs to the union carries exactly one of these tags, so a
- * consumer which must decide whether an untrusted object is a `ComputedValue` at
- * all can decide it from the discriminant without re-deriving the whole union
- * from the graph scheme.
+ * consumer which must decide whether an untrusted object is a `ComputedValue`
+ * reads the discriminant first and then the member shape behind it.
  * @type {ReadonlySet<string>}
  */
-const COMPUTED_VALUE_TYPE_TAGS = new Set([
-    'all_events',
-    'sorted_events_descending',
-    'sorted_events_ascending',
-    'last_entries',
-    'first_entries',
-    'events_count',
-    'config',
-    'meta_events',
-    'event_context',
-    'event',
-    'basic_context',
-    'calories',
-    'transcription',
-    'event_transcription',
-    'event_audios_list',
-    'entry_description',
-    'diary_most_important_info_summary',
-    'ontology',
-]);
 
 /**
  * Freshness state for a materialized node record.

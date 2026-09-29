@@ -3,6 +3,8 @@
  * Provides a LevelDB key-value store for storing generated values and event log mirrors.
  */
 
+const { computedValueViolation } = require('./computed_value');
+
 const {
     COMPUTED_VALUE_TYPE_TAGS,
     schemaPatternToString,
@@ -134,6 +136,7 @@ module.exports = {
     isValidFingerprint,
     requireValidFingerprint,
     COMPUTED_VALUE_TYPE_TAGS,
+    computedValueViolation,
     LAST_NODE_INDEX_KEY,
     makeTypedDatabase,
     isTypedDatabase,
