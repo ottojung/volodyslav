@@ -374,6 +374,11 @@ describe("finding 3: a historical certificate is history, not corruption", () =>
             "compute"
         );
         expect(validateJournalReplica(replicaOf([[WRITER_A, [value, input, certificate]]]))).toBeUndefined();
+        expect(
+            validateJournalReplica(replicaOf([[WRITER_A, [value, input, certificate]]]), {
+                currentInputKeysOfNode: currentInputsOfK,
+            })
+        ).toBeUndefined();
     });
 
     test("a current-schema certificate is still accepted", () => {
