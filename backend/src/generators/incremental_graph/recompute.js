@@ -147,7 +147,7 @@ async function handleChanged(incrementalGraph, nodeDefinition, nodeIdentifier, i
         timestamps.createdAt,
         timestamps.modifiedAt
     );
-    await stageValueInvalidations(tx, becameStale);
+    await stageValueInvalidations(tx, nodeDefinition.outputKey, becameStale);
 }
 
 /**

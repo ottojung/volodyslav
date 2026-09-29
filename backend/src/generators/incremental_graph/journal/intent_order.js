@@ -90,8 +90,36 @@ function compareIntents(left, right) {
 }
 
 /**
+ * Name the first intent whose dependency the publication cannot satisfy, so the
+ * reported error says which dependency is unsatisfiable rather than only that one is.
+ *
+ * @param {ReadonlyArray<EmissionIntent>} remaining
+ * @returns {string}
+ */
+function blockedDependencyOf(remaining) {
+    for (const candidate of remaining) {
+        if (candidate.kind === "invalidate-value") {
+            return "the staleness of " + nodeKeyToCanonicalString(candidate.node) +
+                " names the cause " + nodeKeyToCanonicalString(candidate.causedBy) +
+                ", which this publication also does not author";
+        }
+        if (candidate.kind === "materialize" || candidate.kind === "revalidate") {
+            for (const entry of candidate.inputs) {
+                if (entry.pending === true) {
+                    return "the validation basis of " + nodeKeyToCanonicalString(candidate.node) +
+                        " names the value occurrence of " + nodeKeyToCanonicalString(entry.input) +
+                        ", which only this publication creates";
+                }
+            }
+        }
+    }
+    return "the intents are not orderable";
+}
+
+/**
  * Order the intents so that a node whose value occurrence this publication creates is
- * finalized before any certificate which names that occurrence.
+ * finalized before any certificate which names that occurrence, and so that a cause
+ * precedes the staleness it propagates.
  *
  * @param {ReadonlyArray<EmissionIntent>} ordered - intents in canonical order.
  * @returns {Array<EmissionIntent> | JournalError}
@@ -108,12 +136,21 @@ function orderIntents(ordered) {
     const result = [];
     /** @type {Set<string>} */
     const created = new Set();
+    /** @type {Set<string>} */
+    const placed = new Set();
     while (remaining.length > 0) {
         /** @type {number} */
         let picked = -1;
         for (let index = 0; index < remaining.length; index++) {
             const candidate = remaining[index];
             if (candidate === undefined) {
+                continue;
+            }
+            if (candidate.kind === "invalidate-value") {
+                if (placed.has(nodeKeyToCanonicalString(candidate.causedBy))) {
+                    picked = index;
+                    break;
+                }
                 continue;
             }
             if (candidate.kind !== "materialize" && candidate.kind !== "revalidate") {
@@ -134,14 +171,15 @@ function orderIntents(ordered) {
         }
         if (picked < 0) {
             return makeJournalPublicationError(
-                "the publication's validation bases name value occurrences which only the " +
-                    "publication itself creates, in an order no publication can satisfy"
+                "the publication's intents have a dependency no publication order satisfies: " +
+                    blockedDependencyOf(remaining)
             );
         }
         const [chosen] = remaining.splice(picked, 1);
         if (chosen === undefined) {
             return makeJournalPublicationError("the publication's intents could not be ordered");
         }
+        placed.add(nodeKeyToCanonicalString(chosen.node));
         if (chosen.kind === "materialize") {
             created.add(nodeKeyToCanonicalString(chosen.node));
         }

@@ -90,7 +90,7 @@ async function internalUnsafeInvalidate(
         removeIncomingValidity(tx.batch, outputIdentifier, inputEdges);
         const dependents = await tx.batch.valid.get(outputIdentifier);
         const becameStale = await propagatePotentiallyOutdated(incrementalGraph.storage, tx.batch, dependents);
-        await stageValueInvalidations(tx, becameStale);
+        await stageValueInvalidations(tx, concreteKey, becameStale);
 
         return { value: undefined };
     });

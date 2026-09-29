@@ -135,12 +135,15 @@ const {
 /**
  * A settled propagated persistent staleness: a cached dependent's exact current
  * occurrence became stale through its inputs. This is value-scoped and does not
- * by itself remove the occurrence's incoming proof.
+ * by itself remove the occurrence's incoming proof. `causedBy` is the node whose
+ * own transition moved the dependent, so the publication can order the cause
+ * before the effect it causes.
  *
  * @typedef {object} InvalidateValueIntent
  * @property {"invalidate-value"} kind
  * @property {NodeKey} node
  * @property {JournalRecordId} value
+ * @property {NodeKey} causedBy
  */
 
 /**

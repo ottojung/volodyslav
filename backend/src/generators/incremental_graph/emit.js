@@ -101,17 +101,24 @@ function stageNodeInvalidation(tx, outputKey) {
 /**
  * Stage the propagated staleness of the exact value occurrences of dependents whose
  * freshness the transition moved from fresh to stale.
+ *
+ * The node whose transition moved the freshness is the cause, so the publication can
+ * order the cause before the staleness it propagates.
+ *
  * @param {Transaction} tx
+ * @param {NodeKeyString} causeKey
  * @param {NodeIdentifier[]} transitioned
  * @returns {Promise<void>}
  */
-async function stageValueInvalidations(tx, transitioned) {
+async function stageValueInvalidations(tx, causeKey, transitioned) {
+    const causedBy = semanticNodeOf(causeKey);
     for (const nodeIdentifier of transitioned) {
         const node = semanticNodeOf(requireNodeKey(tx, nodeIdentifier));
         tx.journal.stage({
             kind: "invalidate-value",
             node,
             value: await tx.journal.requireCommittedOccurrence(node),
+            causedBy,
         });
     }
 }
