@@ -148,6 +148,9 @@ const {
     validateTarget,
 } = require("./reference_rules");
 
+// Ordinary emission finalization
+const { finalizeEmission } = require("./emission");
+
 /** @typedef {import('./errors').AnyJournalError} AnyJournalError */
 /** @typedef {import('./basis').InvalidateScope} InvalidateScope */
 /** @typedef {import('./basis').ValidationBasis} ValidationBasis */
@@ -160,6 +163,12 @@ const {
 /** @typedef {import('./records').ValidateEvent} ValidateEvent */
 /** @typedef {import('./records').ValueEvent} ValueEvent */
 /** @typedef {import('./records').WriterStateRecord} WriterStateRecord */
+/** @typedef {import('./emission').EmissionIntent} EmissionIntent */
+/** @typedef {import('./emission').MaterializeIntent} MaterializeIntent */
+/** @typedef {import('./emission').MaterializeInput} MaterializeInput */
+/** @typedef {import('./emission').CommittedWriterState} CommittedWriterState */
+/** @typedef {import('./emission').EmissionRequest} EmissionRequest */
+/** @typedef {import('./emission').FinalizedPublication} FinalizedPublication */
 /** @typedef {import('./replica').JournalReplica} JournalReplica */
 /** @typedef {import('./reference_rules').CurrentInputKeysOfNode} CurrentInputKeysOfNode */
 /** @typedef {import('./types').AuthorityTime} AuthorityTime */
@@ -183,6 +192,7 @@ module.exports = {
     currentFormatDecodeRecord,
     currentFormatValidateRecord,
     encodeJournalRecord,
+    finalizeEmission,
     frontierJoin,
     happenedBefore,
     isAuthorityTime,
