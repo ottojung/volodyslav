@@ -346,6 +346,19 @@ describe("finding 3: a historical certificate is history, not corruption", () =>
         expect(validateJournalReplica(replicaOf([[WRITER_A, historyWithRetiredInput()]]))).toBeUndefined();
     });
 
+    test("whole-history validation does not take a current schema at all", () => {
+        // The finding was that supplying the current schema turned intelligible
+        // history into corruption, so the fix has to hold for a caller who offers
+        // one. A validator which still accepted a schema argument would pass the
+        // acceptance above and still corrupt history, so the argument itself is
+        // asserted gone.
+        const replica = replicaOf([[WRITER_A, historyWithRetiredInput()]]);
+        expect(validateJournalReplica.length).toBe(1);
+        expect(
+            validateJournalReplica(replica, { currentInputKeysOfNode: currentInputsOfK })
+        ).toBeUndefined();
+    });
+
     test("whole-history validation accepts a certificate on a node family the current schema has removed", () => {
         const value = valueAt(WRITER_A + ":1", [], NODE_REMOVED_FAMILY, 1000);
         const input = valueAt(WRITER_A + ":2", [[WRITER_A, "1"]], NODE_D, 1100);
