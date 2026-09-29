@@ -7,6 +7,13 @@
  * derived from these shapes, so a tag can never exist without the member shape
  * behind it and a member shape can never exist without its tag.
  *
+ * A shape declares every representation of its member which the repository
+ * produces, because the record layer is handed a member in two of them: the live
+ * value a computor returned, and the value parsed back out of the persisted text
+ * of a record being replayed. Declaring one representation of a nominal member,
+ * or of a member whose declared type admits `undefined`, would reject half of the
+ * values the repository itself produces.
+ *
  * A value event's payload must be a current-version `ComputedValue`, so this is
  * the check the record layer applies at its boundary. Nothing downstream of the
  * record layer re-validates a payload, which means a payload that reaches the
@@ -17,146 +24,47 @@
 
 /** @typedef {import('./types').ComputedValue} ComputedValue */
 
-/**
- * A shape check reports the first way a value fails the shape, so a rejected
- * payload can say which member of which union member was wrong.
- * @typedef {(value: unknown, path: string) => string | undefined} Shape
- */
+const { DateTime } = require("luxon");
+const { isEventId } = require("../../../event").id;
+const { isDateTime } = require("../../../datetime");
+
+/** @typedef {import("./shape").Shape} Shape */
+
+const {
+    arrayOfShape,
+    closedObjectShape,
+    constantShape,
+    isPlainRecord,
+    nullableShape,
+    numberShape,
+    oneOfShape,
+    stringOrUndefinedShape,
+    stringRecordShape,
+    stringShape,
+} = require("./shape");
 
 /**
- * @param {unknown} value
- * @returns {value is Record<string, unknown>}
+ * The shape of a member which is a nominal value of a declared class. The
+ * `instanceof` check is what makes the value the nominal type the typedef names;
+ * the closed object check behind it states the members that type declares, so a
+ * member which is not one of them is still rejected rather than carried.
+ * @param {(value: unknown) => boolean} isInstance
+ * @param {string} label
+ * @param {Shape} [members]
+ * @returns {Shape}
  */
-function isPlainRecord(value) {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
+function nominalShape(isInstance, label, members) {
+    return (value, path) => {
+        if (!isInstance(value)) {
+            return `${path} must be ${label}`;
+        }
+        return members === undefined ? undefined : members(value, path);
+    };
 }
-
-const { hasOwnProperty } = Object.prototype;
 
 /** @type {Shape} */
-function stringShape(value, path) {
-    return typeof value === "string" ? undefined : `${path} must be a string`;
-}
-
-/**
- * A finite number. A count or a binding which is `Infinity` is not a value the
- * current format can carry, because `JSON.stringify` never writes it.
- * @type {Shape}
- */
-function numberShape(value, path) {
-    if (typeof value !== "number") {
-        return `${path} must be a number`;
-    }
-    return Number.isFinite(value) ? undefined : `${path} must be a finite number`;
-}
-
-/**
- * @param {string} expected
- * @returns {Shape}
- */
-function constantShape(expected) {
-    return (value, path) =>
-        value === expected ? undefined : `${path} must be ${JSON.stringify(expected)}`;
-}
-
-/**
- * A closed object: every declared member must be present with its declared
- * shape, and a member which the declaration does not declare is rejected
- * instead of being carried into meaning by whichever reader happens to see it.
- * @param {Record<string, Shape>} required
- * @param {Record<string, Shape>} [optional]
- * @returns {Shape}
- */
-function closedObjectShape(required, optional = {}) {
-    return (value, path) => {
-        if (!isPlainRecord(value)) {
-            return `${path} must be an object`;
-        }
-        for (const [name, shape] of Object.entries(required)) {
-            if (!hasOwnProperty.call(value, name)) {
-                return `${path} is missing member ${JSON.stringify(name)}`;
-            }
-            const violation = shape(value[name], `${path}.${name}`);
-            if (violation !== undefined) {
-                return violation;
-            }
-        }
-        for (const [name, member] of Object.entries(value)) {
-            if (hasOwnProperty.call(required, name)) {
-                continue;
-            }
-            const shape = hasOwnProperty.call(optional, name) ? optional[name] : undefined;
-            if (shape === undefined) {
-                return `${path} has unknown member ${JSON.stringify(name)}`;
-            }
-            const violation = shape(member, `${path}.${name}`);
-            if (violation !== undefined) {
-                return violation;
-            }
-        }
-        return undefined;
-    };
-}
-
-/**
- * @param {Shape} shape
- * @returns {Shape}
- */
-function arrayOfShape(shape) {
-    return (value, path) => {
-        if (!Array.isArray(value)) {
-            return `${path} must be an array`;
-        }
-        for (const [index, member] of value.entries()) {
-            const violation = shape(member, `${path}[${index}]`);
-            if (violation !== undefined) {
-                return violation;
-            }
-        }
-        return undefined;
-    };
-}
-
-/**
- * @param {Shape} shape
- * @returns {Shape}
- */
-function nullableShape(shape) {
-    return (value, path) => (value === null ? undefined : shape(value, path));
-}
-
-/**
- * @param {ReadonlyArray<Shape>} shapes
- * @returns {Shape}
- */
-function oneOfShape(shapes) {
-    return (value, path) => {
-        for (const shape of shapes) {
-            if (shape(value, path) === undefined) {
-                return undefined;
-            }
-        }
-        return `${path} matches none of the declared shapes`;
-    };
-}
-
-/**
- * @param {Shape} shape
- * @returns {Shape}
- */
-function stringRecordShape(shape) {
-    return (value, path) => {
-        if (!isPlainRecord(value)) {
-            return `${path} must be an object`;
-        }
-        for (const [name, member] of Object.entries(value)) {
-            const violation = shape(member, `${path}.${name}`);
-            if (violation !== undefined) {
-                return violation;
-            }
-        }
-        return undefined;
-    };
+function luxonDateTimeShape(value, path) {
+    return DateTime.isDateTime(value) ? undefined : `${path} must be a Luxon date and time`;
 }
 
 const CREATOR = closedObjectShape({
@@ -175,13 +83,52 @@ const SERIALIZED_EVENT = closedObjectShape({
 });
 
 /**
- * A live `Event` as it stands inside a computed value: its identifier is a
- * nominal object and its date is a nominal object wrapping one ISO instant, so
- * both are objects after a JSON round trip rather than strings.
+ * An `EventId` in the two representations the record layer is handed. The live
+ * value is the nominal `EventId` its typedef names, carrying `identifier` and the
+ * brand member which makes the type nominal. The persisted value is what
+ * `JSON.stringify` writes for it, which is the `identifier` alone: the brand
+ * member's value is `undefined`, so no member is written for it.
+ */
+const EVENT_ID = oneOfShape([
+    nominalShape(
+        isEventId,
+        "an EventId",
+        closedObjectShape({
+            identifier: stringShape,
+            __brand: constantShape(undefined),
+        })
+    ),
+    closedObjectShape({ identifier: stringShape }),
+]);
+
+/**
+ * A `DateTime` in the two representations the record layer is handed, for the
+ * same reason as `EVENT_ID`: live it is the nominal `DateTime` wrapping a Luxon
+ * date and time, and persisted it is the one ISO instant string that Luxon
+ * writes for that wrapper.
+ */
+const DATE_TIME = oneOfShape([
+    nominalShape(
+        isDateTime,
+        "a DateTime",
+        closedObjectShape({
+            __brand: constantShape(undefined),
+            _luxonDateTime: luxonDateTimeShape,
+        })
+    ),
+    closedObjectShape({ _luxonDateTime: stringShape }),
+]);
+
+/**
+ * A live `Event` as it stands inside a computed value: its identifier and its
+ * date are the nominal objects the `Event` typedef at `../../../event/structure`
+ * declares, so a computor which returns a deserialized event is inside its
+ * rights, and the persisted form of the same event is accepted beside it because
+ * the record layer is handed that form too when it replays persisted text.
  */
 const EVENT = closedObjectShape({
-    id: closedObjectShape({ identifier: stringShape }),
-    date: closedObjectShape({ _luxonDateTime: stringShape }),
+    id: EVENT_ID,
+    date: DATE_TIME,
     original: stringShape,
     input: stringShape,
     creator: CREATOR,
@@ -324,7 +271,7 @@ const COMPUTED_VALUE_MEMBER_SHAPES = new Map([
     })],
     ["entry_description", closedObjectShape(
         { type: constantShape("entry_description") },
-        { description: stringShape }
+        { description: stringOrUndefinedShape }
     )],
     ["diary_most_important_info_summary", closedObjectShape({
         type: constantShape("diary_most_important_info_summary"),
@@ -352,10 +299,11 @@ const COMPUTED_VALUE_TYPE_TAGS = new Set(COMPUTED_VALUE_MEMBER_SHAPES.keys());
  * Why an untrusted value is not a current-version `ComputedValue`, or
  * `undefined` when it is one.
  *
- * `entry_description` carries a `description` which the computor leaves
- * `undefined` when an event is not a diary entry. `JSON.stringify` writes no
- * member for an `undefined` value, so the canonical persisted form of that
- * member is an absent one, and the shape declares it optional.
+ * The record layer is handed a payload in two representations of one declared
+ * value: the live value a computor returned, and the value parsed back out of a
+ * persisted record when that record is replayed. A shape therefore declares every
+ * representation of a member which the repository actually produces, and still
+ * rejects everything else.
  * @param {unknown} value
  * @returns {string | undefined}
  */
