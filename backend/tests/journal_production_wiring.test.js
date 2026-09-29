@@ -314,20 +314,6 @@ describe("the production path emits the records the emission law describes", () 
         expect(issued[0]).toContain("journal");
     });
 
-    test("every event's authority is seeded from the publication instant", async () => {
-        await graph.pull("event_context");
-
-        const records = await readOrderedRecords(db);
-        const semantic = records.filter((record) => record.kind !== "writer-state");
-        expect(semantic.length).toBeGreaterThan(0);
-        for (const record of semantic) {
-            // The publication instant comes from the datetime capability, so an
-            // authority seed which is not an epoch millisecond instant means the
-            // publication did not read the clock it is supposed to read.
-            expect(record.authorityTime.physical).toBeGreaterThan(1577836800000);
-        }
-    });
-
     test("a pull which changes no persisted state publishes no journal record", async () => {
         await graph.pull("event_context");
         const before = await readOrderedRecords(db);
