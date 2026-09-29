@@ -36,10 +36,11 @@ function isPlainObject(value) {
  * A detached, deeply frozen copy of a JSON-shaped value.
  *
  * Nominal values reached inside the copy — a `JournalAuthor`, a `JournalSequence`,
- * a `JournalRecordId`, a `ValidationBasisEntry`, an `InvalidateScope` — are not
- * plain objects, so they are carried by reference rather than rebuilt. They are
- * already immutable, because their classes freeze themselves at construction, and
- * rebuilding one would discard its nominal identity.
+ * a `JournalRecordId`, a `ValidationBasisEntry`, an `InvalidateScope`, and the
+ * `EventId` and `DateTime` a computor returns inside a payload — are not plain
+ * objects, so they are carried by reference rather than rebuilt. Each of their
+ * classes freezes itself at construction, which is what makes the reference the
+ * copy carries safe, and rebuilding one would discard its nominal identity.
  *
  * The result is `unknown` rather than the argument's type because a copy is a
  * different object and therefore has to be re-accepted by the guard for the shape

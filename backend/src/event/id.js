@@ -20,6 +20,7 @@ class EventIdClass {
         if (this.__brand !== undefined) {
             throw new Error("EventId is a nominal type and should not be instantiated directly");
         }
+        Object.freeze(this);
     }
 }
 

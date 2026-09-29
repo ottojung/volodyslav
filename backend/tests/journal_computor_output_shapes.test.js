@@ -1,3 +1,5 @@
+"use strict";
+
 /**
  * Regression tests for the record layer's acceptance of the values this
  * repository's own computors produce.
@@ -24,6 +26,9 @@ const {
 } = require("../src/generators/incremental_graph/journal");
 
 const { computedValueViolation } = require("../src/generators/incremental_graph/database");
+
+const { DateTime } = require("luxon");
+const { isDateTime } = require("../src/datetime");
 
 const entryDescriptionComputor = require("../src/generators/individual/entry_description/wrapper")
     .computor;
@@ -129,6 +134,28 @@ const NODE_ENTRY_DESCRIPTION = { head: "entry_description", args: [{ id: 1 }] };
 const NODE_META_EVENTS = { head: "meta_events", args: [{ id: 2 }] };
 const NODE_EVENT_CONTEXT = { head: "event_context", args: [{ id: 3 }] };
 const NODE_EVENT_TRANSCRIPTION = { head: "event_transcription", args: [{ id: 4 }] };
+
+/**
+ * The live `event_context` computor output with the first context event's `date`
+ * replaced by `date`, leaving every other member of that output exactly as the
+ * computor produced it.
+ * @param {unknown} date
+ * @returns {unknown}
+ */
+function contextsWithDate(date) {
+    const firstEntry = eventContexts.contexts[0];
+    const firstEvent = firstEntry.context[0];
+    return {
+        ...eventContexts,
+        contexts: [
+            {
+                ...firstEntry,
+                context: [{ ...firstEvent, date }, ...firstEntry.context.slice(1)],
+            },
+            ...eventContexts.contexts.slice(1),
+        ],
+    };
+}
 
 describe("the record layer accepts the live output of the entry_description computor", () => {
     test("the computor returns an own description member whose value is undefined", async () => {
@@ -243,13 +270,14 @@ describe("the record layer accepts the live output of the event_context computor
     });
 
     test("an object which imitates the live DateTime is still rejected", () => {
-        const tampered = JSON.parse(JSON.stringify(eventContexts));
-        tampered.contexts[0].context[0].date = {
+        const contexts = contextsWithDate({
             __brand: undefined,
-            _luxonDateTime: "2020-01-01T09:00:00.000Z",
-        };
-        expect(computedValueViolation(tampered)).toBeDefined();
-        const record = valueRecordOf(NODE_EVENT_CONTEXT, tampered, "18");
+            _luxonDateTime: DateTime.fromISO("2020-01-01T09:00:00.000Z"),
+        });
+        expect(DateTime.isDateTime(contexts.contexts[0].context[0].date._luxonDateTime)).toBe(true);
+        expect(isDateTime(contexts.contexts[0].context[0].date)).toBe(false);
+        expect(computedValueViolation(contexts)).toBeDefined();
+        const record = valueRecordOf(NODE_EVENT_CONTEXT, contexts, "18");
         expect(record).toBeInstanceOf(Error);
     });
 });
@@ -276,6 +304,61 @@ describe("the record layer accepts the live output of the event_transcription co
             "10"
         );
         expect(record).not.toBeInstanceOf(Error);
+    });
+});
+
+describe("a record built from a live nominal value keeps its meaning when the caller changes its own", () => {
+    /**
+     * Mutate `target`, or report that a frozen target refused the assignment.
+     * A frozen property in a sloppy-mode test file is silently ignored, and in
+     * strict mode throws, so both outcomes are recorded rather than assumed.
+     * @param {object} target
+     * @param {string} member
+     * @param {unknown} value
+     * @returns {string}
+     */
+    function mutate(target, member, value) {
+        try {
+            target[member] = value;
+        } catch (err) {
+            return "threw " + String(err);
+        }
+        return "assigned";
+    }
+
+    test("a later change to the caller's EventId does not reach the stored record", () => {
+        const liveEventId = metaEvents.meta_events[0].event.id;
+        const record = valueRecordOf(NODE_META_EVENTS, metaEvents, "20");
+        expect(record).not.toBeInstanceOf(Error);
+        const encoding = encodeJournalRecord(record);
+
+        const outcome = mutate(liveEventId, "identifier", "TAMPERED:9999");
+
+        expect(liveEventId.identifier).toBe("aaaaaaaaa:1");
+        expect(record.payload.meta_events[0].event.id.identifier).toBe("aaaaaaaaa:1");
+        expect(encodeJournalRecord(record)).toBe(encoding);
+        expect(outcome).toBe("threw TypeError: Cannot assign to read only property 'identifier' of object '#<EventIdClass>'");
+    });
+
+    test("a later change to the caller's DateTime does not reach the stored record", () => {
+        const liveDate = eventContexts.contexts[0].context[0].date;
+        const record = valueRecordOf(NODE_EVENT_CONTEXT, eventContexts, "21");
+        expect(record).not.toBeInstanceOf(Error);
+        const encoding = encodeJournalRecord(record);
+
+        const outcome = mutate(liveDate, "_luxonDateTime", DateTime.fromISO("1999-12-31T23:59:59.000Z"));
+
+        expect(liveDate.toISOString()).toBe("2020-01-01T09:00:00.000Z");
+        expect(record.payload.contexts[0].context[0].date.toISOString()).toBe("2020-01-01T09:00:00.000Z");
+        expect(encodeJournalRecord(record)).toBe(encoding);
+        expect(outcome).toBe("threw TypeError: Cannot assign to read only property '_luxonDateTime' of object '#<DateTimeClass>'");
+    });
+
+    test("the stored EventId is frozen and shared with the caller", () => {
+        const record = valueRecordOf(NODE_META_EVENTS, metaEvents, "22");
+        expect(record).not.toBeInstanceOf(Error);
+        expect(record.payload.meta_events[0].event.id).toBe(metaEvents.meta_events[0].event.id);
+        expect(Object.isFrozen(record.payload.meta_events[0].event.id)).toBe(true);
     });
 });
 
