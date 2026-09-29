@@ -15,7 +15,7 @@ const {
     cloneIdentifierLookup,
     nodeIdToKeyFromLookup,
     nodeKeyToIdFromLookup,
-    nodeIdentifierFromString,
+    makeNodeIdentifier,
     nodeIdentifierToString,
 } = require("../src/generators/incremental_graph/database");
 const { makeSemanticStorage } = require("./test_database_helper");
@@ -84,13 +84,7 @@ class InMemoryDatabase {
 
     generateNodeIdentifier() {
         this._identifierCounter++;
-        let n = this._identifierCounter;
-        let id = '';
-        for (let i = 0; i < 9; i++) {
-            id = String.fromCharCode(97 + (n % 26)) + id;
-            n = Math.floor(n / 26);
-        }
-        return nodeIdentifierFromString(id);
+        return makeNodeIdentifier(this.getFingerprint(), this._identifierCounter);
     }
 
     getCurrentAllocationWatermark() {
@@ -192,6 +186,7 @@ class InMemoryDatabase {
         const valid = createSublevel('valid');
         const timestamps = createSublevel('timestamps');
         const global = createSublevel('global');
+        const journal = createSublevel('journal');
 
         return {
             values,
@@ -199,6 +194,7 @@ class InMemoryDatabase {
             valid,
             timestamps,
             global,
+            journal,
             batch: async (operations) => {
                 // Track batch calls - use this to access current array
                 this.batchLog.push({ ops: deepClone(operations.map(op => ({
