@@ -11,9 +11,8 @@
  * - which sublevels each of those writes carries; and
  * - what the journal sublevel of the recovered database holds afterwards.
  *
- * The numbers are the ones the pinning suite `journal_atomicity_requirement.test.js`
- * is measured against, and they are what a publication which emits the journal
- * inside the same batch as the graph mutations must change.
+ * These numbers are the ones the pinning suite `journal_atomicity_requirement.test.js`
+ * is measured against.
  */
 
 const fs = require("fs");
@@ -23,6 +22,11 @@ const os = require("os");
 const { getRootDatabase } = require("../src/generators/incremental_graph/database");
 const { createIncrementalGraph } = require("../src/generators/incremental_graph");
 const { readRetainedJournal } = require("../src/generators/incremental_graph/journal_store");
+const {
+    isValidateEvent,
+    isValueEvent,
+    isWriterStateRecord,
+} = require("../src/generators/incremental_graph/journal");
 
 const allEventsModule = require("../src/generators/individual/all_events/wrapper");
 const metaEventsComputor = require("../src/generators/individual/meta_events/wrapper").computor;
@@ -128,7 +132,7 @@ async function makeRealGraph(capabilities, db) {
 }
 
 describe("the publication window one user-visible operation leaves open", () => {
-    test("a three-node pull issues one durable write per node and no journal write at all", async () => {
+    test("a three-node pull issues one durable write carrying both sides of the transition", async () => {
         const capabilities = testCapabilities();
         const db = await getRootDatabase(capabilities);
         const graph = await makeRealGraph(capabilities, db);
@@ -136,22 +140,25 @@ describe("the publication window one user-visible operation leaves open", () => 
 
         await graph.pull("event_context");
 
-        // Measured: one user-visible operation, three materialized nodes, three
-        // durable writes. The window between them is two writes wide, and each of
-        // them is a point at which the graph side of the operation is durable while
-        // the operation as a whole has not finished.
-        expect(issued.length).toBe(3);
-        for (const batch of issued) {
-            expect(batch).toContain("values");
-            expect(batch).not.toContain("journal");
-        }
+        // Measured: one user-visible operation, three materialized nodes, one
+        // durable write. There is no window between the two sides of the transition,
+        // because there is only one write in which both sides become durable.
+        expect(issued).toHaveLength(1);
+        expect(issued[0]).toContain("values");
+        expect(issued[0]).toContain("journal");
 
-        // Measured: nothing at all describes those three graph transitions in the
-        // journal, so every one of them is a graph transition whose journal side does
-        // not exist.
+        // Measured: that one write left records describing all three graph
+        // transitions, so none of them is a graph transition whose journal side does
+        // not exist: a ValueEvent and a ValidateEvent for each of the three
+        // materialized nodes, plus the one WriterStateRecord the advanced local
+        // `last_node_index` requires.
         const replica = await readRetainedJournal(db.getSchemaStorage().journal);
         expect(replica).not.toBeInstanceOf(Error);
-        expect([...replica.values()].flat()).toHaveLength(0);
+        const records = [...replica.values()].flat();
+        expect(records).toHaveLength(7);
+        expect(records.filter(isValueEvent)).toHaveLength(3);
+        expect(records.filter(isValidateEvent)).toHaveLength(3);
+        expect(records.filter(isWriterStateRecord)).toHaveLength(1);
 
         await db.close();
     });
