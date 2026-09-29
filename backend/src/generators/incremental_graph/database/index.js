@@ -4,6 +4,7 @@
  */
 
 const {
+    COMPUTED_VALUE_TYPE_TAGS,
     schemaPatternToString,
     stringToSchemaPattern,
     stringToNodeKeyString,
@@ -132,6 +133,7 @@ module.exports = {
     isInvalidFingerprintError,
     isValidFingerprint,
     requireValidFingerprint,
+    COMPUTED_VALUE_TYPE_TAGS,
     LAST_NODE_INDEX_KEY,
     makeTypedDatabase,
     isTypedDatabase,

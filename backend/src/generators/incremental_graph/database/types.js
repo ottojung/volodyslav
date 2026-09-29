@@ -407,6 +407,36 @@ function versionToString(Version) {
  */
 
 /**
+ * The `type` discriminant of every member of the `ComputedValue` union.
+ *
+ * A value which belongs to the union carries exactly one of these tags, so a
+ * consumer which must decide whether an untrusted object is a `ComputedValue` at
+ * all can decide it from the discriminant without re-deriving the whole union
+ * from the graph scheme.
+ * @type {ReadonlySet<string>}
+ */
+const COMPUTED_VALUE_TYPE_TAGS = new Set([
+    'all_events',
+    'sorted_events_descending',
+    'sorted_events_ascending',
+    'last_entries',
+    'first_entries',
+    'events_count',
+    'config',
+    'meta_events',
+    'event_context',
+    'event',
+    'basic_context',
+    'calories',
+    'transcription',
+    'event_transcription',
+    'event_audios_list',
+    'entry_description',
+    'diary_most_important_info_summary',
+    'ontology',
+]);
+
+/**
  * Freshness state for a materialized node record.
  * @typedef {'up-to-date' | 'potentially-outdated'} Freshness
  */
@@ -545,6 +575,7 @@ function schemaPatternToString(schemaPattern) {
  */
 
 module.exports = {
+    COMPUTED_VALUE_TYPE_TAGS,
     versionToString,
     stringToVersion,
     VersionClass,

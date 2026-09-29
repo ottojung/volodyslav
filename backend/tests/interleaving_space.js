@@ -157,8 +157,8 @@ const OPERATIONS = [
                 },
                 identifierOf(nodeKeyToCanonicalString(nodeFor(state, 0))),
                 {
-                    kind: "EventEntry",
-                    text: "v" + String(state.writerName) + String(state.sequence),
+                    type: "entry_description",
+                    description: "v" + String(state.writerName) + String(state.sequence),
                 },
                 CREATED_AT,
                 MODIFIED_AT,
@@ -533,7 +533,7 @@ function buildJournal(operationsByWriter, interleaving) {
  * @returns {{journals: GeneratedJournal[], bound: number, writers: string[], alphabet: string[]}}
  */
 function enumerateJournals(options) {
-    const writerNames = options?.writerNames ?? ["A", "B"];
+    const writerNames = options?.writerNames ?? ["aaaaaaaaa", "bbbbbbbbb"];
     const lengths = options?.lengths ?? [1, 2];
     const alphabet = OPERATIONS.map((operation) => operation.name);
     /** @type {GeneratedJournal[]} */
@@ -1078,7 +1078,7 @@ module.exports = {
  * would otherwise be "fixed" into a context the record layer rejects for a reason
  * that has nothing to do with the rule the fixture is built to isolate.
  */
-const SPINE_CUT = [["A", "5"]];
+const SPINE_CUT = [["aaaaaaaaa", "5"]];
 
 /**
  * The node a fixture addresses, by index into the three-node schema: node 0 reads
@@ -1120,7 +1120,7 @@ function valueAt(index, text, writerName, sequence, physical, coordinates) {
             node: nodeAt(index),
         },
         identifierOf(keyAt(index)),
-        { kind: "EventEntry", text },
+        { type: "entry_description", description: text },
         CREATED_AT,
         MODIFIED_AT,
         "compute"
@@ -1223,36 +1223,36 @@ function journalOf(streams) {
  * It is returned whole, and each fixture names the prefix of it it keeps, so a
  * fixture's difference from a supported journal is exactly the record or two it
  * adds.
- * @returns {{A: import("../src/generators/incremental_graph/journal").JournalRecord[], B: import("../src/generators/incremental_graph/journal").JournalRecord[]}}
+ * @returns {{aaaaaaaaa: import("../src/generators/incremental_graph/journal").JournalRecord[], B: import("../src/generators/incremental_graph/journal").JournalRecord[]}}
  */
 function closedSpine() {
     // A authors the whole chain in one uninterrupted prefix, so every context below
     // is the exact complete observed prefix and the whole history is causally
     // closed by construction.
-    const leaf = valueAt(2, "leaf", "A", 1, 100, []);
-    const middle = valueAt(1, "middle", "A", 2, 100, [["A", "1"]]);
-    const root = valueAt(0, "root", "A", 3, 100, [["A", "2"]]);
+    const leaf = valueAt(2, "leaf", "aaaaaaaaa", 1, 100, []);
+    const middle = valueAt(1, "middle", "aaaaaaaaa", 2, 100, [["aaaaaaaaa", "1"]]);
+    const root = valueAt(0, "root", "aaaaaaaaa", 3, 100, [["aaaaaaaaa", "2"]]);
     const middleCertificate = validateAt(
         1,
         "middle-certificate",
-        "A",
+        "aaaaaaaaa",
         4,
         100,
-        [["A", "3"]],
+        [["aaaaaaaaa", "3"]],
         middle.id,
         basisFor(2, leaf)
     );
     const rootCertificate = validateAt(
         0,
         "root-certificate",
-        "A",
+        "aaaaaaaaa",
         5,
         100,
-        [["A", "4"]],
+        [["aaaaaaaaa", "4"]],
         root.id,
         basisFor(1, middle)
     );
-    return { A: [leaf, middle, root, middleCertificate, rootCertificate], B: [] };
+    return { aaaaaaaaa: [leaf, middle, root, middleCertificate, rootCertificate], bbbbbbbbb: [] };
 }
 
 /**
@@ -1280,42 +1280,42 @@ function closedSpine() {
  * @returns {AdversarialFixture}
  */
 function basisStrengthFixture() {
-    const leaf = valueAt(2, "leaf", "A", 1, 100, []);
+    const leaf = valueAt(2, "leaf", "aaaaaaaaa", 1, 100, []);
     // Two occurrences of node 1. The later one wins under authority, so it is the
     // current occurrence and the earlier one is superseded history.
-    const middleOld = valueAt(1, "middle-old", "A", 2, 100, [["A", "1"]]);
-    const middle = valueAt(1, "middle", "A", 3, 100, [["A", "2"]]);
-    const root = valueAt(0, "root", "A", 4, 100, [["A", "3"]]);
+    const middleOld = valueAt(1, "middle-old", "aaaaaaaaa", 2, 100, [["aaaaaaaaa", "1"]]);
+    const middle = valueAt(1, "middle", "aaaaaaaaa", 3, 100, [["aaaaaaaaa", "2"]]);
+    const root = valueAt(0, "root", "aaaaaaaaa", 4, 100, [["aaaaaaaaa", "3"]]);
     const rootCertificate = validateAt(
         0,
         "root-certificate",
-        "A",
+        "aaaaaaaaa",
         5,
         100,
-        [["A", "4"]],
+        [["aaaaaaaaa", "4"]],
         root.id,
         basisFor(1, middle)
     );
     const middleCertificate = validateAt(
         1,
         "middle-certificate",
-        "A",
+        "aaaaaaaaa",
         6,
         100,
-        [["A", "5"]],
+        [["aaaaaaaaa", "5"]],
         middle.id,
         basisFor(2, leaf)
     );
     // B revalidates the root naming the *superseded* node-1 occurrence, so it is
     // eligible on shape but proves nothing, and it has far greater authority than
     // the complete certificate at A:5.
-    const weak = validateAt(0, "weak", "B", 1, 9000, [["A", "6"]], root.id, basisFor(1, middleOld));
+    const weak = validateAt(0, "weak", "bbbbbbbbb", 1, 9000, [["aaaaaaaaa", "6"]], root.id, basisFor(1, middleOld));
     return {
         name: "effective basis strength beats clock authority",
         isolates: "the effective-basis-strength ordering key",
         journal: journalOf({
-            A: [leaf, middleOld, middle, root, rootCertificate, middleCertificate],
-            B: [weak],
+            aaaaaaaaa: [leaf, middleOld, middle, root, rootCertificate, middleCertificate],
+            bbbbbbbbb: [weak],
         }),
         supported: true,
     };
@@ -1331,26 +1331,26 @@ function basisStrengthFixture() {
  * @returns {AdversarialFixture}
  */
 function valueCoverageFixture() {
-    const leaf = valueAt(2, "leaf", "A", 1, 100, []);
-    const middle = valueAt(1, "middle", "A", 2, 100, [["A", "1"]]);
-    const root = valueAt(0, "root", "A", 3, 100, [["A", "2"]]);
+    const leaf = valueAt(2, "leaf", "aaaaaaaaa", 1, 100, []);
+    const middle = valueAt(1, "middle", "aaaaaaaaa", 2, 100, [["aaaaaaaaa", "1"]]);
+    const root = valueAt(0, "root", "aaaaaaaaa", 3, 100, [["aaaaaaaaa", "2"]]);
     const rootCertificate = validateAt(
         0,
         "root-certificate",
-        "A",
+        "aaaaaaaaa",
         4,
         100,
-        [["A", "3"]],
+        [["aaaaaaaaa", "3"]],
         root.id,
         basisFor(1, middle)
     );
     const middleCertificate = validateAt(
         1,
         "middle-certificate",
-        "A",
+        "aaaaaaaaa",
         5,
         100,
-        [["A", "4"]],
+        [["aaaaaaaaa", "4"]],
         middle.id,
         basisFor(2, leaf)
     );
@@ -1358,10 +1358,10 @@ function valueCoverageFixture() {
     // observe it does not clear the invalidation merely by comparing later.
     const invalidation = invalidateAt(
         0,
-        "A",
+        "aaaaaaaaa",
         6,
         100,
-        [["A", "5"]],
+        [["aaaaaaaaa", "5"]],
         makeValueScope(journalRecordIdToString(root.id)),
         "propagated"
     );
@@ -1369,10 +1369,10 @@ function valueCoverageFixture() {
     const covering = validateAt(
         0,
         "covering",
-        "A",
+        "aaaaaaaaa",
         7,
         100,
-        [["A", "6"]],
+        [["aaaaaaaaa", "6"]],
         root.id,
         basisFor(1, middle)
     );
@@ -1380,10 +1380,10 @@ function valueCoverageFixture() {
     const concurrent = validateAt(
         0,
         "concurrent",
-        "B",
+        "bbbbbbbbb",
         1,
         9000,
-        [["A", "5"]],
+        [["aaaaaaaaa", "5"]],
         root.id,
         basisFor(1, middle)
     );
@@ -1391,8 +1391,8 @@ function valueCoverageFixture() {
         name: "value-invalidation coverage beats clock authority",
         isolates: "the coversValueInvalidations ordering key",
         journal: journalOf({
-            A: [leaf, middle, root, rootCertificate, middleCertificate, invalidation, covering],
-            B: [concurrent],
+            aaaaaaaaa: [leaf, middle, root, rootCertificate, middleCertificate, invalidation, covering],
+            bbbbbbbbb: [concurrent],
         }),
         supported: true,
     };
@@ -1407,26 +1407,26 @@ function valueCoverageFixture() {
  * @returns {AdversarialFixture}
  */
 function authorityTiebreakFixture() {
-    const leaf = valueAt(2, "leaf", "A", 1, 100, []);
-    const middle = valueAt(1, "middle", "A", 2, 100, [["A", "1"]]);
-    const root = valueAt(0, "root", "A", 3, 100, [["A", "2"]]);
+    const leaf = valueAt(2, "leaf", "aaaaaaaaa", 1, 100, []);
+    const middle = valueAt(1, "middle", "aaaaaaaaa", 2, 100, [["aaaaaaaaa", "1"]]);
+    const root = valueAt(0, "root", "aaaaaaaaa", 3, 100, [["aaaaaaaaa", "2"]]);
     const rootCertificate = validateAt(
         0,
         "root-certificate",
-        "A",
+        "aaaaaaaaa",
         4,
         100,
-        [["A", "3"]],
+        [["aaaaaaaaa", "3"]],
         root.id,
         basisFor(1, middle)
     );
     const middleCertificate = validateAt(
         1,
         "middle-certificate",
-        "A",
+        "aaaaaaaaa",
         5,
         100,
-        [["A", "4"]],
+        [["aaaaaaaaa", "4"]],
         middle.id,
         basisFor(2, leaf)
     );
@@ -1435,10 +1435,10 @@ function authorityTiebreakFixture() {
     const concurrent = validateAt(
         0,
         "concurrent",
-        "B",
+        "bbbbbbbbb",
         1,
         9000,
-        [["A", "5"]],
+        [["aaaaaaaaa", "5"]],
         root.id,
         basisFor(1, middle)
     );
@@ -1446,8 +1446,8 @@ function authorityTiebreakFixture() {
         name: "authority breaks an otherwise exact certificate tie",
         isolates: "the authority tiebreak",
         journal: journalOf({
-            A: [leaf, middle, root, rootCertificate, middleCertificate],
-            B: [concurrent],
+            aaaaaaaaa: [leaf, middle, root, rootCertificate, middleCertificate],
+            bbbbbbbbb: [concurrent],
         }),
         supported: true,
     };
@@ -1465,23 +1465,23 @@ function authorityTiebreakFixture() {
  */
 function proofBarrierFixture() {
     const spine = closedSpine();
-    const root = spine.A[2];
+    const root = spine.aaaaaaaaa[2];
     if (root === undefined) {
         throw new Error("the closed spine is missing its root occurrence");
     }
     const barrier = invalidateAt(
         0,
-        "A",
+        "aaaaaaaaa",
         6,
         100,
-        [["A", "5"]],
+        [["aaaaaaaaa", "5"]],
         makeProofScope(journalRecordIdToString(root.id), nodeAt(1)),
         "reset"
     );
     return {
         name: "a proof barrier retires exactly the one edge it names",
         isolates: "proof-barrier suppression of the named edge only",
-        journal: journalOf({ A: [...spine.A, barrier], B: spine.B }),
+        journal: journalOf({ aaaaaaaaa: [...spine.aaaaaaaaa, barrier], bbbbbbbbb: spine.bbbbbbbbb }),
         supported: true,
     };
 }
@@ -1498,11 +1498,11 @@ function proofBarrierFixture() {
 function dependencyClosureFixture() {
     // A retains only the root occurrence. The root's current input, node 1, is
     // absent, so the selected head set is not dependency-closed.
-    const root = valueAt(0, "root-only", "A", 1, 100, []);
+    const root = valueAt(0, "root-only", "aaaaaaaaa", 1, 100, []);
     return {
         name: "a present head whose current input is absent is not projectable",
         isolates: "dependency-closure rejection",
-        journal: journalOf({ A: [root] }),
+        journal: journalOf({ aaaaaaaaa: [root] }),
         supported: true,
         projectable: false,
     };
@@ -1537,20 +1537,20 @@ function dependencyClosureAcceptingFixture() {
 function ownPrefixFixtures() {
     const spine = closedSpine();
     // B:1 observes the whole of A's retained prefix.
-    const observing = valueAt(0, "b-observing", "B", 1, 9000, SPINE_CUT);
+    const observing = valueAt(0, "b-observing", "bbbbbbbbb", 1, 9000, SPINE_CUT);
     // B:2 claims its own-writer context is B:2, which is not its predecessor B:1.
-    const overreaching = valueAt(0, "b-overreaching", "B", 2, 9500, [...SPINE_CUT, ["B", "2"]]);
+    const overreaching = valueAt(0, "b-overreaching", "bbbbbbbbb", 2, 9500, [...SPINE_CUT, ["bbbbbbbbb", "2"]]);
     return [
         {
             name: "a record whose own-writer context is its predecessor is accepted",
             isolates: "own-writer prefix exactness, accepting side",
-            journal: journalOf({ A: spine.A, B: [observing] }),
+            journal: journalOf({ aaaaaaaaa: spine.aaaaaaaaa, bbbbbbbbb: [observing] }),
             supported: true,
         },
         {
             name: "a record claiming a coordinate it had not allocated is rejected",
             isolates: "own-writer prefix exactness, rejecting side",
-            journal: journalOf({ A: spine.A, B: [observing, overreaching] }),
+            journal: journalOf({ aaaaaaaaa: spine.aaaaaaaaa, bbbbbbbbb: [observing, overreaching] }),
             supported: false,
         },
     ];
@@ -1566,20 +1566,20 @@ function ownPrefixFixtures() {
 function retainedRangeFixtures() {
     const spine = closedSpine();
     // A retains through A:5, so a cut bounded by A:5 is inside the retained range.
-    const withinRange = valueAt(0, "b-within", "B", 1, 9000, SPINE_CUT);
+    const withinRange = valueAt(0, "b-within", "bbbbbbbbb", 1, 9000, SPINE_CUT);
     // The same writer and coordinate, but claiming A:99, which nobody retains.
-    const beyondRange = valueAt(0, "b-beyond", "B", 1, 9000, [["A", "99"]]);
+    const beyondRange = valueAt(0, "b-beyond", "bbbbbbbbb", 1, 9000, [["aaaaaaaaa", "99"]]);
     return [
         {
             name: "a context inside the retained range is accepted",
             isolates: "retained-range coverage, accepting side",
-            journal: journalOf({ A: spine.A, B: [withinRange] }),
+            journal: journalOf({ aaaaaaaaa: spine.aaaaaaaaa, bbbbbbbbb: [withinRange] }),
             supported: true,
         },
         {
             name: "a context past the retained end is rejected",
             isolates: "retained-range coverage, rejecting side",
-            journal: journalOf({ A: spine.A, B: [beyondRange] }),
+            journal: journalOf({ aaaaaaaaa: spine.aaaaaaaaa, bbbbbbbbb: [beyondRange] }),
             supported: false,
         },
     ];
@@ -1596,15 +1596,15 @@ function retainedRangeFixtures() {
  * @returns {AdversarialFixture}
  */
 function watermarkFixture() {
-    const first = makeWriterStateRecord("A:1", 41);
-    const second = makeWriterStateRecord("A:2", 42);
+    const first = makeWriterStateRecord("aaaaaaaaa:1", 41);
+    const second = makeWriterStateRecord("aaaaaaaaa:2", 42);
     if (first instanceof Error || second instanceof Error) {
         throw new Error("the watermark fixture built a record the record layer rejects");
     }
     return {
         name: "the allocator watermark is the greatest writer-state value",
         isolates: "the local allocator watermark",
-        journal: journalOf({ A: [first, second] }),
+        journal: journalOf({ aaaaaaaaa: [first, second] }),
         supported: true,
     };
 }
@@ -1620,26 +1620,26 @@ function watermarkFixture() {
  * @returns {AdversarialFixture[]}
  */
 function eligibilityFixtures() {
-    const leaf = valueAt(2, "leaf", "A", 1, 100, []);
-    const middle = valueAt(1, "middle", "A", 2, 100, [["A", "1"]]);
-    const root = valueAt(0, "root", "A", 3, 100, [["A", "2"]]);
+    const leaf = valueAt(2, "leaf", "aaaaaaaaa", 1, 100, []);
+    const middle = valueAt(1, "middle", "aaaaaaaaa", 2, 100, [["aaaaaaaaa", "1"]]);
+    const root = valueAt(0, "root", "aaaaaaaaa", 3, 100, [["aaaaaaaaa", "2"]]);
     const rootCertificate = validateAt(
         0,
         "root-certificate",
-        "A",
+        "aaaaaaaaa",
         4,
         100,
-        [["A", "3"]],
+        [["aaaaaaaaa", "3"]],
         root.id,
         basisFor(1, middle)
     );
     const middleCertificate = validateAt(
         1,
         "middle-certificate",
-        "A",
+        "aaaaaaaaa",
         5,
         100,
-        [["A", "4"]],
+        [["aaaaaaaaa", "4"]],
         middle.id,
         basisFor(2, leaf)
     );
@@ -1648,8 +1648,8 @@ function eligibilityFixtures() {
     // this certificate compete with the complete one.
     const unknown = makeValidateEvent(
         {
-            id: "B:1",
-            context: makeJournalFrontierFromText([["A", "5"]]),
+            id: "bbbbbbbbb:1",
+            context: makeJournalFrontierFromText([["aaaaaaaaa", "5"]]),
             authorityTime: makeAuthorityTime(9000, "1"),
             node: nodeAt(0),
         },
@@ -1665,8 +1665,8 @@ function eligibilityFixtures() {
     // shape which is not the current schema's.
     const wrongShape = makeValidateEvent(
         {
-            id: "B:1",
-            context: makeJournalFrontierFromText([["A", "5"]]),
+            id: "bbbbbbbbb:1",
+            context: makeJournalFrontierFromText([["aaaaaaaaa", "5"]]),
             authorityTime: makeAuthorityTime(9000, "1"),
             node: nodeAt(0),
         },
@@ -1681,7 +1681,7 @@ function eligibilityFixtures() {
         throw new Error("an eligibility fixture built a validation the record layer rejects");
     }
     const spineOf = (extra) =>
-        journalOf({ A: [leaf, middle, root, rootCertificate, middleCertificate], B: [extra] });
+        journalOf({ aaaaaaaaa: [leaf, middle, root, rootCertificate, middleCertificate], bbbbbbbbb: [extra] });
     return [
         {
             name: "a certificate naming inputs the node does not have proves nothing",
@@ -1693,8 +1693,8 @@ function eligibilityFixtures() {
             name: "a certificate naming an unknown input value proves nothing",
             isolates: 'an "unknown" basis entry not counting as a match',
             journal: journalOf({
-                A: [leaf, middle, root, rootCertificate, middleCertificate],
-                B: [unknown],
+                aaaaaaaaa: [leaf, middle, root, rootCertificate, middleCertificate],
+                bbbbbbbbb: [unknown],
             }),
             supported: true,
         },
@@ -1710,12 +1710,12 @@ function eligibilityFixtures() {
  * @returns {AdversarialFixture[]}
  */
 function holeFixtures() {
-    const leaf = valueAt(2, "leaf", "A", 1, 100, []);
-    const middle = valueAt(1, "middle", "A", 2, 100, [["A", "1"]]);
-    const root = valueAt(0, "root", "A", 3, 100, [["A", "2"]]);
-    const intact = journalOf({ A: [leaf, middle, root] });
+    const leaf = valueAt(2, "leaf", "aaaaaaaaa", 1, 100, []);
+    const middle = valueAt(1, "middle", "aaaaaaaaa", 2, 100, [["aaaaaaaaa", "1"]]);
+    const root = valueAt(0, "root", "aaaaaaaaa", 3, 100, [["aaaaaaaaa", "2"]]);
+    const intact = journalOf({ aaaaaaaaa: [leaf, middle, root] });
     // A retains A:1..A:3, and the source hands over A:1 and A:3 without A:2.
-    const withHole = journalOf({ A: [leaf, root] });
+    const withHole = journalOf({ aaaaaaaaa: [leaf, root] });
     return [
         {
             name: "a contiguous stream is read whole",
@@ -1745,7 +1745,7 @@ function holeFixtures() {
  */
 function forkFixture() {
     const spine = closedSpine();
-    const root = spine.A[2];
+    const root = spine.aaaaaaaaa[2];
     if (root === undefined) {
         throw new Error("the closed spine is missing its root occurrence");
     }
@@ -1756,28 +1756,28 @@ function forkFixture() {
     const agreeing = validateAt(
         0,
         "agreeing",
-        "B",
+        "bbbbbbbbb",
         1,
         100,
-        [["A", "5"]],
+        [["aaaaaaaaa", "5"]],
         root.id,
-        basisFor(1, spine.A[1])
+        basisFor(1, spine.aaaaaaaaa[1])
     );
     const disagreeing = validateAt(
         0,
         "disagreeing",
-        "B",
+        "bbbbbbbbb",
         1,
         9000,
-        [["A", "5"]],
+        [["aaaaaaaaa", "5"]],
         root.id,
-        basisFor(1, spine.A[1])
+        basisFor(1, spine.aaaaaaaaa[1])
     );
     return {
         name: "two prefixes which disagree at one coordinate are a fork",
         isolates: "the prefix-union merge's canonical-meaning comparison",
-        agreeing: journalOf({ A: spine.A, B: [agreeing] }),
-        disagreeing: journalOf({ A: spine.A, B: [disagreeing] }),
+        agreeing: journalOf({ aaaaaaaaa: spine.aaaaaaaaa, bbbbbbbbb: [agreeing] }),
+        disagreeing: journalOf({ aaaaaaaaa: spine.aaaaaaaaa, bbbbbbbbb: [disagreeing] }),
     };
 }
 

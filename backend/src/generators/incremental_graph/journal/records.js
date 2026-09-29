@@ -46,6 +46,7 @@ const {
     isBaselineValidationReason,
     isInvalidateScope,
     isNodeKey,
+    ownedNodeKey,
 } = require("./basis");
 const {
     invalidBasisDetail,
@@ -53,6 +54,7 @@ const {
     isComputedValue,
     isNodeIdentifier,
     isPlainRecord,
+    ownedComputedValue,
     readEnumMember,
     readRecordId,
 } = require("./record_fields");
@@ -202,6 +204,7 @@ class WriterStateRecordClass {
     constructor(id, lastNodeIndex) {
         this.id = id;
         this.lastNodeIndex = lastNodeIndex;
+        Object.freeze(this);
     }
 }
 
@@ -341,7 +344,7 @@ function readSemanticEventBase(fields) {
             id,
             context: fields.context,
             authorityTime: fields.authorityTime,
-            node: fields.node,
+            node: ownedNodeKey(fields.node),
         },
     };
 }
@@ -384,7 +387,7 @@ function makeValueEvent(fields, nodeIdentifier, payload, createdAt, modifiedAt, 
         new ValueEventClass(
             read.base,
             nodeIdentifier,
-            payload,
+            ownedComputedValue(payload),
             createdAt,
             modifiedAt,
             readReason.value
@@ -414,6 +417,18 @@ function makeDeleteEvent(fields, reason) {
 }
 
 /**
+ * A basis the record owns: a fresh frozen array, so the caller can keep and
+ * mutate the array it passed.
+ * @param {ValidationBasis} basis
+ * @returns {ValidationBasis}
+ */
+function frozenBasis(basis) {
+    const owned = basis.slice();
+    Object.freeze(owned);
+    return owned;
+}
+
+/**
  * @param {SemanticEventFields} fields
  * @param {JournalRecordId | string} value
  * @param {ValidationBasis} basis
@@ -439,7 +454,7 @@ function makeValidateEvent(fields, value, basis, reason) {
         return readReason.error;
     }
     return Object.freeze(
-        new ValidateEventClass(read.base, resolvedValue, basis.slice(), readReason.value)
+        new ValidateEventClass(read.base, resolvedValue, frozenBasis(basis), readReason.value)
     );
 }
 

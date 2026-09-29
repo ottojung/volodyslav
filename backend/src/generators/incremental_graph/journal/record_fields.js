@@ -8,15 +8,20 @@
  */
 
 const { isValidationBasisEntry } = require("./basis");
+const { deepFrozenCopy } = require("./immutable");
+const { COMPUTED_VALUE_TYPE_TAGS, isValidFingerprint } = require("../database");
 const { makeJournalRecordValidationError } = require("./errors");
 const {
     isJournalRecordId,
+    journalAuthorToString,
+    journalSequenceToString,
     parseJournalRecordId,
     TIMESTAMP_PATTERN,
 } = require("./types");
 const { nodeKeyToCanonicalString } = require("./basis");
 
 /** @typedef {import('./errors').AnyJournalError} JournalError */
+/** @typedef {import('../database/types').ComputedValue} ComputedValue */
 /** @typedef {import('./types').JournalRecordId} JournalRecordId */
 
 /**
@@ -61,15 +66,26 @@ function readEnumMember(label, allowed, value) {
 }
 
 /**
- * The current format requires a value payload to be a JSON object. Which
- * concrete `ComputedValue` member it is belongs to the graph scheme that
- * authored the value, so the record layer marks the boundary here the same way
- * the existing NodeIdentifier cast does, and carries the payload unchanged.
+ * The current format requires a value payload to be a JSON object which belongs
+ * to the current `ComputedValue` union.
+ *
+ * Which concrete union member a payload is belongs to the graph scheme that
+ * authored the value, so this predicate decides exactly what the record layer can
+ * decide by itself and no more: the payload is an object, and it carries the
+ * `type` discriminant of one current union member. A payload which names no
+ * current union member is not a current-version `ComputedValue` at all, so
+ * persisted history containing one is rejected instead of being carried forward
+ * as a value occurrence with no representation. The inner members of the named
+ * variant are the graph scheme's own contract, not this layer's.
  * @param {unknown} value
  * @returns {value is ComputedValue}
  */
 function isComputedValue(value) {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
+    if (!isPlainRecord(value)) {
+        return false;
+    }
+    const tag = value["type"];
+    return typeof tag === "string" && COMPUTED_VALUE_TYPE_TAGS.has(tag);
 }
 
 /**
@@ -147,24 +163,76 @@ function unexpectedMemberError(value, members, label) {
 }
 
 /**
- * A persisted NodeIdentifier is a string assembled by the existing
- * fingerprint-plus-index allocation, so this predicate mirrors that cast rather
- * than re-deciding identifier syntax: the Journal record layer carries the
- * identifier unchanged and never mints one.
+ * A persisted NodeIdentifier is exactly what the existing allocation rule
+ * produces: a base36 local allocation index, a `-` separator, and the writer's
+ * allocation fingerprint.
+ *
+ * The allocator mints every identifier from those two components, both of which
+ * are valid by construction, so the form is a current-format property of the
+ * persisted text rather than a re-decided identifier syntax: persisted history
+ * which does not have it is not a NodeIdentifier this database ever allocated,
+ * and it is rejected instead of being normalised into one. The identifier string
+ * itself is unchanged by the record layer, which never mints an identifier.
  * @param {unknown} value
  * @returns {value is NodeIdentifier}
  */
 function isNodeIdentifier(value) {
-    return typeof value === "string" && value.length > 0;
+    if (typeof value !== "string") {
+        return false;
+    }
+    const separator = value.indexOf("-");
+    if (separator < 1 || separator === value.length - 1) {
+        return false;
+    }
+    const index = value.slice(0, separator);
+    if (!/^[0-9a-z]+$/.test(index)) {
+        return false;
+    }
+    return isValidFingerprint(value.slice(separator + 1));
+}
+
+/**
+ * A payload the record layer owns: a detached, deeply frozen copy, re-accepted as
+ * a `ComputedValue` so the copy carries the nominal type without a cast.
+ *
+ * A record which kept the caller's payload object would let a later mutation of
+ * that object change a stored record's canonical meaning, and with it the fork
+ * comparison between two records which claim one identity.
+ * @param {ComputedValue} payload
+ * @returns {ComputedValue}
+ */
+function ownedComputedValue(payload) {
+    const copy = deepFrozenCopy(payload);
+    if (!isComputedValue(copy)) {
+        throw new Error("a payload did not survive being copied into a record");
+    }
+    return copy;
+}
+
+/**
+ * The coordinates of a context, in canonical author order, which is the order
+ * the current format persists them in.
+ * @param {import('./types').JournalFrontier} context
+ * @returns {Array<[string, string]>}
+ */
+function contextToText(context) {
+    /** @type {Array<[string, string]>} */
+    const coordinates = [];
+    for (const entry of context) {
+        coordinates.push([journalAuthorToString(entry[0]), journalSequenceToString(entry[1])]);
+    }
+    return coordinates.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
 }
 
 module.exports = {
+    contextToText,
     invalidBasisDetail,
     isComputedValue,
     readEnumMember,
     isCanonicalTimestamp,
     isNodeIdentifier,
     isPlainRecord,
+    ownedComputedValue,
     readRecordId,
     unexpectedMemberError,
 };

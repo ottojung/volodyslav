@@ -14,6 +14,7 @@ const {
     serializeNodeKey,
     stringToNodeKeyString,
 } = require("../database");
+const { deepFrozenCopy } = require("./immutable");
 const { isJournalRecordId, parseJournalRecordId } = require("./types");
 
 /** @typedef {import("../database/node_key").NodeKey} NodeKey */
@@ -33,6 +34,23 @@ function isNodeKey(value) {
         return false;
     }
     return "args" in value && Array.isArray(value.args);
+}
+
+/**
+ * A node key the record layer owns: a detached, deeply frozen copy, re-accepted
+ * as a `NodeKey` so the copy carries the nominal type without a cast.
+ *
+ * A record which kept the caller's node key object would let a later mutation of
+ * that object change a stored record's canonical meaning.
+ * @param {NodeKey} nodeKey
+ * @returns {NodeKey}
+ */
+function ownedNodeKey(nodeKey) {
+    const copy = deepFrozenCopy(nodeKey);
+    if (!isNodeKey(copy)) {
+        throw new Error("a node key did not survive being copied into a record");
+    }
+    return copy;
 }
 
 /**
@@ -78,6 +96,7 @@ class ValidationBasisEntryClass {
     constructor(input, value) {
         this.input = input;
         this.value = value;
+        Object.freeze(this);
     }
 }
 
@@ -101,7 +120,7 @@ function makeValidationBasisEntry(input, value) {
     if (!isNodeKey(input)) {
         throw new Error("validation basis entry requires a node key");
     }
-    return new ValidationBasisEntryClass(input, readBasisValue(value));
+    return new ValidationBasisEntryClass(ownedNodeKey(input), readBasisValue(value));
 }
 
 /**
@@ -162,6 +181,10 @@ function sortValidationBasis(basis) {
 class NodeScopeClass {
     /** @type {"node"} */
     kind = "node";
+
+    constructor() {
+        Object.freeze(this);
+    }
 }
 
 /** @typedef {NodeScopeClass} NodeScope */
@@ -177,6 +200,7 @@ class ValueScopeClass {
      */
     constructor(value) {
         this.value = value;
+        Object.freeze(this);
     }
 }
 
@@ -192,6 +216,7 @@ class ProofScopeClass {
     constructor(value, input) {
         this.value = value;
         this.input = input;
+        Object.freeze(this);
     }
 }
 
@@ -237,7 +262,7 @@ function makeProofScope(value, input) {
     if (!isNodeKey(input)) {
         throw new Error("proof scope requires a node key input");
     }
-    return new ProofScopeClass(readValueId(value), input);
+    return new ProofScopeClass(readValueId(value), ownedNodeKey(input));
 }
 
 /**
@@ -261,6 +286,7 @@ module.exports = {
     isNodeKey,
     isValidationBasisEntry,
     makeNodeScope,
+    ownedNodeKey,
     makeProofScope,
     makeValidationBasisEntry,
     makeValueScope,

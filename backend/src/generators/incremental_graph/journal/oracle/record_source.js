@@ -160,8 +160,13 @@ function validateContributorRecord(record, authorName) {
  * condition as it goes.
  *
  * The declared retained length bounds the walk in both directions, so a prefix
- * which skips a coordinate and a prefix which ends before the length it claims
- * are both failures rather than being silently accepted as a whole prefix.
+ * which skips a coordinate, a prefix which ends before the length it claims, and
+ * a prefix which offers a coordinate beyond the length it claims are all failures
+ * rather than being silently accepted as a whole prefix. The last case matters
+ * because the source's declared length is what every retained-range check in
+ * replay is measured against: a reader which delivered a coordinate past it
+ * would hand replay a record whose own coordinate contradicts the frontier the
+ * source published for that writer.
  * @param {string} authorName
  * @param {Iterable<JournalRecord>} iterable
  * @param {JournalSequence} claimedLength
@@ -213,6 +218,17 @@ function readerOverIterable(authorName, iterable, claimedLength) {
         }
         if (position > 0) {
             failure = gapAt(journalSequenceToString(expected));
+            return undefined;
+        }
+        if (compareJournalSequence(expected, claimedLength) > 0) {
+            failure = makeJournalRecordValidationError(
+                "a retained prefix offers " +
+                    journalRecordIdToString(record.id) +
+                    ", which is beyond the retained length " +
+                    journalSequenceToString(claimedLength) +
+                    " the source declared",
+                journalRecordIdToString(record.id)
+            );
             return undefined;
         }
         lastRead = expected;

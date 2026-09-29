@@ -6,7 +6,7 @@
  * rejected in the current format.
  */
 
-const { deserializeNodeKey, stringToNodeKeyString } = require("../database");
+const { deserializeNodeKey, nodeKeyStringToString, serializeNodeKey, stringToNodeKeyString } = require("../database");
 const {
     makeNodeScope,
     makeProofScope,
@@ -14,7 +14,7 @@ const {
     makeValueScope,
 } = require("./basis");
 const { makeJournalRecordValidationError } = require("./errors");
-const { unexpectedMemberError } = require("./record_fields");
+const { contextToText, unexpectedMemberError } = require("./record_fields");
 const {
     makeDeleteEvent,
     makeInvalidateEvent,
@@ -82,6 +82,16 @@ function membersForKind(kind) {
 }
 
 /**
+ * Read a node key from its exact canonical text.
+ *
+ * The current format stores a node key as the canonical serialization the
+ * database's own writer produced, so a persisted node key whose text is merely
+ * *parseable* — extra whitespace, reordered members, an unknown member, an
+ * argument carrying an unknown member — is not the text this format writes.
+ * Accepting it would let the reader re-serialize a different byte sequence than
+ * the one it read, so the record's canonical meaning would depend on the reader
+ * rather than on the persisted history. The text is therefore compared against the
+ * serialization of what it parses to, and anything else is rejected.
  * @param {unknown} value
  * @param {string} label
  * @returns {NodeKey | JournalError}
@@ -90,11 +100,17 @@ function readNodeKeyText(value, label) {
     if (typeof value !== "string") {
         return makeJournalRecordValidationError("node key is not canonical text", label);
     }
+    /** @type {NodeKey} */
+    let node;
     try {
-        return deserializeNodeKey(stringToNodeKeyString(value));
+        node = deserializeNodeKey(stringToNodeKeyString(value));
     } catch {
         return makeJournalRecordValidationError("node key is not canonical text", label);
     }
+    if (nodeKeyStringToString(serializeNodeKey(node)) !== value) {
+        return makeJournalRecordValidationError("node key is not canonical text", label);
+    }
+    return node;
 }
 
 /**
@@ -111,6 +127,15 @@ function readRecordIdText(value, label) {
 }
 
 /**
+ * Read a context from its exact canonical coordinate array.
+ *
+ * A coordinate is a `(writer, sequence)` pair of canonical decimal strings and
+ * the array is stored in ascending writer order with no zero coordinate, so every
+ * element is required to already be a string and the read array is required to
+ * equal the array the encoder would have written for the frontier it produces.
+ * Coercing a numeric coordinate to text, or re-ordering a persisted cut, would
+ * let the reader accept a byte sequence the current format does not define and
+ * hand back a record whose meaning is not the one on disk.
  * @param {unknown} value
  * @param {string} label
  * @returns {JournalFrontier | JournalError}
@@ -122,19 +147,33 @@ function readContextText(value, label) {
     /** @type {Array<[string, string]>} */
     const entries = [];
     for (const coordinate of value) {
-        if (!Array.isArray(coordinate) || coordinate.length !== 2) {
+        if (
+            !Array.isArray(coordinate) ||
+            coordinate.length !== 2 ||
+            typeof coordinate[0] !== "string" ||
+            typeof coordinate[1] !== "string"
+        ) {
             return makeJournalRecordValidationError("context coordinate is malformed", label);
         }
-        entries.push([String(coordinate[0]), String(coordinate[1])]);
+        entries.push([coordinate[0], coordinate[1]]);
     }
     const frontier = makeJournalFrontierFromText(entries);
     if (frontier instanceof Error) {
         return makeJournalRecordValidationError("context coordinate is malformed", label);
     }
+    if (JSON.stringify(contextToText(frontier)) !== JSON.stringify(entries)) {
+        return makeJournalRecordValidationError("context is not in canonical order", label);
+    }
     return frontier;
 }
 
 /**
+ * Read an authority time from its exact canonical form: a whole-millisecond
+ * epoch `physical` number and a canonical decimal `logical` string.
+ *
+ * The physical component is not coerced from text, because a persisted `"0"`
+ * which reads back as the number `0` would be a member the current format does
+ * not define silently converted into one that it does.
  * @param {unknown} value
  * @param {string} label
  * @returns {AuthorityTime | JournalError}
@@ -143,8 +182,14 @@ function readAuthorityTimeText(value, label) {
     if (!isPlainRecord(value)) {
         return makeJournalRecordValidationError("authority time is malformed", label);
     }
-    const logical = typeof value["logical"] === "string" ? value["logical"] : "";
-    const authorityTime = makeAuthorityTime(Number(value["physical"]), logical);
+    const unexpected = unexpectedMemberError(value, ["physical", "logical"], label);
+    if (unexpected !== undefined) {
+        return unexpected;
+    }
+    if (typeof value["physical"] !== "number" || typeof value["logical"] !== "string") {
+        return makeJournalRecordValidationError("authority time is malformed", label);
+    }
+    const authorityTime = makeAuthorityTime(value["physical"], value["logical"]);
     if (authorityTime instanceof Error) {
         return makeJournalRecordValidationError("authority time is malformed", label);
     }

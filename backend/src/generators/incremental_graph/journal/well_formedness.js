@@ -23,7 +23,7 @@ const {
     validateBasisValues,
     validateInvalidationScope,
     validateNoForwardOwnWriterReference,
-    validateOrdinaryBasis,
+    validateOrdinaryBasisReasons,
     validateTarget,
 } = require("./reference_rules");
 const {
@@ -46,7 +46,6 @@ const {
 } = require("./types");
 
 /** @typedef {import('./errors').AnyJournalError} JournalError */
-/** @typedef {import('./reference_rules').CurrentInputKeysOfNode} CurrentInputKeysOfNode */
 /** @typedef {import('./replica').JournalReplica} JournalReplica */
 /** @typedef {import('./records').JournalRecord} JournalRecord */
 /** @typedef {import('./types').JournalAuthor} JournalAuthor */
@@ -151,8 +150,21 @@ function validateWriterStateMonotonicity(replica) {
 function joinReplicaRecords(left, right) {
     /** @type {Array<[JournalAuthor, Array<JournalRecord>]>} */
     const streams = [];
-    const authors = new Set([...left.keys(), ...right.keys()]);
-    for (const author of authors) {
+    // Writers are keyed by name, because two replicas which were built
+    // separately hold distinct `JournalAuthor` objects for the same writer. Keying
+    // by object identity would keep one writer twice, and the result would be two
+    // streams for one writer rather than the union of that writer's records.
+    /** @type {Map<string, JournalAuthor>} */
+    const authors = new Map();
+    for (const source of [left, right]) {
+        for (const author of source.keys()) {
+            const name = journalAuthorToString(author);
+            if (!authors.has(name)) {
+                authors.set(name, author);
+            }
+        }
+    }
+    for (const author of authors.values()) {
         const leftStream = streamOf(left, author);
         const rightStream = streamOf(right, author);
         /** @type {Array<JournalRecord>} */
@@ -184,12 +196,16 @@ function joinReplicaRecords(left, right) {
 
 /**
  * The per-record reference rules of one retained record.
+ *
+ * Every rule here is about the retained history itself, so none of them consults
+ * the current schema. Whether one retained certificate is current-shape-
+ * compatible proof is a replay-eligibility question, and a certificate which is
+ * not is still intelligible history.
  * @param {JournalRecord} record
  * @param {JournalReplica} replica
- * @param {CurrentInputKeysOfNode | undefined} currentInputKeysOfNode
  * @returns {JournalError | undefined}
  */
-function validateRecordReferences(record, replica, currentInputKeysOfNode) {
+function validateRecordReferences(record, replica) {
     const forward = validateNoForwardOwnWriterReference(record);
     if (forward !== undefined) {
         return forward;
@@ -197,9 +213,7 @@ function validateRecordReferences(record, replica, currentInputKeysOfNode) {
     if (isValidateEvent(record)) {
         return validateTarget(record, replica) ??
             validateBasisValues(record, replica) ??
-            (currentInputKeysOfNode === undefined
-                ? undefined
-                : validateOrdinaryBasis(record, currentInputKeysOfNode));
+            validateOrdinaryBasisReasons(record);
     }
     if (isInvalidateEvent(record)) {
         return validateInvalidationScope(record, replica);
@@ -208,24 +222,21 @@ function validateRecordReferences(record, replica, currentInputKeysOfNode) {
 }
 
 /**
- * The optional inputs of a full replica validation.
- * @typedef {object} ValidationOptions
- * @property {CurrentInputKeysOfNode} [currentInputKeysOfNode] - The current
- *   schema's direct inputs per node. Supplied by every validation which claims
- *   current-shape compatibility.
- */
-
-/**
  * Validate a retained replica against every well-formedness rule.
  *
  * The rules are applied in dependency order: a hole would make every later
  * coordinate lookup meaningless, and a fork would make every later comparison of
  * retained meaning meaningless.
+ *
+ * Whole-history well-formedness decides only whether retained history is
+ * intelligible. It takes no current schema and therefore never reports a
+ * historical certificate as corrupt because the schema has moved on: current-shape
+ * compatibility is decided per certificate, by replay eligibility and by the
+ * authoring transition which writes a new one.
  * @param {JournalReplica} replica
- * @param {ValidationOptions} [options]
  * @returns {JournalError | undefined}
  */
-function validateJournalReplica(replica, options) {
+function validateJournalReplica(replica) {
     if (!isJournalReplica(replica)) {
         return makeJournalRecordValidationError("replica is not a journal replica", "unknown");
     }
@@ -237,10 +248,9 @@ function validateJournalReplica(replica, options) {
     if (monotonicity !== undefined) {
         return monotonicity;
     }
-    const currentInputKeysOfNode = options === undefined ? undefined : options.currentInputKeysOfNode;
     for (const stream of replica) {
         for (const record of stream[1]) {
-            const references = validateRecordReferences(record, replica, currentInputKeysOfNode);
+            const references = validateRecordReferences(record, replica);
             if (references !== undefined) {
                 return references;
             }

@@ -53,13 +53,13 @@ function authorityOf(physical, logical) {
 function valueEvent() {
     return makeValueEvent(
         {
-            id: "A:1",
+            id: "aaaaaaaaa:1",
             context: contextOf([]),
             authorityTime: authorityOf(1000, "0"),
             node: NODE_K,
         },
         NODE_IDENTIFIER,
-        { kind: "EventEntry", text: "hello" },
+        { type: "entry_description", description: "hello" },
         NOW,
         NOW,
         "compute"
@@ -75,7 +75,7 @@ function valueAt(id, coordinates, node, physical) {
             node,
         },
         NODE_IDENTIFIER,
-        { kind: "EventEntry", text: id },
+        { type: "entry_description", description: id },
         NOW,
         NOW,
         "compute"
@@ -107,20 +107,20 @@ describe("Journal record identities", () => {
     test("a record id above the double range survives the codec unchanged", () => {
         const event = makeValueEvent(
             {
-                id: "A:9007199254740993",
+                id: "aaaaaaaaa:9007199254740993",
                 context: contextOf([]),
                 authorityTime: authorityOf(1000, "0"),
                 node: NODE_K,
             },
             NODE_IDENTIFIER,
-            { kind: "EventEntry" },
+            { type: "entry_description" },
             NOW,
             NOW,
             "compute"
         );
-        expect(journalRecordIdToString(event.id)).toBe("A:9007199254740993");
+        expect(journalRecordIdToString(event.id)).toBe("aaaaaaaaa:9007199254740993");
         const decoded = tryDecodeJournalRecord(encodeJournalRecord(event));
-        expect(journalRecordIdToString(decoded.id)).toBe("A:9007199254740993");
+        expect(journalRecordIdToString(decoded.id)).toBe("aaaaaaaaa:9007199254740993");
     });
 
     test("a non-canonical or zero sequence is rejected", () => {
@@ -134,32 +134,32 @@ describe("skewed value timestamps", () => {
     test("a value occurrence with createdAt after modifiedAt is accepted", () => {
         const event = makeValueEvent(
             {
-                id: "A:1",
+                id: "aaaaaaaaa:1",
                 context: contextOf([]),
                 authorityTime: authorityOf(1000, "0"),
                 node: NODE_K,
             },
             NODE_IDENTIFIER,
-            { kind: "EventEntry" },
+            { type: "entry_description" },
             FUTURE,
             NOW,
             "compute"
         );
         expect(event.createdAt).toBe(FUTURE);
         expect(event.modifiedAt).toBe(NOW);
-        expect(validateJournalReplica(replicaOf([["A", [event]]]))).toBeUndefined();
+        expect(validateJournalReplica(replicaOf([["aaaaaaaaa", [event]]]))).toBeUndefined();
     });
 
     test("the acceptance is not trivial: a non-canonical instant is rejected", () => {
         const event = makeValueEvent(
             {
-                id: "A:1",
+                id: "aaaaaaaaa:1",
                 context: contextOf([]),
                 authorityTime: authorityOf(1000, "0"),
                 node: NODE_K,
             },
             NODE_IDENTIFIER,
-            { kind: "EventEntry" },
+            { type: "entry_description" },
             "2020-01-01T00:00:00Z",
             NOW,
             "compute"
@@ -170,13 +170,13 @@ describe("skewed value timestamps", () => {
     test("both timestamps survive a codec round trip unnormalized", () => {
         const event = makeValueEvent(
             {
-                id: "A:1",
+                id: "aaaaaaaaa:1",
                 context: contextOf([]),
                 authorityTime: authorityOf(1000, "0"),
                 node: NODE_K,
             },
             NODE_IDENTIFIER,
-            { kind: "EventEntry" },
+            { type: "entry_description" },
             FUTURE,
             NOW,
             "compute"
@@ -188,45 +188,45 @@ describe("skewed value timestamps", () => {
 });
 
 describe("causal context closure", () => {
-    const a1 = valueAt("A:1", [], NODE_K, 1000);
-    const b1 = valueAt("B:1", [["A", "1"]], NODE_K, 2000);
-    const closedC = valueAt("C:1", [["B", "1"], ["A", "1"]], NODE_K, 3000);
-    const nonTransitiveC = valueAt("C:1", [["B", "1"]], NODE_K, 3000);
+    const a1 = valueAt("aaaaaaaaa:1", [], NODE_K, 1000);
+    const b1 = valueAt("bbbbbbbbb:1", [["aaaaaaaaa", "1"]], NODE_K, 2000);
+    const closedC = valueAt("ccccccccc:1", [["bbbbbbbbb", "1"], ["aaaaaaaaa", "1"]], NODE_K, 3000);
+    const nonTransitiveC = valueAt("ccccccccc:1", [["bbbbbbbbb", "1"]], NODE_K, 3000);
 
     test("a transitively closed history is accepted", () => {
-        const replica = replicaOf([["A", [a1]], ["B", [b1]], ["C", [closedC]]]);
+        const replica = replicaOf([["aaaaaaaaa", [a1]], ["bbbbbbbbb", [b1]], ["ccccccccc", [closedC]]]);
         expect(validateJournalReplica(replica)).toBeUndefined();
     });
 
     test("a context which includes an event but omits what it observed is rejected", () => {
-        const replica = replicaOf([["A", [a1]], ["B", [b1]], ["C", [nonTransitiveC]]]);
+        const replica = replicaOf([["aaaaaaaaa", [a1]], ["bbbbbbbbb", [b1]], ["ccccccccc", [nonTransitiveC]]]);
         const failure = validateJournalReplica(replica);
         expect(isJournalCausalClosureError(failure)).toBe(true);
         expect(failure.rule).toBe("transitive closure");
     });
 
     test("a context claiming an unretained coordinate is rejected", () => {
-        const unobservedX = valueAt("A:1", [["X", "1"]], NODE_K, 1000);
-        const replica = replicaOf([["A", [unobservedX]]]);
+        const unobservedX = valueAt("aaaaaaaaa:1", [["xxxxxxxxx", "1"]], NODE_K, 1000);
+        const replica = replicaOf([["aaaaaaaaa", [unobservedX]]]);
         const failure = validateJournalReplica(replica);
         expect(isJournalCausalClosureError(failure)).toBe(true);
         expect(failure.rule).toBe("retained-range coverage");
     });
 
     test("an incomplete own-writer prefix is rejected even when no reference exposes it", () => {
-        const a1 = valueAt("A:1", [["X", "1"]], NODE_K, 1000);
-        const x1 = valueAt("X:1", [], NODE_K, 500);
-        const a2 = valueAt("A:2", [["A", "0"], ["X", "0"]], NODE_K, 2000);
-        const replica = replicaOf([["A", [a1, a2]], ["X", [x1]]]);
+        const a1 = valueAt("aaaaaaaaa:1", [["xxxxxxxxx", "1"]], NODE_K, 1000);
+        const x1 = valueAt("xxxxxxxxx:1", [], NODE_K, 500);
+        const a2 = valueAt("aaaaaaaaa:2", [["aaaaaaaaa", "0"], ["xxxxxxxxx", "0"]], NODE_K, 2000);
+        const replica = replicaOf([["aaaaaaaaa", [a1, a2]], ["xxxxxxxxx", [x1]]]);
         const failure = validateJournalReplica(replica);
         expect(isJournalCausalClosureError(failure)).toBe(true);
         expect(failure.rule).toBe("complete local prefix");
     });
 
     test("a context whose authority does not extend an observed predecessor is rejected", () => {
-        const early = valueAt("A:1", [], NODE_K, 5000);
-        const regressed = valueAt("A:2", [["A", "1"]], NODE_K, 1000);
-        const replica = replicaOf([["A", [early, regressed]]]);
+        const early = valueAt("aaaaaaaaa:1", [], NODE_K, 5000);
+        const regressed = valueAt("aaaaaaaaa:2", [["aaaaaaaaa", "1"]], NODE_K, 1000);
+        const replica = replicaOf([["aaaaaaaaa", [early, regressed]]]);
         const failure = validateJournalReplica(replica);
         expect(isJournalCausalClosureError(failure)).toBe(true);
         expect(failure.rule).toBe("authority consistency");
@@ -241,7 +241,7 @@ describe("causal context closure", () => {
 
     test("events which observed nothing of each other are concurrent", () => {
         expect(happenedBefore(a1, b1)).toBe(true);
-        const independent = valueAt("D:1", [], NODE_K, 1500);
+        const independent = valueAt("ddddddddd:1", [], NODE_K, 1500);
         expect(happenedBefore(independent, a1)).toBe(false);
         expect(happenedBefore(a1, independent)).toBe(false);
     });
@@ -249,34 +249,34 @@ describe("causal context closure", () => {
 
 describe("authority order", () => {
     test("physical dominates logical", () => {
-        const later = valueAt("A:1", [], NODE_K, 2000);
-        const earlier = valueAt("A:2", [], NODE_K, 1000);
+        const later = valueAt("aaaaaaaaa:1", [], NODE_K, 2000);
+        const earlier = valueAt("aaaaaaaaa:2", [], NODE_K, 1000);
         expect(authorityCompare(earlier, later)).toBeLessThan(0);
     });
 
     test("logical breaks equal physical times", () => {
         const first = makeValueEvent(
             {
-                id: "A:1",
+                id: "aaaaaaaaa:1",
                 context: contextOf([]),
                 authorityTime: authorityOf(1000, "1"),
                 node: NODE_K,
             },
             NODE_IDENTIFIER,
-            { kind: "EventEntry" },
+            { type: "entry_description" },
             NOW,
             NOW,
             "compute"
         );
         const second = makeValueEvent(
             {
-                id: "A:2",
-                context: contextOf([["A", "1"]]),
+                id: "aaaaaaaaa:2",
+                context: contextOf([["aaaaaaaaa", "1"]]),
                 authorityTime: authorityOf(1000, "2"),
                 node: NODE_K,
             },
             NODE_IDENTIFIER,
-            { kind: "EventEntry" },
+            { type: "entry_description" },
             NOW,
             NOW,
             "compute"
@@ -285,31 +285,31 @@ describe("authority order", () => {
     });
 
     test("author breaks equal authority times, sequence breaks equal authors", () => {
-        const fromB = valueAt("B:1", [], NODE_K, 1000);
-        const fromA = valueAt("A:1", [], NODE_K, 1000);
+        const fromB = valueAt("bbbbbbbbb:1", [], NODE_K, 1000);
+        const fromA = valueAt("aaaaaaaaa:1", [], NODE_K, 1000);
         expect(authorityCompare(fromA, fromB)).toBeLessThan(0);
-        const a1 = valueAt("A:1", [], NODE_K, 1000);
-        const a2 = valueAt("A:2", [["A", "1"]], NODE_K, 1000);
+        const a1 = valueAt("aaaaaaaaa:1", [], NODE_K, 1000);
+        const a2 = valueAt("aaaaaaaaa:2", [["aaaaaaaaa", "1"]], NODE_K, 1000);
         expect(authorityCompare(a1, a2)).toBeLessThan(0);
     });
 });
 
 describe("frontier join", () => {
     test("join takes the componentwise maximum", () => {
-        const left = contextOf([["A", "3"], ["B", "1"]]);
-        const right = contextOf([["A", "1"], ["C", "4"]]);
+        const left = contextOf([["aaaaaaaaa", "3"], ["bbbbbbbbb", "1"]]);
+        const right = contextOf([["aaaaaaaaa", "1"], ["ccccccccc", "4"]]);
         const joined = frontierJoin(left, right);
         const shape = [...joined.entries()].map(
             (entry) => journalAuthorToString(entry[0]) + ":" + journalSequenceToString(entry[1])
         );
-        expect(shape).toEqual(expect.arrayContaining(["A:3", "B:1", "C:4"]));
+        expect(shape).toEqual(expect.arrayContaining(["aaaaaaaaa:3", "bbbbbbbbb:1", "ccccccccc:4"]));
         expect(joined.size).toBe(3);
     });
 
     test("join is idempotent, commutative and associative", () => {
-        const a = contextOf([["A", "3"], ["B", "1"]]);
-        const b = contextOf([["A", "1"], ["C", "4"]]);
-        const c = contextOf([["B", "7"]]);
+        const a = contextOf([["aaaaaaaaa", "3"], ["bbbbbbbbb", "1"]]);
+        const b = contextOf([["aaaaaaaaa", "1"], ["ccccccccc", "4"]]);
+        const c = contextOf([["bbbbbbbbb", "7"]]);
         const shape = (frontier) =>
             [...frontier.entries()]
                 .map((entry) => journalAuthorToString(entry[0]) + ":" + journalSequenceToString(entry[1]))
@@ -324,12 +324,12 @@ describe("frontier join", () => {
 });
 
 describe("invalidation scopes", () => {
-    const a1 = valueAt("A:1", [], NODE_K, 1000);
+    const a1 = valueAt("aaaaaaaaa:1", [], NODE_K, 1000);
 
     test("a node scope carries no value reference and needs no causality", () => {
         const concurrent = makeInvalidateEvent(
             {
-                id: "B:1",
+                id: "bbbbbbbbb:1",
                 context: contextOf([]),
                 authorityTime: authorityOf(1000, "0"),
                 node: NODE_K,
@@ -337,7 +337,7 @@ describe("invalidation scopes", () => {
             makeNodeScope(),
             "explicit"
         );
-        const replica = replicaOf([["A", [a1]], ["B", [concurrent]]]);
+        const replica = replicaOf([["aaaaaaaaa", [a1]], ["bbbbbbbbb", [concurrent]]]);
         expect(validateJournalReplica(replica)).toBeUndefined();
         expect(concurrent.scope.value).toBeUndefined();
     });
@@ -345,53 +345,53 @@ describe("invalidation scopes", () => {
     test("a value scope naming a causally prior occurrence is accepted", () => {
         const scoped = makeInvalidateEvent(
             {
-                id: "A:2",
-                context: contextOf([["A", "1"]]),
+                id: "aaaaaaaaa:2",
+                context: contextOf([["aaaaaaaaa", "1"]]),
                 authorityTime: authorityOf(2000, "0"),
                 node: NODE_K,
             },
-            makeValueScope("A:1"),
+            makeValueScope("aaaaaaaaa:1"),
             "propagated"
         );
-        expect(validateJournalReplica(replicaOf([["A", [a1, scoped]]]))).toBeUndefined();
+        expect(validateJournalReplica(replicaOf([["aaaaaaaaa", [a1, scoped]]]))).toBeUndefined();
     });
 
     test("a value scope naming a concurrent occurrence is rejected", () => {
         const scoped = makeInvalidateEvent(
             {
-                id: "B:1",
+                id: "bbbbbbbbb:1",
                 context: contextOf([]),
                 authorityTime: authorityOf(1000, "0"),
                 node: NODE_K,
             },
-            makeValueScope("A:1"),
+            makeValueScope("aaaaaaaaa:1"),
             "propagated"
         );
-        const failure = validateJournalReplica(replicaOf([["A", [a1]], ["B", [scoped]]]));
+        const failure = validateJournalReplica(replicaOf([["aaaaaaaaa", [a1]], ["bbbbbbbbb", [scoped]]]));
         expect(isJournalReferenceCausalityError(failure)).toBe(true);
     });
 
     test("a value scope naming another node's occurrence is rejected", () => {
-        const other = valueAt("A:2", [["A", "1"]], NODE_OTHER, 2000);
+        const other = valueAt("aaaaaaaaa:2", [["aaaaaaaaa", "1"]], NODE_OTHER, 2000);
         const scoped = makeInvalidateEvent(
             {
-                id: "A:3",
-                context: contextOf([["A", "2"]]),
+                id: "aaaaaaaaa:3",
+                context: contextOf([["aaaaaaaaa", "2"]]),
                 authorityTime: authorityOf(3000, "0"),
                 node: NODE_K,
             },
-            makeValueScope("A:2"),
+            makeValueScope("aaaaaaaaa:2"),
             "propagated"
         );
-        const failure = validateJournalReplica(replicaOf([["A", [a1, other, scoped]]]));
+        const failure = validateJournalReplica(replicaOf([["aaaaaaaaa", [a1, other, scoped]]]));
         expect(isJournalRecordValidationError(failure)).toBe(true);
     });
 
     test("a value scope naming a non-value record is rejected", () => {
         const deletion = makeDeleteEvent(
             {
-                id: "A:2",
-                context: contextOf([["A", "1"]]),
+                id: "aaaaaaaaa:2",
+                context: contextOf([["aaaaaaaaa", "1"]]),
                 authorityTime: authorityOf(2000, "0"),
                 node: NODE_K,
             },
@@ -399,38 +399,38 @@ describe("invalidation scopes", () => {
         );
         const scoped = makeInvalidateEvent(
             {
-                id: "A:3",
-                context: contextOf([["A", "2"]]),
+                id: "aaaaaaaaa:3",
+                context: contextOf([["aaaaaaaaa", "2"]]),
                 authorityTime: authorityOf(3000, "0"),
                 node: NODE_K,
             },
-            makeValueScope("A:2"),
+            makeValueScope("aaaaaaaaa:2"),
             "propagated"
         );
-        const failure = validateJournalReplica(replicaOf([["A", [a1, deletion, scoped]]]));
+        const failure = validateJournalReplica(replicaOf([["aaaaaaaaa", [a1, deletion, scoped]]]));
         expect(isJournalRecordValidationError(failure)).toBe(true);
     });
 
     test("proof scope is accepted only for controlled maintenance reasons", () => {
         const maintenance = makeInvalidateEvent(
             {
-                id: "A:2",
-                context: contextOf([["A", "1"]]),
+                id: "aaaaaaaaa:2",
+                context: contextOf([["aaaaaaaaa", "1"]]),
                 authorityTime: authorityOf(2000, "0"),
                 node: NODE_K,
             },
-            makeProofScope("A:1", NODE_D),
+            makeProofScope("aaaaaaaaa:1", NODE_D),
             "reset"
         );
-        expect(validateJournalReplica(replicaOf([["A", [a1, maintenance]]]))).toBeUndefined();
+        expect(validateJournalReplica(replicaOf([["aaaaaaaaa", [a1, maintenance]]]))).toBeUndefined();
         const explicit = makeInvalidateEvent(
             {
-                id: "A:2",
-                context: contextOf([["A", "1"]]),
+                id: "aaaaaaaaa:2",
+                context: contextOf([["aaaaaaaaa", "1"]]),
                 authorityTime: authorityOf(2000, "0"),
                 node: NODE_K,
             },
-            makeProofScope("A:1", NODE_D),
+            makeProofScope("aaaaaaaaa:1", NODE_D),
             "explicit"
         );
         expect(isJournalRecordValidationError(explicit)).toBe(true);
@@ -438,28 +438,28 @@ describe("invalidation scopes", () => {
 });
 
 describe("validation target and basis", () => {
-    const a1 = valueAt("A:1", [], NODE_K, 1000);
+    const a1 = valueAt("aaaaaaaaa:1", [], NODE_K, 1000);
 
     test("a validation of a causally prior occurrence is accepted", () => {
         const validation = makeValidateEvent(
             {
-                id: "A:2",
-                context: contextOf([["A", "1"]]),
+                id: "aaaaaaaaa:2",
+                context: contextOf([["aaaaaaaaa", "1"]]),
                 authorityTime: authorityOf(2000, "0"),
                 node: NODE_K,
             },
-            "A:1",
+            "aaaaaaaaa:1",
             [makeValidationBasisEntry(NODE_D, "unknown")],
             "bootstrap"
         );
-        expect(validateJournalReplica(replicaOf([["A", [a1, validation]]]))).toBeUndefined();
+        expect(validateJournalReplica(replicaOf([["aaaaaaaaa", [a1, validation]]]))).toBeUndefined();
     });
 
     test("a validation of a non-value record is rejected", () => {
         const deletion = makeDeleteEvent(
             {
-                id: "A:2",
-                context: contextOf([["A", "1"]]),
+                id: "aaaaaaaaa:2",
+                context: contextOf([["aaaaaaaaa", "1"]]),
                 authorityTime: authorityOf(2000, "0"),
                 node: NODE_K,
             },
@@ -467,45 +467,45 @@ describe("validation target and basis", () => {
         );
         const validation = makeValidateEvent(
             {
-                id: "A:3",
-                context: contextOf([["A", "2"]]),
+                id: "aaaaaaaaa:3",
+                context: contextOf([["aaaaaaaaa", "2"]]),
                 authorityTime: authorityOf(3000, "0"),
                 node: NODE_K,
             },
-            "A:2",
+            "aaaaaaaaa:2",
             [],
             "compute"
         );
-        const failure = validateJournalReplica(replicaOf([["A", [a1, deletion, validation]]]));
+        const failure = validateJournalReplica(replicaOf([["aaaaaaaaa", [a1, deletion, validation]]]));
         expect(isJournalRecordValidationError(failure)).toBe(true);
     });
 
     test("a validation of a concurrent occurrence is rejected", () => {
-        const value = valueAt("A:1", [], NODE_K, 1000);
+        const value = valueAt("aaaaaaaaa:1", [], NODE_K, 1000);
         const validation = makeValidateEvent(
             {
-                id: "B:1",
+                id: "bbbbbbbbb:1",
                 context: contextOf([]),
                 authorityTime: authorityOf(1000, "0"),
                 node: NODE_K,
             },
-            "A:1",
+            "aaaaaaaaa:1",
             [],
             "compute"
         );
-        const failure = validateJournalReplica(replicaOf([["A", [value]], ["B", [validation]]]));
+        const failure = validateJournalReplica(replicaOf([["aaaaaaaaa", [value]], ["bbbbbbbbb", [validation]]]));
         expect(isJournalReferenceCausalityError(failure)).toBe(true);
     });
 
     test("a basis may not name one input twice", () => {
         const validation = makeValidateEvent(
             {
-                id: "A:2",
-                context: contextOf([["A", "1"]]),
+                id: "aaaaaaaaa:2",
+                context: contextOf([["aaaaaaaaa", "1"]]),
                 authorityTime: authorityOf(2000, "0"),
                 node: NODE_K,
             },
-            "A:1",
+            "aaaaaaaaa:1",
             [
                 makeValidationBasisEntry(NODE_D, "unknown"),
                 makeValidationBasisEntry(NODE_D, "unknown"),
@@ -518,12 +518,12 @@ describe("validation target and basis", () => {
     test("a basis must already be in canonical NodeKey order", () => {
         const validation = makeValidateEvent(
             {
-                id: "A:2",
-                context: contextOf([["A", "1"]]),
+                id: "aaaaaaaaa:2",
+                context: contextOf([["aaaaaaaaa", "1"]]),
                 authorityTime: authorityOf(2000, "0"),
                 node: NODE_K,
             },
-            "A:1",
+            "aaaaaaaaa:1",
             [
                 makeValidationBasisEntry(NODE_D, "unknown"),
                 makeValidationBasisEntry(NODE_K, "unknown"),
@@ -544,16 +544,16 @@ describe("validation target and basis", () => {
     test("an ordinary validation may not use an unknown basis entry", () => {
         const validation = makeValidateEvent(
             {
-                id: "A:2",
-                context: contextOf([["A", "1"]]),
+                id: "aaaaaaaaa:2",
+                context: contextOf([["aaaaaaaaa", "1"]]),
                 authorityTime: authorityOf(2000, "0"),
                 node: NODE_K,
             },
-            "A:1",
+            "aaaaaaaaa:1",
             [makeValidationBasisEntry(NODE_D, "unknown")],
             "compute"
         );
-        const replica = replicaOf([["A", [a1, validation]]]);
+        const replica = replicaOf([["aaaaaaaaa", [a1, validation]]]);
         const failure = validateJournalReplica(replica, {
             currentInputKeysOfNode: () => ["x"],
         });
@@ -561,35 +561,35 @@ describe("validation target and basis", () => {
     });
 
     test("an ordinary validation must name exactly the current direct inputs", () => {
-        const value = valueAt("A:1", [], NODE_K, 1000);
-        const input = valueAt("A:2", [["A", "1"]], NODE_D, 2000);
+        const value = valueAt("aaaaaaaaa:1", [], NODE_K, 1000);
+        const input = valueAt("aaaaaaaaa:2", [["aaaaaaaaa", "1"]], NODE_D, 2000);
         const validation = makeValidateEvent(
             {
-                id: "A:3",
-                context: contextOf([["A", "2"]]),
+                id: "aaaaaaaaa:3",
+                context: contextOf([["aaaaaaaaa", "2"]]),
                 authorityTime: authorityOf(3000, "0"),
                 node: NODE_K,
             },
-            "A:1",
-            [makeValidationBasisEntry(NODE_D, "A:2")],
+            "aaaaaaaaa:1",
+            [makeValidationBasisEntry(NODE_D, "aaaaaaaaa:2")],
             "compute"
         );
-        const replica = replicaOf([["A", [value, input, validation]]]);
+        const replica = replicaOf([["aaaaaaaaa", [value, input, validation]]]);
         expect(
             validateJournalReplica(replica, { currentInputKeysOfNode: currentInputsOfD })
         ).toBeUndefined();
         const stale = makeValidateEvent(
             {
-                id: "A:3",
-                context: contextOf([["A", "2"]]),
+                id: "aaaaaaaaa:3",
+                context: contextOf([["aaaaaaaaa", "2"]]),
                 authorityTime: authorityOf(3000, "0"),
                 node: NODE_K,
             },
-            "A:2",
+            "aaaaaaaaa:2",
             [],
             "compute"
         );
-        const incomplete = replicaOf([["A", [value, input, stale]]]);
+        const incomplete = replicaOf([["aaaaaaaaa", [value, input, stale]]]);
         expect(
             isJournalRecordValidationError(
                 validateJournalReplica(incomplete, { currentInputKeysOfNode: currentInputsOfD })
@@ -598,98 +598,98 @@ describe("validation target and basis", () => {
     });
 
     test("a publication may not reference a coordinate its own writer allocates later", () => {
-        const value = valueAt("A:1", [], NODE_K, 1000);
+        const value = valueAt("aaaaaaaaa:1", [], NODE_K, 1000);
         const forward = makeValidateEvent(
             {
-                id: "A:2",
-                context: contextOf([["A", "1"]]),
+                id: "aaaaaaaaa:2",
+                context: contextOf([["aaaaaaaaa", "1"]]),
                 authorityTime: authorityOf(2000, "0"),
                 node: NODE_K,
             },
-            "A:3",
+            "aaaaaaaaa:3",
             [],
             "compute"
         );
-        const later = valueAt("A:3", [["A", "2"]], NODE_K, 3000);
-        const failure = validateJournalReplica(replicaOf([["A", [value, forward, later]]]));
+        const later = valueAt("aaaaaaaaa:3", [["aaaaaaaaa", "2"]], NODE_K, 3000);
+        const failure = validateJournalReplica(replicaOf([["aaaaaaaaa", [value, forward, later]]]));
         expect(isJournalReferenceCausalityError(failure)).toBe(true);
     });
 });
 
 describe("stream contiguity", () => {
     test("a contiguous prefix is accepted", () => {
-        const first = valueAt("A:1", [], NODE_K, 1000);
-        const second = valueAt("A:2", [["A", "1"]], NODE_K, 2000);
-        expect(validateJournalReplica(replicaOf([["A", [first, second]]]))).toBeUndefined();
+        const first = valueAt("aaaaaaaaa:1", [], NODE_K, 1000);
+        const second = valueAt("aaaaaaaaa:2", [["aaaaaaaaa", "1"]], NODE_K, 2000);
+        expect(validateJournalReplica(replicaOf([["aaaaaaaaa", [first, second]]]))).toBeUndefined();
     });
 
     test("a hole in a claimed prefix is a gap", () => {
-        const first = valueAt("A:1", [], NODE_K, 1000);
-        const third = valueAt("A:3", [["A", "1"]], NODE_K, 3000);
-        const failure = validateJournalReplica(replicaOf([["A", [first, third]]]));
+        const first = valueAt("aaaaaaaaa:1", [], NODE_K, 1000);
+        const third = valueAt("aaaaaaaaa:3", [["aaaaaaaaa", "1"]], NODE_K, 3000);
+        const failure = validateJournalReplica(replicaOf([["aaaaaaaaa", [first, third]]]));
         expect(isJournalGapError(failure)).toBe(true);
         expect(failure.missingSequence).toBe("2");
     });
 
     test("a stream which does not start at one is a gap", () => {
-        const second = valueAt("A:2", [], NODE_K, 2000);
-        const failure = validateJournalReplica(replicaOf([["A", [second]]]));
+        const second = valueAt("aaaaaaaaa:2", [], NODE_K, 2000);
+        const failure = validateJournalReplica(replicaOf([["aaaaaaaaa", [second]]]));
         expect(isJournalGapError(failure)).toBe(true);
         expect(failure.missingSequence).toBe("1");
     });
 
     test("the retained frontier is the greatest retained coordinate per writer", () => {
-        const a1 = valueAt("A:1", [], NODE_K, 1000);
-        const a2 = valueAt("A:2", [["A", "1"]], NODE_K, 2000);
-        const b1 = valueAt("B:1", [], NODE_K, 1000);
-        const frontier = replicaFrontier(replicaOf([["A", [a1, a2]], ["B", [b1]]]));
+        const a1 = valueAt("aaaaaaaaa:1", [], NODE_K, 1000);
+        const a2 = valueAt("aaaaaaaaa:2", [["aaaaaaaaa", "1"]], NODE_K, 2000);
+        const b1 = valueAt("bbbbbbbbb:1", [], NODE_K, 1000);
+        const frontier = replicaFrontier(replicaOf([["aaaaaaaaa", [a1, a2]], ["bbbbbbbbb", [b1]]]));
         expect(frontier.size).toBe(2);
     });
 });
 
 describe("prefix union and forks", () => {
     test("agreeing prefixes union to the longer one", () => {
-        const a1 = valueAt("A:1", [], NODE_K, 1000);
-        const a2 = valueAt("A:2", [["A", "1"]], NODE_K, 2000);
-        const left = replicaOf([["A", [a1]]]);
-        const right = replicaOf([["A", [a1, a2]]]);
+        const a1 = valueAt("aaaaaaaaa:1", [], NODE_K, 1000);
+        const a2 = valueAt("aaaaaaaaa:2", [["aaaaaaaaa", "1"]], NODE_K, 2000);
+        const left = replicaOf([["aaaaaaaaa", [a1]]]);
+        const right = replicaOf([["aaaaaaaaa", [a1, a2]]]);
         const joined = joinReplicaRecords(left, right);
         expect(isJournalReplica(joined)).toBe(true);
         expect([...joined.get([...right.keys()][0])].length).toBe(2);
     });
 
     test("a same-identity disagreement is a fork, not a graph conflict", () => {
-        const first = valueAt("A:1", [], NODE_K, 1000);
+        const first = valueAt("aaaaaaaaa:1", [], NODE_K, 1000);
         const diverged = makeValueEvent(
             {
-                id: "A:1",
+                id: "aaaaaaaaa:1",
                 context: contextOf([]),
                 authorityTime: authorityOf(1000, "0"),
                 node: NODE_K,
             },
             "2-abcdefghi",
-            { kind: "EventEntry", text: "different" },
+            { type: "entry_description", description: "different" },
             NOW,
             NOW,
             "compute"
         );
         const failure = joinReplicaRecords(
-            replicaOf([["A", [first]]]),
-            replicaOf([["A", [diverged]]])
+            replicaOf([["aaaaaaaaa", [first]]]),
+            replicaOf([["aaaaaaaaa", [diverged]]])
         );
         expect(isJournalForkError(failure)).toBe(true);
-        expect(failure.recordId).toBe("A:1");
+        expect(failure.recordId).toBe("aaaaaaaaa:1");
         expect(failure.firstMeaning).not.toBe(failure.secondMeaning);
     });
 
     test("union is idempotent, commutative and associative", () => {
-        const a1 = valueAt("A:1", [], NODE_K, 1000);
-        const a2 = valueAt("A:2", [["A", "1"]], NODE_K, 2000);
-        const a3 = valueAt("A:3", [["A", "2"]], NODE_K, 3000);
-        const b1 = valueAt("B:1", [], NODE_K, 1000);
-        const one = replicaOf([["A", [a1]], ["B", [b1]]]);
-        const two = replicaOf([["A", [a1, a2]]]);
-        const three = replicaOf([["A", [a1, a2, a3]]]);
+        const a1 = valueAt("aaaaaaaaa:1", [], NODE_K, 1000);
+        const a2 = valueAt("aaaaaaaaa:2", [["aaaaaaaaa", "1"]], NODE_K, 2000);
+        const a3 = valueAt("aaaaaaaaa:3", [["aaaaaaaaa", "2"]], NODE_K, 3000);
+        const b1 = valueAt("bbbbbbbbb:1", [], NODE_K, 1000);
+        const one = replicaOf([["aaaaaaaaa", [a1]], ["bbbbbbbbb", [b1]]]);
+        const two = replicaOf([["aaaaaaaaa", [a1, a2]]]);
+        const three = replicaOf([["aaaaaaaaa", [a1, a2, a3]]]);
         const shape = (replica) =>
             [...replica.entries()]
                 .map((entry) => journalRecordIdToString(entry[1][entry[1].length - 1].id))
@@ -703,7 +703,7 @@ describe("prefix union and forks", () => {
     });
 
     test("a writer state record is not a semantic event", () => {
-        const record = makeWriterStateRecord("A:2", 4);
+        const record = makeWriterStateRecord("aaaaaaaaa:2", 4);
         expect(record.kind).toBe("writer-state");
         expect(record.context).toBeUndefined();
     });
@@ -711,37 +711,37 @@ describe("prefix union and forks", () => {
 
 describe("writer state monotonicity", () => {
     test("an increasing watermark is accepted", () => {
-        const first = makeWriterStateRecord("A:1", 1);
-        const second = makeWriterStateRecord("A:2", 7);
-        expect(validateJournalReplica(replicaOf([["A", [first, second]]]))).toBeUndefined();
+        const first = makeWriterStateRecord("aaaaaaaaa:1", 1);
+        const second = makeWriterStateRecord("aaaaaaaaa:2", 7);
+        expect(validateJournalReplica(replicaOf([["aaaaaaaaa", [first, second]]]))).toBeUndefined();
     });
 
     test("a repeated watermark is accepted", () => {
-        const first = makeWriterStateRecord("A:1", 4);
-        const second = makeWriterStateRecord("A:2", 4);
-        expect(validateJournalReplica(replicaOf([["A", [first, second]]]))).toBeUndefined();
+        const first = makeWriterStateRecord("aaaaaaaaa:1", 4);
+        const second = makeWriterStateRecord("aaaaaaaaa:2", 4);
+        expect(validateJournalReplica(replicaOf([["aaaaaaaaa", [first, second]]]))).toBeUndefined();
     });
 
     test("a decreasing watermark is rejected", () => {
-        const first = makeWriterStateRecord("A:1", 7);
-        const second = makeWriterStateRecord("A:2", 3);
-        const failure = validateJournalReplica(replicaOf([["A", [first, second]]]));
+        const first = makeWriterStateRecord("aaaaaaaaa:1", 7);
+        const second = makeWriterStateRecord("aaaaaaaaa:2", 3);
+        const failure = validateJournalReplica(replicaOf([["aaaaaaaaa", [first, second]]]));
         expect(isJournalRecordValidationError(failure)).toBe(true);
     });
 
     test("a negative or fractional watermark is not a current-format record", () => {
-        expect(isJournalRecordValidationError(makeWriterStateRecord("A:1", -1))).toBe(true);
-        expect(isJournalRecordValidationError(makeWriterStateRecord("A:1", 1.5))).toBe(true);
+        expect(isJournalRecordValidationError(makeWriterStateRecord("aaaaaaaaa:1", -1))).toBe(true);
+        expect(isJournalRecordValidationError(makeWriterStateRecord("aaaaaaaaa:1", 1.5))).toBe(true);
     });
 });
 
 describe("current-format codec", () => {
     test("every core record kind round trips", () => {
-        const value = valueAt("A:1", [], NODE_K, 1000);
+        const value = valueAt("aaaaaaaaa:1", [], NODE_K, 1000);
         const deletion = makeDeleteEvent(
             {
-                id: "A:2",
-                context: contextOf([["A", "1"]]),
+                id: "aaaaaaaaa:2",
+                context: contextOf([["aaaaaaaaa", "1"]]),
                 authorityTime: authorityOf(2000, "0"),
                 node: NODE_K,
             },
@@ -749,26 +749,26 @@ describe("current-format codec", () => {
         );
         const validation = makeValidateEvent(
             {
-                id: "A:3",
-                context: contextOf([["A", "2"]]),
+                id: "aaaaaaaaa:3",
+                context: contextOf([["aaaaaaaaa", "2"]]),
                 authorityTime: authorityOf(3000, "0"),
                 node: NODE_K,
             },
-            "A:1",
+            "aaaaaaaaa:1",
             [makeValidationBasisEntry(NODE_D, "unknown")],
             "bootstrap"
         );
         const invalidation = makeInvalidateEvent(
             {
-                id: "A:4",
-                context: contextOf([["A", "3"]]),
+                id: "aaaaaaaaa:4",
+                context: contextOf([["aaaaaaaaa", "3"]]),
                 authorityTime: authorityOf(4000, "0"),
                 node: NODE_K,
             },
-            makeValueScope("A:1"),
+            makeValueScope("aaaaaaaaa:1"),
             "propagated"
         );
-        const state = makeWriterStateRecord("A:5", 12);
+        const state = makeWriterStateRecord("aaaaaaaaa:5", 12);
         for (const record of [value, deletion, validation, invalidation, state]) {
             const text = encodeJournalRecord(record);
             const decoded = tryDecodeJournalRecord(text);
@@ -778,7 +778,7 @@ describe("current-format codec", () => {
 
     test("an unknown record kind is rejected rather than upcast", () => {
         const failure = currentFormatValidateRecord({
-            id: "A:1",
+            id: "aaaaaaaaa:1",
             kind: "trace-span",
             payload: {},
         });
@@ -801,12 +801,12 @@ describe("current-format codec", () => {
     test("a non-canonical persisted basis order is rejected", () => {
         const validation = makeValidateEvent(
             {
-                id: "A:2",
-                context: contextOf([["A", "1"]]),
+                id: "aaaaaaaaa:2",
+                context: contextOf([["aaaaaaaaa", "1"]]),
                 authorityTime: authorityOf(2000, "0"),
                 node: NODE_K,
             },
-            "A:1",
+            "aaaaaaaaa:1",
             [
                 makeValidationBasisEntry(NODE_K, "unknown"),
                 makeValidationBasisEntry(NODE_D, "unknown"),

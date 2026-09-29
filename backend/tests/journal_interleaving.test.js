@@ -148,7 +148,7 @@ function runOnce(options) {
  * watermark, so fixing it keeps the comparison about the projection and not about
  * which writer happened to be asked.
  */
-const LOCAL_WRITER = "A";
+const LOCAL_WRITER = "aaaaaaaaa";
 
 /**
  * The space the confluence and differential claims are made over.
@@ -211,7 +211,7 @@ describe("the interleaving space the Journal record layer and the project oracle
         // ever reports an empty or single-member space, the space stopped being
         // the interleaving space and every confluence claim below is void.
         const space = enumerateJournals({ lengths: SMALL_SPACE });
-        expect(space.writers).toEqual(["A", "B"]);
+        expect(space.writers).toEqual(["aaaaaaaaa", "bbbbbbbbb"]);
         expect(space.bound).toBe(space.journals.length);
         expect(space.journals.length).toBeGreaterThan(1);
 
@@ -424,7 +424,7 @@ describe("the premises which make confluence hold by construction", () => {
         // records it folds over. The grid below is closed and finite, and every
         // element of it is a distinct record, so this is exhaustive over it.
         const grid = [];
-        for (const writerName of ["A", "B"]) {
+        for (const writerName of ["aaaaaaaaa", "bbbbbbbbb"]) {
             for (const sequence of ["1", "2"]) {
                 for (const physical of [0, 1]) {
                     for (const logical of ["0", "1"]) {
@@ -492,7 +492,7 @@ describe("the premises which make confluence hold by construction", () => {
         // replaces its incumbent only on a strict improvement yields the maximum
         // even when the maximum arrives first.
         const records = [];
-        for (const writerName of ["A", "B"]) {
+        for (const writerName of ["aaaaaaaaa", "bbbbbbbbb"]) {
             for (const sequence of ["1", "2", "3"]) {
                 const author = makeJournalAuthor(writerName);
                 const journalSequence = makeJournalSequence(sequence);
@@ -596,7 +596,7 @@ describe("the authority tiebreak is observable only in the selected certificate,
         // The root occurrence is revalidated twice with an identical basis, once by
         // each writer, and only the authority times differ, so the selected
         // certificate must be the second writer's.
-        expect(journalAuthorToString(selected.certificate.id.author)).toBe("B");
+        expect(journalAuthorToString(selected.certificate.id.author)).toBe("bbbbbbbbb");
     });
 });
 
@@ -620,7 +620,7 @@ describe("which defect is reported", () => {
                     node: { head: "event", args: [{ id: nodeId }] },
                 },
                 String(nodeId) + "-abcdefghi",
-                { kind: "EventEntry", text: "v" + String(nodeId) },
+                { type: "entry_description", description: "v" + String(nodeId) },
                 "2020-01-01T00:00:00.000Z",
                 "2020-01-02T00:00:00.000Z",
             "compute"
@@ -701,9 +701,12 @@ describe("which defect is reported", () => {
      * @returns {Record<string, import("../src/generators/incremental_graph/journal").JournalRecord[]>}
      */
     const threeDefectiveStreams = () => ({
-        A: [value("A", 1, 1, [], 100), value("A", 3, 1, [["A", "2"]], 300)],
-        B: [value("B", 1, 2, [["Z", "9"]], 200)],
-        C: [value("C", 1, 3, [["C", "2"]], 400)],
+        aaaaaaaaa: [
+            value("aaaaaaaaa", 1, 1, [], 100),
+            value("aaaaaaaaa", 3, 1, [["aaaaaaaaa", "2"]], 300),
+        ],
+        bbbbbbbbb: [value("bbbbbbbbb", 1, 2, [["zzzzzzzzz", "9"]], 200)],
+        ccccccccc: [value("ccccccccc", 1, 3, [["ccccccccc", "2"]], 400)],
     });
 
     test("a journal with two independent defects reports the same defect in either order", () => {
@@ -720,11 +723,14 @@ describe("which defect is reported", () => {
         // only ever asked for one order would not notice the order-dependence
         // returning.
         const streams = {
-            A: [value("A", 1, 1, [], 100), value("A", 3, 1, [["A", "2"]], 300)],
-            B: [value("B", 1, 2, [["Z", "9"]], 200)],
+            aaaaaaaaa: [
+                value("aaaaaaaaa", 1, 1, [], 100),
+                value("aaaaaaaaa", 3, 1, [["aaaaaaaaa", "2"]], 300),
+            ],
+            bbbbbbbbb: [value("bbbbbbbbb", 1, 2, [["zzzzzzzzz", "9"]], 200)],
         };
-        const holeFirst = runOnce({ source: sourceOver(streams, ["A", "B"]), localWriterName: LOCAL_WRITER });
-        const closureFirst = runOnce({ source: sourceOver(streams, ["B", "A"]), localWriterName: LOCAL_WRITER });
+        const holeFirst = runOnce({ source: sourceOver(streams, ["aaaaaaaaa", "bbbbbbbbb"]), localWriterName: LOCAL_WRITER });
+        const closureFirst = runOnce({ source: sourceOver(streams, ["bbbbbbbbb", "aaaaaaaaa"]), localWriterName: LOCAL_WRITER });
 
         // The decision is invariant, which is the claim the confluence test above
         // makes and the reason the finding was a diagnosability defect rather
@@ -752,7 +758,7 @@ describe("which defect is reported", () => {
         const streams = threeDefectiveStreams();
         /** @type {string[]} */
         const reports = [];
-        for (const order of allOrders("A", "B", "C")) {
+        for (const order of allOrders("aaaaaaaaa", "bbbbbbbbb", "ccccccccc")) {
             const outcome = runOnce({ source: sourceOver(streams, order), localWriterName: LOCAL_WRITER });
             expect([order.join(""), outcome.accepted]).toEqual([order.join(""), false]);
             if (outcome.error === undefined) {
@@ -777,7 +783,7 @@ describe("which defect is reported", () => {
         // first writer the fold reaches is the last writer a caller would expect.
         const streams = threeDefectiveStreams();
         const outcome = runOnce({
-            source: sourceOver(streams, ["C", "B", "A"]),
+            source: sourceOver(streams, ["ccccccccc", "bbbbbbbbb", "aaaaaaaaa"]),
             localWriterName: LOCAL_WRITER,
         });
         expect(outcome.accepted).toBe(false);
@@ -785,12 +791,12 @@ describe("which defect is reported", () => {
             throw new Error("a defective journal was rejected without an error");
         }
         expect(isJournalGapError(outcome.error)).toBe(true);
-        expect(outcome.error.message).toContain("A:2");
+        expect(outcome.error.message).toContain("aaaaaaaaa:2");
 
         // The same journal read in canonical order reports the same defect, so
         // the two differ only in what the source enumerated.
         const canonical = runOnce({
-            source: sourceOver(streams, ["A", "B", "C"]),
+            source: sourceOver(streams, ["aaaaaaaaa", "bbbbbbbbb", "ccccccccc"]),
             localWriterName: LOCAL_WRITER,
         });
         if (canonical.error === undefined) {

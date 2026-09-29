@@ -17,10 +17,10 @@ const {
     currentFormatReadRecord,
     membersForKind,
 } = require("./codec_read");
+const { contextToText } = require("./record_fields");
 const { isJournalRecord } = require("./records");
 const {
     isJournalRecordId,
-    journalAuthorToString,
     journalRecordIdToString,
     journalSequenceToString,
 } = require("./types");
@@ -40,19 +40,6 @@ const {
  */
 function nodeKeyToText(nodeKey) {
     return JSON.stringify({ head: nodeKey.head, args: nodeKey.args });
-}
-
-/**
- * @param {JournalFrontier} context
- * @returns {Array<[string, string]>} Coordinates in canonical author order.
- */
-function contextToText(context) {
-    /** @type {Array<[string, string]>} */
-    const coordinates = [];
-    for (const entry of context) {
-        coordinates.push([journalAuthorToString(entry[0]), journalSequenceToString(entry[1])]);
-    }
-    return coordinates.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
 }
 
 /**

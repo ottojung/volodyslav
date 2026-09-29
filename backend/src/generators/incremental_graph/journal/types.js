@@ -16,7 +16,10 @@ const { makeJournalRecordValidationError } = require("./errors");
 
 const SEQUENCE_PATTERN = /^(?:0|[1-9][0-9]*)$/;
 const TIMESTAMP_PATTERN = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$/;
-const RECORD_ID_PATTERN = /^([^:]+):([0-9]+)$/;
+// The record id text is `<DatabaseFingerprint>:<canonical sequence digits>`, so
+// the fingerprint alphabet already excludes the separator and the textual form is
+// parsed without any lookahead at the boundary between the two coordinates.
+const RECORD_ID_PATTERN = /^([a-z]{9,}):([0-9]+)$/;
 
 /**
  * The properties that this class carries are:
@@ -29,7 +32,9 @@ const RECORD_ID_PATTERN = /^([^:]+):([0-9]+)$/;
  *   representations of non-negative integers.
  * - `parseJournalRecordId(text)`: the captured sequence digits are accepted only
  *   when they match `SEQUENCE_PATTERN`.
- * - `predecessorJournalSequence(sequence)`: decrements canonical digits.
+ * - `predecessorJournalSequence(sequence)`: returns the decimal borrow
+ *   decrement of the canonical digits, which is canonical decimal because the
+ *   only borrow-produced leading zero is stripped and zero itself is rejected.
  * - `journalSequenceAtFrontier(frontier, author)`: returns either a stored
  *   canonical sequence or `ZERO_JOURNAL_SEQUENCE`.
  *
@@ -46,6 +51,7 @@ class JournalSequenceClass {
      */
     constructor(value) {
         this.__value = value;
+        Object.freeze(this);
     }
 }
 
@@ -109,41 +115,60 @@ function compareJournalSequence(a, b) {
 }
 
 /**
- * The coordinate immediately before `sequence`. Zero has no predecessor, so the
- * predecessor of zero is a validation failure rather than a silent wrap.
+ * The coordinate immediately before `sequence`.
+ *
+ * The decrement is decimal borrow on canonical digits, so the result is exact at
+ * any width: `9 -> 8`, `10 -> 9`, `100 -> 99`, `1000 -> 999`. It is deliberately
+ * not a `number` and not a `BigInt`: a `number` loses precision above 2^53 and
+ * `BigInt` is not available at this module's compilation target. Zero has no
+ * predecessor, so the predecessor of zero is a validation failure rather than a
+ * silent wrap onto a negative or reordered representation.
  * @param {JournalSequence} sequence
  * @returns {JournalSequence | JournalError}
  */
 function predecessorJournalSequence(sequence) {
-    const digits = journalSequenceToString(sequence);
-    if (digits === "0") {
+    const canonical = journalSequenceToString(sequence);
+    if (canonical === "0") {
         return makeJournalRecordValidationError(
             "journal sequence zero has no predecessor",
             "unknown"
         );
     }
-    const lastDigit = Number(digits[digits.length - 1]) - 1;
-    const head = digits.slice(0, -1);
-    if (head.length === 0) {
-        return new JournalSequenceClass(String(lastDigit));
+    const digits = canonical.split("");
+    /** @type {number} */
+    let index = digits.length - 1;
+    while (index >= 0) {
+        const borrowed = Number(digits[index]) - 1;
+        if (borrowed >= 0) {
+            digits[index] = String(borrowed);
+            break;
+        }
+        digits[index] = "9";
+        index--;
     }
-    return new JournalSequenceClass(String(lastDigit) + head);
+    const decremented = digits.join("").replace(/^0+(?=[0-9])/, "");
+    return new JournalSequenceClass(decremented);
 }
 
 /**
  * The properties that this class carries are:
- * - `__value` is a non-empty writer identity string.
+ * - `__value` is a database allocation fingerprint, which is therefore a
+ *   non-empty lowercase-letter string of at least nine characters and never
+ *   contains the record-id separator.
  *
  * The proof of those properties is guaranteed by:
- * - `makeJournalAuthor(name)`: accepts the value only when `name` is a
- *   non-empty string.
+ * - `makeJournalAuthor(name)`: accepts the value only when `isValidFingerprint`
+ *   accepts it, which is exactly the persisted `DatabaseFingerprint` contract.
  * - `parseJournalRecordId(text)`: the captured author is passed through
  *   `makeJournalAuthor`.
  *
- * A `JournalAuthor` is the `DatabaseFingerprint` of the writer. A writer which
- * owns a stream obtains its author from the allocation fingerprint it already
- * persists, so a supported writer stream is keyed by a value which also passes
- * `makeJournalAuthorFromFingerprint`.
+ * A `JournalAuthor` is the `DatabaseFingerprint` of the writer, as
+ * `docs/specs/incremental-graph-journal.md` states. A writer which owns a stream
+ * obtains its author from the allocation fingerprint it already persists.
+ * Because the fingerprint alphabet excludes `:`, an identity minted here and
+ * rendered through `journalRecordIdToString` is always parseable again, and
+ * persisted record-id text which is not of this form is rejected instead of being
+ * re-split into a different identity.
  */
 class JournalAuthorClass {
     /** @type {string} */
@@ -153,6 +178,7 @@ class JournalAuthorClass {
      */
     constructor(value) {
         this.__value = value;
+        Object.freeze(this);
     }
 }
 
@@ -167,32 +193,19 @@ function isJournalAuthor(value) {
 }
 
 /**
+ * The writer identity of one stream: the writer's persisted database allocation
+ * fingerprint.
  * @param {string} name
  * @returns {JournalAuthor | JournalError}
  */
 function makeJournalAuthor(name) {
-    if (typeof name !== "string" || name.length === 0) {
+    if (!isValidFingerprint(name)) {
         return makeJournalRecordValidationError(
-            "journal author must be a non-empty string, got " + JSON.stringify(name),
+            "journal author must be a database fingerprint, got " + JSON.stringify(name),
             "unknown"
         );
     }
     return new JournalAuthorClass(name);
-}
-
-/**
- * Create a writer identity from a persisted database allocation fingerprint.
- * @param {string} fingerprint
- * @returns {JournalAuthor | JournalError}
- */
-function makeJournalAuthorFromFingerprint(fingerprint) {
-    if (!isValidFingerprint(fingerprint)) {
-        return makeJournalRecordValidationError(
-            "journal author must be a database fingerprint, got " + JSON.stringify(fingerprint),
-            "unknown"
-        );
-    }
-    return new JournalAuthorClass(fingerprint);
 }
 
 /**
@@ -224,6 +237,7 @@ class JournalRecordIdClass {
     constructor(author, sequence) {
         this.author = author;
         this.sequence = sequence;
+        Object.freeze(this);
     }
 }
 
@@ -313,6 +327,7 @@ class AuthorityTimeClass {
     constructor(physical, logical) {
         this.physical = physical;
         this.logical = logical;
+        Object.freeze(this);
     }
 }
 
@@ -370,7 +385,8 @@ function compareAuthorityTime(a, b) {
  * - every coordinate value is a `JournalSequence`;
  * - no zero coordinate is stored, because a missing coordinate means zero;
  * - the frontier cannot be mutated, so every retained value of this type
- *   describes one immutable cut.
+ *   describes one immutable cut. The instance is frozen as well, and its stored
+ *   coordinates are frozen `JournalAuthor` and `JournalSequence` values.
  *
  * The proof of those properties is guaranteed by:
  * - `makeJournalFrontier(entries)`: rejects non-author keys and non-sequence
@@ -383,6 +399,10 @@ function compareAuthorityTime(a, b) {
  * @extends {Map<JournalAuthor, JournalSequence>}
  */
 class JournalFrontierClass extends Map {
+    constructor() {
+        super();
+        Object.freeze(this);
+    }
     /**
      * @returns {never}
      */
@@ -553,7 +573,6 @@ module.exports = {
     journalSequenceToString,
     makeAuthorityTime,
     makeJournalAuthor,
-    makeJournalAuthorFromFingerprint,
     makeJournalFrontier,
     makeJournalFrontierFromText,
     makeJournalRecordId,

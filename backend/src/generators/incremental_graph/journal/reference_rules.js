@@ -164,16 +164,15 @@ function validateBasisValues(event, replica) {
 }
 
 /**
- * An ordinary compute, unchanged or cache-revalidate certificate uses no
- * `"unknown"` and has exactly the current direct input-key set. A historical
- * certificate whose explicit input set no longer equals the current schema's
- * input set remains intelligible history; it simply is not current-shape-
- * compatible proof.
+ * The reason rule, which is a property of the certificate itself: an ordinary
+ * compute, unchanged or cache-revalidate certificate uses no `"unknown"` entry,
+ * because only the controlled baseline reasons may claim that an input's
+ * occurrence is not established. Nothing about the current schema enters here, so
+ * this rule holds for the whole of history whatever the schema later becomes.
  * @param {ValidateEvent} event
- * @param {CurrentInputKeysOfNode} currentInputKeysOfNode
  * @returns {JournalError | undefined}
  */
-function validateOrdinaryBasis(event, currentInputKeysOfNode) {
+function validateOrdinaryBasisReasons(event) {
     const label = journalRecordIdToString(event.id);
     if (isBaselineValidationReason(event.reason)) {
         return undefined;
@@ -185,6 +184,32 @@ function validateOrdinaryBasis(event, currentInputKeysOfNode) {
                 label
             );
         }
+    }
+    return undefined;
+}
+
+/**
+ * The current-shape rule: a certificate is current-shape-compatible proof only
+ * when its explicit input set is exactly the current direct input set of its
+ * node.
+ *
+ * This is a question about one certificate against the current schema, not a
+ * question about whether retained history is intelligible, so it is deliberately
+ * *not* part of whole-history well-formedness. A historical certificate whose
+ * explicit input set no longer equals the current schema's input set, and a
+ * certificate on a node family the current schema has removed, remain
+ * structurally intelligible history; applying this rule to a retained history
+ * would report exactly that history as corruption. Replay applies it per
+ * certificate when it decides which candidate is eligible, and an authoring
+ * transition applies it before it writes a new certificate.
+ * @param {ValidateEvent} event
+ * @param {CurrentInputKeysOfNode} currentInputKeysOfNode
+ * @returns {JournalError | undefined}
+ */
+function validateCurrentShapeBasis(event, currentInputKeysOfNode) {
+    const label = journalRecordIdToString(event.id);
+    if (isBaselineValidationReason(event.reason)) {
+        return undefined;
     }
     const nodeKeyString = nodeKeyToCanonicalString(event.node);
     const current = currentInputKeysOfNode(nodeKeyString);
@@ -274,8 +299,9 @@ module.exports = {
     requireObservedValue,
     resolveValueEvent,
     validateBasisValues,
+    validateCurrentShapeBasis,
     validateInvalidationScope,
     validateNoForwardOwnWriterReference,
-    validateOrdinaryBasis,
+    validateOrdinaryBasisReasons,
     validateTarget,
 };

@@ -40,14 +40,14 @@ const NODE_D = { head: "event", args: [{ id: 4 }] };
 const NODE_E = { head: "event", args: [{ id: 5 }] };
 const NOW = "2020-01-01T00:00:00.000Z";
 const LATER = "2020-01-02T00:00:00.000Z";
-const WRITER_A = makeJournalAuthor("A");
+const WRITER_A = makeJournalAuthor("aaaaaaaaa");
 const KEY_A = nodeKeyToCanonicalString(NODE_A);
 const KEY_B = nodeKeyToCanonicalString(NODE_B);
 const KEY_C = nodeKeyToCanonicalString(NODE_C);
 const KEY_D = nodeKeyToCanonicalString(NODE_D);
 const KEY_E = nodeKeyToCanonicalString(NODE_E);
 const NODES = [NODE_A, NODE_B, NODE_C];
-const WRITER_NAMES = ["A", "B", "C"];
+const WRITER_NAMES = ["aaaaaaaaa", "bbbbbbbbb", "ccccccccc"];
 
 /**
  * A deterministic pseudo-random source, so a generated history is a function of
@@ -228,7 +228,8 @@ function generateHistory(seed) {
     /** @type {Map<string, number>} */
     const nextSequence = new Map(WRITER_NAMES.map((name) => [name, 0]));
     /** @type {Record<string, import("../src/generators/incremental_graph/journal").JournalRecord[]>} */
-    const streams = { A: [], B: [], C: [] };
+    /** @type {Map<string, import("../src/generators/incremental_graph/journal").JournalRecord[]>} */
+    const streams = Object.fromEntries(WRITER_NAMES.map((name) => [name, []]));
     /** @type {Map<string, import("../src/generators/incremental_graph/journal").ValueEvent[]>} */
     const valueHistory = new Map();
     const schema = schemaOf([KEY_B, KEY_C]);
@@ -295,7 +296,7 @@ function generateHistory(seed) {
                     node: nodeKey,
                 },
                 identifierOf(nodeKeyString),
-                { kind: "EventEntry", text: "v" + step },
+                { type: "entry_description", description: "v" + step },
                 NOW,
                 LATER,
                 "compute"
@@ -440,13 +441,13 @@ function twoZeroInputProvenNodes() {
         sequence++;
         const value = makeValueEvent(
             {
-                id: "A:" + sequence,
-                context: contextOf(sequence === 1 ? [] : [["A", String(sequence - 1)]]),
+                id: "aaaaaaaaa:" + sequence,
+                context: contextOf(sequence === 1 ? [] : [["aaaaaaaaa", String(sequence - 1)]]),
                 authorityTime: authorityOf(100 * sequence, 0),
                 node: nodeKey,
             },
             identifierOf(nodeKeyToCanonicalString(nodeKey)),
-            { kind: "EventEntry", text: "n" + sequence },
+            { type: "entry_description", description: "n" + sequence },
             NOW,
             LATER,
             "compute"
@@ -454,8 +455,8 @@ function twoZeroInputProvenNodes() {
         sequence++;
         const validate = makeValidateEvent(
             {
-                id: "A:" + sequence,
-                context: contextOf([["A", String(sequence - 1)]]),
+                id: "aaaaaaaaa:" + sequence,
+                context: contextOf([["aaaaaaaaa", String(sequence - 1)]]),
                 authorityTime: authorityOf(100 * sequence, 0),
                 node: nodeKey,
             },
@@ -477,49 +478,49 @@ function twoZeroInputProvenNodes() {
 function twoNodeProvenPair() {
     const valueA = makeValueEvent(
         {
-            id: "A:1",
+            id: "aaaaaaaaa:1",
             context: contextOf([]),
             authorityTime: authorityOf(100, 0),
             node: NODE_A,
         },
         identifierOf(KEY_A),
-        { kind: "EventEntry", text: "a" },
+        { type: "entry_description", description: "a" },
         NOW,
         LATER,
         "compute"
     );
     const valueB = makeValueEvent(
         {
-            id: "A:2",
-            context: contextOf([["A", "1"]]),
+            id: "aaaaaaaaa:2",
+            context: contextOf([["aaaaaaaaa", "1"]]),
             authorityTime: authorityOf(200, 0),
             node: NODE_B,
         },
         identifierOf(KEY_B),
-        { kind: "EventEntry", text: "b" },
+        { type: "entry_description", description: "b" },
         NOW,
         LATER,
         "compute"
     );
     const validateA = makeValidateEvent(
         {
-            id: "A:3",
-            context: contextOf([["A", "2"]]),
+            id: "aaaaaaaaa:3",
+            context: contextOf([["aaaaaaaaa", "2"]]),
             authorityTime: authorityOf(300, 0),
             node: NODE_A,
         },
-        "A:1",
+        "aaaaaaaaa:1",
         [makeValidationBasisEntry(NODE_B, valueB.id)],
         "compute"
     );
     const validateB = makeValidateEvent(
         {
-            id: "A:4",
-            context: contextOf([["A", "3"]]),
+            id: "aaaaaaaaa:4",
+            context: contextOf([["aaaaaaaaa", "3"]]),
             authorityTime: authorityOf(400, 0),
             node: NODE_B,
         },
-        "A:2",
+        "aaaaaaaaa:2",
         [makeValidationBasisEntry(NODE_A, valueA.id)],
         "compute"
     );
@@ -538,7 +539,7 @@ function projectBothWays(records, schema) {
         localWriter: WRITER_A,
         currentInputKeysOfNode: schema,
     });
-    const declarative = declarativeProject(replica, "A", schema);
+    const declarative = declarativeProject(replica, "aaaaaaaaa", schema);
     if (oracle instanceof Error) {
         return {
             oracleRejected: true,
@@ -589,7 +590,7 @@ describe("the three structural properties follow from the prefix-union merge", (
     test("a hole in a writer prefix is reported by the merge", () => {
         const records = generateHistory(3);
         const withHole = records.filter(
-            (record) => journalRecordIdToString(record.id) !== "A:2"
+            (record) => journalRecordIdToString(record.id) !== "aaaaaaaaa:2"
         );
         const source = makeReplicaSource(replicaOf(withHole));
         const projection = projectRetainedJournal({
@@ -598,7 +599,7 @@ describe("the three structural properties follow from the prefix-union merge", (
             currentInputKeysOfNode: schemaOf([KEY_B, KEY_C]),
         });
         expect(isJournalGapError(projection)).toBe(true);
-        expect(String(projection.message)).toMatch(/A:2/);
+        expect(String(projection.message)).toMatch(/aaaaaaaaa:2/);
     });
 
     test("a source which claims a length past the end of its own prefix is a gap", () => {
@@ -609,13 +610,13 @@ describe("the three structural properties follow from the prefix-union merge", (
         // authored into the coordinate it failed to deliver.
         const value = makeValueEvent(
             {
-                id: "A:1",
+                id: "aaaaaaaaa:1",
                 context: contextOf([]),
                 authorityTime: authorityOf(100, 0),
                 node: NODE_A,
             },
             identifierOf(KEY_A),
-            { kind: "EventEntry", text: "a" },
+            { type: "entry_description", description: "a" },
             NOW,
             LATER,
             "compute"
@@ -623,7 +624,7 @@ describe("the three structural properties follow from the prefix-union merge", (
         const underReporting = {
             writers: () => [WRITER_A],
             retainedLengthOf: () => makeJournalSequence("4"),
-            prefixReaderOf: () => readerOverIterable("A", [value], makeJournalSequence("4")),
+            prefixReaderOf: () => readerOverIterable("aaaaaaaaa", [value], makeJournalSequence("4")),
         };
         const projection = projectRetainedJournal({
             source: underReporting,
@@ -631,25 +632,25 @@ describe("the three structural properties follow from the prefix-union merge", (
             currentInputKeysOfNode: () => [],
         });
         expect(isJournalGapError(projection)).toBe(true);
-        expect(String(projection.message)).toMatch(/A:2/);
+        expect(String(projection.message)).toMatch(/aaaaaaaaa:2/);
     });
 
     test("two prefixes disagreeing at one coordinate are reported as a fork", () => {
         const records = generateHistory(5);
-        const left = records.filter((record) => journalRecordIdToString(record.id).startsWith("A:"));
+        const left = records.filter((record) => journalRecordIdToString(record.id).startsWith("aaaaaaaaa:"));
         const right = left.map((record) => {
-            if (journalRecordIdToString(record.id) !== "A:2") {
+            if (journalRecordIdToString(record.id) !== "aaaaaaaaa:2") {
                 return record;
             }
             return makeValueEvent(
                 {
-                    id: "A:2",
+                    id: "aaaaaaaaa:2",
                     context: record.context,
                     authorityTime: record.authorityTime,
                     node: record.node,
                 },
                 "1-abcdefghi",
-                { kind: "EventEntry", text: "different" },
+                { type: "entry_description", description: "different" },
                 NOW,
                 LATER,
                 "compute"
@@ -671,7 +672,7 @@ describe("the three structural properties follow from the prefix-union merge", (
         const records = generateHistory(8);
         // One replica retains only writer A's prefix; the other retains all three.
         // The union is then the whole journal, and its overlap agrees.
-        const left = records.filter((record) => journalRecordIdToString(record.id).startsWith("A:"));
+        const left = records.filter((record) => journalRecordIdToString(record.id).startsWith("aaaaaaaaa:"));
         const right = records;
         const schema = schemaOf([KEY_B, KEY_C]);
         const union = projectRetainedJournal({
@@ -700,13 +701,13 @@ describe("the three structural properties follow from the prefix-union merge", (
         // lengths exist to decide.
         const value = makeValueEvent(
             {
-                id: "A:1",
+                id: "aaaaaaaaa:1",
                 context: contextOf([]),
                 authorityTime: authorityOf(100, 0),
                 node: NODE_A,
             },
             identifierOf(KEY_A),
-            { kind: "EventEntry", text: "a" },
+            { type: "entry_description", description: "a" },
             NOW,
             LATER,
             "compute"
@@ -721,13 +722,13 @@ describe("the three structural properties follow from the prefix-union merge", (
         }
         const second = makeValueEvent(
             {
-                id: "B:1",
-                context: contextOf([["A", "2"]]),
+                id: "bbbbbbbbb:1",
+                context: contextOf([["aaaaaaaaa", "2"]]),
                 authorityTime: authorityOf(200, 0),
                 node: NODE_B,
             },
             identifierOf(KEY_B),
-            { kind: "EventEntry", text: "b" },
+            { type: "entry_description", description: "b" },
             NOW,
             LATER,
             "compute"
@@ -738,16 +739,16 @@ describe("the three structural properties follow from the prefix-union merge", (
             currentInputKeysOfNode: () => [],
         });
         expect(isJournalCausalClosureError(beyondEnd)).toBe(true);
-        expect(String(beyondEnd.message)).toMatch(/A:2/);
+        expect(String(beyondEnd.message)).toMatch(/aaaaaaaaa:2/);
     });
 
     test("a context claiming a writer which retains nothing is rejected", () => {
         const context = contextOf([
-            ["A", "1"],
-            ["B", "900"],
+            ["aaaaaaaaa", "1"],
+            ["bbbbbbbbb", "900"],
         ]);
         const record = makeDeleteEvent(
-            { id: "C:1", context, authorityTime: authorityOf(5000, 0), node: NODE_A },
+            { id: "ccccccccc:1", context, authorityTime: authorityOf(5000, 0), node: NODE_A },
             "operation"
         );
         const projection = projectRetainedJournal({
@@ -761,13 +762,13 @@ describe("the three structural properties follow from the prefix-union merge", (
     test("an own-writer context which is not the exact prefix is rejected", () => {
         const first = makeValueEvent(
             {
-                id: "A:1",
+                id: "aaaaaaaaa:1",
                 context: contextOf([]),
                 authorityTime: authorityOf(4000, 0),
                 node: NODE_A,
             },
             "1-abcdefghi",
-            { kind: "EventEntry", text: "v1" },
+            { type: "entry_description", description: "v1" },
             NOW,
             LATER,
             "compute"
@@ -775,13 +776,13 @@ describe("the three structural properties follow from the prefix-union merge", (
         // A:2 exists, so A:1 is retained, but A:2 claims to have observed nothing.
         const second = makeValueEvent(
             {
-                id: "A:2",
+                id: "aaaaaaaaa:2",
                 context: contextOf([]),
                 authorityTime: authorityOf(5000, 0),
                 node: NODE_B,
             },
             "2-abcdefghi",
-            { kind: "EventEntry", text: "v2" },
+            { type: "entry_description", description: "v2" },
             NOW,
             LATER,
             "compute"
@@ -811,7 +812,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
 
         const wrongSchema = declarativeProject(
             replicaOf(records),
-            "A",
+            "aaaaaaaaa",
             (nodeKeyString) => (nodeKeyString === KEY_A ? [KEY_B] : [])
         );
         const differences = disagreementsBetween(oracle, wrongSchema);
@@ -847,13 +848,13 @@ describe("the oracle reads replay, not a transcription of it", () => {
     test("the oracle reports a non-dependency-closed head set rather than projecting it", () => {
         const valueA = makeValueEvent(
             {
-                id: "A:1",
+                id: "aaaaaaaaa:1",
                 context: contextOf([]),
                 authorityTime: authorityOf(10, 0),
                 node: NODE_A,
             },
             "1-abcdefghi",
-            { kind: "EventEntry", text: "a" },
+            { type: "entry_description", description: "a" },
             NOW,
             LATER,
             "compute"
@@ -916,25 +917,25 @@ describe("the oracle reads replay, not a transcription of it", () => {
         // reporting set is empty.
         const value = makeValueEvent(
             {
-                id: "A:1",
+                id: "aaaaaaaaa:1",
                 context: contextOf([]),
                 authorityTime: authorityOf(100, 0),
                 node: NODE_A,
             },
             "1-abcdefghi",
-            { kind: "EventEntry", text: "a" },
+            { type: "entry_description", description: "a" },
             NOW,
             LATER,
             "compute"
         );
         const validate = makeValidateEvent(
             {
-                id: "A:2",
-                context: contextOf([["A", "1"]]),
+                id: "aaaaaaaaa:2",
+                context: contextOf([["aaaaaaaaa", "1"]]),
                 authorityTime: authorityOf(200, 0),
                 node: NODE_A,
             },
-            "A:1",
+            "aaaaaaaaa:1",
             [],
             "compute"
         );
@@ -961,13 +962,13 @@ describe("the oracle reads replay, not a transcription of it", () => {
         // `authorityCompare` in the selection order.
         const value = makeValueEvent(
             {
-                id: "A:1",
+                id: "aaaaaaaaa:1",
                 context: contextOf([]),
                 authorityTime: authorityOf(100, 0),
                 node: NODE_A,
             },
             identifierOf(KEY_A),
-            { kind: "EventEntry", text: "a" },
+            { type: "entry_description", description: "a" },
             NOW,
             LATER,
             "compute"
@@ -975,34 +976,34 @@ describe("the oracle reads replay, not a transcription of it", () => {
         // C1 is authored by B and observes A:1, so it is concurrent with I.
         const certificateNotObserving = makeValidateEvent(
             {
-                id: "B:1",
-                context: contextOf([["A", "1"]]),
+                id: "bbbbbbbbb:1",
+                context: contextOf([["aaaaaaaaa", "1"]]),
                 authorityTime: authorityOf(9000, 0),
                 node: NODE_A,
             },
-            "A:1",
+            "aaaaaaaaa:1",
             [],
             "compute"
         );
         const invalidation = makeInvalidateEvent(
             {
-                id: "A:2",
-                context: contextOf([["A", "1"]]),
+                id: "aaaaaaaaa:2",
+                context: contextOf([["aaaaaaaaa", "1"]]),
                 authorityTime: authorityOf(200, 0),
                 node: NODE_A,
             },
-            makeValueScope("A:1"),
+            makeValueScope("aaaaaaaaa:1"),
             "propagated"
         );
         // C2 observes the invalidation, so it covers the current value.
         const certificateObserving = makeValidateEvent(
             {
-                id: "A:3",
-                context: contextOf([["A", "2"], ["B", "1"]]),
+                id: "aaaaaaaaa:3",
+                context: contextOf([["aaaaaaaaa", "2"], ["bbbbbbbbb", "1"]]),
                 authorityTime: authorityOf(300, 0),
                 node: NODE_A,
             },
-            "A:1",
+            "aaaaaaaaa:1",
             [],
             "compute"
         );
@@ -1020,7 +1021,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
         expect(oracle.occurrences[0].fresh).toBe(true);
         expect(oracle.selfProofReadyNodes.has(KEY_A)).toBe(true);
 
-        const declarative = declarativeProject(replicaOf(records), "A", () => []);
+        const declarative = declarativeProject(replicaOf(records), "aaaaaaaaa", () => []);
         expect(disagreementsBetween(oracle, declarative)).toEqual([]);
     });
 
@@ -1030,39 +1031,39 @@ describe("the oracle reads replay, not a transcription of it", () => {
         // not affect a certificate for a replacement ValueId.
         const valueA = makeValueEvent(
             {
-                id: "A:1",
+                id: "aaaaaaaaa:1",
                 context: contextOf([]),
                 authorityTime: authorityOf(100, 0),
                 node: NODE_A,
             },
             identifierOf(KEY_A),
-            { kind: "EventEntry", text: "a" },
+            { type: "entry_description", description: "a" },
             NOW,
             LATER,
             "compute"
         );
         const valueB = makeValueEvent(
             {
-                id: "A:2",
-                context: contextOf([["A", "1"]]),
+                id: "aaaaaaaaa:2",
+                context: contextOf([["aaaaaaaaa", "1"]]),
                 authorityTime: authorityOf(200, 0),
                 node: NODE_B,
             },
             identifierOf(KEY_B),
-            { kind: "EventEntry", text: "b" },
+            { type: "entry_description", description: "b" },
             NOW,
             LATER,
             "compute"
         );
         const inputA = makeValueEvent(
             {
-                id: "A:3",
-                context: contextOf([["A", "2"]]),
+                id: "aaaaaaaaa:3",
+                context: contextOf([["aaaaaaaaa", "2"]]),
                 authorityTime: authorityOf(300, 0),
                 node: NODE_A,
             },
             identifierOf(KEY_A),
-            { kind: "EventEntry", text: "a2" },
+            { type: "entry_description", description: "a2" },
             NOW,
             LATER,
             "compute"
@@ -1070,25 +1071,25 @@ describe("the oracle reads replay, not a transcription of it", () => {
         // A fresh occurrence with a full two-input basis, both effective.
         const valueA2 = makeValueEvent(
             {
-                id: "A:4",
-                context: contextOf([["A", "3"]]),
+                id: "aaaaaaaaa:4",
+                context: contextOf([["aaaaaaaaa", "3"]]),
                 authorityTime: authorityOf(400, 0),
                 node: NODE_A,
             },
             identifierOf(KEY_A),
-            { kind: "EventEntry", text: "a3" },
+            { type: "entry_description", description: "a3" },
             NOW,
             LATER,
             "compute"
         );
         const validateBoth = makeValidateEvent(
             {
-                id: "A:5",
-                context: contextOf([["A", "4"]]),
+                id: "aaaaaaaaa:5",
+                context: contextOf([["aaaaaaaaa", "4"]]),
                 authorityTime: authorityOf(500, 0),
                 node: NODE_A,
             },
-            "A:4",
+            "aaaaaaaaa:4",
             [
                 makeValidationBasisEntry(NODE_A, valueA2.id),
                 makeValidationBasisEntry(NODE_B, valueB.id),
@@ -1097,12 +1098,12 @@ describe("the oracle reads replay, not a transcription of it", () => {
         );
         const barrier = makeInvalidateEvent(
             {
-                id: "A:6",
-                context: contextOf([["A", "5"]]),
+                id: "aaaaaaaaa:6",
+                context: contextOf([["aaaaaaaaa", "5"]]),
                 authorityTime: authorityOf(600, 0),
                 node: NODE_A,
             },
-            makeProofScope("A:4", NODE_A),
+            makeProofScope("aaaaaaaaa:4", NODE_A),
             "reset"
         );
         const schema = (nodeKeyString) =>
@@ -1121,7 +1122,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
         // input, so B's A edge is suppressed and B is not fresh.
         expect([...nodeB.validInputs]).toEqual([]);
         expect(nodeB.fresh).toBe(false);
-        expect(disagreementsBetween(oracle, declarativeProject(replicaOf(records), "A", schema))).toEqual([]);
+        expect(disagreementsBetween(oracle, declarativeProject(replicaOf(records), "aaaaaaaaa", schema))).toEqual([]);
     });
 
     test("a proof barrier suppresses one edge of a two-input basis and leaves the other", () => {
@@ -1133,51 +1134,51 @@ describe("the oracle reads replay, not a transcription of it", () => {
         // which ignored barriers would return both.
         const valueB = makeValueEvent(
             {
-                id: "A:1",
+                id: "aaaaaaaaa:1",
                 context: contextOf([]),
                 authorityTime: authorityOf(100, 0),
                 node: NODE_B,
             },
             identifierOf(KEY_B),
-            { kind: "EventEntry", text: "b" },
+            { type: "entry_description", description: "b" },
             NOW,
             LATER,
             "compute"
         );
         const valueC = makeValueEvent(
             {
-                id: "A:2",
-                context: contextOf([["A", "1"]]),
+                id: "aaaaaaaaa:2",
+                context: contextOf([["aaaaaaaaa", "1"]]),
                 authorityTime: authorityOf(200, 0),
                 node: NODE_C,
             },
             identifierOf(KEY_C),
-            { kind: "EventEntry", text: "c" },
+            { type: "entry_description", description: "c" },
             NOW,
             LATER,
             "compute"
         );
         const valueA = makeValueEvent(
             {
-                id: "A:3",
-                context: contextOf([["A", "2"]]),
+                id: "aaaaaaaaa:3",
+                context: contextOf([["aaaaaaaaa", "2"]]),
                 authorityTime: authorityOf(300, 0),
                 node: NODE_A,
             },
             identifierOf(KEY_A),
-            { kind: "EventEntry", text: "a" },
+            { type: "entry_description", description: "a" },
             NOW,
             LATER,
             "compute"
         );
         const validateA = makeValidateEvent(
             {
-                id: "A:4",
-                context: contextOf([["A", "3"]]),
+                id: "aaaaaaaaa:4",
+                context: contextOf([["aaaaaaaaa", "3"]]),
                 authorityTime: authorityOf(400, 0),
                 node: NODE_A,
             },
-            "A:3",
+            "aaaaaaaaa:3",
             [
                 makeValidationBasisEntry(NODE_B, valueB.id),
                 makeValidationBasisEntry(NODE_C, valueC.id),
@@ -1186,12 +1187,12 @@ describe("the oracle reads replay, not a transcription of it", () => {
         );
         const barrier = makeInvalidateEvent(
             {
-                id: "A:5",
-                context: contextOf([["A", "4"]]),
+                id: "aaaaaaaaa:5",
+                context: contextOf([["aaaaaaaaa", "4"]]),
                 authorityTime: authorityOf(500, 0),
                 node: NODE_A,
             },
-            makeProofScope("A:3", NODE_B),
+            makeProofScope("aaaaaaaaa:3", NODE_B),
             "reset"
         );
         const schema = (nodeKeyString) => {
@@ -1216,7 +1217,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
         // fresh, even though the surviving edge is present.
         expect(nodeA.fresh).toBe(false);
         expect(oracle.selfProofReadyNodes.has(KEY_A)).toBe(false);
-        expect(disagreementsBetween(oracle, declarativeProject(replicaOf(records), "A", schema))).toEqual(
+        expect(disagreementsBetween(oracle, declarativeProject(replicaOf(records), "aaaaaaaaa", schema))).toEqual(
             []
         );
     });
@@ -1227,72 +1228,72 @@ describe("the oracle reads replay, not a transcription of it", () => {
         // because V2 names the same node.
         const valueB = makeValueEvent(
             {
-                id: "A:1",
+                id: "aaaaaaaaa:1",
                 context: contextOf([]),
                 authorityTime: authorityOf(100, 0),
                 node: NODE_B,
             },
             identifierOf(KEY_B),
-            { kind: "EventEntry", text: "b" },
+            { type: "entry_description", description: "b" },
             NOW,
             LATER,
             "compute"
         );
         const firstA = makeValueEvent(
             {
-                id: "A:2",
-                context: contextOf([["A", "1"]]),
+                id: "aaaaaaaaa:2",
+                context: contextOf([["aaaaaaaaa", "1"]]),
                 authorityTime: authorityOf(200, 0),
                 node: NODE_A,
             },
             identifierOf(KEY_A),
-            { kind: "EventEntry", text: "a1" },
+            { type: "entry_description", description: "a1" },
             NOW,
             LATER,
             "compute"
         );
         const barrier = makeInvalidateEvent(
             {
-                id: "A:3",
-                context: contextOf([["A", "2"]]),
+                id: "aaaaaaaaa:3",
+                context: contextOf([["aaaaaaaaa", "2"]]),
                 authorityTime: authorityOf(300, 0),
                 node: NODE_A,
             },
-            makeProofScope("A:2", NODE_B),
+            makeProofScope("aaaaaaaaa:2", NODE_B),
             "reset"
         );
         const secondA = makeValueEvent(
             {
-                id: "A:4",
-                context: contextOf([["A", "3"]]),
+                id: "aaaaaaaaa:4",
+                context: contextOf([["aaaaaaaaa", "3"]]),
                 authorityTime: authorityOf(400, 0),
                 node: NODE_A,
             },
             identifierOf(KEY_A),
-            { kind: "EventEntry", text: "a2" },
+            { type: "entry_description", description: "a2" },
             NOW,
             LATER,
             "compute"
         );
         const validateB = makeValidateEvent(
             {
-                id: "A:6",
-                context: contextOf([["A", "5"]]),
+                id: "aaaaaaaaa:6",
+                context: contextOf([["aaaaaaaaa", "5"]]),
                 authorityTime: authorityOf(600, 0),
                 node: NODE_B,
             },
-            "A:1",
+            "aaaaaaaaa:1",
             [],
             "compute"
         );
         const validateSecond = makeValidateEvent(
             {
-                id: "A:5",
-                context: contextOf([["A", "4"]]),
+                id: "aaaaaaaaa:5",
+                context: contextOf([["aaaaaaaaa", "4"]]),
                 authorityTime: authorityOf(500, 0),
                 node: NODE_A,
             },
-            "A:4",
+            "aaaaaaaaa:4",
             [makeValidationBasisEntry(NODE_B, valueB.id)],
             "compute"
         );
@@ -1309,7 +1310,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
         const nodeA = oracle.occurrences.find((o) => o.nodeKeyString === KEY_A);
         expect([...nodeA.validInputs]).toEqual([KEY_B]);
         expect(nodeA.fresh).toBe(true);
-        expect(disagreementsBetween(oracle, declarativeProject(replicaOf(records), "A", schema))).toEqual(
+        expect(disagreementsBetween(oracle, declarativeProject(replicaOf(records), "aaaaaaaaa", schema))).toEqual(
             []
         );
     });
@@ -1322,26 +1323,26 @@ describe("the oracle reads replay, not a transcription of it", () => {
         // return the wrong occurrence proof and the wrong validity edge.
         const valueB = makeValueEvent(
             {
-                id: "A:1",
+                id: "aaaaaaaaa:1",
                 context: contextOf([]),
                 authorityTime: authorityOf(100, 0),
                 node: NODE_B,
             },
             identifierOf(KEY_B),
-            { kind: "EventEntry", text: "b" },
+            { type: "entry_description", description: "b" },
             NOW,
             LATER,
             "compute"
         );
         const valueA = makeValueEvent(
             {
-                id: "A:2",
-                context: contextOf([["A", "1"]]),
+                id: "aaaaaaaaa:2",
+                context: contextOf([["aaaaaaaaa", "1"]]),
                 authorityTime: authorityOf(200, 0),
                 node: NODE_A,
             },
             identifierOf(KEY_A),
-            { kind: "EventEntry", text: "a" },
+            { type: "entry_description", description: "a" },
             NOW,
             LATER,
             "compute"
@@ -1349,12 +1350,12 @@ describe("the oracle reads replay, not a transcription of it", () => {
         // C_low observes A:2 and proves the same complete basis, at low authority.
         const lowAuthority = makeValidateEvent(
             {
-                id: "A:3",
-                context: contextOf([["A", "2"]]),
+                id: "aaaaaaaaa:3",
+                context: contextOf([["aaaaaaaaa", "2"]]),
                 authorityTime: authorityOf(300, 0),
                 node: NODE_A,
             },
-            "A:2",
+            "aaaaaaaaa:2",
             [makeValidationBasisEntry(NODE_B, valueB.id)],
             "compute"
         );
@@ -1362,23 +1363,23 @@ describe("the oracle reads replay, not a transcription of it", () => {
         // greater authority. It is concurrent with C_low and does not observe it.
         const highAuthority = makeValidateEvent(
             {
-                id: "B:1",
-                context: contextOf([["A", "2"]]),
+                id: "bbbbbbbbb:1",
+                context: contextOf([["aaaaaaaaa", "2"]]),
                 authorityTime: authorityOf(9000, 0),
                 node: NODE_A,
             },
-            "A:2",
+            "aaaaaaaaa:2",
             [makeValidationBasisEntry(NODE_B, valueB.id)],
             "compute"
         );
         const validateB = makeValidateEvent(
             {
-                id: "A:4",
-                context: contextOf([["A", "3"], ["B", "1"]]),
+                id: "aaaaaaaaa:4",
+                context: contextOf([["aaaaaaaaa", "3"], ["bbbbbbbbb", "1"]]),
                 authorityTime: authorityOf(400, 0),
                 node: NODE_B,
             },
-            "A:1",
+            "aaaaaaaaa:1",
             [],
             "compute"
         );
@@ -1395,7 +1396,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
         // Both models publish, and both must select the greater-authority
         // certificate, which the differential confirms only if the comparison is
         // reached at all.
-        const declarative = declarativeProject(replicaOf(records), "A", schema);
+        const declarative = declarativeProject(replicaOf(records), "aaaaaaaaa", schema);
         expect(declarative.publishable).toBe(true);
         const nodeA = oracle.occurrences.find((o) => o.nodeKeyString === KEY_A);
         expect([...nodeA.validInputs]).toEqual([KEY_B]);
@@ -1410,26 +1411,26 @@ describe("the oracle reads replay, not a transcription of it", () => {
         // Replay does not resolve it and does not scan history to decide.
         const first = makeValueEvent(
             {
-                id: "A:1",
+                id: "aaaaaaaaa:1",
                 context: contextOf([]),
                 authorityTime: authorityOf(100, 0),
                 node: NODE_A,
             },
             identifierOf(KEY_A),
-            { kind: "EventEntry", text: "a" },
+            { type: "entry_description", description: "a" },
             NOW,
             LATER,
             "compute"
         );
         const second = makeValueEvent(
             {
-                id: "A:2",
-                context: contextOf([["A", "1"]]),
+                id: "aaaaaaaaa:2",
+                context: contextOf([["aaaaaaaaa", "1"]]),
                 authorityTime: authorityOf(200, 0),
                 node: NODE_B,
             },
             identifierOf(KEY_A),
-            { kind: "EventEntry", text: "b" },
+            { type: "entry_description", description: "b" },
             NOW,
             LATER,
             "compute"
@@ -1451,39 +1452,39 @@ describe("the oracle reads replay, not a transcription of it", () => {
         // separates them, and the selected edge is the observable consequence.
         const valueA = makeValueEvent(
             {
-                id: "A:1",
+                id: "aaaaaaaaa:1",
                 context: contextOf([]),
                 authorityTime: authorityOf(100, 0),
                 node: NODE_A,
             },
             identifierOf(KEY_A),
-            { kind: "EventEntry", text: "a" },
+            { type: "entry_description", description: "a" },
             NOW,
             LATER,
             "compute"
         );
         const valueB = makeValueEvent(
             {
-                id: "A:2",
-                context: contextOf([["A", "1"]]),
+                id: "aaaaaaaaa:2",
+                context: contextOf([["aaaaaaaaa", "1"]]),
                 authorityTime: authorityOf(200, 0),
                 node: NODE_B,
             },
             identifierOf(KEY_B),
-            { kind: "EventEntry", text: "b" },
+            { type: "entry_description", description: "b" },
             NOW,
             LATER,
             "compute"
         );
         const valueK = makeValueEvent(
             {
-                id: "A:3",
-                context: contextOf([["A", "2"]]),
+                id: "aaaaaaaaa:3",
+                context: contextOf([["aaaaaaaaa", "2"]]),
                 authorityTime: authorityOf(300, 0),
                 node: NODE_D,
             },
             identifierOf(KEY_D),
-            { kind: "EventEntry", text: "k" },
+            { type: "entry_description", description: "k" },
             NOW,
             LATER,
             "compute"
@@ -1495,23 +1496,23 @@ describe("the oracle reads replay, not a transcription of it", () => {
         // A barrier for (V, A) which C1 observes and C2 does not.
         const barrier = makeInvalidateEvent(
             {
-                id: "A:4",
-                context: contextOf([["A", "3"]]),
+                id: "aaaaaaaaa:4",
+                context: contextOf([["aaaaaaaaa", "3"]]),
                 authorityTime: authorityOf(400, 0),
                 node: NODE_D,
             },
-            makeProofScope("A:3", NODE_A),
+            makeProofScope("aaaaaaaaa:3", NODE_A),
             "reset"
         );
         // C_high observes the barrier, so A's edge is retired and B's survives.
         const highAuthority = makeValidateEvent(
             {
-                id: "A:5",
-                context: contextOf([["A", "4"]]),
+                id: "aaaaaaaaa:5",
+                context: contextOf([["aaaaaaaaa", "4"]]),
                 authorityTime: authorityOf(9000, 0),
                 node: NODE_D,
             },
-            "A:3",
+            "aaaaaaaaa:3",
             basis,
             "compute"
         );
@@ -1519,12 +1520,12 @@ describe("the oracle reads replay, not a transcription of it", () => {
         // and it wins on basis strength instead of on authority.
         const lowAuthority = makeValidateEvent(
             {
-                id: "B:1",
-                context: contextOf([["A", "3"]]),
+                id: "bbbbbbbbb:1",
+                context: contextOf([["aaaaaaaaa", "3"]]),
                 authorityTime: authorityOf(500, 0),
                 node: NODE_D,
             },
-            "A:3",
+            "aaaaaaaaa:3",
             basis,
             "compute"
         );
@@ -1550,7 +1551,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
         // Basis strength is the first key, so C_low's two effective edges beat
         // C_high's one even though C_high has far greater authority.
         expect([...nodeD.validInputs].sort()).toEqual([KEY_A, KEY_B]);
-        const declarative = declarativeProject(replicaOf(records), "A", schema);
+        const declarative = declarativeProject(replicaOf(records), "aaaaaaaaa", schema);
         expect(declarative.publishable).toBe(true);
         expect(disagreementsBetween(oracle, declarative)).toEqual([]);
     });
@@ -1562,26 +1563,26 @@ describe("the oracle reads replay, not a transcription of it", () => {
         // that input and is therefore not fresh.
         const valueB = makeValueEvent(
             {
-                id: "A:1",
+                id: "aaaaaaaaa:1",
                 context: contextOf([]),
                 authorityTime: authorityOf(100, 0),
                 node: NODE_B,
             },
             identifierOf(KEY_B),
-            { kind: "EventEntry", text: "b" },
+            { type: "entry_description", description: "b" },
             NOW,
             LATER,
             "compute"
         );
         const valueA = makeValueEvent(
             {
-                id: "A:2",
-                context: contextOf([["A", "1"]]),
+                id: "aaaaaaaaa:2",
+                context: contextOf([["aaaaaaaaa", "1"]]),
                 authorityTime: authorityOf(200, 0),
                 node: NODE_A,
             },
             identifierOf(KEY_A),
-            { kind: "EventEntry", text: "a" },
+            { type: "entry_description", description: "a" },
             NOW,
             LATER,
             "compute"
@@ -1589,12 +1590,12 @@ describe("the oracle reads replay, not a transcription of it", () => {
         // A maintenance reason is required for an "unknown" basis entry.
         const validate = makeValidateEvent(
             {
-                id: "A:3",
-                context: contextOf([["A", "2"]]),
+                id: "aaaaaaaaa:3",
+                context: contextOf([["aaaaaaaaa", "2"]]),
                 authorityTime: authorityOf(300, 0),
                 node: NODE_A,
             },
-            "A:2",
+            "aaaaaaaaa:2",
             [makeValidationBasisEntry(NODE_B, "unknown")],
             "reset"
         );
@@ -1611,7 +1612,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
         const nodeA = oracle.occurrences.find((o) => o.nodeKeyString === KEY_A);
         expect([...nodeA.validInputs]).toEqual([]);
         expect(nodeA.fresh).toBe(false);
-        const declarative = declarativeProject(replicaOf(records), "A", schema);
+        const declarative = declarativeProject(replicaOf(records), "aaaaaaaaa", schema);
         expect(disagreementsBetween(oracle, declarative)).toEqual([]);
     });
 
@@ -1623,39 +1624,39 @@ describe("the oracle reads replay, not a transcription of it", () => {
         // separates them, so the selected edge is entirely its consequence.
         const valueA = makeValueEvent(
             {
-                id: "A:1",
+                id: "aaaaaaaaa:1",
                 context: contextOf([]),
                 authorityTime: authorityOf(100, 0),
                 node: NODE_A,
             },
             identifierOf(KEY_A),
-            { kind: "EventEntry", text: "a" },
+            { type: "entry_description", description: "a" },
             NOW,
             LATER,
             "compute"
         );
         const valueB = makeValueEvent(
             {
-                id: "A:2",
-                context: contextOf([["A", "1"]]),
+                id: "aaaaaaaaa:2",
+                context: contextOf([["aaaaaaaaa", "1"]]),
                 authorityTime: authorityOf(200, 0),
                 node: NODE_B,
             },
             identifierOf(KEY_B),
-            { kind: "EventEntry", text: "b" },
+            { type: "entry_description", description: "b" },
             NOW,
             LATER,
             "compute"
         );
         const valueK = makeValueEvent(
             {
-                id: "A:3",
-                context: contextOf([["A", "2"]]),
+                id: "aaaaaaaaa:3",
+                context: contextOf([["aaaaaaaaa", "2"]]),
                 authorityTime: authorityOf(300, 0),
                 node: NODE_D,
             },
             identifierOf(KEY_D),
-            { kind: "EventEntry", text: "k" },
+            { type: "entry_description", description: "k" },
             NOW,
             LATER,
             "compute"
@@ -1671,34 +1672,34 @@ describe("the oracle reads replay, not a transcription of it", () => {
         // context claiming C:2 also claims C:1.
         const barrierA = makeInvalidateEvent(
             {
-                id: "C:1",
-                context: contextOf([["A", "3"]]),
+                id: "ccccccccc:1",
+                context: contextOf([["aaaaaaaaa", "3"]]),
                 authorityTime: authorityOf(400, 0),
                 node: NODE_D,
             },
-            makeProofScope("A:3", NODE_A),
+            makeProofScope("aaaaaaaaa:3", NODE_A),
             "reset"
         );
         const barrierB = makeInvalidateEvent(
             {
-                id: "B:1",
-                context: contextOf([["A", "3"]]),
+                id: "bbbbbbbbb:1",
+                context: contextOf([["aaaaaaaaa", "3"]]),
                 authorityTime: authorityOf(500, 0),
                 node: NODE_D,
             },
-            makeProofScope("A:3", NODE_B),
+            makeProofScope("aaaaaaaaa:3", NODE_B),
             "reset"
         );
         // C_low does not observe barrierA, so A's edge stays suppressed and it
         // proves B alone.
         const lowAuthority = makeValidateEvent(
             {
-                id: "A:4",
-                context: contextOf([["A", "3"], ["B", "1"]]),
+                id: "aaaaaaaaa:4",
+                context: contextOf([["aaaaaaaaa", "3"], ["bbbbbbbbb", "1"]]),
                 authorityTime: authorityOf(600, 0),
                 node: NODE_D,
             },
-            "A:3",
+            "aaaaaaaaa:3",
             basis,
             "compute"
         );
@@ -1706,12 +1707,12 @@ describe("the oracle reads replay, not a transcription of it", () => {
         // proves A alone, at greater authority.
         const highAuthority = makeValidateEvent(
             {
-                id: "A:5",
-                context: contextOf([["A", "4"], ["C", "1"]]),
+                id: "aaaaaaaaa:5",
+                context: contextOf([["aaaaaaaaa", "4"], ["ccccccccc", "1"]]),
                 authorityTime: authorityOf(9000, 0),
                 node: NODE_D,
             },
-            "A:3",
+            "aaaaaaaaa:3",
             basis,
             "compute"
         );
@@ -1737,7 +1738,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
         // Equal basis strength, so the greater-authority certificate C_high wins
         // and the edge it still proves is A's.
         expect([...nodeD.validInputs]).toEqual([KEY_A]);
-        const declarative = declarativeProject(replicaOf(records), "A", schema);
+        const declarative = declarativeProject(replicaOf(records), "aaaaaaaaa", schema);
         expect(declarative.publishable).toBe(true);
         expect(disagreementsBetween(oracle, declarative)).toEqual([]);
     });
@@ -1758,13 +1759,13 @@ describe("the oracle reads replay, not a transcription of it", () => {
             sequence++;
             const value = makeValueEvent(
                 {
-                    id: "A:" + sequence,
-                    context: contextOf(sequence === 1 ? [] : [["A", String(sequence - 1)]]),
+                    id: "aaaaaaaaa:" + sequence,
+                    context: contextOf(sequence === 1 ? [] : [["aaaaaaaaa", String(sequence - 1)]]),
                     authorityTime: authorityOf(100 * sequence, 0),
                     node: nodeKey,
                 },
                 identifierOf(nodeKeyToCanonicalString(nodeKey)),
-                { kind: "EventEntry", text: "n" + sequence },
+                { type: "entry_description", description: "n" + sequence },
                 NOW,
                 LATER,
                 "compute"
@@ -1772,8 +1773,8 @@ describe("the oracle reads replay, not a transcription of it", () => {
             sequence++;
             const validate = makeValidateEvent(
                 {
-                    id: "A:" + sequence,
-                    context: contextOf([["A", String(sequence - 1)]]),
+                    id: "aaaaaaaaa:" + sequence,
+                    context: contextOf([["aaaaaaaaa", String(sequence - 1)]]),
                     authorityTime: authorityOf(100 * sequence, 0),
                     node: nodeKey,
                 },
@@ -1787,13 +1788,13 @@ describe("the oracle reads replay, not a transcription of it", () => {
         sequence++;
         const valueC = makeValueEvent(
             {
-                id: "A:" + sequence,
-                context: contextOf([["A", String(sequence - 1)]]),
+                id: "aaaaaaaaa:" + sequence,
+                context: contextOf([["aaaaaaaaa", String(sequence - 1)]]),
                 authorityTime: authorityOf(100 * sequence, 0),
                 node: NODE_C,
             },
             identifierOf(KEY_C),
-            { kind: "EventEntry", text: "c" },
+            { type: "entry_description", description: "c" },
             NOW,
             LATER,
             "compute"
@@ -1802,8 +1803,8 @@ describe("the oracle reads replay, not a transcription of it", () => {
         // The greater-authority certificate names B and E, and E is not an input.
         const wrongInputs = makeValidateEvent(
             {
-                id: "A:" + sequence,
-                context: contextOf([["A", String(sequence - 1)]]),
+                id: "aaaaaaaaa:" + sequence,
+                context: contextOf([["aaaaaaaaa", String(sequence - 1)]]),
                 authorityTime: authorityOf(9000, 0),
                 node: NODE_C,
             },
@@ -1818,8 +1819,8 @@ describe("the oracle reads replay, not a transcription of it", () => {
         // The lower-authority certificate names exactly the current inputs.
         const rightInputs = makeValidateEvent(
             {
-                id: "A:" + sequence,
-                context: contextOf([["A", String(sequence - 1)]]),
+                id: "aaaaaaaaa:" + sequence,
+                context: contextOf([["aaaaaaaaa", String(sequence - 1)]]),
                 authorityTime: authorityOf(100 * sequence, 0),
                 node: NODE_C,
             },
@@ -1847,7 +1848,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
         // won and proved nothing.
         expect([...nodeC.validInputs].sort()).toEqual([KEY_B, KEY_D]);
         expect(nodeC.fresh).toBe(true);
-        const declarative = declarativeProject(replicaOf(records), "A", schema);
+        const declarative = declarativeProject(replicaOf(records), "aaaaaaaaa", schema);
         expect(disagreementsBetween(oracle, declarative)).toEqual([]);
     });
 
@@ -1867,13 +1868,13 @@ describe("the oracle reads replay, not a transcription of it", () => {
             sequence++;
             const value = makeValueEvent(
                 {
-                    id: "A:" + sequence,
-                    context: contextOf(sequence === 1 ? [] : [["A", String(sequence - 1)]]),
+                    id: "aaaaaaaaa:" + sequence,
+                    context: contextOf(sequence === 1 ? [] : [["aaaaaaaaa", String(sequence - 1)]]),
                     authorityTime: authorityOf(100 * sequence, 0),
                     node: nodeKey,
                 },
                 identifierOf(nodeKeyToCanonicalString(nodeKey)),
-                { kind: "EventEntry", text: "n" + sequence },
+                { type: "entry_description", description: "n" + sequence },
                 NOW,
                 LATER,
                 "compute"
@@ -1884,13 +1885,13 @@ describe("the oracle reads replay, not a transcription of it", () => {
         sequence++;
         const valueC = makeValueEvent(
             {
-                id: "A:" + sequence,
-                context: contextOf([["A", String(sequence - 1)]]),
+                id: "aaaaaaaaa:" + sequence,
+                context: contextOf([["aaaaaaaaa", String(sequence - 1)]]),
                 authorityTime: authorityOf(100 * sequence, 0),
                 node: NODE_C,
             },
             identifierOf(KEY_C),
-            { kind: "EventEntry", text: "c" },
+            { type: "entry_description", description: "c" },
             NOW,
             LATER,
             "compute"
@@ -1898,8 +1899,8 @@ describe("the oracle reads replay, not a transcription of it", () => {
         sequence++;
         const onlyCertificate = makeValidateEvent(
             {
-                id: "A:" + sequence,
-                context: contextOf([["A", String(sequence - 1)]]),
+                id: "aaaaaaaaa:" + sequence,
+                context: contextOf([["aaaaaaaaa", String(sequence - 1)]]),
                 authorityTime: authorityOf(9000, 0),
                 node: NODE_C,
             },
@@ -1924,7 +1925,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
         expect([...nodeC.validInputs]).toEqual([]);
         expect(nodeC.fresh).toBe(false);
         expect(oracle.selfProofReadyNodes.has(KEY_C)).toBe(false);
-        const declarative = declarativeProject(replicaOf(records), "A", schema);
+        const declarative = declarativeProject(replicaOf(records), "aaaaaaaaa", schema);
         expect(disagreementsBetween(oracle, declarative)).toEqual([]);
     });
 
@@ -1937,39 +1938,39 @@ describe("the oracle reads replay, not a transcription of it", () => {
         // proof win and lose D's edge.
         const valueB = makeValueEvent(
             {
-                id: "A:1",
+                id: "aaaaaaaaa:1",
                 context: contextOf([]),
                 authorityTime: authorityOf(100, 0),
                 node: NODE_B,
             },
             identifierOf(KEY_B),
-            { kind: "EventEntry", text: "b" },
+            { type: "entry_description", description: "b" },
             NOW,
             LATER,
             "compute"
         );
         const valueD = makeValueEvent(
             {
-                id: "A:2",
-                context: contextOf([["A", "1"]]),
+                id: "aaaaaaaaa:2",
+                context: contextOf([["aaaaaaaaa", "1"]]),
                 authorityTime: authorityOf(200, 0),
                 node: NODE_D,
             },
             identifierOf(KEY_D),
-            { kind: "EventEntry", text: "d" },
+            { type: "entry_description", description: "d" },
             NOW,
             LATER,
             "compute"
         );
         const valueK = makeValueEvent(
             {
-                id: "A:3",
-                context: contextOf([["A", "2"]]),
+                id: "aaaaaaaaa:3",
+                context: contextOf([["aaaaaaaaa", "2"]]),
                 authorityTime: authorityOf(300, 0),
                 node: NODE_C,
             },
             identifierOf(KEY_C),
-            { kind: "EventEntry", text: "k" },
+            { type: "entry_description", description: "k" },
             NOW,
             LATER,
             "compute"
@@ -1978,8 +1979,8 @@ describe("the oracle reads replay, not a transcription of it", () => {
         // required for an "unknown" basis entry.
         const partial = makeValidateEvent(
             {
-                id: "A:4",
-                context: contextOf([["A", "3"]]),
+                id: "aaaaaaaaa:4",
+                context: contextOf([["aaaaaaaaa", "3"]]),
                 authorityTime: authorityOf(9000, 0),
                 node: NODE_C,
             },
@@ -1993,8 +1994,8 @@ describe("the oracle reads replay, not a transcription of it", () => {
         // The complete proof, at lower authority.
         const complete = makeValidateEvent(
             {
-                id: "A:5",
-                context: contextOf([["A", "4"]]),
+                id: "aaaaaaaaa:5",
+                context: contextOf([["aaaaaaaaa", "4"]]),
                 authorityTime: authorityOf(400, 0),
                 node: NODE_C,
             },
@@ -2021,7 +2022,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
         // of their own; that is recursive freshness working, and is why the
         // selection is read from the validity edges rather than from freshness.
         expect(nodeC.fresh).toBe(false);
-        const declarative = declarativeProject(replicaOf(records), "A", schema);
+        const declarative = declarativeProject(replicaOf(records), "aaaaaaaaa", schema);
         expect(disagreementsBetween(oracle, declarative)).toEqual([]);
     });
 
@@ -2031,36 +2032,36 @@ describe("the oracle reads replay, not a transcription of it", () => {
         // though its own basis is complete.
         const value = makeValueEvent(
             {
-                id: "A:1",
+                id: "aaaaaaaaa:1",
                 context: contextOf([]),
                 authorityTime: authorityOf(100, 0),
                 node: NODE_A,
             },
             "1-abcdefghi",
-            { kind: "EventEntry", text: "a" },
+            { type: "entry_description", description: "a" },
             NOW,
             LATER,
             "compute"
         );
         const validate = makeValidateEvent(
             {
-                id: "A:2",
-                context: contextOf([["A", "1"]]),
+                id: "aaaaaaaaa:2",
+                context: contextOf([["aaaaaaaaa", "1"]]),
                 authorityTime: authorityOf(200, 0),
                 node: NODE_A,
             },
-            "A:1",
+            "aaaaaaaaa:1",
             [],
             "compute"
         );
         const invalidate = makeInvalidateEvent(
             {
-                id: "B:1",
-                context: contextOf([["A", "1"]]),
+                id: "bbbbbbbbb:1",
+                context: contextOf([["aaaaaaaaa", "1"]]),
                 authorityTime: authorityOf(300, 0),
                 node: NODE_A,
             },
-            makeValueScope("A:1"),
+            makeValueScope("aaaaaaaaa:1"),
             "propagated"
         );
         const projection = projectRetainedJournal({
@@ -2079,25 +2080,25 @@ describe("the oracle reads replay, not a transcription of it", () => {
     test("a node whose own basis is complete and uninvalidated is self-proof-ready", () => {
         const value = makeValueEvent(
             {
-                id: "A:1",
+                id: "aaaaaaaaa:1",
                 context: contextOf([]),
                 authorityTime: authorityOf(100, 0),
                 node: NODE_A,
             },
             "1-abcdefghi",
-            { kind: "EventEntry", text: "a" },
+            { type: "entry_description", description: "a" },
             NOW,
             LATER,
             "compute"
         );
         const validate = makeValidateEvent(
             {
-                id: "A:2",
-                context: contextOf([["A", "1"]]),
+                id: "aaaaaaaaa:2",
+                context: contextOf([["aaaaaaaaa", "1"]]),
                 authorityTime: authorityOf(200, 0),
                 node: NODE_A,
             },
-            "A:1",
+            "aaaaaaaaa:1",
             [],
             "compute"
         );
