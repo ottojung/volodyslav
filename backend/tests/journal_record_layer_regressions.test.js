@@ -14,6 +14,7 @@ const {
     encodeJournalRecord,
     isJournalAuthor,
     isJournalCausalClosureError,
+    isJournalError,
     isJournalRecordValidationError,
     isJournalReferenceCausalityError,
     isJournalReplica,
@@ -25,6 +26,7 @@ const {
     makeDeleteEvent,
     makeInvalidateEvent,
     makeJournalAuthor,
+    makeJournalFrontier,
     makeJournalFrontierFromText,
     makeJournalReplica,
     makeJournalSequence,
@@ -656,15 +658,41 @@ describe("finding 6: a replica names each writer once", () => {
         expect(isJournalRecordValidationError(failure)).toBe(true);
     });
 
-    test("a duplicate writer never reaches the frontier read which used to throw", () => {
-        // The defect the duplicate caused: a replica which named one writer twice
-        // produced a frontier with that writer twice, which `makeJournalFrontier`
-        // rejects, and the rejection surfaced as a throw from inside validation.
+    test("the mechanism the duplicate writer used to reach: a frontier cannot name one writer twice", () => {
+        // The defect behind the throw. `replicaFrontier` built a frontier from
+        // the replica keys, and a frontier with two keys for one writer is not
+        // buildable, so validation threw a plain `Error` from inside a validator
+        // whose contract is to return a Journal error. The replica constructor
+        // rejects the duplicate before a frontier can ever be built from it, and
+        // the frontier rule itself is unchanged and still rejects the duplicate.
         const record = valueAt(WRITER_A + ":1", [], NODE_K, 1000);
-        expect(isJournalRecordValidationError(makeJournalReplica([
+        const first = makeJournalAuthor(WRITER_A);
+        const second = makeJournalAuthor(WRITER_A);
+        expect(
+            isJournalRecordValidationError(
+                makeJournalFrontier([
+                    [first, record.id.sequence],
+                    [second, record.id.sequence],
+                ])
+            )
+        ).toBe(true);
+        expect(
+            isJournalRecordValidationError(
+                makeJournalReplica([
+                    [first, [record]],
+                    [second, [record]],
+                ])
+            )
+        ).toBe(true);
+    });
+
+    test("a rejected duplicate arrives as a Journal error, not as a thrown Error", () => {
+        const record = valueAt(WRITER_A + ":1", [], NODE_K, 1000);
+        const failure = makeJournalReplica([
             [makeJournalAuthor(WRITER_A), [record]],
             [makeJournalAuthor(WRITER_A), [record]],
-        ]))).toBe(true);
+        ]);
+        expect(isJournalError(failure)).toBe(true);
     });
 
     test("a replica of one stream per writer is accepted and holds one entry for it", () => {
