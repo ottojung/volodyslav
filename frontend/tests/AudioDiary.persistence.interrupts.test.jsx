@@ -55,6 +55,9 @@ describe("AudioDiary persistence: interrupt handling", () => {
         act(() => {
             fireEvent.click(screen.getByTestId("discard-button"));
         });
+        act(() => {
+            fireEvent.click(screen.getByTestId("discard-confirm-button"));
+        });
         await waitFor(() => {
             expect(screen.getByTestId("start-button")).toBeInTheDocument();
         });
@@ -76,6 +79,9 @@ describe("AudioDiary persistence: interrupt handling", () => {
         });
         act(() => {
             fireEvent.click(screen.getByTestId("discard-button"));
+        });
+        act(() => {
+            fireEvent.click(screen.getByTestId("discard-confirm-button"));
         });
         await waitFor(() => {
             expect(screen.getByTestId("start-button")).toBeInTheDocument();
