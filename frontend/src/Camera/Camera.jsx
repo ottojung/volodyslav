@@ -6,7 +6,11 @@ import {
     videoProps,
     imageProps,
     controlsProps,
+    anchorLeftProps,
+    anchorCenterProps,
+    anchorRightProps,
     buttonProps,
+    discardButtonProps,
 } from "./Camera.styles";
 import { useCameraLogic } from "./camera_logic.js";
 
@@ -57,28 +61,29 @@ export default function Camera() {
                     {...imageProps}
                 />
                 <Flex {...controlsProps}>
-                    {mode === "camera" ? (
-                        <>
+                    <Box data-control-region="leading" {...anchorLeftProps}>
+                        {mode === "preview" ? (
+                            <Button onClick={handleRedo} {...discardButtonProps}>
+                                Redo
+                            </Button>
+                        ) : null}
+                    </Box>
+                    <Box data-control-region="center" {...anchorCenterProps}>
+                        {mode === "camera" ? (
                             <Button onClick={handleTake} {...buttonProps}>
                                 Take Photo
                             </Button>
-                            <Button onClick={handleDone} {...buttonProps}>
-                                Done
-                            </Button>
-                        </>
-                    ) : (
-                        <>
-                            <Button onClick={handleRedo} {...buttonProps}>
-                                Redo
-                            </Button>
+                        ) : (
                             <Button onClick={handleMore} {...buttonProps}>
                                 More
                             </Button>
-                            <Button onClick={handleDone} {...buttonProps}>
-                                Done
-                            </Button>
-                        </>
-                    )}
+                        )}
+                    </Box>
+                    <Box data-control-region="trailing" {...anchorRightProps}>
+                        <Button onClick={handleDone} {...buttonProps}>
+                            Done
+                        </Button>
+                    </Box>
                 </Flex>
             </Box>
         </Box>
