@@ -305,6 +305,47 @@ describe("Discard two-step confirmation in AudioDiary", () => {
         expect(screen.getByTestId("submit-button")).toBeInTheDocument();
     });
 
+    it("leaves the preview-state submit button room when the confirmation opens", async () => {
+        renderAudioDiary();
+        await startRecording();
+        await stopRecording();
+
+        const submitButton = screen.getByTestId("submit-button");
+        const submitWidthBefore = submitButton.getBoundingClientRect().width;
+
+        fireEvent.click(screen.getByTestId("discard-button"));
+
+        const confirmation = screen.getByTestId("discard-confirmation");
+        // The confirmation grows into the row rather than claiming all of it.
+        expect(getComputedStyle(confirmation).flexGrow).toBe("1");
+        expect(
+            submitButton.getBoundingClientRect().width
+        ).toBeCloseTo(submitWidthBefore, 5);
+    });
+
+    it("restores focus to the discard trigger after Escape in the preview state", async () => {
+        renderAudioDiary();
+        await startRecording();
+        await stopRecording();
+
+        fireEvent.click(screen.getByTestId("discard-button"));
+        expect(screen.getByTestId("discard-keep-button")).toHaveFocus();
+
+        fireEvent.keyDown(window, { key: "Escape" });
+
+        expect(screen.getByTestId("discard-button")).toHaveFocus();
+    });
+
+    it("restores focus to the discard trigger after Escape while recording", async () => {
+        renderAudioDiary();
+        await startRecording();
+
+        fireEvent.click(screen.getByTestId("discard-button"));
+        fireEvent.keyDown(window, { key: "Escape" });
+
+        expect(screen.getByTestId("discard-button")).toHaveFocus();
+    });
+
     it("discards from the preview state once confirmed", async () => {
         renderAudioDiary();
         await startRecording();
@@ -348,6 +389,94 @@ describe("DiscardControl confirmation state", () => {
         fireEvent.click(screen.getByTestId("discard-button"));
         fireEvent.click(screen.getByTestId("discard-confirm-button"));
         expect(onDiscard).toHaveBeenCalledTimes(1);
+    });
+
+    it("sizes the armed confirmation to share the row on the flex layout", () => {
+        render(
+            <ChakraProvider value={defaultSystem}>
+                <DiscardControl onDiscard={jest.fn()} subject="a" layout="flex" />
+            </ChakraProvider>
+        );
+
+        fireEvent.click(screen.getByTestId("discard-button"));
+
+        const confirmation = screen.getByTestId("discard-confirmation");
+        // Shares the row with its sibling action instead of claiming the row.
+        expect(getComputedStyle(confirmation).flexGrow).toBe("1");
+        expect(getComputedStyle(confirmation).flexDirection).toBe("row");
+    });
+
+    it("spans the column for the armed confirmation on the full layout", () => {
+        render(
+            <ChakraProvider value={defaultSystem}>
+                <div style={{ width: "320px" }}>
+                    <DiscardControl
+                        onDiscard={jest.fn()}
+                        subject="a"
+                        layout="full"
+                    />
+                </div>
+            </ChakraProvider>
+        );
+
+        fireEvent.click(screen.getByTestId("discard-button"));
+
+        const confirmation = screen.getByTestId("discard-confirmation");
+        expect(getComputedStyle(confirmation).flexDirection).toBe("column");
+        // It fills the column exactly as the trigger does, and does not grow
+        // into a row the way the flex layout's confirmation does.
+        expect(getComputedStyle(confirmation).width).toBe(
+            "var(--chakra-sizes-full)"
+        );
+        expect(getComputedStyle(confirmation).flexGrow).not.toBe("1");
+    });
+
+    it("restores focus to the trigger when Escape dismisses the confirmation", () => {
+        render(
+            <ChakraProvider value={defaultSystem}>
+                <DiscardControl onDiscard={jest.fn()} subject="a" layout="full" />
+            </ChakraProvider>
+        );
+
+        const trigger = screen.getByTestId("discard-button");
+        fireEvent.click(trigger);
+        expect(screen.getByTestId("discard-keep-button")).toHaveFocus();
+
+        fireEvent.keyDown(window, { key: "Escape" });
+
+        expect(screen.getByTestId("discard-button")).toHaveFocus();
+    });
+
+    it("restores focus to the trigger when the keep control is pressed", () => {
+        render(
+            <ChakraProvider value={defaultSystem}>
+                <DiscardControl onDiscard={jest.fn()} subject="a" layout="full" />
+            </ChakraProvider>
+        );
+
+        fireEvent.click(screen.getByTestId("discard-button"));
+        fireEvent.click(screen.getByTestId("discard-keep-button"));
+
+        expect(screen.getByTestId("discard-button")).toHaveFocus();
+    });
+
+    it("restores focus to the trigger when the subject changes", () => {
+        const onDiscard = jest.fn();
+        const { rerender } = render(
+            <ChakraProvider value={defaultSystem}>
+                <DiscardControl onDiscard={onDiscard} subject="a" layout="full" />
+            </ChakraProvider>
+        );
+
+        fireEvent.click(screen.getByTestId("discard-button"));
+
+        rerender(
+            <ChakraProvider value={defaultSystem}>
+                <DiscardControl onDiscard={onDiscard} subject="b" layout="full" />
+            </ChakraProvider>
+        );
+
+        expect(screen.getByTestId("discard-button")).toHaveFocus();
     });
 
     it("drops an armed confirmation when the subject changes", () => {

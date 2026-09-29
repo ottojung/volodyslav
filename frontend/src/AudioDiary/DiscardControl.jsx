@@ -1,5 +1,5 @@
-import React, { useState, useCallback, useEffect } from "react";
-import { Button, HStack, Text, VStack } from "@chakra-ui/react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
+import { Button, HStack, Stack, Text } from "@chakra-ui/react";
 
 /**
  * @typedef {object} DiscardControlProps
@@ -9,7 +9,9 @@ import { Button, HStack, Text, VStack } from "@chakra-ui/react";
  *   the previous subject and the user no longer believes they are still looking
  *   at that one.
  * @property {"full" | "flex"} layout - How the control occupies its slot: `full`
- *   spans the column, `flex` shares a row with a sibling action.
+ *   spans the column, `flex` shares a row with a sibling action. The armed
+ *   confirmation takes the same slot as the trigger it replaces, so a
+ *   confirmation never crowds the sibling it shares a row with.
  */
 
 /**
@@ -21,11 +23,13 @@ import { Button, HStack, Text, VStack } from "@chakra-ui/react";
  * discard. It arms a confirmation that spells out the consequence in words, and a
  * second deliberate press is required to actually discard.
  *
- * The armed state is transient and self-expiring rather than a sticky mode: it is
- * dismissed by Escape, by the explicit keep control, and by any change of
- * `subject` such as the recorder moving between states. An armed confirmation can
- * therefore never fire against a recording the user no longer believes they are
- * looking at.
+ * The armed state is not a sticky mode. It is dismissed by exactly three paths:
+ * Escape, the explicit keep control, and a change of `subject` such as the
+ * recorder moving between states. Every one of those paths puts focus back on
+ * the trigger, because the trigger is unmounted while the confirmation is shown
+ * and the keyboard user would otherwise land on the document body. The confirm
+ * path deliberately does not restore focus, because there is no recording left
+ * to discard a second time.
  *
  * The confirmation is rendered inline instead of in a modal because the whole
  * point of the guard is that the user's attention is not where their thumb is;
@@ -37,14 +41,30 @@ import { Button, HStack, Text, VStack } from "@chakra-ui/react";
  */
 export default function DiscardControl({ onDiscard, subject, layout }) {
     const [isConfirming, setIsConfirming] = useState(false);
+    /** @type {import("react").RefObject<HTMLButtonElement | null>} */
+    const triggerRef = useRef(null);
+    const shouldRestoreFocusRef = useRef(false);
 
     const dismiss = useCallback(() => {
+        shouldRestoreFocusRef.current = true;
         setIsConfirming(false);
     }, []);
 
+    const armedSubjectRef = useRef(subject);
+
     useEffect(() => {
-        setIsConfirming(false);
-    }, [subject]);
+        if (armedSubjectRef.current !== subject) {
+            armedSubjectRef.current = subject;
+            dismiss();
+        }
+    }, [subject, dismiss]);
+
+    useEffect(() => {
+        if (!isConfirming && shouldRestoreFocusRef.current) {
+            shouldRestoreFocusRef.current = false;
+            triggerRef.current?.focus();
+        }
+    }, [isConfirming]);
 
     useEffect(() => {
         if (!isConfirming) {
@@ -69,20 +89,29 @@ export default function DiscardControl({ onDiscard, subject, layout }) {
 
     if (isConfirming) {
         return (
-            <VStack
-                w="full"
-                align="stretch"
+            <Stack
+                direction={layout === "flex" ? "row" : "column"}
+                align={layout === "flex" ? "center" : "stretch"}
                 gap={2}
                 p={3}
                 borderWidth="1px"
                 borderColor="red.300"
                 borderRadius="md"
+                {...(layout === "flex"
+                    ? { flex: 1, minW: 0, w: "full" }
+                    : { w: "full" })}
                 data-testid="discard-confirmation"
             >
-                <Text fontSize="sm" color="red.600" fontWeight="semibold">
+                <Text
+                    fontSize="sm"
+                    color="red.600"
+                    fontWeight="semibold"
+                    flex={layout === "flex" ? 1 : undefined}
+                    minW={0}
+                >
                     Discard this recording? It cannot be recovered.
                 </Text>
-                <HStack gap={2} justify="flex-end">
+                <HStack gap={2} justify="flex-end" flexShrink={0}>
                     <Button
                         variant="ghost"
                         size="xs"
@@ -101,21 +130,7 @@ export default function DiscardControl({ onDiscard, subject, layout }) {
                         Yes, discard
                     </Button>
                 </HStack>
-            </VStack>
-        );
-    }
-
-    if (layout === "flex") {
-        return (
-            <Button
-                colorPalette="red"
-                variant="outline"
-                flex={1}
-                onClick={() => setIsConfirming(true)}
-                data-testid="discard-button"
-            >
-                Discard
-            </Button>
+            </Stack>
         );
     }
 
@@ -123,9 +138,11 @@ export default function DiscardControl({ onDiscard, subject, layout }) {
         <Button
             colorPalette="red"
             variant="outline"
-            size="sm"
-            w="full"
+            size={layout === "flex" ? undefined : "sm"}
+            flex={layout === "flex" ? 1 : undefined}
+            w={layout === "flex" ? undefined : "full"}
             onClick={() => setIsConfirming(true)}
+            ref={triggerRef}
             data-testid="discard-button"
         >
             Discard
