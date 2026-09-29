@@ -133,6 +133,18 @@ function sequenceOf(record) {
 }
 
 /**
+ * The records an operation appended to those already retained, so that a claim about
+ * what one operation published is not satisfied by records an earlier one published.
+ * @param {ReadonlyArray<object>} published
+ * @param {ReadonlyArray<object>} after
+ * @returns {Array<object>}
+ */
+function appendedRecords(published, after) {
+    const publishedIds = new Set(published.map((record) => journalRecordIdToString(record.id)));
+    return after.filter((record) => !publishedIds.has(journalRecordIdToString(record.id)));
+}
+
+/**
  * The head name of the node a record is about.
  * @param {object} record
  * @returns {string}
@@ -207,11 +219,11 @@ describe("the production path emits the records the emission law describes", () 
 
     test("an explicit invalidation emits a node-scoped explicit record for the node itself", async () => {
         await graph.pull("event_context");
+        const published = await readOrderedRecords(db);
         await graph.invalidate("meta_events");
+        const appended = appendedRecords(published, await readOrderedRecords(db));
 
-        const records = await readOrderedRecords(db);
-        const invalidations = records.filter(isInvalidateEvent);
-        const explicit = invalidations.filter((record) => record.reason === "explicit");
+        const explicit = appended.filter(isInvalidateEvent).filter((record) => record.reason === "explicit");
         expect(explicit).toHaveLength(1);
         expect(nodeHeadOf(explicit[0])).toBe("meta_events");
         expect(explicit[0].scope.kind).toBe("node");
@@ -220,30 +232,33 @@ describe("the production path emits the records the emission law describes", () 
 
     test("staleness propagation emits value-scoped records naming the exact dependent occurrences", async () => {
         await graph.pull("event_context");
+        const published = await readOrderedRecords(db);
         await graph.invalidate("meta_events");
+        const appended = appendedRecords(published, await readOrderedRecords(db));
 
-        const records = await readOrderedRecords(db);
-        const valueIds = new Set(records.filter(isValueEvent).map((record) => journalRecordIdToString(record.id)));
-        const propagated = records.filter(
-            isInvalidateEvent
-        ).filter((record) => record.reason === "propagated");
+        const committedValueIds = new Set(
+            published.filter(isValueEvent).map((record) => journalRecordIdToString(record.id))
+        );
+        const propagated = appended
+            .filter(isInvalidateEvent)
+            .filter((record) => record.reason === "propagated");
 
         // The dependent of the invalidated node keeps its materialization and its
-        // occurrence, and only becomes stale, so exactly one value-scoped record names
-        // the occurrence the committed ValueEvent created.
+        // occurrence, and only becomes stale, so the invalidation publishes exactly one
+        // value-scoped record, naming the occurrence the committed ValueEvent created.
         expect(propagated).toHaveLength(1);
         expect(nodeHeadOf(propagated[0])).toBe("event_context");
         expect(propagated[0].scope.kind).toBe("value");
-        expect(valueIds.has(journalRecordIdToString(propagated[0].scope.value))).toBe(true);
+        expect(committedValueIds.has(journalRecordIdToString(propagated[0].scope.value))).toBe(true);
         expect(await graph.getFreshness("event_context")).toBe("potentially-outdated");
     });
 
     test("the cause of a propagated staleness is published before the effect it causes", async () => {
         await graph.pull("event_context");
+        const published = await readOrderedRecords(db);
         await graph.invalidate("meta_events");
+        const invalidations = appendedRecords(published, await readOrderedRecords(db)).filter(isInvalidateEvent);
 
-        const records = await readOrderedRecords(db);
-        const invalidations = records.filter(isInvalidateEvent);
         const explicit = invalidations.find((record) => record.reason === "explicit");
         const propagated = invalidations.find((record) => record.reason === "propagated");
         expect(explicit).toBeDefined();
@@ -297,6 +312,20 @@ describe("the production path emits the records the emission law describes", () 
         expect(issued).toHaveLength(1);
         expect(issued[0]).toContain("freshness");
         expect(issued[0]).toContain("journal");
+    });
+
+    test("every event's authority is seeded from the publication instant", async () => {
+        await graph.pull("event_context");
+
+        const records = await readOrderedRecords(db);
+        const semantic = records.filter((record) => record.kind !== "writer-state");
+        expect(semantic.length).toBeGreaterThan(0);
+        for (const record of semantic) {
+            // The publication instant comes from the datetime capability, so an
+            // authority seed which is not an epoch millisecond instant means the
+            // publication did not read the clock it is supposed to read.
+            expect(record.authorityTime.physical).toBeGreaterThan(1577836800000);
+        }
     });
 
     test("a pull which changes no persisted state publishes no journal record", async () => {
