@@ -85,14 +85,23 @@ function makeValidGeminiResponse(overrides = {}) {
     return {
         candidates: [
             {
-                content: { parts: [{ text: transcript }] },
+                content: {
+                    parts: [
+                        {
+                            audioTranscription: {
+                                text: transcript,
+                                finished: true,
+                                languageCode: "en",
+                            },
+                        },
+                    ],
+                },
                 finishReason: "STOP",
                 finishMessage: null,
                 tokenCount: 100,
                 ...candidateOverride,
             },
         ],
-        text: transcript,
         usageMetadata: {
             totalTokenCount: 200,
             promptTokenCount: 100,
@@ -314,6 +323,70 @@ describe("transcribeStreamDetailed: response validation", () => {
         expect(result.provider).toBe("Google");
         expect(result.model).toBe(TRANSCRIBER_MODEL);
         expect(result.structured.transcript).toBe("Hello world");
+    });
+
+    test("reads audioTranscription parts without accessing the response-level text getter", async () => {
+        const response = makeValidGeminiResponse();
+        const responseTextGetter = jest.fn(() => {
+            throw new Error("GenerateContentResponse.text must not be accessed");
+        });
+        Object.defineProperty(response, "text", {
+            configurable: true,
+            get: responseTextGetter,
+        });
+        setupMockClient(makeUploadedFile(), response);
+
+        const caps = makeMockCapabilities();
+        const ai = make(() => caps);
+        const result = await ai.transcribeStreamDetailed(makeFileStream());
+
+        expect(result.text).toBe(DEFAULT_TRANSCRIPT);
+        expect(responseTextGetter).not.toHaveBeenCalled();
+    });
+
+    test("concatenates multiple audioTranscription parts", async () => {
+        setupMockClient(
+            makeUploadedFile(),
+            makeValidGeminiResponse({
+                candidate: {
+                    content: {
+                        parts: [
+                            { audioTranscription: { text: "Hello ", finished: false } },
+                            { audioTranscription: { text: "world", finished: true } },
+                        ],
+                    },
+                },
+            })
+        );
+
+        const caps = makeMockCapabilities();
+        const ai = make(() => caps);
+        const result = await ai.transcribeStreamDetailed(makeFileStream());
+
+        expect(result.text).toBe("Hello world");
+    });
+
+    test("falls back to ordinary non-thought text parts", async () => {
+        setupMockClient(
+            makeUploadedFile(),
+            makeValidGeminiResponse({
+                candidate: {
+                    content: {
+                        parts: [
+                            { text: "hidden", thought: true },
+                            { text: "Hello " },
+                            { text: "world" },
+                        ],
+                    },
+                },
+            })
+        );
+
+        const caps = makeMockCapabilities();
+        const ai = make(() => caps);
+        const result = await ai.transcribeStreamDetailed(makeFileStream());
+
+        expect(result.text).toBe("Hello world");
     });
 
     test("returns code-switched and disfluent text unchanged", async () => {
@@ -695,11 +768,18 @@ describe("transcribeStreamDetailed: metadata preservation", () => {
         const sparseResponse = {
             candidates: [
                 {
-                    content: { parts: [] },
+                    content: {
+                        parts: [
+                            {
+                                audioTranscription: {
+                                    text: DEFAULT_TRANSCRIPT,
+                                },
+                            },
+                        ],
+                    },
                     finishReason: "STOP",
                 },
             ],
-            text: DEFAULT_TRANSCRIPT,
         };
         setupMockClient(makeUploadedFile(), sparseResponse);
 
