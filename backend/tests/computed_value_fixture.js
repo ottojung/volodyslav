@@ -14,6 +14,11 @@
 
 /** @typedef {import('../src/generators/incremental_graph/database/types').ComputedValue} ComputedValue */
 
+const { fromISOString } = require("../src/datetime");
+const { fromString: eventIdFromString } = require("../src/event").id;
+
+const META_EVENT_FIXTURE_DATE = "2024-01-01T00:00:00.000Z";
+
 /**
  * A `calories` member carrying a bare number.
  * @param {number} value
@@ -41,8 +46,45 @@ function textComputedValue(description) {
     return { type: "entry_description", description };
 }
 
+/**
+ * A `meta_events` member carrying one `add` meta event whose `original` text is
+ * the marker. A fixture that needs a computor to return a different value on
+ * each call needs a member of the union whose content changes, and a meta event's
+ * `original` is a string it can carry that marker in.
+ *
+ * A `meta_events` member carries a live `Event`, so its identifier and date are
+ * the nominal `EventId` and `DateTime` values rather than the persisted strings
+ * an `all_events` member carries.
+ *
+ * @param {string} marker
+ * @returns {ComputedValue}
+ */
+function metaEventComputedValue(marker) {
+    return {
+        type: "meta_events",
+        meta_events: [
+            {
+                action: "add",
+                event: {
+                    id: eventIdFromString(marker),
+                    date: fromISOString(META_EVENT_FIXTURE_DATE),
+                    original: marker,
+                    input: marker,
+                    creator: {
+                        name: "test",
+                        uuid: "00000000-0000-0000-0000-000000000000",
+                        version: "0.0.0",
+                        hostname: "test-host",
+                    },
+                },
+            },
+        ],
+    };
+}
+
 module.exports = {
     countComputedValue,
+    metaEventComputedValue,
     numberComputedValue,
     textComputedValue,
 };

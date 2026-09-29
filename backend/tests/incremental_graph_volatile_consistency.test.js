@@ -14,6 +14,7 @@ const { IDENTIFIERS_KEY } = require("../src/generators/incremental_graph/databas
 const { createIncrementalGraph } = require("../src/generators/incremental_graph");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger, stubEnvironment } = require("./stubs");
+const { numberComputedValue, textComputedValue } = require("./computed_value_fixture");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -74,7 +75,7 @@ describe("Properties 1+5 — Exact isomorphism: volatile matches disk after comm
             {
                 output: "source",
                 inputs: [],
-                computor: async () => ({ type: "test", value: 42 }),
+                computor: async () => numberComputedValue(42),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -114,7 +115,7 @@ describe("Properties 1+5 — Exact isomorphism: volatile matches disk after comm
             {
                 output: "node_paused",
                 inputs: [],
-                computor: async () => ({ value: 10 }),
+                computor: async () => numberComputedValue(10),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -167,7 +168,7 @@ describe("Property 2 — No conflicting concurrent allocations", () => {
             {
                 output: "source",
                 inputs: [],
-                computor: async () => ({ type: "test", value: 1 }),
+                computor: async () => numberComputedValue(1),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -181,8 +182,8 @@ describe("Property 2 — No conflicting concurrent allocations", () => {
         ]);
 
         expect(results).toEqual([
-            { type: "test", value: 1 },
-            { type: "test", value: 1 },
+            { type: "calories", value: 1 },
+            { type: "calories", value: 1 },
         ]);
 
         // The volatile lookup has exactly one entry for "source".
@@ -202,21 +203,21 @@ describe("Property 2 — No conflicting concurrent allocations", () => {
             {
                 output: "z",
                 inputs: [],
-                computor: async () => ({ type: "base", value: 0 }),
+                computor: async () => numberComputedValue(0),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
             {
                 output: "x",
                 inputs: ["z"],
-                computor: async ([zVal]) => ({ type: "x", value: zVal.value + 1 }),
+                computor: async ([zVal]) => numberComputedValue(zVal.value + 1),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
             {
                 output: "y",
                 inputs: ["z"],
-                computor: async ([zVal]) => ({ type: "y", value: zVal.value + 2 }),
+                computor: async ([zVal]) => numberComputedValue(zVal.value + 2),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -228,8 +229,8 @@ describe("Property 2 — No conflicting concurrent allocations", () => {
             graph.pull("y"),
         ]);
 
-        expect(xVal).toEqual({ type: "x", value: 1 });
-        expect(yVal).toEqual({ type: "y", value: 2 });
+        expect(xVal.value).toBe(1);
+        expect(yVal.value).toBe(2);
 
         // Z must have exactly one identifier in the volatile lookup
         // (the first commit for Z wins; the second is retried).
@@ -249,7 +250,7 @@ describe("Property 2 — No conflicting concurrent allocations", () => {
             {
                 output: "flush_fail_node",
                 inputs: [],
-                computor: async () => ({ value: "value" }),
+                computor: async () => textComputedValue("value"),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -291,7 +292,7 @@ describe("Property 3 — Identifier stability across restarts", () => {
             {
                 output: "stable",
                 inputs: [],
-                computor: async () => ({ type: "data", v: 99 }),
+                computor: async () => numberComputedValue(99),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -327,14 +328,14 @@ describe("Property 4 — Monotonicity: no identifier entries disappear", () => {
             {
                 output: "a",
                 inputs: [],
-                computor: async () => ({ v: 1 }),
+                computor: async () => numberComputedValue(1),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
             {
                 output: "b",
                 inputs: [],
-                computor: async () => ({ v: 2 }),
+                computor: async () => numberComputedValue(2),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -368,14 +369,14 @@ describe("Property 6 — Disk-first ordering: no optimistic volatile writes", ()
             {
                 output: "node1",
                 inputs: [],
-                computor: async () => ({ value: 1 }),
+                computor: async () => numberComputedValue(1),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
             {
                 output: "node2",
                 inputs: [],
-                computor: async () => ({ value: 2 }),
+                computor: async () => numberComputedValue(2),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -416,7 +417,7 @@ describe("Failed parent does not undo committed dependency", () => {
             {
                 output: "source",
                 inputs: [],
-                computor: async () => ({ value: "good" }),
+                computor: async () => textComputedValue("good"),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -461,7 +462,7 @@ describe("Property 11 — Nested pulls submit independent batches", () => {
                 inputs: [],
                 computor: async () => {
                     innerComputations++;
-                    return { value: "inner-data" };
+                    return textComputedValue("inner-data");
                 },
                 isDeterministic: true,
                 hasSideEffects: false,
@@ -469,7 +470,7 @@ describe("Property 11 — Nested pulls submit independent batches", () => {
             {
                 output: "outer",
                 inputs: ["inner"],
-                computor: async ([innerVal]) => ({ value: `outer(${innerVal.value})` }),
+                computor: async ([innerVal]) => textComputedValue(`outer(${innerVal.description})`),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -477,7 +478,7 @@ describe("Property 11 — Nested pulls submit independent batches", () => {
 
         // Pull outer (which triggers inner as dependency).
         const result = await graph.pull("outer");
-        expect(result).toEqual({ value: "outer(inner-data)" });
+        expect(result.description).toBe("outer(inner-data)");
         expect(innerComputations).toBe(1);
 
         // Both inner and outer must be up-to-date after a single top-level pull.
@@ -515,16 +516,15 @@ describe("Property 11 — Nested pulls submit independent batches", () => {
                 {
                     output: "inner_atomic",
                     inputs: [],
-                    computor: async () => ({ value: "inner-data" }),
+                    computor: async () => textComputedValue("inner-data"),
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
                 {
                     output: "outer_atomic",
                     inputs: ["inner_atomic"],
-                    computor: async ([innerVal]) => ({
-                        value: `outer(${innerVal.value})`,
-                    }),
+                    computor: async ([innerVal]) =>
+                        textComputedValue(`outer(${innerVal.description})`),
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -600,7 +600,7 @@ describe("Property 11 — Nested pulls submit independent batches", () => {
                 inputs: [],
                 computor: async () => {
                     innerComputations++;
-                    return { value: "dep-data" };
+                    return textComputedValue("dep-data");
                 },
                 isDeterministic: true,
                 hasSideEffects: false,
@@ -641,7 +641,7 @@ describe("No-op pull optimization — skips persistent batch writes", () => {
             {
                 output: "stable",
                 inputs: [],
-                computor: async () => ({ value: "same" }),
+                computor: async () => textComputedValue("same"),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -679,14 +679,14 @@ describe("Supplemental scenario — Read-only lookups do not interfere with allo
             {
                 output: "existing",
                 inputs: [],
-                computor: async () => ({ value: "exists" }),
+                computor: async () => textComputedValue("exists"),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
             {
                 output: "new_node",
                 inputs: [],
-                computor: async () => ({ value: "new" }),
+                computor: async () => textComputedValue("new"),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -735,7 +735,7 @@ describe("Invariant 3 — Independent pull concurrency", () => {
                 computor: async () => {
                     started.push("n1");
                     await released.promise;
-                    return { value: 1 };
+                    return numberComputedValue(1);
                 },
                 isDeterministic: true,
                 hasSideEffects: false,
@@ -747,7 +747,7 @@ describe("Invariant 3 — Independent pull concurrency", () => {
                     started.push("n2");
                     // released.promise is already resolved at this point
                     await released.promise;
-                    return { value: 2 };
+                    return numberComputedValue(2);
                 },
                 isDeterministic: true,
                 hasSideEffects: false,
@@ -786,28 +786,28 @@ describe("Dependency lock ordering", () => {
             {
                 output: "a",
                 inputs: [],
-                computor: async () => ({ value: 1 }),
+                computor: async () => numberComputedValue(1),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
             {
                 output: "b",
                 inputs: [],
-                computor: async () => ({ value: 2 }),
+                computor: async () => numberComputedValue(2),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
             {
                 output: "left",
                 inputs: ["a", "b"],
-                computor: async ([a, b]) => ({ value: a.value + b.value }),
+                computor: async ([a, b]) => numberComputedValue(a.value + b.value),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
             {
                 output: "right",
                 inputs: ["b", "a"],
-                computor: async ([b, a]) => ({ value: b.value - a.value }),
+                computor: async ([b, a]) => numberComputedValue(b.value - a.value),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -820,8 +820,8 @@ describe("Dependency lock ordering", () => {
             Promise.all([graph.pull("left"), graph.pull("right")]),
             timeout,
         ])).resolves.toEqual([
-            { value: 3 },
-            { value: 1 },
+            { type: "calories", value: 3 },
+            { type: "calories", value: 1 },
         ]);
 
         await db.close();
@@ -835,28 +835,28 @@ describe("Dependency lock ordering", () => {
             {
                 output: "a",
                 inputs: [],
-                computor: async () => ({ value: 1 }),
+                computor: async () => numberComputedValue(1),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
             {
                 output: "b",
                 inputs: [],
-                computor: async () => ({ value: 2 }),
+                computor: async () => numberComputedValue(2),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
             {
                 output: "left",
                 inputs: ["a", "b"],
-                computor: async ([a, b]) => ({ value: a.value + b.value }),
+                computor: async ([a, b]) => numberComputedValue(a.value + b.value),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
             {
                 output: "right",
                 inputs: ["b", "a"],
-                computor: async ([b, a]) => ({ value: b.value - a.value }),
+                computor: async ([b, a]) => numberComputedValue(b.value - a.value),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -873,8 +873,8 @@ describe("Dependency lock ordering", () => {
             Promise.all([graph.pull("left"), graph.pull("right")]),
             timeout,
         ])).resolves.toEqual([
-            { value: 3 },
-            { value: 1 },
+            { type: "calories", value: 3 },
+            { type: "calories", value: 1 },
         ]);
 
         await db.close();
