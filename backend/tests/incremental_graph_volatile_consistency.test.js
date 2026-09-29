@@ -406,18 +406,22 @@ describe("Property 6 — Disk-first ordering: no optimistic volatile writes", ()
 });
 
 // ---------------------------------------------------------------------------
-// Failed parent does not undo committed dependency
+// A failed pull publishes nothing
 // ---------------------------------------------------------------------------
 
-describe("Failed parent does not undo committed dependency", () => {
-    test("when outer computation fails, dependency data remains committed", async () => {
+describe("A failed pull publishes nothing", () => {
+    test("when outer computation fails, no dependency state is durable", async () => {
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);
+        let sourceComputations = 0;
         const graph = await createIncrementalGraph(capabilities, db, [
             {
                 output: "source",
                 inputs: [],
-                computor: async () => textComputedValue("good"),
+                computor: async () => {
+                    sourceComputations++;
+                    return textComputedValue("good");
+                },
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -435,12 +439,18 @@ describe("Failed parent does not undo committed dependency", () => {
         // The pull fails because derived's computor throws.
         await expect(graph.pull("derived")).rejects.toThrow("fail-intentionally");
 
-        // In the new design, each pull creates its own Transaction.
-        // source's pull (triggered by derived's computation) committed independently,
-        // so source IS committed to disk even though derived's computor threw.
-        // derived itself was never committed.
-        expect(await graph.getFreshness("source")).toBe("up-to-date");
+        // source's pull ran as a dependency of derived's and computed once, but
+        // the computor runs before the serialized finalization boundary: the whole
+        // transition was abandoned, so source is materialized nowhere, durably
+        // or otherwise.
+        expect(sourceComputations).toBe(1);
+        expect(await graph.getFreshness("source")).toBeUndefined();
         expect(await graph.getFreshness("derived")).toBeUndefined();
+
+        // The next pull recomputes source, which is what must happen if the failed
+        // pull left no value behind for it.
+        await expect(graph.pull("source")).resolves.toEqual(textComputedValue("good"));
+        expect(sourceComputations).toBe(2);
 
         await db.close();
     });
@@ -450,7 +460,7 @@ describe("Failed parent does not undo committed dependency", () => {
 // Property 11 — Nested pulls submit independent batches
 // ---------------------------------------------------------------------------
 
-describe("Property 11 — Nested pulls submit independent batches", () => {
+describe("Property 11 — Nested pulls publish with the pull which pulled them", () => {
     test("dependency and parent are both materialized after successful pull", async () => {
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);
@@ -485,29 +495,28 @@ describe("Property 11 — Nested pulls submit independent batches", () => {
         expect(await graph.getFreshness("inner")).toBe("up-to-date");
         expect(await graph.getFreshness("outer")).toBe("up-to-date");
 
-        // Pulling outer again does not recompute inner (both are already up-to-date;
-        // each was committed in its own separate batch).
+        // Pulling outer again does not recompute inner: both are already
+        // up-to-date, so the whole operation is a no-op and publishes nothing.
         await graph.pull("outer");
         expect(innerComputations).toBe(1);
 
         await db.close();
     });
 
-    test("dependency and parent writes are flushed in separate batches", async () => {
+    test("dependency and parent writes are flushed in one batch", async () => {
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);
         const schemaStorage = db.getSchemaStorage();
+        // Each schemaStorage.<name> access returns a fresh typed wrapper, so the
+        // operations name the level below it.
+        const valuesLevel = schemaStorage.values.sublevel;
+        const globalLevel = schemaStorage.global.sublevel;
+        const journalLevel = schemaStorage.journal.sublevel;
         const originalBatch = schemaStorage.batch.bind(schemaStorage);
-        /** @type {Array<Array<{ type: string, key: unknown, value: unknown }>>} */
+        /** @type {Array<Array<*>>} */
         const capturedBatches = [];
         schemaStorage.batch = async (operations) => {
-            capturedBatches.push(
-                operations.map((op) => ({
-                    type: op.type,
-                    key: op.key,
-                    value: op.value,
-                }))
-            );
+            capturedBatches.push(operations);
             await originalBatch(operations);
         };
 
@@ -530,66 +539,49 @@ describe("Property 11 — Nested pulls submit independent batches", () => {
                 },
             ]);
 
+            // Only the batches the pull itself issues are of interest; creating
+            // the graph on a fresh database writes the graph scheme.
+            capturedBatches.length = 0;
+
             await graph.pull("outer_atomic");
 
-            // In the new design, inner and outer each have their own Transaction,
-            // so they flush in separate batches. Find the batch containing inner-data
-            // and the batch containing outer(inner-data).
-            const innerFlush = capturedBatches.find((batch) =>
-                batch.some(
-                    (op) =>
-                        op.type === "put" &&
-                        op.value !== null &&
-                        typeof op.value === "object" &&
-                        "description" in op.value &&
-                        op.value.description === "inner-data"
-                )
-            );
-            const outerFlush = capturedBatches.find((batch) =>
-                batch.some(
-                    (op) =>
-                        op.type === "put" &&
-                        op.value !== null &&
-                        typeof op.value === "object" &&
-                        "description" in op.value &&
-                        op.value.description === "outer(inner-data)"
-                )
-            );
-            expect(innerFlush).toBeDefined();
-            expect(outerFlush).toBeDefined();
-            // inner's flush contains its own value and identifier
-            expect(innerFlush).toEqual(
-                expect.arrayContaining([
-                    expect.objectContaining({
-                        type: "put",
-                        value: textComputedValue("inner-data"),
-                    }),
-                    expect.objectContaining({
-                        type: "put",
-                        key: IDENTIFIERS_KEY,
-                    }),
-                ])
-            );
-            // outer's flush contains its own value, valid edge, and identifier
-            expect(outerFlush).toEqual(
-                expect.arrayContaining([
-                    expect.objectContaining({
-                        type: "put",
-                        value: textComputedValue("outer(inner-data)"),
-                    }),
-                    expect.objectContaining({
-                        type: "put",
-                        key: IDENTIFIERS_KEY,
-                    }),
-                ])
-            );
+            // A nested dependency pull joins the operation which pulled it, so
+            // the whole transition is one durable write. Anything else would let
+            // the dependency be durable without the parent which needs it.
+            expect(capturedBatches).toHaveLength(1);
+            const flush = capturedBatches[0];
+
+            // That one write carries both materialized values and one identifier table.
+            expect(flush).toEqual(expect.arrayContaining([
+                expect.objectContaining({
+                    type: "put",
+                    sublevel: valuesLevel,
+                    value: textComputedValue("inner-data"),
+                }),
+                expect.objectContaining({
+                    type: "put",
+                    sublevel: valuesLevel,
+                    value: textComputedValue("outer(inner-data)"),
+                }),
+                expect.objectContaining({
+                    type: "put",
+                    sublevel: globalLevel,
+                    key: IDENTIFIERS_KEY,
+                }),
+            ]));
+
+            // It also carries the Journal records describing those materializations,
+            // so the graph side and the journal side become durable together.
+            expect(
+                flush.filter((op) => op.sublevel === journalLevel)
+            ).not.toHaveLength(0);
         } finally {
             schemaStorage.batch = originalBatch;
             await db.close();
         }
     });
 
-    test("when outer pull fails, dependency data remains committed", async () => {
+    test("when outer pull fails, no dependency state is durable", async () => {
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);
         let innerComputations = 0;
@@ -619,11 +611,16 @@ describe("Property 11 — Nested pulls submit independent batches", () => {
         await expect(graph.pull("consumer")).rejects.toThrow("consumer-fails");
         expect(innerComputations).toBe(1);
 
-        // In the new design, each pull creates its own Transaction.
-        // dep's pull (as a dependency of consumer) committed independently,
-        // so dep IS committed even though consumer's computor threw.
-        expect(await graph.getFreshness("dep")).toBe("up-to-date");
+        // dep's pull ran as a dependency of consumer's and computed once, but the
+        // computor runs before the serialized finalization boundary: the whole
+        // transition was abandoned, so dep is materialized nowhere.
+        expect(await graph.getFreshness("dep")).toBeUndefined();
         expect(await graph.getFreshness("consumer")).toBeUndefined();
+
+        // The next pull recomputes dep, which is what must happen if the failed
+        // pull left no value behind for it.
+        await expect(graph.pull("dep")).resolves.toEqual(textComputedValue("dep-data"));
+        expect(innerComputations).toBe(2);
 
         await db.close();
     });
