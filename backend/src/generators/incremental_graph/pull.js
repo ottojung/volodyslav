@@ -120,7 +120,10 @@ async function pullNodeWithTelescopeHeld(graph, nodeKeyStr, operation) {
     // already materialized, so a node materialized earlier in the same operation is
     // seen here as the already-materialized node it is.
     const outputIdentifier = lookupNodeIdentifier(tx, nodeKeyStr);
-    const alreadyMaterialized = outputIdentifier !== undefined && await tx.batch.values.get(outputIdentifier) !== undefined;
+    // An identifier without a cached value is a replica whose sublevels disagree,
+    // not a node this operation is materializing for the first time: a fresh
+    // materialization has no identifier to begin with.
+    const alreadyMaterialized = outputIdentifier !== undefined;
     if (alreadyMaterialized) {
         const cachedValue = await readUpToDateCachedValue(tx.batch, outputIdentifier);
         if (cachedValue !== undefined) {
