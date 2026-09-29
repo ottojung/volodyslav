@@ -15,12 +15,17 @@
  * about whether a production operation publishes them.
  *
  * It also injects a failure at the publication boundary and asserts that the
- * recovered state is free of both kinds of mismatch, so a fix which merely serialises
- * the journal write after the graph batch cannot pass: such a fix leaves the
- * graph-without-journal state reachable, which the first test detects and the
- * failure-injection test pins.
+ * recovered state is free of both kinds of mismatch, so a commit seam which
+ * published only one side of a transition cannot pass.
  *
- * The tests are RED on this branch. See /workspace/BOARD92-ATOMICSEAM.md.
+ * What this suite alone cannot detect is a journal side written in a SECOND durable
+ * write issued after the graph batch: the recovered state after a successful
+ * publication is the same either way, and an injected failure of the first write
+ * still leaves both sides absent. The pin against that shape is
+ * `journal_publication_window.test.js`, which counts the durable writes one
+ * user-visible operation issues and the sublevels each of them carries; here the
+ * recovered state is the consequence, and there the shape of the publication is
+ * the claim.
  */
 
 const fs = require("fs");
