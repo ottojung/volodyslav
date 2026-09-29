@@ -541,8 +541,8 @@ describe("Property 11 — Nested pulls submit independent batches", () => {
                         op.type === "put" &&
                         op.value !== null &&
                         typeof op.value === "object" &&
-                        "value" in op.value &&
-                        op.value.value === "inner-data"
+                        "description" in op.value &&
+                        op.value.description === "inner-data"
                 )
             );
             const outerFlush = capturedBatches.find((batch) =>
@@ -551,8 +551,8 @@ describe("Property 11 — Nested pulls submit independent batches", () => {
                         op.type === "put" &&
                         op.value !== null &&
                         typeof op.value === "object" &&
-                        "value" in op.value &&
-                        op.value.value === "outer(inner-data)"
+                        "description" in op.value &&
+                        op.value.description === "outer(inner-data)"
                 )
             );
             expect(innerFlush).toBeDefined();
@@ -562,7 +562,7 @@ describe("Property 11 — Nested pulls submit independent batches", () => {
                 expect.arrayContaining([
                     expect.objectContaining({
                         type: "put",
-                        value: { value: "inner-data" },
+                        value: textComputedValue("inner-data"),
                     }),
                     expect.objectContaining({
                         type: "put",
@@ -575,7 +575,7 @@ describe("Property 11 — Nested pulls submit independent batches", () => {
                 expect.arrayContaining([
                     expect.objectContaining({
                         type: "put",
-                        value: { value: "outer(inner-data)" },
+                        value: textComputedValue("outer(inner-data)"),
                     }),
                     expect.objectContaining({
                         type: "put",

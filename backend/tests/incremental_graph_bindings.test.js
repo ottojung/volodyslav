@@ -294,9 +294,8 @@ describe("Bound variables in computors", () => {
                 {
                     output: "middle(x)",
                     inputs: ["source"],
-                    computor: (inputs, oldValue, bindings) => {
-                        return numberComputedValue(inputs[0].value * 2);
-                    },
+                    computor: (inputs, _oldValue, _bindings) =>
+                        numberComputedValue(inputs[0].value * 2),
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
