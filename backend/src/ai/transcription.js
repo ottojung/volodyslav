@@ -192,6 +192,52 @@ async function transcribeStreamPrecise(makeClient, capabilities, fileStream, sig
 }
 
 /**
+ * Extracts transcript text from a Gemini transcription candidate without using
+ * GenerateContentResponse.text. The SDK response-level text accessor is meant
+ * for ordinary text parts; it warns to console when audioTranscription parts
+ * are present and does not return their transcription text.
+ *
+ * Dedicated transcription responses carry their text in
+ * candidate.content.parts[*].audioTranscription.text. Prefer those parts. The
+ * ordinary text fallback keeps compatibility with responses that still return
+ * plain text parts.
+ *
+ * @param {import("@google/genai").Candidate} candidate
+ * @param {unknown} rawResponse
+ * @returns {string}
+ */
+function transcriptionTextFromCandidate(candidate, rawResponse) {
+    const parts = candidate.content?.parts;
+    if (!Array.isArray(parts)) {
+        throw new AITranscriptionError("Transcription candidate has no parts", rawResponse);
+    }
+
+    const audioTranscriptionTexts = [];
+    const ordinaryTexts = [];
+
+    for (const part of parts) {
+        const audioTranscriptionText = part.audioTranscription?.text;
+        if (typeof audioTranscriptionText === "string") {
+            audioTranscriptionTexts.push(audioTranscriptionText);
+        }
+
+        if (typeof part.text === "string" && part.thought !== true) {
+            ordinaryTexts.push(part.text);
+        }
+    }
+
+    const responseText = audioTranscriptionTexts.length > 0
+        ? audioTranscriptionTexts.join("")
+        : ordinaryTexts.join("");
+
+    if (responseText.trim().length === 0) {
+        throw new AITranscriptionError("Transcription response has no text", rawResponse);
+    }
+
+    return responseText;
+}
+
+/**
  * Transcribes audio with full metadata using the Gemini transcription model.
  * @param {function(string): GoogleGenAI} makeClient - A memoized function to create a Gemini client.
  * @param {Capabilities} capabilities - The capabilities object.
@@ -297,10 +343,7 @@ async function transcribeStreamDetailed(makeClient, capabilities, fileStream) {
             throw new AITranscriptionError(msg, rawResponse);
         }
 
-        const responseText = rawResponse.text;
-        if (typeof responseText !== "string" || responseText.trim().length === 0) {
-            throw new AITranscriptionError("Transcription response has no text", rawResponse);
-        }
+        const responseText = transcriptionTextFromCandidate(candidate, rawResponse);
 
         return {
             text: responseText,
