@@ -199,6 +199,17 @@ describe("the record layer accepts the live output of the meta_events computor",
         const record = valueRecordOf(NODE_META_EVENTS, tampered, "15");
         expect(record).toBeInstanceOf(Error);
     });
+
+    test("an object which imitates the live EventId is still rejected", () => {
+        const tampered = JSON.parse(JSON.stringify(metaEvents));
+        tampered.meta_events[0].event.id = {
+            identifier: tampered.meta_events[0].event.id.identifier,
+            __brand: undefined,
+        };
+        expect(computedValueViolation(tampered)).toBeDefined();
+        const record = valueRecordOf(NODE_META_EVENTS, tampered, "17");
+        expect(record).toBeInstanceOf(Error);
+    });
 });
 
 describe("the record layer accepts the live output of the event_context computor", () => {
@@ -228,6 +239,17 @@ describe("the record layer accepts the live output of the event_context computor
         tampered.contexts[0].context[0].date = { _luxonDateTime: { year: 2020 } };
         expect(computedValueViolation(tampered)).toBeDefined();
         const record = valueRecordOf(NODE_EVENT_CONTEXT, tampered, "16");
+        expect(record).toBeInstanceOf(Error);
+    });
+
+    test("an object which imitates the live DateTime is still rejected", () => {
+        const tampered = JSON.parse(JSON.stringify(eventContexts));
+        tampered.contexts[0].context[0].date = {
+            __brand: undefined,
+            _luxonDateTime: "2020-01-01T09:00:00.000Z",
+        };
+        expect(computedValueViolation(tampered)).toBeDefined();
+        const record = valueRecordOf(NODE_EVENT_CONTEXT, tampered, "18");
         expect(record).toBeInstanceOf(Error);
     });
 });
