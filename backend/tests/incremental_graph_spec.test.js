@@ -192,12 +192,14 @@ class InMemoryDatabase {
         const valid = createSublevel('valid');
         const timestamps = createSublevel('timestamps');
         const global = createSublevel('global');
+        const journal = createSublevel('journal');
 
         return {
             values,
             freshness,
             valid,
             timestamps,
+            journal,
             global,
             batch: async (operations) => {
                 // Track batch calls - use this to access current array

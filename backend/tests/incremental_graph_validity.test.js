@@ -194,12 +194,14 @@ class InMemoryDatabase {
         const valid = createSublevel('valid');
         const timestamps = createSublevel('timestamps');
         const global = createSublevel('global');
+        const journal = createSublevel('journal');
 
         return {
             values,
             freshness,
             valid,
             timestamps,
+            journal,
             global,
             batch: async (operations) => {
                 this.batchLog.push({ ops: deepClone(operations.map(op => ({

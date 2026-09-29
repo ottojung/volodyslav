@@ -27,6 +27,7 @@
  */
 
 /** @typedef {import('./graph_state').BatchBuilder} BatchBuilder */
+/** @typedef {import('./graph_state').UserOperation} UserOperation */
 /** @typedef {import('./graph_state').Transaction} Transaction */
 /** @typedef {import('./types').ComputedValue} ComputedValue */
 /** @typedef {import('./types').ConstValue} ConstValue */
@@ -46,6 +47,7 @@ const { deserializeNodeKey, serializeNodeKey, txAllocateNodeIdentifier } = requi
 const { checkArity, ensureNodeNameIsHead } = require("./shared");
 const { internalGetOrCreateConcreteNode } = require("./instantiation");
 const { internalMaybeRecalculate } = require("./recompute");
+const { lookupNodeIdentifier } = require("./graph_state");
 
 /**
  * @typedef {object} IncrementalGraphPullAccess
@@ -67,12 +69,15 @@ const { internalMaybeRecalculate } = require("./recompute");
  *
  * Nodes that are not up-to-date fall through to internalMaybeRecalculate().
  *
- * @param {IncrementalGraphPullAccess} graph
+ * The read goes through the operation's transaction batch, so it observes the nodes
+ * the same operation has already written as well as the committed ones.
+ *
+ * @param {BatchBuilder} batch
  * @param {NodeIdentifier} nodeIdentifier
  * @returns {Promise<ComputedValue | undefined>}
  */
-async function readUpToDateCachedValue(graph, nodeIdentifier) {
-    const freshness = await graph.storage.freshness.get(nodeIdentifier);
+async function readUpToDateCachedValue(batch, nodeIdentifier) {
+    const freshness = await batch.freshness.get(nodeIdentifier);
     const identifierString = nodeIdentifierToString(nodeIdentifier);
     if (freshness === undefined) {
         throw new ReplicaStateInvariantError("pull", "has no freshness entry", identifierString);
@@ -83,7 +88,7 @@ async function readUpToDateCachedValue(graph, nodeIdentifier) {
     if (freshness !== "up-to-date") {
         return undefined;
     }
-    const value = await graph.storage.values.get(nodeIdentifier);
+    const value = await batch.values.get(nodeIdentifier);
     if (value === undefined) {
         throw new ReplicaStateInvariantError("pull", "has no cached value", identifierString);
     }
@@ -91,16 +96,17 @@ async function readUpToDateCachedValue(graph, nodeIdentifier) {
 }
 
 /**
- * Core pull implementation for a node by its serialized key.
- * Creates its own Transaction and submits its batch independently.
+ * Core pull implementation for a node by its serialized key, inside the user
+ * operation which owns this node's transaction.
  *
  * Returns RecomputeResult for internal use; public pull() extracts the value.
  *
  * @param {IncrementalGraphPullAccess} graph
  * @param {NodeKeyString} nodeKeyStr
+ * @param {UserOperation} operation
  * @returns {Promise<RecomputeResult>}
  */
-async function pullNodeWithTelescopeHeld(graph, nodeKeyStr) {
+async function pullNodeWithTelescopeHeld(graph, nodeKeyStr, operation) {
     const nodeKey = deserializeNodeKey(stringToNodeKeyString(String(nodeKeyStr)));
     const compiledNode = graph.headIndex.get(nodeKey.head);
     if (!compiledNode) {
@@ -109,43 +115,43 @@ async function pullNodeWithTelescopeHeld(graph, nodeKeyStr) {
     checkArity(compiledNode, nodeKey.args);
     const concreteNode = internalGetOrCreateConcreteNode(graph, nodeKeyStr, compiledNode, nodeKey.args);
 
-    const committedIdentifier = graph.rootDatabase.nodeKeyToId(nodeKeyStr);
-    if (committedIdentifier !== undefined) {
-        const cachedValue = await readUpToDateCachedValue(graph, committedIdentifier);
+    const tx = operation.transaction;
+    // The transaction's own lookup and batch know about the nodes this operation has
+    // already materialized, so a node materialized earlier in the same operation is
+    // seen here as the already-materialized node it is.
+    const outputIdentifier = lookupNodeIdentifier(tx, nodeKeyStr);
+    const alreadyMaterialized = outputIdentifier !== undefined && await tx.batch.values.get(outputIdentifier) !== undefined;
+    if (alreadyMaterialized) {
+        const cachedValue = await readUpToDateCachedValue(tx.batch, outputIdentifier);
         if (cachedValue !== undefined) {
             return { value: cachedValue, status: "cached" };
         }
     }
 
-        // storage.withTransaction captures fresh schemaStorage + identifierLookup
-        // at entry (via rootDatabase.getSchemaStorage/getActiveIdentifierLookup).
-        // Protected by dome nighttime activity — replica cannot change.
-    const result = await graph.storage.withTransaction(async (tx) => {
-            const outputIdentifier = txAllocateNodeIdentifier(
-                tx.identifierLookup,
-                concreteNode.output,
-                () => graph.rootDatabase.generateNodeIdentifier(),
-                graph.rootDatabase,
-            );
-            const outputKey = concreteNode.output;
-            const inputKeys = concreteNode.inputs;
-            const computor = concreteNode.computor;
-            const nodeDefinition = { outputKey, inputKeys, outputIdentifier, computor, alreadyMaterialized: committedIdentifier !== undefined };
+    // The operation's transaction captured its schema storage and identifier lookup at
+    // the operation's entry (via rootDatabase.getSchemaStorage/getActiveIdentifierLookup).
+    // Protected by dome nighttime activity — replica cannot change.
+    const transactionOutputIdentifier = outputIdentifier ?? txAllocateNodeIdentifier(
+        tx.identifierLookup,
+        concreteNode.output,
+        () => graph.rootDatabase.generateNodeIdentifier(),
+        graph.rootDatabase,
+    );
+    const outputKey = concreteNode.output;
+    const inputKeys = concreteNode.inputs;
+    const computor = concreteNode.computor;
+    const nodeDefinition = { outputKey, inputKeys, outputIdentifier: transactionOutputIdentifier, computor, alreadyMaterialized };
 
-            // mayRecalculate delegates to internalMaybeRecalculate in recompute.js
-            // which runs inside the transaction scope. All awaits inside are
-            // protected by dome nighttime activity via the caller.
-            const computeResult = await internalMaybeRecalculate(
-                graph,
-                (nodeKeyStr) => internalPullByNodeKeyDuringPull(graph, nodeKeyStr),
-                nodeDefinition,
-                tx
-            );
-            return {
-                value: computeResult,
-            };
-        });
-    return result;
+    // mayRecalculate delegates to internalMaybeRecalculate in recompute.js
+    // which runs inside the transaction scope. All awaits inside are
+    // protected by dome nighttime activity via the caller.
+    const computeResult = await internalMaybeRecalculate(
+        graph,
+        (nestedNodeKeyStr) => internalPullByNodeKeyDuringPull(graph, nestedNodeKeyStr, operation),
+        nodeDefinition,
+        tx
+    );
+    return { value: computeResult.value, status: computeResult.status };
 }
 
 /**
@@ -163,13 +169,19 @@ async function internalPull(graph, nodeName, bindings = []) {
 
 /**
  * Pull by serialized key during an existing pull operation.
- * Each call creates its own Transaction — no Transaction sharing.
+ * The call joins that operation's one transaction, so the dependency's writes and
+ * their Journal records publish with the operation's, not before it.
  * @param {IncrementalGraphPullAccess} graph
  * @param {NodeKeyString} nodeKeyStr
+ * @param {UserOperation} operation
  * @returns {Promise<ComputedValue>}
  */
-async function internalPullByNodeKeyDuringPull(graph, nodeKeyStr) {
-    const { value } = await telescopeActivity(graph.sleeper, nodeKeyStr, () => pullNodeWithTelescopeHeld(graph, nodeKeyStr));
+async function internalPullByNodeKeyDuringPull(graph, nodeKeyStr, operation) {
+    const { value } = await telescopeActivity(
+        graph.sleeper,
+        nodeKeyStr,
+        () => pullNodeWithTelescopeHeld(graph, nodeKeyStr, operation)
+    );
     return value;
 }
 
@@ -183,7 +195,13 @@ async function internalPullByNodeKeyDuringPull(graph, nodeKeyStr) {
 async function internalSafePullWithStatus(graph, nodeName, bindings = []) {
     ensureNodeNameIsHead(nodeName);
     const nodeKeyStr = serializeNodeKey({ head: stringToNodeName(nodeName), args: bindings });
-    return nighttimeActivity(graph.sleeper, () => telescopeActivity(graph.sleeper, nodeKeyStr, () => pullNodeWithTelescopeHeld(graph, nodeKeyStr)));
+    return nighttimeActivity(graph.sleeper, () => telescopeActivity(
+        graph.sleeper,
+        nodeKeyStr,
+        () => graph.storage.withUserOperation(
+            (operation) => pullNodeWithTelescopeHeld(graph, nodeKeyStr, operation)
+        )
+    ));
 }
 
 module.exports = {
