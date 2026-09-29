@@ -33,8 +33,8 @@ const {
     journalRecordIdToString,
     journalSequenceAtFrontier,
     journalSequenceToString,
-    predecessorJournalSequence,
 } = require("../types");
+const { predecessorJournalSequence } = require("../coordinates");
 
 /** @typedef {import("../errors").AnyJournalError} JournalError */
 /** @typedef {import("../records").JournalRecord} JournalRecord */

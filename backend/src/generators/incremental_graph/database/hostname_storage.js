@@ -100,6 +100,8 @@ function buildBareSchemaStorage(namespaceSublevel) {
     const timestampsSublevel = namespaceSublevel.sublevel('timestamps', { valueEncoding: 'json' });
     /** @type {GlobalSublevelType} */
     const globalSublevel = namespaceSublevel.sublevel('global', { valueEncoding: 'json' });
+    /** @type {SimpleSublevel<import('./types').JournalText, import('./types').JournalKey>} */
+    const journalSublevel = namespaceSublevel.sublevel('journal', { valueEncoding: 'utf8' });
 
     /** @type {(operations: DatabaseBatchOperation[]) => Promise<void>} */
     const batch = async (operations) => {
@@ -115,6 +117,7 @@ function buildBareSchemaStorage(namespaceSublevel) {
         valid: makeTypedDatabase(validSublevel),
         timestamps: makeTypedDatabase(timestampsSublevel),
         global: makeTypedDatabase(globalSublevel),
+        journal: makeTypedDatabase(journalSublevel),
     };
 }
 

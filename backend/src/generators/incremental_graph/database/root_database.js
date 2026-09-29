@@ -165,6 +165,13 @@ function assertNeverReplicaName(name) {
  */
 
 /**
+ * Database for storing Journal records and Journal committed-pair metadata.
+ * Key: an opaque Journal storage key (see `journal_store/journal_database.js`)
+ * Value: canonical current-format record text, or the JSON committed-pair metadata
+ * @typedef {GenericDatabase<import('./types').JournalText, import('./types').JournalKey>} JournalDatabase
+ */
+
+/**
  * Storage container for a single incremental graph namespace.
  * All data (values, freshness, indices) is isolated per namespace.
  * @typedef {object} SchemaStorage
@@ -173,6 +180,7 @@ function assertNeverReplicaName(name) {
  * @property {ValidDatabase} valid - Inverse validity flags (dependency -> dependents validated against it)
  * @property {TimestampsDatabase} timestamps - Node timestamps (creation and modification)
  * @property {GlobalVersionDatabase} global - Replica-level global state (version + identifiers lookup metadata)
+ * @property {JournalDatabase} journal - Journal records and Journal committed-pair metadata
  * @property {(operations: DatabaseBatchOperation[]) => Promise<void>} batch - Batch operation interface for atomic writes
  */
 
@@ -226,6 +234,8 @@ function buildSchemaStorage(namespaceSublevel, globalSublevel, version) {
     const validSublevel = namespaceSublevel.sublevel('valid', { valueEncoding: 'json' });
     /** @type {SimpleSublevel<TimestampRecord, NodeIdentifier>} */
     const timestampsSublevel = namespaceSublevel.sublevel('timestamps', { valueEncoding: 'json' });
+    /** @type {SimpleSublevel<import('./types').JournalText, import('./types').JournalKey>} */
+    const journalSublevel = namespaceSublevel.sublevel('journal', { valueEncoding: 'utf8' });
 
     // True once this closure's first non-empty batch() verifies any existing global/version.
     // Prevents redundant DB reads on subsequent batch calls.
@@ -258,6 +268,7 @@ function buildSchemaStorage(namespaceSublevel, globalSublevel, version) {
         valid: makeTypedDatabase(validSublevel),
         timestamps: makeTypedDatabase(timestampsSublevel),
         global: makeTypedDatabase(globalSublevel),
+        journal: makeTypedDatabase(journalSublevel),
     };
 }
 

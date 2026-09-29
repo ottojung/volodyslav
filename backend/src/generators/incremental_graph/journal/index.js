@@ -58,8 +58,9 @@ const {
     makeJournalRecordId,
     makeJournalSequence,
     parseJournalRecordId,
-    predecessorJournalSequence,
 } = require("./types");
+
+const { predecessorJournalSequence, requireSuccessorJournalSequence, successorJournalSequence } = require("./coordinates");
 
 const { authorityCompare, happenedBefore } = require("./ordering");
 
@@ -239,6 +240,8 @@ module.exports = {
     journalSequenceToString,
     parseJournalRecordId,
     predecessorJournalSequence,
+    requireSuccessorJournalSequence,
+    successorJournalSequence,
     recordAtSequence,
     recordsUpToSequence,
     replicaFrontier,

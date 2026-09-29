@@ -19,13 +19,36 @@ const {
     recordPath,
 } = require("./record_store");
 
+const {
+    JOURNAL_STATE_KEY,
+    appendJournalPublicationOps,
+    deserializeWriterState,
+    makeInitialCommittedWriterState,
+    makeJournalOccurrenceKey,
+    makeJournalRecordKey,
+    readCommittedWriterState,
+    readCurrentOccurrence,
+    readRetainedJournal,
+    serializeWriterState,
+} = require("./journal_database");
+
 /** @typedef {import('./record_store').RecordStoreClass} RecordStore */
 /** @typedef {import('./record_store').StoreCapabilities} StoreCapabilities */
 
 module.exports = {
+    JOURNAL_STATE_KEY,
     RecordStoreClass,
+    appendJournalPublicationOps,
     compareCoordinateText,
+    deserializeWriterState,
     isRecordStore,
+    makeInitialCommittedWriterState,
+    makeJournalOccurrenceKey,
+    makeJournalRecordKey,
     openRecordStore,
+    readCommittedWriterState,
+    readCurrentOccurrence,
+    readRetainedJournal,
     recordPath,
+    serializeWriterState,
 };

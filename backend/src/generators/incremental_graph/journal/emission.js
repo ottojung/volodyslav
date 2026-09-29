@@ -42,7 +42,9 @@
 
 const { fromISOString } = require("../../../datetime");
 const { makeJournalPublicationError } = require("./errors");
-const { makeValidationBasisEntry, nodeKeyToCanonicalString, sortValidationBasis } = require("./basis");
+const { nodeKeyToCanonicalString } = require("./basis");
+const { predecessorJournalSequence, requireSuccessorJournalSequence } = require("./coordinates");
+const { basisOfIntents, compareIntents, orderIntents } = require("./intent_order");
 const {
     makeDeleteEvent,
     makeInvalidateEvent,
@@ -51,14 +53,12 @@ const {
     makeWriterStateRecord,
 } = require("./records");
 const {
-    ZERO_JOURNAL_SEQUENCE,
     frontierJoin,
     isSameJournalAuthor,
     journalSequenceToString,
     makeAuthorityTime,
     makeJournalFrontier,
     makeJournalRecordId,
-    makeJournalSequence,
 } = require("./types");
 
 /** @typedef {import('./errors').AnyJournalError} JournalError */
@@ -78,9 +78,23 @@ const {
  * basis entry: the caller supplies the settled transaction's real input
  * occurrences, and this module only orders them canonically.
  *
- * @typedef {object} MaterializeInput
+ * An input whose occurrence this same publication creates is named by its `NodeKey`
+ * alone, with `pending: true`: the `ValueId` it names does not exist until
+ * finalization allocates it, and finalization resolves it from the `ValueEvent` it
+ * allocates for that node. Ordering the reference this way is what makes the
+ * same-publication dependency order a property of the inputs rather than of the
+ * caller's sequencing.
+ *
+ * @typedef {object} CommittedInputOccurrence
  * @property {NodeKey} input
  * @property {JournalRecordId} value
+ * @property {false} [pending]
+ *
+ * @typedef {object} PendingInputOccurrence
+ * @property {NodeKey} input
+ * @property {true} pending
+ *
+ * @typedef {CommittedInputOccurrence | PendingInputOccurrence} MaterializeInput
  */
 
 /**
@@ -130,11 +144,19 @@ const {
  */
 
 /**
+ * @typedef {object} RevalidateIntent
+ * @property {"revalidate"} kind
+ * @property {NodeKey} node
+ * @property {JournalRecordId} value
+ * @property {ReadonlyArray<MaterializeInput>} inputs
+ */
+
+/**
  * The staged semantic intents of one ordinary committed graph transition. The
  * `kind` discriminant selects the record classes emitted for the intent, so an
  * intent can never ask for a record its variant does not define.
  *
- * @typedef {MaterializeIntent | DeleteIntent | InvalidateNodeIntent | InvalidateValueIntent} EmissionIntent
+ * @typedef {MaterializeIntent | RevalidateIntent | DeleteIntent | InvalidateNodeIntent | InvalidateValueIntent} EmissionIntent
  */
 
 /**
@@ -198,32 +220,6 @@ const {
  */
 
 /**
- * The canonical decimal successor of a coordinate. The logical HLC coordinate is
- * arbitrary precision, so the increment is decimal string arithmetic on canonical
- * digits; it is deliberately not a `number` and not a `BigInt`.
- * @param {JournalSequence} sequence
- * @returns {JournalSequence}
- */
-function successorDigits(sequence) {
-    const digits = journalSequenceToString(sequence).split("");
-    let index = digits.length - 1;
-    while (index >= 0) {
-        const nextDigit = Number(digits[index]) + 1;
-        digits[index] = String(nextDigit % 10);
-        if (nextDigit < 10) {
-            break;
-        }
-        index--;
-    }
-    const incremented = index < 0 ? "1" + digits.join("") : digits.join("");
-    const successor = makeJournalSequence(incremented);
-    if (successor instanceof Error) {
-        throw new Error("emission built a coordinate the canonical pattern rejects: " + incremented);
-    }
-    return successor;
-}
-
-/**
  * Allocate the next authority time for one record by the ordinary hybrid-logical
  * rule of `incremental-graph-journal-types.md` §Ordinary authority allocation.
  *
@@ -244,7 +240,9 @@ function allocateAuthority(highWater, seedPhysical) {
         }
         return { authorityTime, highWater: authorityTime };
     }
-    const authorityTime = makeAuthorityTime(physical, journalSequenceToString(successorDigits(highWater.logical)));
+    const authorityTime = makeAuthorityTime(physical, journalSequenceToString(
+        requireSuccessorJournalSequence(highWater.logical)
+    ));
     if (authorityTime instanceof Error) {
         return { error: authorityTime };
     }
@@ -289,72 +287,6 @@ function contextOf(state, localWriter, ownPrefix) {
 }
 
 /**
- * The canonical order which breaks ties between intents that semantics do not
- * otherwise constrain: canonical persisted NodeKey order, then a stable
- * record-kind order.
- * @param {EmissionIntent} left
- * @param {EmissionIntent} right
- * @returns {number}
- */
-function compareIntents(left, right) {
-    const byNode = compareNodeKeys(left, right);
-    if (byNode !== 0) {
-        return byNode;
-    }
-    return intentKindRank(left.kind) - intentKindRank(right.kind);
-}
-
-/**
- * @param {EmissionIntent["kind"]} kind
- * @returns {number}
- */
-function intentKindRank(kind) {
-    if (kind === "materialize") {
-        return 0;
-    }
-    if (kind === "delete") {
-        return 1;
-    }
-    if (kind === "invalidate-node") {
-        return 2;
-    }
-    return 3;
-}
-
-/**
- * @param {EmissionIntent} left
- * @param {EmissionIntent} right
- * @returns {number}
- */
-function compareNodeKeys(left, right) {
-    const leftText = nodeKeyToCanonicalString(nodeOfIntent(left));
-    const rightText = nodeKeyToCanonicalString(nodeOfIntent(right));
-    if (leftText < rightText) {
-        return -1;
-    }
-    return leftText > rightText ? 1 : 0;
-}
-
-/**
- * @param {EmissionIntent} intent
- * @returns {NodeKey}
- */
-function nodeOfIntent(intent) {
-    return intent.node;
-}
-
-/**
- * Build the canonical validation basis of a settled materialization: one entry
- * per current direct input, in canonical persisted NodeKey order. The caller
- * supplies the finalized input occurrences, so this only orders them.
- * @param {ReadonlyArray<MaterializeInput>} inputs
- * @returns {import('./basis').ValidationBasis}
- */
-function basisOf(inputs) {
-    return sortValidationBasis(inputs.map((entry) => makeValidationBasisEntry(entry.input, entry.value)));
-}
-
-/**
  * Finalize one ordinary publication.
  *
  * Allocates the durable records for a settled graph transition: a contiguous own-writer
@@ -378,14 +310,19 @@ function finalizeEmission(request) {
         );
     }
     const localWriter = state.localWriter;
-    const ordered = intents.slice().sort(compareIntents);
+    const ordered = orderIntents(intents.slice().sort(compareIntents));
+    if (ordered instanceof Error) {
+        return ordered;
+    }
 
     /** @type {JournalRecord[]} */
     const records = [];
     /** @type {JournalSequence} */
-    let nextSequence = successorDigits(state.writerHead);
+    let nextSequence = requireSuccessorJournalSequence(state.writerHead);
     /** @type {AuthorityTime} */
     let highWater = state.authorityHighWater;
+    /** @type {Map<string, JournalRecordId>} */
+    const createdOccurrences = new Map();
 
     /**
      * The context for the record currently being built, which sits at
@@ -393,12 +330,11 @@ function finalizeEmission(request) {
      * @returns {JournalFrontier | JournalError}
      */
     function currentContext() {
-        const ownPrefix = decrement(nextSequence);
-        const context = contextOf(state, localWriter, ownPrefix);
-        if (context instanceof Error) {
-            return context;
+        const ownPrefix = predecessorJournalSequence(nextSequence);
+        if (ownPrefix instanceof Error) {
+            return ownPrefix;
         }
-        return context;
+        return contextOf(state, localWriter, ownPrefix);
     }
 
     for (const intent of ordered) {
@@ -436,7 +372,8 @@ function finalizeEmission(request) {
             }
             records.push(valueEvent);
             highWater = valueAuthority.highWater;
-            nextSequence = successorDigits(nextSequence);
+            createdOccurrences.set(nodeKeyToCanonicalString(intent.node), valueId);
+            nextSequence = requireSuccessorJournalSequence(nextSequence);
 
             const validateId = makeJournalRecordId(localWriter, nextSequence);
             if (validateId instanceof Error) {
@@ -450,6 +387,10 @@ function finalizeEmission(request) {
             if ("error" in validateAuthority) {
                 return validateAuthority.error;
             }
+            const basis = basisOfIntents(intent.inputs, createdOccurrences);
+            if (basis instanceof Error) {
+                return basis;
+            }
             const validateEvent = makeValidateEvent(
                 {
                     id: validateId,
@@ -458,7 +399,7 @@ function finalizeEmission(request) {
                     node: intent.node,
                 },
                 valueId,
-                basisOf(intent.inputs),
+                basis,
                 "compute"
             );
             if (validateEvent instanceof Error) {
@@ -466,7 +407,39 @@ function finalizeEmission(request) {
             }
             records.push(validateEvent);
             highWater = validateAuthority.highWater;
-            nextSequence = successorDigits(nextSequence);
+            nextSequence = requireSuccessorJournalSequence(nextSequence);
+            continue;
+        }
+
+        if (intent.kind === "revalidate") {
+            const id = makeJournalRecordId(localWriter, nextSequence);
+            if (id instanceof Error) {
+                return id;
+            }
+            const context = currentContext();
+            if (context instanceof Error) {
+                return context;
+            }
+            const authority = allocateAuthority(highWater, publicationInstant);
+            if ("error" in authority) {
+                return authority.error;
+            }
+            const basis = basisOfIntents(intent.inputs, createdOccurrences);
+            if (basis instanceof Error) {
+                return basis;
+            }
+            const validateEvent = makeValidateEvent(
+                { id, context, authorityTime: authority.authorityTime, node: intent.node },
+                intent.value,
+                basis,
+                "compute"
+            );
+            if (validateEvent instanceof Error) {
+                return validateEvent;
+            }
+            records.push(validateEvent);
+            highWater = authority.highWater;
+            nextSequence = requireSuccessorJournalSequence(nextSequence);
             continue;
         }
 
@@ -497,7 +470,7 @@ function finalizeEmission(request) {
         }
         records.push(record);
         highWater = authority.highWater;
-        nextSequence = successorDigits(nextSequence);
+        nextSequence = requireSuccessorJournalSequence(nextSequence);
     }
 
     if (allocatorWatermark > state.allocatorWatermark) {
@@ -510,7 +483,7 @@ function finalizeEmission(request) {
             return writerState;
         }
         records.push(writerState);
-        nextSequence = successorDigits(nextSequence);
+        nextSequence = requireSuccessorJournalSequence(nextSequence);
     }
 
     if (records.length === 0) {
@@ -542,33 +515,6 @@ function finalizeEmission(request) {
             allocatorWatermark: Math.max(state.allocatorWatermark, allocatorWatermark),
         },
     };
-}
-
-/**
- * The coordinate immediately below `sequence`. Zero has no predecessor, and a
- * publication can never begin at zero because a record identity requires a
- * positive sequence, so reaching zero here is a defect in this module.
- * @param {JournalSequence} sequence
- * @returns {JournalSequence}
- */
-function decrement(sequence) {
-    const digits = journalSequenceToString(sequence).split("");
-    let index = digits.length - 1;
-    while (index >= 0) {
-        const borrowed = Number(digits[index]) - 1;
-        if (borrowed >= 0) {
-            digits[index] = String(borrowed);
-            const decremented = digits.join("").replace(/^0+(?=[0-9])/, "");
-            const result = makeJournalSequence(decremented);
-            if (result instanceof Error) {
-                throw new Error("emission built a coordinate the canonical pattern rejects: " + decremented);
-            }
-            return result;
-        }
-        digits[index] = "9";
-        index--;
-    }
-    return ZERO_JOURNAL_SEQUENCE;
 }
 
 module.exports = {

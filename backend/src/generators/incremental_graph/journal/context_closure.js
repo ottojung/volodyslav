@@ -34,8 +34,8 @@ const {
     journalSequenceToString,
     compareJournalSequence,
     ZERO_JOURNAL_SEQUENCE,
-    predecessorJournalSequence,
 } = require("./types");
+const { predecessorJournalSequence } = require("./coordinates");
 
 /** @typedef {import('./errors').AnyJournalError} JournalError */
 /** @typedef {import('./replica').JournalReplica} JournalReplica */
