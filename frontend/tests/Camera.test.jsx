@@ -4,6 +4,7 @@ import '@testing-library/jest-dom';
 import { renderWithProviders } from "./renderWithProviders.jsx";
 
 import Camera from '../src/Camera/Camera.jsx';
+import { MINIMUM_SEPARATION_PX } from '../src/Camera/Camera.styles.js';
 
 function renderCamera() {
     return renderWithProviders(<Camera />);
@@ -241,12 +242,22 @@ describe('Camera component', () => {
 
     describe('preview control separation', () => {
         const NARROW_VIEWPORT_WIDTH = 320;
-        const REFERENCE_VIEWPORT_WIDTH = 360;
         const MINIMUM_HIT_AREA_PX = 48;
 
-        /** Convert a computed CSS length to CSS px, resolving rem against the 16px root size. */
+        /**
+         * The floor this file asserts independently of the stylesheet's own
+         * declaration, so that lowering `MINIMUM_SEPARATION_PX` cannot make the
+         * separation assertion pass by moving its own goalpost.
+         */
+        const SEPARATION_FLOOR_PX = 56;
+
+        /**
+         * Convert a computed CSS length to CSS px, resolving rem and em against
+         * the 16px root size. Every control declares `fontSize: 1rem`, so an `em`
+         * on a control resolves against the same 16px as the root.
+         */
         function toPixels(length) {
-            const remMatch = /^(-?[\d.]+)rem$/.exec(length);
+            const remMatch = /^(-?[\d.]+)(rem|em)$/.exec(length);
             if (remMatch) {
                 return Number.parseFloat(remMatch[1]) * 16;
             }
@@ -264,6 +275,11 @@ describe('Camera component', () => {
 
         function controlBar() {
             return regionOf('Redo').parentElement;
+        }
+
+        /** The bar, found through whichever control is present in the current mode. */
+        function controlBarOf(controlName) {
+            return regionOf(controlName).parentElement;
         }
 
         async function enterPreview() {
@@ -307,18 +323,86 @@ describe('Camera component', () => {
             const barStyle = getComputedStyle(bar);
 
             expect(barStyle.flexWrap).toBe('nowrap');
-            expect(barStyle.justifyContent).toBe('space-between');
             expect(toPixels(barStyle.left)).toBe(0);
             expect(toPixels(barStyle.right)).toBe(0);
         });
 
-        test('the three regions are equal shares of the bar', async () => {
+        test('the bar separates neighbouring regions by a declared length rather than a share of the bar', async () => {
+            await enterPreview();
+            const gap = getComputedStyle(controlBar()).getPropertyValue('gap');
+            expect(gap).not.toBe('');
+            expect(gap).toMatch(/^-?[\d.]+(px|rem|em)$/);
+            expect(toPixels(gap)).toBeGreaterThan(0);
+        });
+
+        /**
+         * One inline padding side of an element, in CSS px. jsdom resolves the
+         * `padding-inline` logical property but does not expand it onto
+         * `padding-left` and `padding-right`, so the logical property is read
+         * first and the physical one is the fallback.
+         */
+        function inlinePadding(style) {
+            const logical = style.getPropertyValue('padding-inline');
+            if (logical !== '') {
+                return toPixels(logical);
+            }
+            const left = toPixels(style.paddingLeft);
+            const right = toPixels(style.paddingRight);
+            if (Number.isNaN(left) || Number.isNaN(right)) {
+                return Number.NaN;
+            }
+            return Math.max(left, right);
+        }
+
+        /**
+         * The separation a finger meets is measured between the edges of two hit
+         * areas, so this re-derives that distance from the declarations that
+         * produce it rather than from the width of the bar.
+         *
+         * Two controls in neighbouring regions are held apart by the bar's `gap`,
+         * plus the region padding on the facing side of each of the two regions
+         * between them. A flex `gap` is an exact offset that is never compressed,
+         * and each region is at least `min-content` wide, so this sum is a lower
+         * bound on the edge-to-edge distance at every viewport width and in both
+         * modes. This asserts enforced CSS; jsdom performs no layout, so it does
+         * not assert a measured rectangle.
+         */
+        function minimumEdgeSeparation() {
+            const gap = toPixels(getComputedStyle(controlBar()).getPropertyValue('gap'));
+            const regions = Array.from(controlBar().querySelectorAll('[data-control-region]'));
+            const insets = regions.map((region) => inlinePadding(getComputedStyle(region)));
+            return gap + insets[0] + insets[1];
+        }
+
+        test('neighbouring hit areas are held at least 56 CSS px apart edge to edge', async () => {
+            await enterPreview();
+            const separation = minimumEdgeSeparation();
+            expect(separation).toBeGreaterThanOrEqual(SEPARATION_FLOOR_PX);
+            expect(separation).toBeGreaterThanOrEqual(MINIMUM_SEPARATION_PX);
+        });
+
+        test('a region is never narrower than the control it holds', async () => {
             await enterPreview();
             for (const name of ['Redo', 'More', 'Done']) {
                 const regionStyle = getComputedStyle(regionOf(name));
-                expect(regionStyle.flexGrow).toBe('1');
-                expect(regionStyle.flexShrink).toBe('1');
-                expect(toPixels(regionStyle.minWidth)).toBe(0);
+                expect(regionStyle.minWidth).toBe('min-content');
+                expect(regionStyle.flexBasis).not.toBe('0');
+            }
+        });
+
+        test('the centre region is sized by its own control and cannot be squeezed', async () => {
+            await enterPreview();
+            const centerStyle = getComputedStyle(regionOf('More'));
+            expect(centerStyle.flexGrow).toBe('0');
+            expect(centerStyle.flexShrink).toBe('0');
+        });
+
+        test('the leading and trailing regions take their base width from their own control', async () => {
+            await enterPreview();
+            for (const name of ['Redo', 'Done']) {
+                const regionStyle = getComputedStyle(regionOf(name));
+                expect(regionStyle.flexBasis).toBe('auto');
+                expect(regionStyle.minWidth).toBe('min-content');
             }
         });
 
@@ -332,49 +416,77 @@ describe('Camera component', () => {
         });
 
         /**
-         * The bar is a non-wrapping full-width row whose three regions are equal
-         * flex shares, and each control is pinned to one end of its own region.
-         * The centre of a control therefore lies inside that region's third of the
-         * bar, so two controls in different regions have their centres at least one
-         * third of the bar width apart at any viewport width.
+         * A declared `gap` and a `min-content` floor only buy separation if the
+         * bar's contents still fit at the narrowest supported viewport. This checks
+         * that budget from the declarations: a control is its label at a
+         * deliberately generous per-character advance plus its declared horizontal
+         * padding, floored at its declared minimum; a region adds its declared
+         * padding; the bar adds its declared gaps.
+         *
+         * The per-character advance is an upper bound chosen by this test, not a
+         * measured value, so a passing run means the declared geometry leaves room
+         * for text this wide, not that this exact text was laid out and measured.
          */
-        function minimumCentreDistance(viewportWidth) {
-            const bar = controlBar();
-            const barStyle = getComputedStyle(bar);
-            const regionCount = bar.querySelectorAll('[data-control-region]').length;
-            expect(barStyle.flexWrap).toBe('nowrap');
-            expect(regionCount).toBe(3);
-            return viewportWidth / regionCount;
+        const GENEROUS_ADVANCE_EM = 0.62;
+
+        function controlWidthOf(label) {
+            const controlStyle = getComputedStyle(screen.getByRole('button', { name: label }));
+            const fontSize = toPixels(controlStyle.fontSize);
+            const text = label.length * GENEROUS_ADVANCE_EM * fontSize;
+            const padding = 2 * inlinePadding(controlStyle);
+            return Math.max(toPixels(controlStyle.minWidth), text + padding);
         }
 
-        test('the spatial relationship survives a 360px viewport', async () => {
-            await enterPreview();
-            expect(minimumCentreDistance(REFERENCE_VIEWPORT_WIDTH)).toBe(120);
+        /**
+         * The width the bar's contents demand, in CSS px, in the mode currently
+         * rendered. Each region claims its own control's width plus its own
+         * padding, and a region holding no control claims its padding alone; the
+         * bar then adds one declared gap between each neighbouring pair. Because
+         * every region is floored at `min-content`, this total is what the bar
+         * must satisfy to avoid overflowing the narrowest supported viewport.
+         */
+        function demandedBarWidth(bar) {
+            const gap = toPixels(getComputedStyle(bar).getPropertyValue('gap'));
+            const regions = Array.from(bar.querySelectorAll('[data-control-region]'));
+            const contents = regions.map((region) => {
+                const control = region.querySelector('button');
+                const inset = 2 * inlinePadding(getComputedStyle(region));
+                return control === null ? inset : controlWidthOf(control.textContent.trim()) + inset;
+            });
+            return contents.reduce((sum, width) => sum + width, 0) + gap * (regions.length - 1);
+        }
+
+        test('the bar still fits its contents at a 320px viewport in camera mode', () => {
+            renderCamera();
+            expect(demandedBarWidth(controlBarOf('Take Photo'))).toBeLessThanOrEqual(NARROW_VIEWPORT_WIDTH);
         });
 
-        test('the spatial relationship survives a 320px viewport', async () => {
+        test('the bar still fits its contents at a 320px viewport in preview mode', async () => {
             await enterPreview();
-            const distance = minimumCentreDistance(NARROW_VIEWPORT_WIDTH);
-            expect(distance).toBeGreaterThanOrEqual(MINIMUM_HIT_AREA_PX);
-            expect(distance).toBeCloseTo(106.67, 1);
+            expect(demandedBarWidth(controlBar())).toBeLessThanOrEqual(NARROW_VIEWPORT_WIDTH);
         });
 
-        test('the discarding action is not adjacent to either keep or finish action', async () => {
+        test('the discarding action leads and the two keep/finish actions trail it', async () => {
             await enterPreview();
-            for (const viewportWidth of [NARROW_VIEWPORT_WIDTH, REFERENCE_VIEWPORT_WIDTH, 768]) {
-                const distance = minimumCentreDistance(viewportWidth);
-                expect(distance).toBeGreaterThanOrEqual(MINIMUM_HIT_AREA_PX);
-            }
+            const regions = Array.from(controlBar().querySelectorAll('[data-control-region]'));
+            expect(regions[0].querySelector('button')).toHaveTextContent('Redo');
+            expect(regions[1].querySelector('button')).toHaveTextContent('More');
+            expect(regions[2].querySelector('button')).toHaveTextContent('Done');
+        });
+
+        test('camera mode leaves the leading region empty', () => {
+            renderCamera();
+            const regions = Array.from(controlBarOf('Take Photo').querySelectorAll('[data-control-region]'));
+            expect(regions[0].querySelector('button')).toBeNull();
+            expect(regions[1].querySelector('button')).toHaveTextContent('Take Photo');
+            expect(regions[2].querySelector('button')).toHaveTextContent('Done');
         });
 
         test('the camera-mode bar keeps the same three-region structure', () => {
             renderCamera();
-            const regions = screen.getByRole('button', { name: 'Done' })
-                .closest('[data-control-region]')
-                .parentElement
-                .querySelectorAll('[data-control-region]');
-            expect(regions).toHaveLength(3);
-            expect(getComputedStyle(regions[0].parentElement).flexWrap).toBe('nowrap');
+            const bar = controlBarOf('Take Photo');
+            expect(bar.querySelectorAll('[data-control-region]')).toHaveLength(3);
+            expect(getComputedStyle(bar).flexWrap).toBe('nowrap');
         });
     });
 });
