@@ -24,7 +24,6 @@ const {
     IDENTIFIERS_KEY,
     LAST_NODE_INDEX_KEY,
     compareNodeIdentifier,
-    nodeIdentifierFromString,
     nodeIdentifierToString,
     makeTransactionIdentifierLookup,
     txAllocateNodeIdentifier,
@@ -37,6 +36,13 @@ const {
 const {
     darkroomActivity,
 } = require('./lock');
+const {
+    appendJournalPublicationOps,
+    readCommittedWriterState,
+} = require('./journal_store');
+const { finalizeEmission, makeJournalPublicationError } = require('./journal');
+const { makeTransactionJournal } = require('./journal_staging');
+const { appendValidMutationOps } = require('./validity_mutations');
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
@@ -44,13 +50,19 @@ const {
 /** @typedef {import('./database/root_database').FreshnessDatabase} FreshnessDatabase */
 /** @typedef {import('./database/root_database').ValidDatabase} ValidDatabase */
 /** @typedef {import('./database/root_database').TimestampsDatabase} TimestampsDatabase */
+/** @typedef {import('./database/root_database').JournalDatabase} JournalDatabase */
 /** @typedef {import('./database/types').ComputedValue} ComputedValue */
 /** @typedef {import('./database/types').Freshness} Freshness */
 /** @typedef {import('./database/types').TimestampRecord} TimestampRecord */
 /** @typedef {import('./database/types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./database/types').NodeKeyString} NodeKeyString */
+/** @typedef {import('./database/node_key').NodeKey} NodeKey */
 /** @typedef {import('./database/identifier_lookup').TransactionIdentifierLookup} TransactionIdentifierLookup */
+/** @typedef {import('./journal/emission').EmissionIntent} EmissionIntent */
+/** @typedef {import('./journal/emission').MaterializeInput} MaterializeInput */
+/** @typedef {import('./journal/types').JournalRecordId} JournalRecordId */
 /** @typedef {import('../../sleeper').SleepCapability} SleepCapability */
+/** @typedef {import('../../datetime').Datetime} Datetime */
 
 /**
  * A validity mutation recorded by a graph transaction.
@@ -64,45 +76,6 @@ const {
  * @typedef {object} ValidClearMutation
  * @property {"clear"} kind
  */
-
-/**
- * Apply recorded validity mutations to the latest committed state and push
- * the resulting put/del operations into the shared operations array.
- * Used by both withTransaction() and withBatch().
- *
- * @param {SchemaStorage} activeSchemaStorage
- * @param {Array<*>} operations
- * @param {Map<string, Array<ValidMutation | ValidClearMutation>>} validMutations
- * @returns {Promise<void>}
- */
-async function appendValidMutationOps(activeSchemaStorage, operations, validMutations) {
-    if (validMutations.size === 0) {
-        return;
-    }
-    for (const [depIdStr, mutations] of validMutations.entries()) {
-        const depId = nodeIdentifierFromString(depIdStr);
-        let validSet = await activeSchemaStorage.valid.get(depId) ?? [];
-        for (const m of mutations) {
-            if (m.kind === "clear") {
-                validSet = [];
-            } else if (m.kind === "add") {
-                const depStr = nodeIdentifierToString(m.dependent);
-                if (!validSet.some(id => nodeIdentifierToString(id) === depStr)) {
-                    validSet.push(m.dependent);
-                }
-            } else if (m.kind === "remove") {
-                const depStr = nodeIdentifierToString(m.dependent);
-                validSet = validSet.filter(id => nodeIdentifierToString(id) !== depStr);
-            }
-        }
-        validSet.sort(compareNodeIdentifier);
-        if (validSet.length === 0) {
-            operations.push(activeSchemaStorage.valid.delOp(depId));
-        } else {
-            operations.push(activeSchemaStorage.valid.putOp(depId, validSet));
-        }
-    }
-}
 
 /**
  * @template TValue
@@ -131,9 +104,25 @@ async function appendValidMutationOps(activeSchemaStorage, operations, validMuta
  */
 
 /**
- * A Transaction groups reads and writes for one graph operation.
- * It is deliberately minimal — each pull call creates its own Transaction.
- * Reserved identifiers and other per-pull state are managed
+ * The Journal's half of one graph transaction: the semantic intents the settled
+ * transition staged, and the value occurrences those intents validate against.
+ *
+ * Staging is what makes a publication's records members of the same atomic write as
+ * the graph mutations they describe. Nothing here writes: `stage` only records an
+ * intent, and the commit seam turns the staged intents into Journal operations of
+ * the batch it is already about to issue.
+ *
+ * @typedef {object} TransactionJournal
+ * @property {(intent: EmissionIntent) => void} stage - Record one settled semantic intent of the transition.
+ * @property {(node: NodeKey) => Promise<MaterializeInput>} inputOccurrence - The occurrence a certificate of a node names for one of its current direct inputs.
+ * @property {(node: NodeKey) => Promise<JournalRecordId>} requireCommittedOccurrence - The committed occurrence of a node, which a value-scoped record of this transition must name.
+ * @property {() => ReadonlyArray<EmissionIntent>} staged - The intents recorded so far, in no particular order.
+ */
+
+/**
+ * A Transaction groups reads and writes for one user-visible graph operation.
+ * It is deliberately minimal — one user operation owns exactly one Transaction.
+ * Reserved identifiers and other per-operation state are managed
  * by the caller (pullNode / invalidate), not by the Transaction.
  *
  * - batch: LevelDB batch accumulator with read-your-writes overlay.
@@ -141,10 +130,33 @@ async function appendValidMutationOps(activeSchemaStorage, operations, validMuta
  *   read-only reference to the committed `_computed.identifierLookup`.
  *   At commit time the overlay is applied to the base in-place after a
  *   successful disk flush (disk-first invariant).
+ * - journal: the semantic intents whose Journal records the same commit publishes.
  *
  * @typedef {object} Transaction
  * @property {BatchBuilder} batch - LevelDB batch accumulator with read-your-writes.
  * @property {TransactionIdentifierLookup} identifierLookup - Overlay-based identifier lookup.
+ * @property {TransactionJournal} journal - The staged Journal half of the transaction.
+ */
+
+/**
+ * One user-visible graph operation, together with the single Transaction whose
+ * commit publishes both the graph mutations and their Journal records.
+ *
+ * The properties that this class carries are:
+ * - Every graph write the operation performs is an operation of `transaction`'s
+ *   batch, and every semantic effect of those writes is a staged intent of
+ *   `transaction`'s journal, so one commit publishes both sides together.
+ *
+ * The proof of those properties is guaranteed by:
+ * - This class can only be introduced through these functions:
+ *   - `withUserOperation(fn)`: satisfies the property because it creates the one
+ *     transaction the operation uses, hands that transaction to `fn`, and commits
+ *     it exactly once when `fn` returns.
+ *   - `withTransaction(fn)`: satisfies the property because it is `withUserOperation`
+ *     with the transaction's own value as the operation's value.
+ *
+ * @typedef {object} UserOperation
+ * @property {Transaction} transaction - The one transaction the operation publishes through.
  */
 
 /**
@@ -155,6 +167,7 @@ async function appendValidMutationOps(activeSchemaStorage, operations, validMuta
  * @property {TimestampsDatabase} timestamps - Identifier-keyed timestamps.
  * @property {<T>(fn: (batch: BatchBuilder) => Promise<T>) => Promise<T>} withBatch - Run atomically against all graph sublevels (no identifier tracking).
  * @property {<T>(fn: (tx: Transaction) => Promise<{value: T}>) => Promise<T>} withTransaction - Run atomically with read-your-writes batching and commit publication.
+ * @property {<T>(fn: (operation: UserOperation) => Promise<T>) => Promise<T>} withUserOperation - Run one user-visible operation whose whole graph transition and Journal publication commit as one atomic write.
  * @property {(node: NodeIdentifier, batch: BatchBuilder) => Promise<NodeIdentifier[]>} getValid - Read a node's valid set inside the current batch.
  * @property {() => Promise<NodeIdentifier[]>} listMaterializedNodes - List materialized node identifiers from value storage.
  * @property {<T>(procedure: () => Promise<T>) => Promise<T>} withCommitSnapshot - Run a read while darkroom publication is paused.
@@ -301,9 +314,10 @@ function createBatch(schemaStorage) {
  * Create the identifier-native graph storage facade for one schema namespace.
  * @param {RootDatabase} rootDatabase
  * @param {SleepCapability} sleeper
+ * @param {Datetime} datetime
  * @returns {GraphStorage}
  */
-function makeGraphStorage(rootDatabase, sleeper) {
+function makeGraphStorage(rootDatabase, sleeper, datetime) {
     /**
      * @returns {Promise<NodeIdentifier[]>}
      */
@@ -385,34 +399,54 @@ function makeGraphStorage(rootDatabase, sleeper) {
          * awaits inside the transaction body.  The commit finalisation
          * acquires the per-replica darkroom lock internally.
          *
+         * A user operation is the unit of atomic publication: one transaction, one
+         * batch, and therefore one atomic write carrying the graph mutations, the
+         * identifier table, the allocation watermark, the Journal records and the
+         * Journal committed-pair metadata together. A graph transition which staged no
+         * Journal intent is refused rather than published without the records that
+         * describe it.
+         *
          * @template T
-         * @param {(tx: Transaction) => Promise<{value: T}>} fn
+         * @param {(operation: UserOperation) => Promise<T>} fn
          * @returns {Promise<T>}
          */
-        async withTransaction(fn) {
+        async withUserOperation(fn) {
             const activeSchemaStorage = rootDatabase.getSchemaStorage();
             const txLookup = makeTransactionIdentifierLookup(rootDatabase.getActiveIdentifierLookup());
             const { batch, operations, validMutations } = createBatch(activeSchemaStorage);
+            const journal = makeTransactionJournal(activeSchemaStorage.journal);
 
             /** @type {Transaction} */
-            const tx = { batch, identifierLookup: txLookup };
+            const tx = { batch, identifierLookup: txLookup, journal };
 
             try {
-                const result = await fn(tx);
-                const value = result.value;
+                /** @type {UserOperation} */
+                const operation = { transaction: tx };
+                const value = await fn(operation);
 
                 await darkroomActivity(sleeper, rootDatabase.currentReplicaName(), async () => {
                     await appendValidMutationOps(activeSchemaStorage, operations, validMutations);
 
                     const hasPendingOperations = operations.length > 0;
                     const hasPendingAllocations = tx.identifierLookup.keyToId.size > 0;
+                    const stagedIntents = journal.staged();
 
-                    if (!hasPendingOperations && !hasPendingAllocations) {
+                    if (!hasPendingOperations && !hasPendingAllocations && stagedIntents.length === 0) {
                         return;
                     }
 
+                    if (hasPendingOperations && stagedIntents.length === 0) {
+                        throw makeJournalPublicationError(
+                            "the graph transition wrote " + operations.length +
+                                " operation(s) but staged no journal intent, so it would be " +
+                                "durable without the journal records that describe it"
+                        );
+                    }
+
+                    /** @type {number | undefined} */
+                    let commitLastNodeIndex;
                     if (hasPendingAllocations) {
-                        const commitLastNodeIndex = rootDatabase.getCurrentAllocationWatermark();
+                        commitLastNodeIndex = rootDatabase.getCurrentAllocationWatermark();
                         operations.push(
                             activeSchemaStorage.global.putOp(
                                 IDENTIFIERS_KEY,
@@ -425,13 +459,40 @@ function makeGraphStorage(rootDatabase, sleeper) {
                                 commitLastNodeIndex
                             )
                         );
+                    }
 
-                        await activeSchemaStorage.batch(operations);
+                    if (stagedIntents.length > 0) {
+                        const committed = await readCommittedWriterState(
+                            activeSchemaStorage.journal,
+                            rootDatabase.getFingerprint()
+                        );
+                        if (committed instanceof Error) {
+                            throw committed;
+                        }
+                        const publication = finalizeEmission({
+                            state: committed,
+                            intents: stagedIntents,
+                            publicationInstant: datetime.now().toMillis(),
+                            allocatorWatermark: commitLastNodeIndex ?? committed.allocatorWatermark,
+                        });
+                        if (publication instanceof Error) {
+                            throw publication;
+                        }
+                        const rejected = appendJournalPublicationOps(
+                            activeSchemaStorage.journal,
+                            operations,
+                            publication
+                        );
+                        if (rejected !== undefined) {
+                            throw rejected;
+                        }
+                    }
 
+                    await activeSchemaStorage.batch(operations);
+
+                    if (hasPendingAllocations && commitLastNodeIndex !== undefined) {
                         commitTransactionLookup(tx.identifierLookup);
                         rootDatabase.advanceLastNodeIndex(commitLastNodeIndex);
-                    } else {
-                        await activeSchemaStorage.batch(operations);
                     }
                 });
 
@@ -443,6 +504,18 @@ function makeGraphStorage(rootDatabase, sleeper) {
                 // does not leak.
                 rootDatabase.releaseIdentifierReservations(txLookup.ownedKeys);
             }
+        },
+        /**
+         * One user operation whose whole transition is one transaction.
+         * @template T
+         * @param {(tx: Transaction) => Promise<{value: T}>} fn
+         * @returns {Promise<T>}
+         */
+        async withTransaction(fn) {
+            return this.withUserOperation(async (operation) => {
+                const result = await fn(operation.transaction);
+                return result.value;
+            });
         },
         /**
          * @param {NodeIdentifier} node

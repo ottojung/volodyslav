@@ -134,6 +134,7 @@ class MigratedSnapshotDatabase {
             valid: createSublevel("valid"),
             timestamps: createSublevel("timestamps"),
             global: createSublevel("global"),
+            journal: createSublevel("journal"),
             batch: async (operations) => {
                 for (const operation of operations) {
                     if (operation.type === "put") await operation.sublevel.put(operation.key, operation.value);
