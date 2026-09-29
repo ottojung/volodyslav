@@ -42,7 +42,7 @@
 
 const { fromISOString } = require("../../../datetime");
 const { makeJournalPublicationError } = require("./errors");
-const { nodeKeyToCanonicalString } = require("./basis");
+const { makeNodeScope, makeValueScope, nodeKeyToCanonicalString } = require("./basis");
 const { predecessorJournalSequence, requireSuccessorJournalSequence } = require("./coordinates");
 const { basisOfIntents, compareIntents, orderIntents } = require("./intent_order");
 const {
@@ -461,9 +461,9 @@ function finalizeEmission(request) {
         if (intent.kind === "delete") {
             record = makeDeleteEvent(base, "operation");
         } else if (intent.kind === "invalidate-node") {
-            record = makeInvalidateEvent(base, { kind: "node" }, "explicit");
+            record = makeInvalidateEvent(base, makeNodeScope(), "explicit");
         } else {
-            record = makeInvalidateEvent(base, { kind: "value", value: intent.value }, "propagated");
+            record = makeInvalidateEvent(base, makeValueScope(intent.value), "propagated");
         }
         if (record instanceof Error) {
             return record;
