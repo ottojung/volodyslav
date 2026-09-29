@@ -301,10 +301,17 @@ describe("finding 2: a record and its replica are deeply immutable", () => {
 
 describe("finding 3: a historical certificate is history, not corruption", () => {
     /**
-     * The current schema says `K` has exactly one direct input, `D`.
-     * @returns {Array<string>}
+     * The current schema says `K` has exactly one direct input, `D`, and says
+     * nothing at all about any other node family. A node the schema does not
+     * mention therefore has no entry here, which is what a removed node family
+     * looks like from the current schema.
+     * @param {string} nodeKeyString
+     * @returns {Array<string> | undefined}
      */
-    function currentInputsOfK() {
+    function currentInputsOfK(nodeKeyString) {
+        if (nodeKeyString !== nodeKeyToCanonicalString(NODE_K)) {
+            return undefined;
+        }
         return [nodeKeyToCanonicalString(NODE_D)];
     }
 
