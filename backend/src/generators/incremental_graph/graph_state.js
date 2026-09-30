@@ -8,7 +8,9 @@
  * - `_computed` is the injection of the durable database into memory (replica-
  *   derived runtime state). It holds `schemaStorage`, `identifierLookup`, etc.
  * - `_pendingAllocations` is ephemeral in-process state that lives outside
- *   `_computed` so it survives replica cutover. See root_database.js.
+ *   `_computed` so it survives replica cutover. It is multi-owner: a live
+ *   operation which needs a key another live operation already reserved joins
+ *   that reservation and shares its identifier. See root_database.js.
  * - A Transaction groups: batch (LevelDB batch accumulator with read-your-writes)
  *   + identifierLookup (working copy)
  * - createTransaction() reads _computed.identifierLookup and creates a fresh batch
@@ -498,10 +500,13 @@ function makeGraphStorage(rootDatabase, sleeper, datetime) {
 
                 return value;
             } finally {
-                // Release identifier reservations owned by this transaction.
-                // After a successful commit the identifiers are in the base
-                // lookup; after a failure they must be released so the map
-                // does not leak.
+                // Give up this operation's hold on every identifier reservation it
+                // took, whether it minted the identifier or joined another live
+                // operation's reservation for the same key. After a successful
+                // commit the identifiers are in the base lookup; after a failure
+                // the holds must be given up so the map does not leak. A reservation
+                // whose last holder gives it up here disappears, and one which
+                // another operation still holds survives for that operation.
                 rootDatabase.releaseIdentifierReservations(txLookup.ownedKeys);
             }
         },
@@ -544,13 +549,14 @@ function lookupNodeIdentifier(tx, nodeKey) {
 }
 
 /**
- * Look up an existing identifier or allocate a new one for a node key.
- * New allocations are recorded only in the transaction's overlay, not in the
+ * Look up an existing identifier or reserve one for a node key.
+ * New reservations are recorded only in the transaction's overlay, not in the
  * committed base lookup. They become part of the base only after a successful
  * disk flush via `commitTransactionLookup`.
  *
- * Allocation is delegated to `rootDatabase._allocateKeyIdentifier` which
- * claims a key→identifier mapping in `_pendingAllocations`.
+ * Reservation is delegated to `rootDatabase._allocateKeyIdentifier`, which
+ * claims a key→identifier mapping in `_pendingAllocations` or joins a live one
+ * another operation already holds for the same key.
  *
  * @param {Transaction} tx
  * @param {RootDatabase} rootDatabase

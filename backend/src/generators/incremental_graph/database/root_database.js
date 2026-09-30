@@ -23,7 +23,7 @@ const {
     nodeIdToKeyFromLookup,
     nodeKeyToIdFromLookup,
 } = require('./identifier_lookup');
-const { makeNodeIdentifier, nodeIdentifierToString } = require('./node_identifier');
+const { makeNodeIdentifier, nodeIdentifierFromString, nodeIdentifierToString } = require('./node_identifier');
 const { requireValidFingerprint } = require('./fingerprint');
 
 const {
@@ -60,6 +60,14 @@ const {
 /** @typedef {import('./types').Version} Version */
 /** @typedef {import('./types').IdentifiersKeysMap} IdentifiersKeysMap */
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
+
+/**
+ * One live identifier reservation over a node key, held by `waiters` operations.
+ *
+ * @typedef {object} PendingAllocation
+ * @property {string} identifier - The reserved identifier's persisted string form.
+ * @property {number} waiters - Number of live operations holding the reservation.
+ */
 /**
  * Compiled active-replica state that CAN be reconstructed from a database
  * snapshot. Every field in this struct is derivable from the persisted on-disk
@@ -333,13 +341,35 @@ class RootDatabaseClass {
     _nextNodeIndex;
 
     /**
-      * Key→identifier mappings that have been reserved by in-flight
-      * (not-yet-committed) transactions but are not yet in the committed
-      * `identifierLookup`.
+      * Identifier reservations for keys claimed by in-flight (not-yet-committed)
+      * operations but not yet in the committed `identifierLookup`.
       * Lives outside `_computed` because it is purely ephemeral — it must NOT
       * be reconstructed from a database snapshot.
+      *
+      * A reservation is multi-owner: `waiters` counts the live operations which
+      * hold the reservation, and the entry disappears only when the last of them
+      * releases it. One operation may therefore join a reservation another live
+      * operation made instead of allocating a second identifier for the same key.
+      *
+      * The properties that a reservation carries are:
+      * - the identifier is the identifier the key will carry once some operation
+      *   holding it commits;
+      * - `waiters` is the number of live operations still holding it, and the
+      *   entry is present exactly while that number is positive.
+      *
+      * The proof of those properties is guaranteed by:
+      * - `_allocateKeyIdentifier`: satisfies the first property because it either
+      *   mints a fresh identifier from the monotonic counter or adopts the
+      *   identifier of the entry it finds, so the entry's identifier is always the
+      *   one its holders will publish; satisfies the second property because it
+      *   stores `waiters: 1` for a new entry and increments it for a join, and it
+      *   never stores a non-positive count.
+      * - `releaseIdentifierReservations`: satisfies the second property because it
+      *   decrements the count of each released key and deletes the entry, together
+      *   with its `_pendingAllocationsById` reverse entry, exactly when the count
+      *   reaches zero.
       * @private
-      * @type {Map<string, string>}
+      * @type {Map<string, PendingAllocation>}
       */
     _pendingAllocations;
 
@@ -347,6 +377,8 @@ class RootDatabaseClass {
       * Reverse map of _pendingAllocations: identifierString → keyString.
       * Maintained alongside the forward map for O(1) collision checks during
       * identifier reservation — never iterate _pendingAllocations.values().
+      * An entry exists exactly while the corresponding forward reservation exists,
+      * so a joined reservation contributes no new reverse entry.
       * @private
       * @type {Map<string, string>}
       */
@@ -504,15 +536,33 @@ class RootDatabaseClass {
     }
 
     /**
-      * Allocate a unique identifier for a node key and claim it in
-      * _pendingAllocations for the current in-flight transaction.
-      * Synchronous — no await between the read and write, so JavaScript's
-      * single-threaded execution guarantees atomicity.
+      * Reserve a unique identifier for a node key on behalf of the current
+      * in-flight operation, joining an existing reservation for the same key if
+      * one is live. Synchronous — no await between the read and write, so
+      * JavaScript's single-threaded execution guarantees atomicity.
       *
-      * The caller must hold the telescope lock for keyString (see pull.js),
-      * which serialises all concurrent allocation attempts for the same key.
-      * Consequently, _pendingAllocations MUST NOT already contain keyString —
-      * if it does, a locking bug exists.
+      * The caller must hold the telescope lock for keyString (see pull.js), which
+      * serialises all concurrent allocation attempts for the same key. The
+      * telescope window and the reservation lifetime are therefore not nested: a
+      * reservation made by one operation is released only when that whole
+      * operation ends (`withUserOperation`'s finally), long after its telescope
+      * window for the key closed, so another operation can reach this point for a
+      * key which already carries a live reservation. That is not a locking bug, and
+      * the second operation JOINS the reservation: it adopts the reserved
+      * identifier and joins the set of its holders rather than minting a second
+      * identifier for the same key.
+      *
+      * What a joining operation shares is the identifier, not the value. The
+      * joining operation computes the node's value itself and publishes it under
+      * the shared identifier, exactly as it would have under a freshly minted one;
+      * whichever of the two operations commits last writes the value the node then
+      * carries. A holder which commits before a joiner publishes the
+      * key-to-identifier mapping itself, and the joiner's own commit re-publishes
+      * the same mapping, which `serializeTransactionLookup` and
+      * `commitTransactionLookup` both treat as idempotent. A holder which rolls
+      * back releases only its own hold, so the reservation and its identifier
+      * survive for the remaining holders, and the identifier is published by
+      * whichever of them commits.
       *
       * Node identifiers are derived from a monotonic counter and the database
       * fingerprint, so collisions are impossible. No retry loop is needed.
@@ -520,15 +570,13 @@ class RootDatabaseClass {
       * @param {string} keyString - Serialized node key string.
       * @param {() => NodeIdentifier} makeIdentifier - Synchronous identifier factory.
       * @param {IdentifierLookup} committedLookup - The committed lookup (used for correctness assertion only).
-      * @returns {NodeIdentifier} The newly allocated identifier.
+      * @returns {NodeIdentifier} The reserved identifier, which a joiner shares with the operations already holding it.
       */
     _allocateKeyIdentifier(keyString, makeIdentifier, committedLookup) {
-        // The telescope lock per keyString guarantees no concurrent in-flight
-        // allocation for this key, so _pendingAllocations must be clean.
-        if (this._pendingAllocations.has(keyString)) {
-            throw new Error(
-                `BUG: pending allocation for key ${keyString} found during allocation under telescope lock`
-            );
+        const reservation = this._pendingAllocations.get(keyString);
+        if (reservation !== undefined) {
+            reservation.waiters += 1;
+            return nodeIdentifierFromString(reservation.identifier);
         }
 
         const candidate = makeIdentifier();
@@ -548,23 +596,34 @@ class RootDatabaseClass {
             );
         }
 
-        this._pendingAllocations.set(keyString, candidateStr);
+        this._pendingAllocations.set(keyString, { identifier: candidateStr, waiters: 1 });
         this._pendingAllocationsById.set(candidateStr, keyString);
         return candidate;
     }
 
     /**
-      * Release pending allocations for keys that this transaction owned.
-      * Called in the finally block after commit success or failure.
-      * @param {Set<string>} ownedKeys - Key strings owned by the transaction.
+      * Give up this operation's hold on each identifier reservation it took,
+      * whether it made the reservation or joined one. Called in the finally block
+      * after commit success or failure, so a hold is given up exactly once per
+      * operation that took it.
+      *
+      * A reservation survives until its last holder gives it up, so an operation
+      * which joined another operation's reservation keeps the identifier reserved
+      * even when the operation that originally allocated it commits or rolls back.
+      *
+      * @param {Set<string>} ownedKeys - Key strings this operation holds a reservation on.
       * @returns {void}
       */
     releaseIdentifierReservations(ownedKeys) {
         for (const keyString of ownedKeys) {
-            const idStr = this._pendingAllocations.get(keyString);
-            this._pendingAllocations.delete(keyString);
-            if (idStr !== undefined) {
-                this._pendingAllocationsById.delete(idStr);
+            const reservation = this._pendingAllocations.get(keyString);
+            if (reservation === undefined) {
+                continue;
+            }
+            reservation.waiters -= 1;
+            if (reservation.waiters === 0) {
+                this._pendingAllocations.delete(keyString);
+                this._pendingAllocationsById.delete(reservation.identifier);
             }
         }
     }

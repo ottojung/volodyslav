@@ -67,7 +67,7 @@ function isIdentifierLookupError(object) {
  * @property {Map<string, NodeIdentifier>} keyToId - New allocations in this transaction only.
  * @property {Map<string, NodeKeyString>} idToKey  - New allocations in this transaction only (inverse).
  * @property {IdentifierLookup} base               - Read-only reference to the committed lookup.
- * @property {Set<string>} ownedKeys              - Key strings allocated by this transaction (tracked for releaseIdentifierReservations cleanup).
+ * @property {Set<string>} ownedKeys              - Key strings this transaction holds an identifier reservation on, whether it allocated the reservation or joined one (tracked for releaseIdentifierReservations cleanup).
  */
 
 /**
@@ -353,16 +353,18 @@ function txNodeIdToKey(txLookup, nodeIdentifier) {
 }
 
 /**
- * Return the existing identifier for a node key, or allocate a new one and
- * record it in the overlay (never in the base).
+ * Return the existing identifier for a node key, or reserve one and record it
+ * in the overlay (never in the base).
  *
- * Allocation is delegated to `rootDatabase._allocateKeyIdentifier`.  The
- * caller must hold the telescope lock for the node key (see pull.js), which
- * serialises all concurrent attempts for the same key.
+ * Reservation is delegated to `rootDatabase._allocateKeyIdentifier`, which either
+ * mints a new identifier or joins a reservation another live operation already
+ * holds for the same key.  The caller must hold the telescope lock for the node
+ * key (see pull.js), which serialises all concurrent attempts for the same key
+ * without bounding how long a reservation lives.
  *
- * The newly allocated key is added to `txLookup.ownedKeys` so the
- * transaction's `finally` block can release the reservation from
- * `_pendingAllocations`.
+ * The key is added to `txLookup.ownedKeys` whether the identifier was freshly
+ * minted or joined, so the operation's `finally` block gives up exactly its own
+ * hold on the reservation.
  *
  * @param {TransactionIdentifierLookup} txLookup
  * @param {NodeKeyString} nodeKey
@@ -498,10 +500,12 @@ function serializeTransactionLookup(txLookup) {
  * bijection is already bound to a different counterpart.  The checks are
  * unnecessary here because:
  *
- * 1. **Telescope lock prevents conflicts.**  Every allocation runs inside
- *    `telescopeActivity(key)` (see pull.js), which serialises all concurrent
- *    pulls of the same concrete node key.  Two concurrent transactions cannot
- *    allocate different identifiers for the same key.
+ * 1. **One identifier per key, and holders agree on it.** Every allocation for a
+ *    key runs inside `telescopeActivity(key)` (see pull.js), which serialises all
+ *    concurrent attempts for the same key, and an operation which finds a live
+ *    reservation for the key joins it rather than minting a second identifier, so
+ *    two concurrent transactions can never hold different identifiers for one
+ *    key.
  *
  * 2. **Idempotent overwrite.**  When a transaction's base reference becomes
  *    stale (another concurrent transaction already committed the same entry),
