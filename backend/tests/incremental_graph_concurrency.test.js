@@ -2000,7 +2000,7 @@ describe("IncrementalGraph concurrency", () => {
                         readyCount++;
                         if (readyCount === 2) barrierResolve();
                         await barrier.promise;
-                        return numberComputedValue(zValue);
+                        return numberComputedValue(zValue.value);
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -2012,7 +2012,7 @@ describe("IncrementalGraph concurrency", () => {
                         readyCount++;
                         if (readyCount === 2) barrierResolve();
                         await barrier.promise;
-                        return numberComputedValue(zValue);
+                        return numberComputedValue(zValue.value);
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -2064,7 +2064,7 @@ describe("IncrementalGraph concurrency", () => {
                             if (readyCount === 2) barrierResolve();
                             await barrier.promise;
                         }
-                        return numberComputedValue(zValue);
+                        return numberComputedValue(zValue.value);
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -2078,7 +2078,7 @@ describe("IncrementalGraph concurrency", () => {
                             if (readyCount === 2) barrierResolve();
                             await barrier.promise;
                         }
-                        return numberComputedValue(zValue);
+                        return numberComputedValue(zValue.value);
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
