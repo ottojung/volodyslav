@@ -638,6 +638,61 @@ describe("stream contiguity", () => {
         expect(failure.missingSequence).toBe("1");
     });
 
+    test("a single-writer stream past the digit-width boundary is one contiguous prefix", () => {
+        const stream = [];
+        for (let index = 1; index <= 150; index++) {
+            stream.push(
+                valueAt(
+                    "aaaaaaaaa:" + index,
+                    index === 1 ? [] : [["aaaaaaaaa", String(index - 1)]],
+                    NODE_K,
+                    1000 + index
+                )
+            );
+        }
+        expect(validateJournalReplica(replicaOf([["aaaaaaaaa", stream]]))).toBeUndefined();
+    });
+
+    test("a hole past the digit-width boundary is a gap at the coordinate it removed", () => {
+        const stream = [];
+        for (let index = 1; index <= 150; index++) {
+            if (index === 100) {
+                continue;
+            }
+            stream.push(
+                valueAt(
+                    "aaaaaaaaa:" + index,
+                    index === 1 ? [] : [["aaaaaaaaa", String(index - 1)]],
+                    NODE_K,
+                    1000 + index
+                )
+            );
+        }
+        const failure = validateJournalReplica(replicaOf([["aaaaaaaaa", stream]]));
+        expect(isJournalGapError(failure)).toBe(true);
+        expect(failure.missingSequence).toBe("100");
+    });
+
+    test("a record past the digit-width boundary must claim its whole own-writer prefix", () => {
+        const stream = [];
+        for (let index = 1; index <= 150; index++) {
+            // Record 101 observes 99 rather than 100, so its own-writer prefix is
+            // a hole. The decimal borrow across the width boundary is what makes
+            // 99 and 100 different coordinates rather than the same one.
+            const observed = index === 101 ? "99" : String(index - 1);
+            stream.push(
+                valueAt(
+                    "aaaaaaaaa:" + index,
+                    index === 1 ? [] : [["aaaaaaaaa", observed]],
+                    NODE_K,
+                    1000 + index
+                )
+            );
+        }
+        const failure = validateJournalReplica(replicaOf([["aaaaaaaaa", stream]]));
+        expect(isJournalCausalClosureError(failure)).toBe(true);
+    });
+
     test("the retained frontier is the greatest retained coordinate per writer", () => {
         const a1 = valueAt("aaaaaaaaa:1", [], NODE_K, 1000);
         const a2 = valueAt("aaaaaaaaa:2", [["aaaaaaaaa", "1"]], NODE_K, 2000);
