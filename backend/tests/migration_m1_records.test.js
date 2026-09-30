@@ -365,4 +365,83 @@ describe("the migration cutover verifies the target before selecting it", () => 
             if (db) await db.close();
         }
     });
+
+    test("a retry after a crash converges on the decisions the retry makes", async () => {
+        const caps = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(caps);
+            const nodeDefs = [
+                { output: "A", inputs: [], computor: async () => numberComputedValue(1), isDeterministic: true, hasSideEffects: false },
+                { output: "B", inputs: [], computor: async () => numberComputedValue(2), isDeterministic: true, hasSideEffects: false },
+            ];
+            const graph = await createIncrementalGraph(caps, db, nodeDefs);
+            await graph.pull("A");
+            await db.getSchemaStorage().global.put("version", "1");
+            await db.close();
+
+            db = await getRootDatabase(caps);
+            const sourceReplica = db.currentReplicaName();
+
+            // A first attempt which creates B and then dies before the cutover. The
+            // source still reports the old version, so the migration runs again, and
+            // the retry is free to decide differently about B.
+            const realBuildMigrationJournal = jest.requireActual(
+                "../src/generators/incremental_graph/migration_journal"
+            ).buildMigrationJournal;
+            buildMigrationJournal.mockImplementation(async (...args) => {
+                await realBuildMigrationJournal(...args);
+                throw new InterruptedMigrationError();
+            });
+            await expect(
+                runMigration(caps, db, nodeDefs, async (storage) => {
+                    for await (const existing of storage.listMaterializedNodes()) {
+                        await storage.keep(existing);
+                    }
+                    await storage.create(
+                        '{"head":"B","args":[]}',
+                        async () => numberComputedValue(20),
+                        "up-to-date"
+                    );
+                })
+            ).rejects.toThrow(InterruptedMigrationError);
+            expect(db.currentReplicaName()).toBe(sourceReplica);
+
+            // The retry creates nothing, so B is not part of the target the retry
+            // builds. The records and occurrence-index entries the discarded attempt
+            // wrote must not survive into it.
+            useProductionJournalBuild();
+            await runMigration(caps, db, nodeDefs, async (storage) => {
+                for await (const existing of storage.listMaterializedNodes()) {
+                    await storage.keep(existing);
+                }
+            });
+
+            const nodeB = stringToNodeKeyString('{"head":"B","args":[]}');
+            expect(db.nodeKeyToId(nodeB)).toBeUndefined();
+            expect(await readCurrentOccurrence(db.getSchemaStorage().journal, deserializeNodeKey(nodeB)))
+                .toBeUndefined();
+            const migrationValues = (await readSemanticEvents(db)).filter(
+                (record) => isValueEvent(record) && record.reason === "migration"
+            );
+            expect(
+                migrationValues.filter(
+                    (record) => nodeKeyToCanonicalString(record.node) === '{"head":"B","args":[]}'
+                )
+            ).toHaveLength(0);
+        } finally {
+            if (db) await db.close();
+        }
+    });
 });
+
+/**
+ * Raised to abandon a cutover after the target's Journal has been written and
+ * before the pointer selects the target.
+ */
+class InterruptedMigrationError extends Error {
+    constructor() {
+        super("the migration was interrupted before the cutover");
+        this.name = 'InterruptedMigrationError';
+    }
+}

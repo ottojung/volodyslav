@@ -38,11 +38,26 @@ const {
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
 
 /**
- * Copy every retained Journal key of the source replica into the inactive target.
+ * Make the inactive target's Journal be the source replica's retained history.
  *
  * Records, the current-occurrence index, and the committed writer state all travel
  * together, because a target which received records without the writer state would
  * allocate the next own-writer coordinate over history it already holds.
+ *
+ * The target Journal is *replaced*, not merged. The inactive target is the migration's
+ * to build, and §22 step 3 makes its retained history the converted source history
+ * plus what the migration appends. A key the source does not retain is therefore not
+ * retained history: it is residue of an earlier attempt at this same cutover, left
+ * behind when that attempt failed after writing and before the pointer selected the
+ * target. Carrying the source's keys without removing the target's would let a record
+ * or an occurrence-index entry from a discarded attempt survive into a replica the
+ * next run declares the current one, where the retained authority would select an
+ * occurrence the migration never decided.
+ *
+ * Nothing a source retains is ever removed: the deletion is over the target's keys
+ * the source lacks, which is exactly the set this call is responsible for having
+ * written. No retained record is rewritten or dropped, only an inactive replica's
+ * own leftovers.
  *
  * The copy is one batch of the target storage, so the target's Journal is either
  * entirely without the retained history or entirely with it.
@@ -54,6 +69,8 @@ const {
 async function carryRetainedJournal(sourceStorage, targetStorage) {
     const sourceJournal = sourceStorage.journal;
     const targetJournal = targetStorage.journal;
+    /** @type {Set<string>} */
+    const sourceKeys = new Set();
     /** @type {Array<import('./database/root_database').DatabaseBatchOperation>} */
     const operations = [];
     for await (const sourceKey of sourceJournal.keys()) {
@@ -64,7 +81,14 @@ async function carryRetainedJournal(sourceStorage, targetStorage) {
                 "the migration source journal key " + key + " has no stored value"
             );
         }
+        sourceKeys.add(key);
         operations.push(targetJournal.putOp(sourceKey, value));
+    }
+    for await (const targetKey of targetJournal.keys()) {
+        if (sourceKeys.has(String(targetKey))) {
+            continue;
+        }
+        operations.push(targetJournal.delOp(targetKey));
     }
     if (operations.length > 0) {
         await targetStorage.batch(operations);
