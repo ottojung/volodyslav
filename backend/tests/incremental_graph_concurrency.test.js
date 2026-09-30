@@ -2191,7 +2191,10 @@ describe("IncrementalGraph concurrency", () => {
             releaseX();
             await op1;
             expect(await graph.getFreshness("z")).toBe("up-to-date");
-            expect(await graph.getFreshness("y")).toBe("up-to-date");
+            // y validated against op2's occurrence of z, which op1's publication
+            // superseded, so y's proof is withdrawn and y is left stale rather than
+            // claiming to be up to date against a value occurrence that is gone.
+            expect(await graph.getFreshness("y")).toBe("potentially-outdated");
 
             // op1's occurrence is the committed one, and y's proof — established
             // against op2's occurrence of z, which no longer exists — must not
@@ -2212,6 +2215,84 @@ describe("IncrementalGraph concurrency", () => {
                 throw new Error("Expected identifier for y after pull");
             }
             expect(validZStrings).not.toContain(nodeIdentifierToString(yId));
+        }, 15000);
+
+        test("a pull after a clear supersedes a committed occurrence answers the committed value", async () => {
+            const db = new InMemoryDatabase();
+
+            // z's computor yields a different value on each materialisation, so the
+            // two concurrent re-materialisations publish different occurrences of one
+            // node and a value computed against the superseded one is observably wrong.
+            let zCall = 0;
+            const nextZ = () => {
+                zCall += 1;
+                return 1000 * zCall;
+            };
+
+            let xComputorEntered = () => undefined;
+            const xComputorEnteredPromise = new Promise(r => { xComputorEntered = r; });
+            let releaseX = () => undefined;
+            const releaseXPromise = new Promise(r => { releaseX = r; });
+
+            const graph = await createIncrementalGraph(testCapabilities, db, [
+                {
+                    output: "w",
+                    inputs: [],
+                    computor: async () => Promise.resolve(numberComputedValue(7)),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "z",
+                    inputs: ["w"],
+                    computor: async () => Promise.resolve(numberComputedValue(nextZ())),
+                    isDeterministic: false,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "x",
+                    inputs: ["z"],
+                    computor: async ([zValue]) => {
+                        xComputorEntered();
+                        await releaseXPromise;
+                        return numberComputedValue(zValue.value);
+                    },
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "y",
+                    inputs: ["z"],
+                    computor: async ([zValue]) => numberComputedValue(zValue.value),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+            ]);
+
+            await graph.pull("w");
+            await graph.pull("z");
+            await graph.invalidate("z");
+
+            // op1 re-materialises z (computor call 2) and blocks inside x's computor.
+            // op2 re-materialises z (computor call 3) and publishes first, so y's
+            // value is computed against op2's occurrence of z.
+            const op1 = graph.pull("x");
+            await xComputorEnteredPromise;
+            const op2Value = await graph.pull("y");
+            expect(op2Value.value).toBe(3000);
+
+            // op1 publishes its own older occurrence of z, overwriting op2's.
+            releaseX();
+            await op1;
+
+            const committedZ = await graph.pull("z");
+            expect(committedZ.value).toBe(2000);
+
+            // y published a value against op2's occurrence, which no longer exists.
+            // The pull must not answer with it: y is a function of the committed z,
+            // so the only correct answer is the committed z's value.
+            const yAfter = await graph.pull("y");
+            expect(yAfter.value).toBe(2000);
         }, 15000);
 
         test("concurrent valid[D] additions via withTransaction are merged at commit time", async () => {

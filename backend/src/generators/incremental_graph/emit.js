@@ -20,8 +20,18 @@
 /** @typedef {import('./database/types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./journal/emission').MaterializeInput} MaterializeInput */
 
-const { deserializeNodeKey, stringToNodeKeyString } = require("./database");
-const { requireNodeKey } = require("./graph_state");
+const { deserializeNodeKey, requireTxNodeKey, stringToNodeKeyString } = require("./database");
+
+/**
+ * Resolve the semantic node key of a committed identifier within the transaction,
+ * so this module does not import the commit seam which imports it.
+ * @param {Transaction} tx
+ * @param {NodeIdentifier} nodeIdentifier
+ * @returns {NodeKeyString}
+ */
+function requireNodeKey(tx, nodeIdentifier) {
+    return requireTxNodeKey(tx.identifierLookup, nodeIdentifier);
+}
 
 /**
  * The semantic node one persisted node key names.

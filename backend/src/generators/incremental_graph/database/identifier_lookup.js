@@ -353,6 +353,28 @@ function txNodeIdToKey(txLookup, nodeIdentifier) {
 }
 
 /**
+ * Require the semantic node key for an identifier within a transaction.
+ * Checks the overlay first, then falls through to the committed base.
+ *
+ * This lives beside `txNodeIdToKey` rather than in `graph_state.js` so that both
+ * the commit seam and the emission helpers can resolve a key without importing each
+ * other.
+ *
+ * @param {TransactionIdentifierLookup} txLookup
+ * @param {NodeIdentifier} nodeIdentifier
+ * @returns {NodeKeyString}
+ */
+function requireTxNodeKey(txLookup, nodeIdentifier) {
+    const nodeKey = txNodeIdToKey(txLookup, nodeIdentifier);
+    if (nodeKey === undefined) {
+        throw new IdentifierLookupError(
+            `Missing semantic node key for identifier ${nodeIdentifierToString(nodeIdentifier)}`
+        );
+    }
+    return nodeKey;
+}
+
+/**
  * Return the existing identifier for a node key, or reserve one and record it
  * in the overlay (never in the base).
  *
@@ -559,6 +581,7 @@ module.exports = {
     serializeIdentifierLookup,
     setIdentifierMapping,
     txAllocateNodeIdentifier,
+    requireTxNodeKey,
     txNodeIdToKey,
     txNodeKeyToId,
     serializeTransactionLookup,

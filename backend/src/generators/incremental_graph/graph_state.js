@@ -29,10 +29,10 @@ const {
     nodeIdentifierToString,
     makeTransactionIdentifierLookup,
     txAllocateNodeIdentifier,
-    txNodeIdToKey,
     txNodeKeyToId,
     serializeTransactionLookup,
     commitTransactionLookup,
+    requireTxNodeKey,
     ReplicaStateInvariantError,
 } = require('./database');
 const {
@@ -45,6 +45,10 @@ const {
 const { finalizeEmission, makeJournalPublicationError } = require('./journal');
 const { makeTransactionJournal } = require('./journal_staging');
 const { appendValidMutationOps, applyValidMutations } = require('./validity_mutations');
+const { propagatePotentiallyOutdated } = require('./propagation');
+const { stageValueInvalidations } = require('./emit');
+
+/** @typedef {import('./validity_mutations').WithdrawnProof} WithdrawnProof */
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
@@ -298,6 +302,78 @@ function createBatch(schemaStorage) {
 }
 
 /**
+ * Publish the staleness of every committed proof the transaction's clears withdrew.
+ *
+ * A withdrawal recorded by `recompute.js` is not complete when the validity edge is
+ * gone: a dependent which published a value is `up-to-date`, and the pull fast path
+ * serves an `up-to-date` node its stored value without consulting any validity state.
+ * A dependent left without a proof and left `up-to-date` therefore keeps answering
+ * with the value it computed against the superseded occurrence.
+ *
+ * The withdrawal is resolved here, at the commit seam, against the latest committed
+ * state, so this is the one place which knows both which committed dependents the
+ * clear withdrew and which occurrence the publication supersedes. The staleness is
+ * written to the same batch as the withdrawal, so a withdrawn proof is never durable
+ * while its dependent still claims to be up to date, and it is staged as an
+ * `invalidate-value` intent of the same transaction, so the record that explains the
+ * staleness publishes with it.
+ *
+ * Propagation is over the withdrawn dependents and their dependents, and mutates no
+ * validity edge: it states which occurrences became stale, nothing about which
+ * proofs hold.
+ *
+ * @param {GraphStorage} storage
+ * @param {BatchBuilder} batch
+ * @param {Array<WithdrawnProof>} withdrawn
+ * @param {Transaction} [tx] - The transaction whose Journal records the staleness. Absent for a bare batch, which stages no records.
+ * @returns {Promise<Array<WithdrawnProof>>} The withdrawn proofs which were up-to-date.
+ */
+async function publishWithdrawnProofs(storage, batch, withdrawn, tx) {
+    if (withdrawn.length === 0) {
+        return [];
+    }
+    const seeds = withdrawn.map(proof => proof.dependent);
+    const transitioned = await propagatePotentiallyOutdated(storage, batch, seeds);
+    /** @type {Set<string>} */
+    const transitionedStrings = new Set(transitioned.map(id => nodeIdentifierToString(id)));
+    /** @type {Array<WithdrawnProof>} */
+    const becameStale = withdrawn.filter(
+        proof => transitionedStrings.has(nodeIdentifierToString(proof.dependent))
+    );
+    if (tx !== undefined && becameStale.length > 0) {
+        for (const cause of groupByDependency(becameStale)) {
+            await stageValueInvalidations(
+                tx,
+                requireTxNodeKey(tx.identifierLookup, cause.dependency),
+                cause.dependents
+            );
+        }
+    }
+    return becameStale;
+}
+
+/**
+ * Group withdrawn proofs by the dependency whose value occurrence their publication
+ * superseded, preserving canonical order within each group.
+ * @param {Array<WithdrawnProof>} withdrawn
+ * @returns {Array<{dependency: NodeIdentifier, dependents: Array<NodeIdentifier>}>}
+ */
+function groupByDependency(withdrawn) {
+    /** @type {Map<string, {dependency: NodeIdentifier, dependents: Array<NodeIdentifier>}>} */
+    const groups = new Map();
+    for (const proof of withdrawn) {
+        const key = nodeIdentifierToString(proof.dependency);
+        const existing = groups.get(key);
+        if (existing === undefined) {
+            groups.set(key, { dependency: proof.dependency, dependents: [proof.dependent] });
+        } else {
+            existing.dependents.push(proof.dependent);
+        }
+    }
+    return [...groups.values()].sort((a, b) => compareNodeIdentifier(a.dependency, b.dependency));
+}
+
+/**
  * Create the identifier-native graph storage facade for one schema namespace.
  * @param {RootDatabase} rootDatabase
  * @param {SleepCapability} sleeper
@@ -336,7 +412,8 @@ function makeGraphStorage(rootDatabase, sleeper, datetime) {
             const result = await fn(batch);
 
             await darkroomActivity(sleeper, rootDatabase.currentReplicaName(), async () => {
-                await appendValidMutationOps(activeSchemaStorage, operations, validMutations);
+                const withdrawn = await appendValidMutationOps(activeSchemaStorage, operations, validMutations);
+                await publishWithdrawnProofs(this, batch, withdrawn);
                 if (operations.length > 0) {
                     await activeSchemaStorage.batch(operations);
                 }
@@ -412,7 +489,8 @@ function makeGraphStorage(rootDatabase, sleeper, datetime) {
                 const value = await fn(operation);
 
                 await darkroomActivity(sleeper, rootDatabase.currentReplicaName(), async () => {
-                    await appendValidMutationOps(activeSchemaStorage, operations, validMutations);
+                    const withdrawn = await appendValidMutationOps(activeSchemaStorage, operations, validMutations);
+                    await publishWithdrawnProofs(this, batch, withdrawn, tx);
 
                     const hasPendingOperations = operations.length > 0;
                     const hasPendingAllocations = tx.identifierLookup.keyToId.size > 0;
@@ -570,11 +648,7 @@ function getOrAllocateNodeIdentifier(tx, rootDatabase, nodeKey) {
  * @returns {NodeKeyString}
  */
 function requireNodeKey(tx, nodeIdentifier) {
-    const nodeKey = txNodeIdToKey(tx.identifierLookup, nodeIdentifier);
-    if (nodeKey === undefined) {
-        throw new Error(`Missing semantic node key for identifier ${nodeIdentifierToString(nodeIdentifier)}`);
-    }
-    return nodeKey;
+    return requireTxNodeKey(tx.identifierLookup, nodeIdentifier);
 }
 
 module.exports = {

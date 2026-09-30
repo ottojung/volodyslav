@@ -104,13 +104,15 @@ async function handleUnchanged(nodeDefinition, nodeIdentifier, inputEdges, tx) {
  * proof recomputes rather than revalidating a cache.
  *
  * The propagation is scoped to what this transaction read, and that is the
- * limit of what a staleness notification from here can reach. A dependent which
+ * limit of what a staleness notification from here can reach: a dependent which
  * another transaction commits against the value occurrence this transaction is
- * about to supersede is not in `downstream`, is not marked stale, and — because
- * a dependent which published a value is `up-to-date` — is served its stored
- * value by the pull fast path in `pull.js` without any validity check. Closing
- * that requires recording, per dependent, the value occurrence its proof was
- * established against, which `valid[D]` does not carry today.
+ * about to supersede is not in `downstream` and is not marked stale here. That
+ * dependent is not lost. The clear withdraws its proof regardless, and the
+ * commit seam resolves the clear against the latest committed state under the
+ * publication lock, so it marks every dependent the clear withdrew potentially
+ * outdated in the same atomic write (`publishWithdrawnProofs` in
+ * `graph_state.js`). Marking it here would not be correct: at this point the
+ * transaction does not yet know which committed dependents its clear withdraws.
  *
  * @param {IncrementalGraphRecomputeAccess} incrementalGraph
  * @param {ResolvedConcreteNode} nodeDefinition

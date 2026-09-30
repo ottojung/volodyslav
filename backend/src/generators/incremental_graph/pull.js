@@ -67,6 +67,14 @@ const { lookupNodeIdentifier } = require("./graph_state");
  * nodes is a storage invariant enforced by writers, migrations, sync merge,
  * and validation, not by the read fast path.
  *
+ * A node can only be `up-to-date` if every dependency it validated against
+ * still stands. A publication which supersedes a dependency's value occurrence
+ * withdraws the proofs that occurrence supported and marks the dependents it
+ * left without one potentially outdated, so an `up-to-date` node here is a node
+ * whose proof set is current. That is the invariant which lets this path read
+ * without consulting validity, and it is what a withdrawal which did not also
+ * publish staleness would break.
+ *
  * Nodes that are not up-to-date fall through to internalMaybeRecalculate().
  *
  * The read goes through the operation's transaction batch, so it observes the nodes
