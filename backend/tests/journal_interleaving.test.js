@@ -836,14 +836,21 @@ describe("the adversarial fixtures isolate one projection rule each", () => {
     /**
      * The enumerated space is exhaustive but coarse, so it cannot by itself tell a
      * correct implementation from one which dropped a rule the other rules happen
-     * to duplicate. These fixtures close that gap: each names the rule it is built
-     * around, and the tests below assert that the record layer and the oracle each
-     * reach the outcome the fixture declares for that rule.
+     * to duplicate. These fixtures close that gap: each declares the outcome it
+     * expects, and the tests below assert that the record layer and the oracle each
+     * reach the outcome the fixture declares. The declaration is per-fixture and
+     * whole-journal; nothing in these tests attributes a rejection to the rule the
+     * fixture's `isolates` field names, which only the distinctness test below
+     * reads.
      *
-     * The property asserted here is the one which makes the rest of the file
-     * meaningful: a fixture must produce the outcome it was designed to produce,
-     * and must be a journal the record layer accepts apart from the single rule it
-     * deliberately violates.
+     * The property asserted here is the declared expectation itself: a fixture
+     * must produce the outcome it was designed to produce, judged by comparing one
+     * verdict against one flag. Nothing establishes that a journal the record layer
+     * rejects is rejected for the rule the fixture was built to violate rather than
+     * for some other reason — there is no second validation with that rule relaxed
+     * and no per-fixture expected rejection reason — and the fixtures which declare
+     * `supported: true` violate no rule at all, so for them the assertion is that
+     * the record layer accepts a journal that is wholly well formed.
      */
     test("every fixture is well formed apart from the rule it names", () => {
         /** @type {string[]} */
