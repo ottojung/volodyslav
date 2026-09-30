@@ -37,6 +37,7 @@ const {
     FinalMergeStateError,
 } = require('../src/generators/incremental_graph/database/sync_merge_validation');
 const { createIncrementalGraph, makeUnchanged } = require('../src/generators/incremental_graph');
+const { numberComputedValue } = require('./computed_value_fixture');
 const {
     IdentifierLookupConflictError,
     isIdentifierLookupConflictError,
@@ -2359,9 +2360,9 @@ describe('mergeHostIntoReplica', () => {
             // propagation (linear A→B→C chain).
 
             const graph = await createIncrementalGraph(testCapabilities, db, [
-                { output: 'prop_A', inputs: [], computor: async () => ({ v: 2 }), isDeterministic: true, hasSideEffects: false },
-                { output: 'prop_B', inputs: ['prop_A'], computor: async () => ({ v: 2 }), isDeterministic: true, hasSideEffects: false },
-                { output: 'prop_C', inputs: ['prop_B'], computor: async () => ({ v: 3 }), isDeterministic: true, hasSideEffects: false },
+                { output: 'prop_A', inputs: [], computor: async () => numberComputedValue(2), isDeterministic: true, hasSideEffects: false },
+                { output: 'prop_B', inputs: ['prop_A'], computor: async () => numberComputedValue(2), isDeterministic: true, hasSideEffects: false },
+                { output: 'prop_C', inputs: ['prop_B'], computor: async () => numberComputedValue(3), isDeterministic: true, hasSideEffects: false },
             ]);
 
             await graph.invalidate('prop_A');

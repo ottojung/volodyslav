@@ -17,6 +17,7 @@ const {
     createIncrementalGraph,
     makeUnchanged,
 } = require("../src/generators/incremental_graph");
+const { numberComputedValue } = require("./computed_value_fixture");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger, stubDatetime, stubEnvironment } = require("./stubs");
 
@@ -54,9 +55,9 @@ describe("migration integration", () => {
             let aCalls = 0, bCalls = 0, cCalls = 0;
 
             const nodeDefs = [
-                { output: "A", inputs: [], computor: async () => { aCalls++; return ({ v: 1 }); }, isDeterministic: true, hasSideEffects: false },
-                { output: "B", inputs: ["A"], computor: async (_inputs, oldValue) => { bCalls++; receivedOldValues.push({ bOld: oldValue }); return ({ v: 2 }); }, isDeterministic: true, hasSideEffects: false },
-                { output: "C", inputs: ["B"], computor: async (_inputs, oldValue) => { cCalls++; receivedOldValues.push({ cOld: oldValue }); return ({ v: 3 }); }, isDeterministic: true, hasSideEffects: false },
+                { output: "A", inputs: [], computor: async () => { aCalls++; return numberComputedValue(1); }, isDeterministic: true, hasSideEffects: false },
+                { output: "B", inputs: ["A"], computor: async (_inputs, oldValue) => { bCalls++; receivedOldValues.push({ bOld: oldValue }); return numberComputedValue(2); }, isDeterministic: true, hasSideEffects: false },
+                { output: "C", inputs: ["B"], computor: async (_inputs, oldValue) => { cCalls++; receivedOldValues.push({ cOld: oldValue }); return numberComputedValue(3); }, isDeterministic: true, hasSideEffects: false },
             ];
 
             // --- Phase 1: Build version-1 source with A→B→C chain ---
@@ -121,11 +122,11 @@ describe("migration integration", () => {
             expect(aCalls).toBe(1);
             expect(bCalls).toBe(1);
             expect(cCalls).toBe(1);
-            expect(result).toEqual({ v: 3 });
+            expect(result).toEqual(numberComputedValue(3));
             // oldValue was delivered to both B and C
             expect(receivedOldValues.length).toBe(2);
-            expect(receivedOldValues[0].bOld).toEqual({ v: 2 });
-            expect(receivedOldValues[1].cOld).toEqual({ v: 3 });
+            expect(receivedOldValues[0].bOld).toEqual(numberComputedValue(2));
+            expect(receivedOldValues[1].cOld).toEqual(numberComputedValue(3));
 
             // --- Phase 5: Final state — proofs and freshness restored ---
             expect(await g2.getFreshness("A")).toBe("up-to-date");
@@ -149,9 +150,9 @@ describe("migration integration", () => {
 
             let aCalls = 0, bCalls = 0, cCalls = 0;
             const nodeDefs = [
-                { output: "A", inputs: [], computor: async () => { aCalls++; return ({ v: 1 }); }, isDeterministic: true, hasSideEffects: false },
-                { output: "B", inputs: ["A"], computor: async (_inputs, oldValue) => { bCalls++; if (oldValue === undefined) return ({ v: 2 }); return makeUnchanged(); }, isDeterministic: true, hasSideEffects: false },
-                { output: "C", inputs: ["B"], computor: async () => { cCalls++; return ({ v: 3 }); }, isDeterministic: true, hasSideEffects: false },
+                { output: "A", inputs: [], computor: async () => { aCalls++; return numberComputedValue(1); }, isDeterministic: true, hasSideEffects: false },
+                { output: "B", inputs: ["A"], computor: async (_inputs, oldValue) => { bCalls++; if (oldValue === undefined) return numberComputedValue(2); return makeUnchanged(); }, isDeterministic: true, hasSideEffects: false },
+                { output: "C", inputs: ["B"], computor: async () => { cCalls++; return numberComputedValue(3); }, isDeterministic: true, hasSideEffects: false },
             ];
             const expectedScheme = JSON.stringify({
                 format: 1,
@@ -227,7 +228,7 @@ describe("migration integration", () => {
             expect(aCalls).toBe(0);
             expect(bCalls).toBe(1);
             expect(cCalls).toBe(0);
-            expect(result).toEqual({ v: 3 });
+            expect(result).toEqual(numberComputedValue(3));
 
             // --- Phase 7: Final state ---
             expect(await g2.getFreshness("A")).toBe("up-to-date");
