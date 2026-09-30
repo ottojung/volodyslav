@@ -12,6 +12,7 @@ const {
     IDENTIFIERS_KEY,
     LAST_NODE_INDEX_KEY,
     GRAPH_SCHEME_KEY,
+    nodeIdentifierFromString,
     nodeIdentifierToString,
     buildGraphSchemeFromNodeDefs,
     serializeGraphScheme,
@@ -79,12 +80,52 @@ function makeInMemoryDb(table) {
     };
 }
 
+/**
+ * Current-format NodeIdentifiers for the fixture nodes, and the node key each one
+ * denotes. A replica's materialized nodes are addressed by identifier and the
+ * identifier lookup maps them to their node keys, so a fixture which seeds a node
+ * needs both.
+ */
+const FIXTURE_FINGERPRINT = "abcdefghi";
+const fixtureIdentifiers = new Map();
+let nextFixtureIndex = 0;
+
+/**
+ * The current-format identifier of a fixture node, registering the node key it
+ * denotes in the registry the storage doubles' identifier lookups serve.
+ * @param {string} name - Node head, e.g. "A".
+ * @returns {import('../src/generators/incremental_graph/database').NodeIdentifier}
+ */
+function fixtureIdentifier(name) {
+    const existing = fixtureIdentifiers.get(name);
+    if (existing !== undefined) {
+        return existing;
+    }
+    nextFixtureIndex += 1;
+    const identifier = nodeIdentifierFromString(`${nextFixtureIndex}-${FIXTURE_FINGERPRINT}`);
+    fixtureIdentifiers.set(name, identifier);
+    return identifier;
+}
+
+/** The node key a fixture identifier denotes. */
+function fixtureNodeKey(identifier) {
+    for (const [name, candidate] of fixtureIdentifiers) {
+        if (nodeIdentifierToString(candidate) === nodeIdentifierToString(identifier)) {
+            return toJsonKey(name);
+        }
+    }
+    throw new Error(`no fixture node key is registered for ${nodeIdentifierToString(identifier)}`);
+}
+
 function makeSchemaStorage() {
     const values = makeInMemoryDb("values");
     const freshness = makeInMemoryDb("freshness");
     const global = makeInMemoryDb("global");
     const valid = makeInMemoryDb("valid");
     const timestamps = makeInMemoryDb("timestamps");
+    // A replica's journal is one of its sublevels: the migration cutover builds the
+    // target's journal alongside the target's graph state, so the double carries one.
+    const journal = makeInMemoryDb("journal");
 
     const originalGlobalGet = global.get.bind(global);
     global.get = async (key) => {
@@ -93,7 +134,7 @@ function makeSchemaStorage() {
             if (stored !== undefined) return stored;
             const out = [];
             for await (const k of values.keys()) {
-                out.push([k, k]);
+                out.push([nodeIdentifierToString(k), fixtureNodeKey(k)]);
             }
             return out;
         }
@@ -106,7 +147,7 @@ function makeSchemaStorage() {
     };
 
     return {
-        values, freshness, global, valid, timestamps,
+        values, freshness, global, valid, timestamps, journal,
         async batch(operations) {
             for (const op of operations) {
                 values.apply(op);
@@ -114,6 +155,7 @@ function makeSchemaStorage() {
                 global.apply(op);
                 valid.apply(op);
                 timestamps.apply(op);
+                journal.apply(op);
             }
         },
     };
@@ -211,7 +253,7 @@ describe("keep decision: timestamps copied to new storage", () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
-        const nodeKey = toJsonKey("A");
+        const nodeKey = fixtureIdentifier("A");
 
         await seedNode(xStorage, nodeKey, { timestamps: OLD_TIMESTAMP });
         const { rootDatabase } = makeRootDatabaseMock({
@@ -230,7 +272,7 @@ describe("keep decision: timestamps copied to new storage", () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
-        const nodeKey = toJsonKey("A");
+        const nodeKey = fixtureIdentifier("A");
 
         await seedNode(xStorage, nodeKey, { timestamps: OLD_TIMESTAMP });
         const { rootDatabase } = makeRootDatabaseMock({
@@ -250,7 +292,7 @@ describe("keep decision: timestamps copied to new storage", () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
-        const nodeKey = toJsonKey("A");
+        const nodeKey = fixtureIdentifier("A");
 
         await seedNode(xStorage, nodeKey, { timestamps: OLD_TIMESTAMP });
         const { rootDatabase } = makeRootDatabaseMock({
@@ -270,7 +312,7 @@ describe("keep decision: timestamps copied to new storage", () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
-        const nodeKey = toJsonKey("A");
+        const nodeKey = fixtureIdentifier("A");
 
         await seedNode(xStorage, nodeKey); // no timestamps
         const { rootDatabase } = makeRootDatabaseMock({
@@ -287,8 +329,8 @@ describe("keep decision: timestamps copied to new storage", () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
-        const nkA = toJsonKey("A");
-        const nkB = toJsonKey("B");
+        const nkA = fixtureIdentifier("A");
+        const nkB = fixtureIdentifier("B");
 
         await seedNode(xStorage, nkA, { timestamps: OLD_TIMESTAMP });
         await seedNode(xStorage, nkB, {
@@ -320,7 +362,7 @@ describe("override decision: timestamps are preserved", () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
-        const nodeKey = toJsonKey("A");
+        const nodeKey = fixtureIdentifier("A");
 
         await seedNode(xStorage, nodeKey, { timestamps: OLD_TIMESTAMP });
         const { rootDatabase } = makeRootDatabaseMock({
@@ -341,7 +383,7 @@ describe("override decision: timestamps are preserved", () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
-        const nodeKey = toJsonKey("A");
+        const nodeKey = fixtureIdentifier("A");
 
         await seedNode(xStorage, nodeKey); // no timestamps
         const { rootDatabase } = makeRootDatabaseMock({
@@ -359,7 +401,7 @@ describe("override decision: timestamps are preserved", () => {
         const ts = { createdAt: "2023-05-01T00:00:00.000Z", modifiedAt: "2024-11-30T23:59:59.000Z" };
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
-        const nodeKey = toJsonKey("A");
+        const nodeKey = fixtureIdentifier("A");
 
         await seedNode(xStorage, nodeKey, { timestamps: ts });
         const { rootDatabase } = makeRootDatabaseMock({
@@ -394,7 +436,7 @@ describe("create decision: timestamps written to new storage", () => {
 
         await seedGraphScheme(xStorage, makeNodeDefs(["A"]));
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A"]), async (storage) => {
-            await storage.create(nodeKey, async () => ({ type: "all_events", events: [] }), "up-to-date");
+            await storage.create(toJsonKey("A"), async () => ({ type: "all_events", events: [] }), "up-to-date");
         });
 
         const allKeys = [];
@@ -421,7 +463,7 @@ describe("create decision: timestamps written to new storage", () => {
 
         await seedGraphScheme(xStorage, makeNodeDefs(["A"]));
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A"]), async (storage) => {
-            await storage.create(nodeKey, async () => ({ type: "all_events", events: [] }), "up-to-date");
+            await storage.create(toJsonKey("A"), async () => ({ type: "all_events", events: [] }), "up-to-date");
         });
 
         const result = await yGet(yStorage.timestamps, yStorage, nodeKey);
@@ -443,8 +485,8 @@ describe("create decision: timestamps written to new storage", () => {
 
         await seedGraphScheme(xStorage, makeNodeDefs(["A", "B"]));
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A", "B"]), async (storage) => {
-            await storage.create(nkA, async () => ({ type: "all_events", events: [] }), "up-to-date");
-            await storage.create(nkB, async () => ({ type: "all_events", events: [] }), "up-to-date");
+            await storage.create(toJsonKey("A"), async () => ({ type: "all_events", events: [] }), "up-to-date");
+            await storage.create(toJsonKey("B"), async () => ({ type: "all_events", events: [] }), "up-to-date");
         });
 
         const aResult = await yGet(yStorage.timestamps, yStorage, nkA);
@@ -465,7 +507,7 @@ describe("invalidate decision: timestamps preserved", () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
-        const nodeKey = toJsonKey("A");
+        const nodeKey = fixtureIdentifier("A");
 
         await seedNode(xStorage, nodeKey, { timestamps: OLD_TIMESTAMP });
         const { rootDatabase } = makeRootDatabaseMock({
@@ -484,7 +526,7 @@ describe("invalidate decision: timestamps preserved", () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
-        const nodeKey = toJsonKey("A");
+        const nodeKey = fixtureIdentifier("A");
 
         await seedNode(xStorage, nodeKey); // no timestamps
         const { rootDatabase } = makeRootDatabaseMock({
@@ -502,7 +544,7 @@ describe("invalidate decision: timestamps preserved", () => {
         const ts = { createdAt: "2022-01-01T00:00:00.000Z", modifiedAt: "2022-01-01T00:00:00.000Z" };
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
-        const nodeKey = toJsonKey("A");
+        const nodeKey = fixtureIdentifier("A");
 
         await seedNode(xStorage, nodeKey, { timestamps: ts, freshness: "up-to-date" });
         const { rootDatabase } = makeRootDatabaseMock({
@@ -529,8 +571,8 @@ describe("delete decision: timestamps not present in new storage", () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
-        const nkA = toJsonKey("A");
-        const nkB = toJsonKey("B");
+        const nkA = fixtureIdentifier("A");
+        const nkB = fixtureIdentifier("B");
 
         await seedNode(xStorage, nkA, { timestamps: OLD_TIMESTAMP });
         await seedNode(xStorage, nkB, {
@@ -559,8 +601,8 @@ describe("delete decision: sublevels do not retain deleted keys", () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
-        const nkA = toJsonKey("A");
-        const nkB = toJsonKey("B");
+        const nkA = fixtureIdentifier("A");
+        const nkB = fixtureIdentifier("B");
 
         await seedNode(xStorage, nkA, {
             timestamps: OLD_TIMESTAMP,
@@ -598,8 +640,8 @@ describe("delete decision: sublevels do not retain deleted keys", () => {
 
 describe("two-node chain: mixed decision timestamp behaviour", () => {
     async function buildChain(xStorage) {
-        const nkA = toJsonKey("A");
-        const nkB = toJsonKey("B");
+        const nkA = fixtureIdentifier("A");
+        const nkB = fixtureIdentifier("B");
         await seedNode(xStorage, nkA, { timestamps: OLD_TIMESTAMP });
         await seedNode(xStorage, nkB, {
             timestamps: NEW_TIMESTAMP,
@@ -699,7 +741,7 @@ describe("failed migration: x-namespace timestamps unchanged", () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
-        const nodeKey = toJsonKey("A");
+        const nodeKey = fixtureIdentifier("A");
 
         await seedNode(xStorage, nodeKey, { timestamps: OLD_TIMESTAMP });
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
@@ -718,8 +760,8 @@ describe("failed migration: x-namespace timestamps unchanged", () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
-        const nkA = toJsonKey("A");
-        const nkB = toJsonKey("B");
+        const nkA = fixtureIdentifier("A");
+        const nkB = fixtureIdentifier("B");
 
         await seedNode(xStorage, nkA, { timestamps: OLD_TIMESTAMP });
         await seedNode(xStorage, nkB, { timestamps: NEW_TIMESTAMP });

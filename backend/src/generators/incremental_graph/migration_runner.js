@@ -26,8 +26,12 @@ const { makeInvalidMigrationDecisionError } = require("./migration_errors");
 const { holidayActivity } = require("./lock");
 const { makeMigrationStorage } = require("./migration_storage");
 const { buildDecisionsMap, buildDesiredValid, loadMaterializedNodes } = require("./migration_validity");
+const { buildMigrationM1Intents } = require("./migration_m1");
+const { buildProducedOccurrences } = require("./migration_occurrences");
+const { buildMigrationJournal } = require("./migration_journal");
 const { checkpointMigration } = require("./database");
-const { unifyStores, makeDbToDbAdapter } = require("./database");
+const { unifyStores, makeDbToDbAdapter, deserializeNodeKey } = require("./database");
+const { fromISOString } = require("../../datetime");
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
@@ -99,16 +103,16 @@ const { unifyStores, makeDbToDbAdapter } = require("./database");
  * @param {Map<NodeIdentifier, Decision>} decisions
  * @param {Map<NodeIdentifier, NodeIdentifier[]>} desiredValid
  * @param {import('./database/types').Version} newVersion
- * @param {import('../../datetime').Datetime} datetime - Datetime capability for generating timestamps.
  * @param {number} maxAllocatedIndex - The max allocated local index during this migration.
  * @param {number} sourceLastNodeIndex - The validated durable last_node_index from the source replica.
  * @param {string} fingerprint - The database fingerprint to carry forward.
  * @param {string} graphSchemeString
+ * @param {ReadonlyMap<NodeIdentifier, import('./migration_m1').TargetOccurrence>} producedOccurrences - The
+ *   occurrences a genuine create or replace produced, already carrying their §11a.3 timestamps. The M1
+ *   records name the same occurrences, so the graph state and the journal describe one value.
  * @returns {ReadableSchemaStorage}
  */
-function makeLazyMigrationSource(prevStorage, oldLookup, decisions, desiredValid, newVersion, datetime, maxAllocatedIndex, sourceLastNodeIndex, fingerprint, graphSchemeString) {
-    const producedValues = new Map();
-
+function makeLazyMigrationSource(prevStorage, oldLookup, decisions, desiredValid, newVersion, maxAllocatedIndex, sourceLastNodeIndex, fingerprint, graphSchemeString, producedOccurrences) {
     /**
      * @param {NodeIdentifier} key
      * @param {Decision} decision
@@ -116,21 +120,11 @@ function makeLazyMigrationSource(prevStorage, oldLookup, decisions, desiredValid
      */
     async function readFinalValue(key, decision) {
         if (decision.kind === "create" || decision.kind === "override") {
-            const keyString = String(key);
-            let valuePromise = producedValues.get(keyString);
-            if (valuePromise === undefined) {
-                valuePromise = decision.value(key);
-                producedValues.set(keyString, valuePromise);
+            const occurrence = producedOccurrences.get(key);
+            if (occurrence !== undefined) {
+                return occurrence.value;
             }
-            try {
-                const value = await valuePromise;
-                if (value === null || value === undefined) {
-                    throw makeInvalidMigrationDecisionError(`Migration value producer for ${keyString} did not return a computed value`);
-                }
-                return value;
-            } finally {
-                producedValues.delete(keyString);
-            }
+            throw makeInvalidMigrationDecisionError(`Migration value producer for ${String(key)} did not return a computed value`);
         }
         return await prevStorage.values.get(key);
     }
@@ -192,15 +186,14 @@ function makeLazyMigrationSource(prevStorage, oldLookup, decisions, desiredValid
             async get(key) {
                 const decision = decisions.get(key);
                 if (!decision || decision.kind === "delete") return undefined;
-                const existing = await prevStorage.timestamps.get(key);
-                if (decision.kind === "create") {
-                    const nowIso = datetime.now().toISOString();
-                    return { createdAt: nowIso, modifiedAt: nowIso };
+                // A `create` is a new materialization, so it takes the §11a.3 timestamps
+                // the M1 record was built with and the persisted graph state names the
+                // same occurrence the journal does.
+                const produced = producedOccurrences.get(key);
+                if (produced !== undefined && decision.kind === "create") {
+                    return { createdAt: produced.createdAt, modifiedAt: produced.modifiedAt };
                 }
-                if (decision.kind === "invalidate" || decision.kind === "override" || decision.kind === "keep") {
-                    return existing;
-                }
-                return existing;
+                return await prevStorage.timestamps.get(key);
             },
         },
         global: {
@@ -418,17 +411,27 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             // Create a lazy source that computes desired values on demand.
             // Combined with makeDbToDbAdapter + unifyStores this keeps peak
             // memory at O(|max value| + |keys|), matching the sync path.
+            // The migration publication instant, which §11a.3 makes the `modifiedAt` of
+            // every genuinely produced occurrence and the seed of every M1 authority.
+            const publicationInstant = capabilities.datetime.now().toISOString();
+            const producedOccurrences = await buildProducedOccurrences(
+                decisions,
+                prevStorage,
+                oldLookup,
+                publicationInstant
+            );
+
             const lazySource = makeLazyMigrationSource(
                 prevStorage,
                 oldLookup,
                 decisions,
                 desiredValid,
                 currentVersion,
-                capabilities.datetime,
                 migrationStorage.getMaxAllocatedIndex(),
                 sourceLastNodeIndex,
                 rootDatabase.getFingerprint(),
-                graphSchemeString
+                graphSchemeString,
+                producedOccurrences
             );
 
             // Gently unify the desired state into the target replica.
@@ -436,6 +439,31 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             // The new version is included in the lazy source's global sublevel,
             // so it is written atomically with the data — no separate version write.
             await unifyStores(makeDbToDbAdapter(lazySource, toStorage));
+
+            // Build the target's Journal before the cutover. The graph state just
+            // unified is a projection of this history, so a target which received
+            // values without the history explaining them has nodes with no value
+            // occurrence to validate against and the first ordinary publication after
+            // the cutover fails.
+            const migrationIntents = buildMigrationM1Intents(
+                decisions,
+                oldLookup,
+                producedOccurrences,
+                /**
+                 * @param {NodeKeyString} nodeKeyString
+                 * @returns {import('./database/node_key').NodeKey}
+                 */
+                (nodeKeyString) => deserializeNodeKey(nodeKeyString)
+            );
+            await buildMigrationJournal(
+                prevStorage,
+                toStorage,
+                rootDatabase.getFingerprint(),
+                migrationIntents,
+                fromISOString(publicationInstant).toMillis(),
+                Math.max(sourceLastNodeIndex, migrationStorage.getMaxAllocatedIndex())
+            );
+
             // One final fsync: all unification writes use sync:false for performance;
             // _rawSync() issues an empty batch with sync:true to flush the WAL
             // without rewriting any keys.
@@ -451,7 +479,9 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             const targetLookup = parseIdentifierLookup(rawIdentifiers, 'migration target replica');
             await assertValidReplicaMaterializationState(toStorage, targetLookup, 'migration target replica');
 
-            // Persist the new active replica pointer after all writes succeed.
+            // The one atomic cutover which selects the target. Everything above
+            // wrote only the still-inactive target, so a failure anywhere above
+            // leaves the previous active pair selected.
             await rootDatabase.setCurrentReplicaPointer(toReplica);
         }
     );

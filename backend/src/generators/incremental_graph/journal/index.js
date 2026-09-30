@@ -151,6 +151,7 @@ const {
 
 // Ordinary emission finalization
 const { finalizeEmission } = require("./emission");
+const { finalizeMigrationEmission } = require("./migration_emission");
 
 /** @typedef {import('./errors').AnyJournalError} AnyJournalError */
 /** @typedef {import('./basis').InvalidateScope} InvalidateScope */
@@ -194,6 +195,7 @@ module.exports = {
     currentFormatValidateRecord,
     encodeJournalRecord,
     finalizeEmission,
+    finalizeMigrationEmission,
     frontierJoin,
     happenedBefore,
     isAuthorityTime,

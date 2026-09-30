@@ -85,8 +85,11 @@ function makeSchemaStorage() {
     const global = makeInMemoryDb("global");
     const valid = makeInMemoryDb("valid");
     const timestamps = makeInMemoryDb("timestamps");
+    // A replica's journal is one of its sublevels: the migration cutover builds the
+    // target's journal alongside the target's graph state, so the double carries one.
+    const journal = makeInMemoryDb("journal");
     return {
-        values, freshness, global, valid, timestamps,
+        values, freshness, global, valid, timestamps, journal,
         async batch(operations) {
             for (const op of operations) {
                 values.apply(op);
@@ -94,6 +97,7 @@ function makeSchemaStorage() {
                 global.apply(op);
                 valid.apply(op);
                 timestamps.apply(op);
+                journal.apply(op);
             }
         },
     };

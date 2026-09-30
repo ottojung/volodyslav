@@ -521,5 +521,8 @@ function finalizeEmission(request) {
 }
 
 module.exports = {
+    allocateAuthority,
+    contextOf,
+    epochMillisecondsOf,
     finalizeEmission,
 };
