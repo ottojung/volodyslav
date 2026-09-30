@@ -638,15 +638,23 @@ describe("stream contiguity", () => {
         expect(failure.missingSequence).toBe("1");
     });
 
-    // Per-case attribution of the digit-width cases below. Each bullet names the
-    // property its case is the primary holder of, and no two bullets name the same
-    // property, so the mapping is one-to-one from cases to properties. It is not
-    // one-to-one in the other direction: the cascading decimal borrow is held
-    // jointly by three of these cases, while the boundary arm's expected
-    // coordinate of 99 is pinned in exactly one place in this file, that arm's own
-    // "must be exactly 99" assertion. A reader changing any one of them must
-    // therefore expect to move more than a single assertion, and must not read one
-    // bullet as the whole of what a case checks:
+    // Per-case attribution of the digit-width cases below. The direction of any
+    // one-to-one claim here is from a case to the property its bullet is the
+    // primary holder of: no two bullets primarily hold the same property, so that
+    // direction is one-to-one. The opposite direction, from a case to the
+    // properties its bullet merely mentions, is not one-to-one, because the first,
+    // third and fourth bullets all name the coordinate 99, and the third and fourth
+    // both name it as a borrowed coordinate: the third as the coordinate the
+    // boundary record is rejected against, the fourth as a contrast against its own
+    // borrow at 19. Those are mentions, not primary holdings, and a reader must
+    // not read one bullet as the whole of what a case checks, so shared mentions
+    // and distinct primary holdings coexist without contradiction. What no other
+    // assertion shares with the boundary arm is the pinning of its expected
+    // coordinate: 99 is pinned in exactly one assertion in this file, that arm's own
+    // "must be exactly 99" assertion, so that case is not the only witness of the
+    // distinction between a hole's position and a borrowed coordinate. A reader
+    // changing any one of these cases must expect to move more than a single
+    // assertion:
     //
     // - "a single-writer stream past the digit-width boundary is one contiguous
     //   prefix" holds the decimal borrow across the width boundary: its record at
