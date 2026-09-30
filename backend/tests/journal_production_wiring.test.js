@@ -4,8 +4,8 @@
  * `incremental-graph-journal-emission.md` is the governing specification and
  * `journal_atomicity_requirement.test.js` pins the recovered-state consequence of
  * `$id-2048186621237391`. This suite pins the individual clauses which the commit seam
- * of the production path discharges, so that each of them is load-bearing rather than
- * implied by the presence of some journal output:
+ * of the production path discharges, each in a test below that asserts that clause
+ * directly:
  *
  * - "Explicit invalidation" and "Propagated persistent staleness": the record shapes an
  *   explicit invalidation and its staleness propagation must have, and which are two
@@ -17,9 +17,9 @@
  *   records which state it.
  *
  * Everything here drives `createIncrementalGraph`, then `pull` and `invalidate`, over
- * the repository's real computors. Emission's own suites prove that `finalizeEmission`
- * builds correct records from correct intents; nothing else proves that the production
- * path supplies the intents these clauses describe.
+ * the repository's real computors. A record the record layer accepts is a statement
+ * about the record, not about whether the production path supplies the intents and
+ * publishes the records these clauses describe.
  */
 
 const fs = require("fs");

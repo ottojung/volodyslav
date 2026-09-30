@@ -836,8 +836,9 @@ describe("the adversarial fixtures isolate one projection rule each", () => {
     /**
      * The enumerated space is exhaustive but coarse, so it cannot by itself tell a
      * correct implementation from one which dropped a rule the other rules happen
-     * to duplicate. These fixtures close that gap: each builds a journal in which
-     * exactly one rule is the difference between a right and a wrong answer.
+     * to duplicate. These fixtures close that gap: each names the rule it is built
+     * around, and the tests below assert that the record layer and the oracle each
+     * reach the outcome the fixture declares for that rule.
      *
      * The property asserted here is the one which makes the rest of the file
      * meaningful: a fixture must produce the outcome it was designed to produce,

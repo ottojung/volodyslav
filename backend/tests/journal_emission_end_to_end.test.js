@@ -2,15 +2,15 @@
  * End-to-end: a real computor's real output, through emission, into a durable
  * record store, read back through the persisted-text path, and replayed.
  *
- * This is the test which makes the Journal 3 end-to-end path exist. Until now the
- * record layer (`journal/`) and the replay oracle (`journal/oracle/`) had no
- * caller in `backend/src` or `frontend/src`: `makeValueEvent`, `encodeJournalRecord`,
- * the persisted-text read path `tryDecodeJournalRecord`, and `projectRetainedJournal`
- * were each exercised only by their own unit suites. This suite drives the four
- * real computors whose output needs neither a filesystem nor an AI capability —
- * `all_events`, `meta_events`, `event_context`, `event(e)`, and `entry_description(e)` —
- * through the whole path and asserts the emission law
- * `incremental-graph-journal-emission.md` states: `project(Jafter) == Gafter`.
+ * The record layer (`journal/`) and the replay oracle (`journal/oracle/`) are
+ * exercised by unit suites over records those suites construct themselves. This
+ * suite exercises them over records the repository's own computors produced, so
+ * the emission law `incremental-graph-journal-emission.md` states,
+ * `project(Jafter) == Gafter`, is asserted over a real computor's output rather
+ * than over a fixture. It drives the five real computors whose output needs neither
+ * a filesystem nor an AI capability —
+ * `all_events`, `meta_events`, `event_context`, `event(e)`, and
+ * `entry_description(e)` — through the whole path.
  *
  * Every value in this file is either the real output of a real computor, the real
  * graph scheme derived from the repository's real node definitions, or a value

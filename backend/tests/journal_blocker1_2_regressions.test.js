@@ -11,7 +11,8 @@
  *   directions, on concrete inputs, and the journal suite could not tell which
  *   answer the oracle used.
  *
- * Each test below names the mutation it exists to catch.
+ * Each test below is named for the behaviour it pins; the one mutation the review
+ * named as decisive is named at its test.
  */
 
 const {
