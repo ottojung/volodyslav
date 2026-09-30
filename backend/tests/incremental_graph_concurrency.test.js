@@ -2026,6 +2026,12 @@ describe("IncrementalGraph concurrency", () => {
                 },
             ]);
 
+            // Materialise the shared dependency before the concurrent phase, so
+            // the phase covers concurrent recomputation against one committed
+            // occurrence of z. Concurrent *first* materialisation of z is covered
+            // by its own test, which pins the conservative outcome of that case.
+            await graph.pull("z");
+
             // Pull x and y concurrently. The barrier forces both computors
             // to wait until both are ready, then both proceed through
             // handleChanged → addValidityFlags before either commits.
@@ -2099,6 +2105,13 @@ describe("IncrementalGraph concurrency", () => {
             expect(await graph.getFreshness("x")).toBe("potentially-outdated");
             expect(await graph.getFreshness("y")).toBe("potentially-outdated");
 
+            // Re-materialise the shared dependency before the concurrent phase, so
+            // the phase covers concurrent recomputation of the dependents against
+            // one committed occurrence of z. Without it both transactions
+            // re-materialise z concurrently, and the documented conservative
+            // withdrawal of the frontier applies instead.
+            await graph.pull("z");
+
             // Enable the barrier for the recomputation phase
             useBarrier = true;
             readyCount = 0;
@@ -2115,6 +2128,82 @@ describe("IncrementalGraph concurrency", () => {
             await graph.invalidate("z");
             expect(await graph.getFreshness("x")).toBe("potentially-outdated");
             expect(await graph.getFreshness("y")).toBe("potentially-outdated");
+        }, 15000);
+
+        test("concurrent first materialisation of a shared dependency withdraws the frontier it cannot vouch for and heals on the next pull", async () => {
+            const db = new InMemoryDatabase();
+            const graph = await createIncrementalGraph(testCapabilities, db, [
+                {
+                    output: "x",
+                    inputs: ["z"],
+                    computor: async ([zValue]) => numberComputedValue(zValue.value),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "y",
+                    inputs: ["z"],
+                    computor: async ([zValue]) => numberComputedValue(zValue.value),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "z",
+                    inputs: [],
+                    computor: async () => Promise.resolve(numberComputedValue(1)),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+            ]);
+
+            // Two transactions materialise the shared dependency z for the first
+            // time, so both reserve it under one identifier and each publishes its
+            // own value occurrence of z. A clear of valid[z] is not scoped to an
+            // occurrence, so the second publication withdraws the frontier the
+            // first established rather than vouching for a proof made against a
+            // value occurrence which no longer exists.
+            await Promise.all([
+                graph.pull("x"),
+                graph.pull("y"),
+            ]);
+
+            const zKey = JSON.stringify({ head: "z", args: [] });
+            const xKey = JSON.stringify({ head: "x", args: [] });
+            const yKey = JSON.stringify({ head: "y", args: [] });
+            const zId = graph.rootDatabase.nodeKeyToId(zKey);
+            const xId = graph.rootDatabase.nodeKeyToId(xKey);
+            const yId = graph.rootDatabase.nodeKeyToId(yKey);
+            if (zId === undefined || xId === undefined || yId === undefined) {
+                throw new Error("Expected identifiers after pull");
+            }
+            const xStr = nodeIdentifierToString(xId);
+            const yStr = nodeIdentifierToString(yId);
+
+            // The conservative outcome: not both proofs survive, and not both are
+            // left claiming to be up to date.
+            const validAfterConcurrent = (await graph.storage.valid.get(zId) ?? []).map(id => nodeIdentifierToString(id));
+            const freshnessAfterConcurrent = [
+                await graph.getFreshness("x"),
+                await graph.getFreshness("y"),
+            ];
+            const surviving = validAfterConcurrent.filter(id => id === xStr || id === yStr);
+            const stale = freshnessAfterConcurrent.filter(freshness => freshness === "potentially-outdated");
+            expect(surviving.length).toBeLessThan(2);
+            expect(stale.length).toBe(2 - surviving.length);
+
+            // The withdrawal costs a recomputation, not an answer: one further pull
+            // of each dependent restores both edges, both up-to-date, both values
+            // computed from the committed occurrence of z.
+            await graph.pull("x");
+            await graph.pull("y");
+
+            const validAfterHealing = (await graph.storage.valid.get(zId) ?? []).map(id => nodeIdentifierToString(id));
+            expect(validAfterHealing).toContain(xStr);
+            expect(validAfterHealing).toContain(yStr);
+            expect(await graph.getFreshness("x")).toBe("up-to-date");
+            expect(await graph.getFreshness("y")).toBe("up-to-date");
+            expect((await graph.pull("x")).value).toBe(1);
+            expect((await graph.pull("y")).value).toBe(1);
         }, 15000);
 
         test("a clear withdraws a proof established against the occurrence the clearing transaction supersedes", async () => {
@@ -2295,7 +2384,7 @@ describe("IncrementalGraph concurrency", () => {
             expect(yAfter.value).toBe(2000);
         }, 15000);
 
-        test("concurrent valid[D] additions via withTransaction are merged at commit time", async () => {
+        test("concurrent valid[D] additions are merged at commit time when both dependents are recomputed", async () => {
             const db = new InMemoryDatabase();
             const graph = await createIncrementalGraph(testCapabilities, db, [
                 {
@@ -2336,19 +2425,23 @@ describe("IncrementalGraph concurrency", () => {
                 throw new Error("Expected identifiers after pull");
             }
 
+            // Both dependents go stale, so each concurrent pull below recomputes
+            // its own node and records an addition to valid[z]. The dependency is
+            // re-materialised first, so the concurrent phase records the two
+            // additions against one committed occurrence of z instead of
+            // re-materialising z twice.
+            await graph.invalidate("z");
+            await graph.pull("z");
+
             // Clear valid[z] to start from empty
             await graph.storage.valid.del(zId);
 
-            // Run two concurrent transactions that both add to valid[z]
+            // Two concurrent operations that both add to valid[z]. Each one is a
+            // recomputation, so each publishes the materialization which describes
+            // its own addition.
             await Promise.all([
-                graph.storage.withTransaction(async (tx) => {
-                    tx.batch.valid.add(zId, xId);
-                    return { value: undefined };
-                }),
-                graph.storage.withTransaction(async (tx) => {
-                    tx.batch.valid.add(zId, yId);
-                    return { value: undefined };
-                }),
+                graph.pull("x"),
+                graph.pull("y"),
             ]);
 
             // Verify valid[z] contains both dependents
@@ -2396,29 +2489,37 @@ describe("IncrementalGraph concurrency", () => {
             const zId = graph.rootDatabase.nodeKeyToId(zKey);
             const xId = graph.rootDatabase.nodeKeyToId(xKey);
             const yId = graph.rootDatabase.nodeKeyToId(yKey);
-            if (!zId || !xId || !yId) {
+            if (zId === undefined || xId === undefined || yId === undefined) {
                 throw new Error("Expected identifiers after pull");
             }
+
+            // Both dependents go stale, so each concurrent pull below recomputes
+            // its own node and records an addition to valid[z]. The dependency is
+            // re-materialised first, so the concurrent phase records the two
+            // additions against one committed occurrence of z instead of
+            // re-materialising z twice.
+            await graph.invalidate("z");
+            await graph.pull("z");
 
             // Clear valid[z]
             await graph.storage.valid.del(zId);
             expect(await graph.storage.valid.get(zId)).toBeUndefined();
 
-            // Intercept withTransaction to force both callbacks to record
+            // Intercept withUserOperation to force both operations to record their
             // mutations before either enters the darkroom commit section.
             // This deterministically reproduces the lost-update interleaving
             // that the mutation-based approach prevents.
-            let callbacksFinished = 0;
+            let bodiesFinished = 0;
             /** @type {() => void} */
             let releaseCommit = () => undefined;
             const releaseCommitPromise = new Promise(resolve => { releaseCommit = resolve; });
 
-            const originalWithTransaction = graph.storage.withTransaction.bind(graph.storage);
-            graph.storage.withTransaction = async (run) => {
-                return originalWithTransaction(async (tx) => {
-                    const result = await run(tx);
-                    callbacksFinished += 1;
-                    if (callbacksFinished === 2) {
+            const originalWithUserOperation = graph.storage.withUserOperation.bind(graph.storage);
+            graph.storage.withUserOperation = async (fn) => {
+                return originalWithUserOperation(async (operation) => {
+                    const result = await fn(operation);
+                    bodiesFinished += 1;
+                    if (bodiesFinished === 2) {
                         releaseCommit();
                     }
                     await releaseCommitPromise;
@@ -2427,14 +2528,8 @@ describe("IncrementalGraph concurrency", () => {
             };
 
             await Promise.all([
-                graph.storage.withTransaction(async (tx) => {
-                    tx.batch.valid.add(zId, xId);
-                    return { value: undefined };
-                }),
-                graph.storage.withTransaction(async (tx) => {
-                    tx.batch.valid.add(zId, yId);
-                    return { value: undefined };
-                }),
+                graph.pull("x"),
+                graph.pull("y"),
             ]);
 
             // Both additions were merged at commit time
