@@ -11,8 +11,17 @@
  *   directions, on concrete inputs, and the journal suite could not tell which
  *   answer the oracle used.
  *
- * Each test below is named for the behaviour it pins; the one mutation the review
- * named as decisive is named at its test.
+ * Each test below is named for the behaviour it pins.
+ *
+ * One of the review's decisive mutations is pinned by name of behaviour. The
+ * review calls the deletion of `isEligibleCertificate`'s own current-shape block
+ * decisive at `docs/reviews/BOARD92-INDEPENDENT-REVIEW.md:158` ("Mutation 3 (the
+ * decisive one)"), lists the same mutation as M5 at `:314`, and calls M5 the
+ * sharpest of the mutations that stayed green at `:324`. The test named "the two
+ * predicates agree on every reason and every input set" pins the agreement of
+ * the two predicates, which is exactly what that mutation removed. The review
+ * also calls M1 and M2 decisive at `:324` without describing either mutation
+ * anywhere in the document, so no test here names them.
  */
 
 const {
