@@ -13,6 +13,7 @@ const {
     nodeIdToKeyFromLookup,
     nodeKeyToIdFromLookup,
     makeNodeIdentifier,
+    nodeIdentifierFromString,
     nodeIdentifierToString,
     IDENTIFIERS_KEY,
     makeIdentifierLookup,
@@ -47,7 +48,7 @@ class InMemoryDatabase {
         this.version = 'test-version';
         this._identifierLookup = makeEmptyIdentifierLookup();
         this._identifierCounter = 0;
-        /** @type {Map<string, string>} */
+        /** @type {Map<string, {identifier: string, waiters: number}>} */
         this._pendingAllocations = new Map();
         this._computed = { lastNodeIndex: 0, fingerprint: 'testconfingerprint' };
     }
@@ -94,26 +95,35 @@ class InMemoryDatabase {
     advanceLastNodeIndex(value) { this._computed.lastNodeIndex = Math.max(this._computed.lastNodeIndex, value); }
 
     _allocateKeyIdentifier(keyString, makeIdentifier, committedLookup) {
-        if (this._pendingAllocations.has(keyString)) {
-            throw new Error(`BUG: pending allocation for key ${keyString} found during allocation under telescope lock`);
+        const reservation = this._pendingAllocations.get(keyString);
+        if (reservation !== undefined) {
+            reservation.waiters += 1;
+            return nodeIdentifierFromString(reservation.identifier);
         }
         const candidate = makeIdentifier();
         const candidateStr = nodeIdentifierToString(candidate);
         if (committedLookup.idToKey.get(candidateStr) !== undefined) {
             throw new Error(`BUG: identifier collision with committed lookup: ${candidateStr}`);
         }
-        for (const idStr of this._pendingAllocations.values()) {
-            if (idStr === candidateStr) {
+        for (const pending of this._pendingAllocations.values()) {
+            if (pending.identifier === candidateStr) {
                 throw new Error(`BUG: identifier collision with pending allocation: ${candidateStr}`);
             }
         }
-        this._pendingAllocations.set(keyString, candidateStr);
+        this._pendingAllocations.set(keyString, { identifier: candidateStr, waiters: 1 });
         return candidate;
     }
 
     releaseIdentifierReservations(ownedKeys) {
         for (const keyString of ownedKeys) {
-            this._pendingAllocations.delete(keyString);
+            const reservation = this._pendingAllocations.get(keyString);
+            if (reservation === undefined) {
+                continue;
+            }
+            reservation.waiters -= 1;
+            if (reservation.waiters === 0) {
+                this._pendingAllocations.delete(keyString);
+            }
         }
     }
 
