@@ -77,12 +77,6 @@ const { appendValidMutationOps, applyValidMutations } = require('./validity_muta
  *
  * @typedef {object} ValidClearMutation
  * @property {"clear"} kind
- * @property {NodeIdentifier[] | undefined} observed - The dependents the
- *   transaction had already read out of the set it is clearing, or `undefined`
- *   when the transaction never read the set and the clear therefore replaces it
- *   wholesale. A clear withdraws exactly the dependents the transaction saw:
- *   dependents committed by another transaction while this one was running were
- *   never observed, are not withdrawn by it, and survive the merge.
  */
 
 /**
@@ -231,25 +225,15 @@ function makeSublevelBatch(db, operations) {
  * against the latest committed state under the darkroom lock at commit time
  * to prevent lost updates from concurrent graph transactions.
  *
- * A clear records the dependents the transaction had observed in the set it
- * clears, so that resolution withdraws exactly those and leaves entries which
- * another transaction committed after the read. `put` and `del` replace a set
- * wholesale and therefore record an unobserved clear.
+ * A clear withdraws every committed dependent of the set it clears, so
+ * `put` and `del` record a clear and then the `add` for each element they mean
+ * to establish.
  *
  * @param {{ get: (key: NodeIdentifier) => Promise<NodeIdentifier[] | undefined>, putOp: (key: NodeIdentifier, value: NodeIdentifier[]) => object, delOp: (key: NodeIdentifier) => object }} db
  * @param {Map<string, Array<ValidMutation | ValidClearMutation>>} validMutations
  * @returns {ValidBatchOps}
  */
 function makeValidBatchOps(db, validMutations) {
-    /** @type {Map<string, NodeIdentifier[]>} */
-    const observedReads = new Map();
-
-    /**
-     * @param {string} k
-     * @returns {ValidClearMutation}
-     */
-    const clearMutation = (k) => ({ kind: "clear", observed: observedReads.get(k) });
-
     return {
         add(depId, dependentId) {
             const k = nodeIdentifierToString(depId);
@@ -270,27 +254,20 @@ function makeValidBatchOps(db, validMutations) {
             muts.push({ kind: "remove", dependent: dependentId });
         },
         clear(depId) {
-            const k = nodeIdentifierToString(depId);
-            validMutations.set(k, [clearMutation(k)]);
+            validMutations.set(nodeIdentifierToString(depId), [{ kind: "clear" }]);
         },
         async get(depId) {
             const k = nodeIdentifierToString(depId);
-            const muts = validMutations.get(k);
-            const result = await db.get(depId) ?? [];
-            observedReads.set(k, result);
-            if (!muts) {
-                return result;
-            }
-            return applyValidMutations(result, muts);
+            return applyValidMutations(await db.get(depId) ?? [], validMutations.get(k) ?? []);
         },
         put(depId, value) {
-            validMutations.set(nodeIdentifierToString(depId), [{ kind: "clear", observed: undefined }]);
+            this.clear(depId);
             for (const dep of value) {
                 this.add(depId, dep);
             }
         },
         del(depId) {
-            validMutations.set(nodeIdentifierToString(depId), [{ kind: "clear", observed: undefined }]);
+            this.clear(depId);
         },
     };
 }

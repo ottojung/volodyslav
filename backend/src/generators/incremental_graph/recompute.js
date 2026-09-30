@@ -96,6 +96,22 @@ async function handleUnchanged(nodeDefinition, nodeIdentifier, inputEdges, tx) {
  * against the latest committed state at commit time to prevent lost
  * updates when concurrent transactions modify overlapping validity sets.
  *
+ * `downstream` is this transaction's view of the outgoing set, which includes
+ * the adds it already recorded for this node, so it may name a dependent the
+ * committed set does not hold. The clear is not scoped to it: a clear empties
+ * the set, so it withdraws strictly more than the propagation walked. The
+ * extra withdrawal is the conservative direction — a dependent left without a
+ * proof recomputes rather than revalidating a cache.
+ *
+ * The propagation is scoped to what this transaction read, and that is the
+ * limit of what a staleness notification from here can reach. A dependent which
+ * another transaction commits against the value occurrence this transaction is
+ * about to supersede is not in `downstream`, is not marked stale, and — because
+ * a dependent which published a value is `up-to-date` — is served its stored
+ * value by the pull fast path in `pull.js` without any validity check. Closing
+ * that requires recording, per dependent, the value occurrence its proof was
+ * established against, which `valid[D]` does not carry today.
+ *
  * @param {IncrementalGraphRecomputeAccess} incrementalGraph
  * @param {ResolvedConcreteNode} nodeDefinition
  * @param {NodeIdentifier} nodeIdentifier

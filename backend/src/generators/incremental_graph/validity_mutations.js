@@ -22,31 +22,50 @@ const { compareNodeIdentifier, nodeIdentifierFromString, nodeIdentifierToString 
 
 /**
  * Apply a transaction's recorded validity mutations to a validity set and
- * return the sorted result.
+ * return the sorted result. The returned array is always freshly allocated, so
+ * a storage-owned array is never sorted in place by a reader.
  *
- * A `clear` withdraws exactly the dependents the transaction observed in the set
- * it clears, and preserves every other committed dependent. Without that
- * restriction a clear resolved against committed state erases edges which other
- * transactions established after this transaction read the set: two transactions
- * which both materialise a shared dependency each record a clear for that
- * dependency's outgoing set, and the second clear would drop the first
- * transaction's dependent. A clear recorded without an observation replaces the
- * set wholesale.
+ * A `clear` empties the set. It withdraws every committed dependent, not only
+ * the ones the transaction read, and that is the only sound scope available
+ * while `valid[D]` carries no occurrence tag. A dependent which survives a
+ * clear is a positive assertion that the dependent was computed against the
+ * value occurrence of `D` the clearing transaction publishes, and the clearing
+ * transaction is publishing a value it computed after every read the surviving
+ * transaction could have made. Scoping the withdrawal to the dependents the
+ * clearing transaction happened to read leaves surviving proofs standing
+ * against an occurrence which no longer exists, and the pull path
+ * (`recompute.js`, `internalMaybeRecalculate`) decides cache revalidation from
+ * `valid[D].has(N)` membership alone, so such a proof is served from cache and
+ * a dependent returns the value it computed from the superseded occurrence.
+ *
+ * The withdrawal is deliberately conservative: a withdrawn proof costs a
+ * recomputation, a surviving false proof costs a wrong answer. The residual
+ * defect this conservatism leaves is that two transactions which both
+ * re-materialise one dependency each withdraw the other's frontier, so the
+ * second to commit leaves a dependent which must recompute although its proof
+ * was sound. The rule which is both sound and free of that cost is
+ * occurrence-scoped withdrawal: withdraw every dependent whose proof is not
+ * against the value occurrence of `D` this transaction commits. Implementing it
+ * requires `valid[D]` to record, per dependent, the occurrence it was
+ * established against, which changes the serialised form of `valid[D]` from an
+ * array of `NodeIdentifier` and therefore needs a storage migration and a
+ * change to `docs/specs/incremental-graph-flag-based-inverse-validity.md`.
+ *
+ * A narrower scope would be sound only if no computor could yield different
+ * content on two materialisations of the same node. The `isDeterministic` and
+ * `hasSideEffects` flags on a node definition are validated and documented
+ * (`types.js`, `compiled_node_validation.js`) but are read nowhere in the
+ * recompute or validity path, so nothing here may assume them.
  *
  * @param {NodeIdentifier[]} committed
  * @param {Array<ValidMutation | ValidClearMutation>} mutations
  * @returns {NodeIdentifier[]}
  */
 function applyValidMutations(committed, mutations) {
-    let validSet = committed;
+    let validSet = committed.slice();
     for (const m of mutations) {
         if (m.kind === "clear") {
-            if (m.observed === undefined) {
-                validSet = [];
-                continue;
-            }
-            const observed = m.observed.map(nodeIdentifierToString);
-            validSet = validSet.filter(id => !observed.includes(nodeIdentifierToString(id)));
+            validSet = [];
         } else if (m.kind === "add") {
             const depStr = nodeIdentifierToString(m.dependent);
             if (!validSet.some(id => nodeIdentifierToString(id) === depStr)) {
