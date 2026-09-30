@@ -2130,7 +2130,7 @@ describe("IncrementalGraph concurrency", () => {
             expect(await graph.getFreshness("y")).toBe("potentially-outdated");
         }, 15000);
 
-        test("concurrent first materialisation of a shared dependency withdraws the frontier it cannot vouch for and heals on the next pull", async () => {
+        test("concurrent first materialisation of a shared dependency partially withdraws the frontier it cannot vouch for and heals on the next pull", async () => {
             const db = new InMemoryDatabase();
             const graph = await createIncrementalGraph(testCapabilities, db, [
                 {
@@ -2159,9 +2159,9 @@ describe("IncrementalGraph concurrency", () => {
             // Two transactions materialise the shared dependency z for the first
             // time, so both reserve it under one identifier and each publishes its
             // own value occurrence of z. A clear of valid[z] is not scoped to an
-            // occurrence, so the second publication withdraws the frontier the
-            // first established rather than vouching for a proof made against a
-            // value occurrence which no longer exists.
+            // occurrence, so the second publication withdraws one of the two
+            // frontier edges the first established rather than vouching for a
+            // proof made against a value occurrence which no longer exists.
             await Promise.all([
                 graph.pull("x"),
                 graph.pull("y"),
@@ -2179,8 +2179,11 @@ describe("IncrementalGraph concurrency", () => {
             const xStr = nodeIdentifierToString(xId);
             const yStr = nodeIdentifierToString(yId);
 
-            // The conservative outcome: not both proofs survive, and not both are
-            // left claiming to be up to date.
+            // The conservative outcome is a partial withdrawal: exactly one of the
+            // two dependent proofs survives, and exactly one dependent is left
+            // claiming to be up to date. The complementarity is asserted as well
+            // as the count, so a withdrawn proof must also have withdrawn
+            // freshness, in either direction.
             const validAfterConcurrent = (await graph.storage.valid.get(zId) ?? []).map(id => nodeIdentifierToString(id));
             const freshnessAfterConcurrent = [
                 await graph.getFreshness("x"),
@@ -2188,7 +2191,7 @@ describe("IncrementalGraph concurrency", () => {
             ];
             const surviving = validAfterConcurrent.filter(id => id === xStr || id === yStr);
             const stale = freshnessAfterConcurrent.filter(freshness => freshness === "potentially-outdated");
-            expect(surviving.length).toBeLessThan(2);
+            expect(surviving.length).toBe(1);
             expect(stale.length).toBe(2 - surviving.length);
 
             // The withdrawal costs a recomputation, not an answer: one further pull
