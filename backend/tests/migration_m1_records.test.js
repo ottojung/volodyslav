@@ -37,6 +37,21 @@ jest.mock('../src/generators/incremental_graph/database', () => ({
     checkpointMigration: jest.fn(),
 }));
 const { checkpointMigration: mockCheckpointMigration } = require('../src/generators/incremental_graph/database');
+jest.mock('../src/generators/incremental_graph/migration_journal', () => ({
+    ...jest.requireActual('../src/generators/incremental_graph/migration_journal'),
+    buildMigrationJournal: jest.fn(),
+}));
+const { buildMigrationJournal } = require('../src/generators/incremental_graph/migration_journal');
+
+/**
+ * Let the cutover build the target's Journal with the production implementation.
+ */
+function useProductionJournalBuild() {
+    buildMigrationJournal.mockReset();
+    buildMigrationJournal.mockImplementation(
+        jest.requireActual('../src/generators/incremental_graph/migration_journal').buildMigrationJournal
+    );
+}
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -93,6 +108,7 @@ describe("migration Pass M1 records", () => {
         mockCheckpointMigration.mockImplementation(
             async (_caps, _db, _pre, _post, callback) => await callback()
         );
+        useProductionJournalBuild();
     });
 
     test("a genuine create authors a migration ValueEvent, and keep authors none", async () => {
@@ -248,6 +264,103 @@ describe("migration Pass M1 records", () => {
             expect(replacement.modifiedAt).toBe(publicationInstant);
             expect(targetTimestamps.createdAt).toBe(replacement.createdAt);
             expect(targetTimestamps.modifiedAt).toBe(replacement.modifiedAt);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+});
+
+describe("the migration cutover verifies the target before selecting it", () => {
+    beforeEach(() => {
+        mockCheckpointMigration.mockReset();
+        mockCheckpointMigration.mockImplementation(
+            async (_caps, _db, _pre, _post, callback) => await callback()
+        );
+        useProductionJournalBuild();
+    });
+
+    afterEach(() => {
+        useProductionJournalBuild();
+    });
+
+    /**
+     * A source replica with one materialized node, at database version "1".
+     * @param {object} caps
+     * @returns {Promise<{nodeDefs: Array<object>, nodeKey: import('../src/generators/incremental_graph/database').NodeKeyString, identifier: import('../src/generators/incremental_graph/database').NodeIdentifier, keepAll: (storage: object) => Promise<void>}>}
+     */
+    async function openSourceWithOneNode(caps) {
+        const db = await getRootDatabase(caps);
+        const nodeDefs = [
+            { output: "A", inputs: [], computor: async () => numberComputedValue(1), isDeterministic: true, hasSideEffects: false },
+        ];
+        const graph = await createIncrementalGraph(caps, db, nodeDefs);
+        await graph.pull("A");
+        await db.getSchemaStorage().global.put("version", "1");
+        const nodeKey = stringToNodeKeyString('{"head":"A","args":[]}');
+        const identifier = identifierForNodeKey(db, nodeKey);
+        await db.close();
+        return {
+            nodeDefs,
+            nodeKey,
+            identifier,
+            keepAll: async (storage) => {
+                for await (const existing of storage.listMaterializedNodes()) {
+                    await storage.keep(existing);
+                }
+            },
+        };
+    }
+
+    test("a target whose graph and journal disagree about an occurrence is not selected", async () => {
+        const caps = getTestCapabilities();
+        let db;
+        try {
+            const source = await openSourceWithOneNode(caps);
+            db = await getRootDatabase(caps);
+            const replicaBefore = db.currentReplicaName();
+
+            // The M1 publication is where the target's two representations are both
+            // written, so a migration which leaves them disagreeing is caught by the
+            // step which runs after it and before the cutover.
+            const realBuildMigrationJournal = jest.requireActual(
+                "../src/generators/incremental_graph/migration_journal"
+            ).buildMigrationJournal;
+            buildMigrationJournal.mockImplementation(async (...args) => {
+                await realBuildMigrationJournal(...args);
+                const targetStorage = args[1];
+                const targetTimestamps = await targetStorage.timestamps.get(source.identifier);
+                if (targetTimestamps === undefined) {
+                    throw new Error("the target replica persisted no timestamps to disagree about");
+                }
+                await targetStorage.timestamps.put(source.identifier, {
+                    createdAt: targetTimestamps.createdAt,
+                    modifiedAt: "1999-01-01T00:00:00.000Z",
+                });
+            });
+
+            await expect(
+                runMigration(caps, db, source.nodeDefs, source.keepAll)
+            ).rejects.toThrow(/journal and graph disagree/);
+            expect(db.currentReplicaName()).toBe(replicaBefore);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test("a target whose retained history explains none of its values is not selected", async () => {
+        const caps = getTestCapabilities();
+        let db;
+        try {
+            const source = await openSourceWithOneNode(caps);
+            db = await getRootDatabase(caps);
+            const replicaBefore = db.currentReplicaName();
+
+            buildMigrationJournal.mockImplementation(async () => undefined);
+
+            await expect(
+                runMigration(caps, db, source.nodeDefs, source.keepAll)
+            ).rejects.toThrow(/selects no occurrence for/);
+            expect(db.currentReplicaName()).toBe(replicaBefore);
         } finally {
             if (db) await db.close();
         }

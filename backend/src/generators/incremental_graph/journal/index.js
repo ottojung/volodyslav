@@ -152,6 +152,7 @@ const {
 // Ordinary emission finalization
 const { finalizeEmission } = require("./emission");
 const { finalizeMigrationEmission } = require("./migration_emission");
+const { makeReplicaSource, projectRetainedJournal } = require("./oracle");
 
 /** @typedef {import('./errors').AnyJournalError} AnyJournalError */
 /** @typedef {import('./basis').InvalidateScope} InvalidateScope */
@@ -282,6 +283,8 @@ module.exports = {
     makeJournalSourceReadError,
     makeJournalVersionCompatibilityError,
     makeJournalWriterBehindError,
+    makeReplicaSource,
+    projectRetainedJournal,
     isJournalBootstrapForkError,
     isJournalCausalClosureError,
     isJournalGapError,

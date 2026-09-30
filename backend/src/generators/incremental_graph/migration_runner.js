@@ -11,7 +11,6 @@
 
 const { compileValidatedGraphSchema } = require("./graph_schema");
 const {
-    compareNodeIdentifier,
     IDENTIFIERS_KEY,
     LAST_NODE_INDEX_KEY,
     MissingIdentifierLookupError,
@@ -22,13 +21,15 @@ const {
     GraphSchemeError,
     MissingGraphSchemeError,
 } = require("./database");
-const { makeInvalidMigrationDecisionError } = require("./migration_errors");
 const { holidayActivity } = require("./lock");
 const { makeMigrationStorage } = require("./migration_storage");
 const { buildDecisionsMap, buildDesiredValid, loadMaterializedNodes } = require("./migration_validity");
 const { buildMigrationM1Intents } = require("./migration_m1");
 const { buildProducedOccurrences } = require("./migration_occurrences");
 const { buildMigrationJournal } = require("./migration_journal");
+const { verifyTargetReplica } = require("./migration_verification");
+const { makeLazyMigrationSource } = require("./migration_source");
+const { makeJournalAuthor } = require("./journal");
 const { checkpointMigration } = require("./database");
 const { unifyStores, makeDbToDbAdapter, deserializeNodeKey } = require("./database");
 const { fromISOString } = require("../../datetime");
@@ -85,149 +86,6 @@ const { fromISOString } = require("../../datetime");
  * @property {Datetime} datetime - Datetime utilities.
  * @property {Interface} interface - An interface instance with an update() method.
  * @property {import('../../random/seed').NonDeterministicSeed} seed - Random seed capability.
- */
-
-/**
- * Create a lazy read-only source that yields the desired migration state.
- *
- * Values are computed from prevStorage on demand — no values are accumulated
- * in memory simultaneously.  Combined with makeDbToDbAdapter + unifyStores this
- * achieves O(|max value| + |keys|) peak memory for migration, matching sync.
- *
- * For 'keep' decisions the target sublevel value is read twice (once during
- * keys() to check existence, once during readSource()) — this is an I/O
- * trade-off that avoids per-value memory retention.
- *
- * @param {ReadableMigrationStorage} prevStorage
- * @param {import('./database/identifier_lookup').IdentifierLookup} oldLookup
- * @param {Map<NodeIdentifier, Decision>} decisions
- * @param {Map<NodeIdentifier, NodeIdentifier[]>} desiredValid
- * @param {import('./database/types').Version} newVersion
- * @param {number} maxAllocatedIndex - The max allocated local index during this migration.
- * @param {number} sourceLastNodeIndex - The validated durable last_node_index from the source replica.
- * @param {string} fingerprint - The database fingerprint to carry forward.
- * @param {string} graphSchemeString
- * @param {ReadonlyMap<NodeIdentifier, import('./migration_m1').TargetOccurrence>} producedOccurrences - The
- *   occurrences a genuine create or replace produced, already carrying their §11a.3 timestamps. The M1
- *   records name the same occurrences, so the graph state and the journal describe one value.
- * @returns {ReadableSchemaStorage}
- */
-function makeLazyMigrationSource(prevStorage, oldLookup, decisions, desiredValid, newVersion, maxAllocatedIndex, sourceLastNodeIndex, fingerprint, graphSchemeString, producedOccurrences) {
-    /**
-     * @param {NodeIdentifier} key
-     * @param {Decision} decision
-     * @returns {Promise<ComputedValue | undefined>}
-     */
-    async function readFinalValue(key, decision) {
-        if (decision.kind === "create" || decision.kind === "override") {
-            const occurrence = producedOccurrences.get(key);
-            if (occurrence !== undefined) {
-                return occurrence.value;
-            }
-            throw makeInvalidMigrationDecisionError(`Migration value producer for ${String(key)} did not return a computed value`);
-        }
-        return await prevStorage.values.get(key);
-    }
-
-    const sortedDecisionOutputKeys = [...decisions.keys()]
-        .sort(compareNodeIdentifier);
-
-    const sortedValidKeys = [...desiredValid.keys()].sort(compareNodeIdentifier);
-
-    return {
-        values: {
-            async *keys() {
-                for (const outputKey of sortedDecisionOutputKeys) {
-                    const decision = decisions.get(outputKey);
-                    if (!decision || decision.kind === "delete") continue;
-                    yield outputKey;
-                }
-            },
-            async get(key) {
-                const decision = decisions.get(key);
-                if (!decision || decision.kind === "delete") return undefined;
-                return await readFinalValue(key, decision);
-            },
-        },
-        freshness: {
-            async *keys() {
-                for (const outputKey of sortedDecisionOutputKeys) {
-                    const decision = decisions.get(outputKey);
-                    if (!decision || decision.kind === "delete") continue;
-                    yield outputKey;
-                }
-            },
-            async get(key) {
-                const decision = decisions.get(key);
-                if (!decision || decision.kind === "delete") return undefined;
-                if (decision.kind === "create") return decision.freshness;
-                if (decision.kind === "invalidate") return "potentially-outdated";
-                return await prevStorage.freshness.get(key);
-            },
-        },
-        valid: {
-            async *keys() {
-                for (const key of sortedValidKeys) {
-                    yield key;
-                }
-            },
-            async get(key) {
-                return desiredValid.get(key);
-            },
-        },
-        timestamps: {
-            async *keys() {
-                for (const outputKey of sortedDecisionOutputKeys) {
-                    const decision = decisions.get(outputKey);
-                    if (!decision || decision.kind === "delete") continue;
-                    yield outputKey;
-                }
-            },
-            async get(key) {
-                const decision = decisions.get(key);
-                if (!decision || decision.kind === "delete") return undefined;
-                // A genuine occurrence-producing decision takes the §11a.3 timestamps
-                // the M1 record was built with, so the persisted graph state and the
-                // journal name one occurrence rather than two disagreeing ones. A
-                // `create` is a new materialization and takes the publication time for
-                // both stamps; a replacement keeps the existing materialization and its
-                // `createdAt` and takes the publication time as its `modifiedAt`.
-                // An occurrence-preserving decision transports the source stamps.
-                const produced = producedOccurrences.get(key);
-                if (produced !== undefined) {
-                    return { createdAt: produced.createdAt, modifiedAt: produced.modifiedAt };
-                }
-                return await prevStorage.timestamps.get(key);
-            },
-        },
-        global: {
-            async *keys() {
-                yield 'version';
-                yield IDENTIFIERS_KEY;
-                yield LAST_NODE_INDEX_KEY;
-                yield 'fingerprint';
-                yield GRAPH_SCHEME_KEY;
-            },
-            async get(key) {
-                if (key === 'version') {
-                    return newVersion;
-                }
-                if (key === IDENTIFIERS_KEY) {
-                    return buildDecisionsMap(oldLookup, decisions);
-                }
-                if (key === LAST_NODE_INDEX_KEY) {
-                    return Math.max(sourceLastNodeIndex, maxAllocatedIndex);
-                }
-                if (key === 'fingerprint') {
-                    return fingerprint;
-                }
-                if (key === GRAPH_SCHEME_KEY) {
-                    return graphSchemeString;
-                }
-                return await prevStorage.global.get(key);
-            },
-        },
-    };
 }
 
 /**
@@ -473,6 +331,17 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             // without rewriting any keys.
             await rootDatabase._rawSync();
 
+            // §22 step 5. The target's graph state is a projection of the retained
+            // history just carried into it plus the M1 records just appended, and
+            // nothing else here reads the target's Journal, so the target is
+            // replayed here and compared against the graph it persists. A cutover
+            // which selected a target whose two representations disagreed would
+            // otherwise report success over an inconsistent replica.
+            //
+            // §22 step 6. The one atomic cutover which selects the target. Everything
+            // above wrote only the still-inactive target, so a failure anywhere above
+            // leaves the previous active pair selected.
+
             // Validate the target replica before activating it.
             // This checks the invariant: every up-to-date node has valid flags
             // for every input, and no valid entries reference unknown identifiers.
@@ -482,10 +351,18 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             }
             const targetLookup = parseIdentifierLookup(rawIdentifiers, 'migration target replica');
             await assertValidReplicaMaterializationState(toStorage, targetLookup, 'migration target replica');
+            const localWriter = makeJournalAuthor(rootDatabase.getFingerprint());
+            if (localWriter instanceof Error) {
+                throw localWriter;
+            }
+            await verifyTargetReplica(
+                toStorage,
+                targetLookup,
+                newGraphScheme,
+                localWriter,
+                toReplica
+            );
 
-            // The one atomic cutover which selects the target. Everything above
-            // wrote only the still-inactive target, so a failure anywhere above
-            // leaves the previous active pair selected.
             await rootDatabase.setCurrentReplicaPointer(toReplica);
         }
     );

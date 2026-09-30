@@ -18,6 +18,18 @@ const {
     serializeGraphScheme,
 } = require("../src/generators/incremental_graph/database");
 const { toJsonKey } = require("./test_json_key_helper");
+const { deserializeNodeKey } = require("../src/generators/incremental_graph/database");
+const {
+    finalizeEmission,
+    isValueEvent,
+    makeJournalAuthor,
+    nodeKeyToCanonicalString,
+} = require("../src/generators/incremental_graph/journal");
+const {
+    appendJournalPublicationOps,
+    makeInitialCommittedWriterState,
+} = require("../src/generators/incremental_graph/journal_store");
+const { fromISOString } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger, stubDatetime, stubEnvironment } = require("./stubs");
 jest.mock('../src/generators/incremental_graph/database', () => ({
@@ -87,7 +99,14 @@ function makeInMemoryDb(table) {
  * needs both.
  */
 const FIXTURE_FINGERPRINT = "abcdefghi";
+/** The fingerprint `makeRootDatabaseMock` reports, which is also the fixture writer. */
+const TEST_FINGERPRINT = "testfingerprnt";
 const fixtureIdentifiers = new Map();
+/**
+ * The direct input of each head in the linear chain `makeNodeDefs` builds, so a
+ * seeded occurrence can be certified against the occurrence of its input.
+ */
+const fixtureInputHeadOf = new Map();
 let nextFixtureIndex = 0;
 
 /**
@@ -107,14 +126,19 @@ function fixtureIdentifier(name) {
     return identifier;
 }
 
-/** The node key a fixture identifier denotes. */
-function fixtureNodeKey(identifier) {
+/** The node head a fixture identifier denotes. */
+function fixtureHeadOf(identifier) {
     for (const [name, candidate] of fixtureIdentifiers) {
         if (nodeIdentifierToString(candidate) === nodeIdentifierToString(identifier)) {
-            return toJsonKey(name);
+            return name;
         }
     }
-    throw new Error(`no fixture node key is registered for ${nodeIdentifierToString(identifier)}`);
+    throw new Error(`no fixture node is registered for ${nodeIdentifierToString(identifier)}`);
+}
+
+/** The node key a fixture identifier denotes. */
+function fixtureNodeKey(identifier) {
+    return toJsonKey(fixtureHeadOf(identifier));
 }
 
 function makeSchemaStorage() {
@@ -148,6 +172,17 @@ function makeSchemaStorage() {
 
     return {
         values, freshness, global, valid, timestamps, journal,
+        /**
+         * The writer state and occurrence ids the fixture's own publications
+         * reached, so a replica double threads its own Journal the way a replica
+         * does. A replica which wrote a value into the graph without the record
+         * explaining it is a replica whose graph is not a projection of its
+         * Journal.
+         * @type {import('../src/generators/incremental_graph/journal/emission').CommittedWriterState | undefined}
+         */
+        fixtureWriterState: undefined,
+        /** @type {Map<string, import('../src/generators/incremental_graph/journal/types').JournalRecordId>} */
+        fixtureValueIds: new Map(),
         async batch(operations) {
             for (const op of operations) {
                 values.apply(op);
@@ -218,6 +253,9 @@ const PUBLICATION_INSTANT = "2024-01-01T00:00:00.000Z";
 
 /** Build a minimal single-node NodeDef array for node "A". */
 function makeNodeDefs(names) {
+    for (let index = 1; index < names.length; index += 1) {
+        fixtureInputHeadOf.set(names[index], names[index - 1]);
+    }
     return names.map((name, idx, arr) => ({
         output: name,
         inputs: idx > 0 ? [arr[idx - 1]] : [],
@@ -237,6 +275,95 @@ async function seedNode(storage, nodeKey, {
     if (timestamps !== undefined) {
         await storage.timestamps.put(nodeKey, timestamps);
     }
+    if (timestamps !== undefined) {
+        await publishFixtureOccurrence(storage, nodeKey, timestamps);
+    }
+}
+
+/**
+ * The local writer every fixture replica publishes as. It is the fingerprint
+ * `makeRootDatabaseMock` reports, so the occurrences a fixture replica retains are
+ * its own writer's.
+ */
+function fixtureLocalWriter() {
+    const localWriter = makeJournalAuthor(TEST_FINGERPRINT);
+    if (localWriter instanceof Error) {
+        throw new Error("the fixture fingerprint is not a valid writer name: " + localWriter.message);
+    }
+    return localWriter;
+}
+
+/**
+ * Publish the ordinary occurrence a seeded node's graph state is a projection of.
+ *
+ * A replica's graph is `project(Journal)`, so a fixture which writes a value
+ * directly into the graph without the record explaining it is a replica whose two
+ * representations disagree. The migration cutover verifies that agreement on the
+ * target it builds, so the source fixtures carry their occurrences too.
+ *
+ * @param {ReturnType<typeof makeSchemaStorage>} storage
+ * @param {import('../src/generators/incremental_graph/database').NodeIdentifier} nodeIdentifier
+ * @param {{createdAt: string, modifiedAt: string}} timestamps
+ * @returns {Promise<void>}
+ */
+async function publishFixtureOccurrence(storage, nodeIdentifier, timestamps) {
+    const head = fixtureHeadOf(nodeIdentifier);
+    const inputHead = fixtureInputHeadOf.get(head);
+    /** @type {Array<import('../src/generators/incremental_graph/journal/emission').MaterializeInput>} */
+    const inputs = [];
+    if (inputHead !== undefined) {
+        const inputIdentifier = fixtureIdentifiers.get(inputHead);
+        const inputKeyString = inputIdentifier === undefined
+            ? undefined
+            : String(fixtureNodeKey(inputIdentifier));
+        const valueId = inputKeyString === undefined
+            ? undefined
+            : storage.fixtureValueIds.get(inputKeyString);
+        if (inputIdentifier === undefined || inputKeyString === undefined || valueId === undefined) {
+            throw new Error(`the fixture input ${inputHead} must be published before ${head}`);
+        }
+        inputs.push({ input: fixtureNodeKeyObject(inputIdentifier), value: valueId });
+    }
+    const initial = makeInitialCommittedWriterState(fixtureLocalWriter());
+    if (initial instanceof Error) {
+        throw new Error("the fixture writer state is malformed: " + initial.message);
+    }
+    const state = storage.fixtureWriterState === undefined ? initial : storage.fixtureWriterState;
+    const publication = finalizeEmission({
+        state,
+        intents: [{
+            kind: "materialize",
+            node: fixtureNodeKeyObject(nodeIdentifier),
+            nodeIdentifier,
+            payload: { type: "all_events", events: [] },
+            createdAt: timestamps.createdAt,
+            modifiedAt: timestamps.modifiedAt,
+            inputs,
+        }],
+        publicationInstant: fromISOString(timestamps.modifiedAt).toMillis(),
+        allocatorWatermark: storage.fixtureValueIds.size + 1,
+    });
+    if (publication instanceof Error) {
+        throw new Error("the fixture occurrence was rejected: " + publication.message);
+    }
+    /** @type {Array<import('../src/generators/incremental_graph/database/root_database').DatabaseBatchOperation>} */
+    const operations = [];
+    const rejected = appendJournalPublicationOps(storage.journal, operations, publication);
+    if (rejected !== undefined) {
+        throw new Error("the fixture occurrence could not be appended: " + rejected.message);
+    }
+    await storage.batch(operations);
+    storage.fixtureWriterState = publication.writerState;
+    for (const record of publication.records) {
+        if (isValueEvent(record)) {
+            storage.fixtureValueIds.set(nodeKeyToCanonicalString(record.node), record.id);
+        }
+    }
+}
+
+/** The node key a fixture identifier denotes, as the `NodeKey` a record names. */
+function fixtureNodeKeyObject(nodeIdentifier) {
+    return deserializeNodeKey(String(fixtureNodeKey(nodeIdentifier)));
 }
 
 
