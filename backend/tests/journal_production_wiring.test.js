@@ -3,9 +3,11 @@
  *
  * `incremental-graph-journal-emission.md` is the governing specification and
  * `journal_atomicity_requirement.test.js` pins the recovered-state consequence of
- * `$id-2048186621237391`. This suite pins the individual clauses which the commit seam
- * of the production path discharges, each in a test below that asserts that clause
- * directly:
+ * `$id-2048186621237391`. This suite pins individual clauses which the commit seam of
+ * the production path discharges. The bullets below are illustrative, not exhaustive:
+ * the first bullet is pinned by two tests rather than one, and two tests pin clauses
+ * no bullet names — the cause-before-effect ordering of a propagated staleness, and a
+ * pull which changes no persisted state:
  *
  * - "Explicit invalidation" and "Propagated persistent staleness": the record shapes an
  *   explicit invalidation and its staleness propagation must have, and which are two
@@ -16,8 +18,10 @@
  * - the invalidation is one atomic write carrying the freshness it writes and the
  *   records which state it.
  *
- * Everything here drives `createIncrementalGraph`, then `pull` and `invalidate`, over
- * the repository's real computors. A record the record layer accepts is a statement
+ * Everything here drives `createIncrementalGraph`, then `pull` and, where the clause
+ * under test needs it, `invalidate`, over the repository's real computors. The
+ * same-publication-reference, reference-ordering and unchanged-pull tests reach the
+ * production path through `pull` alone. A record the record layer accepts is a statement
  * about the record, not about whether the production path supplies the intents and
  * publishes the records these clauses describe.
  */
