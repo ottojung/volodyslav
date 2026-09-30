@@ -673,24 +673,59 @@ describe("stream contiguity", () => {
         expect(failure.missingSequence).toBe("100");
     });
 
-    test("a record past the digit-width boundary must claim its whole own-writer prefix", () => {
+    /**
+     * @param {number} index
+     * @param {string} observed
+     * @returns {ReturnType<typeof valueAt>}
+     */
+    function streamRecord(index, observed) {
+        return valueAt(
+            "aaaaaaaaa:" + index,
+            index === 1 ? [] : [["aaaaaaaaa", observed]],
+            NODE_K,
+            1000 + index
+        );
+    }
+
+    /**
+     * A 150-record single-writer stream whose own-writer prefix is complete up to
+     * `skippedAt`, and which omits coordinate `skippedAt - 1` there.
+     * @param {number} skippedAt
+     * @returns {Array<ReturnType<typeof valueAt>>}
+     */
+    function streamWithWrongOwnWriterPrefixAt(skippedAt) {
         const stream = [];
         for (let index = 1; index <= 150; index++) {
-            // Record 101 observes 99 rather than 100, so its own-writer prefix is
-            // a hole. The decimal borrow across the width boundary is what makes
-            // 99 and 100 different coordinates rather than the same one.
-            const observed = index === 101 ? "99" : String(index - 1);
-            stream.push(
-                valueAt(
-                    "aaaaaaaaa:" + index,
-                    index === 1 ? [] : [["aaaaaaaaa", observed]],
-                    NODE_K,
-                    1000 + index
-                )
-            );
+            stream.push(streamRecord(index, index === skippedAt ? String(skippedAt - 2) : String(index - 1)));
         }
-        const failure = validateJournalReplica(replicaOf([["aaaaaaaaa", stream]]));
+        return stream;
+    }
+
+    test("a record past the digit-width boundary must claim its whole own-writer prefix", () => {
+        // Record 100 sits exactly on the width boundary, so the own-writer prefix
+        // the record must claim is the decimal borrow from 100, which is 99. The
+        // record claims 98 instead. The error the borrow produces is asserted in
+        // full, because a bare causal-closure assertion is satisfied by a prefix
+        // hole at any coordinate and any width, and would then hold nothing about
+        // the borrow.
+        const failure = validateJournalReplica(replicaOf([["aaaaaaaaa", streamWithWrongOwnWriterPrefixAt(100)]]));
         expect(isJournalCausalClosureError(failure)).toBe(true);
+        expect(failure.rule).toBe("complete local prefix");
+        expect(failure.message).toContain("aaaaaaaaa:100");
+        expect(failure.message).toContain("own-writer context is 98 but must be exactly 99");
+    });
+
+    test("the same own-writer prefix hole away from the width boundary names its own borrow", () => {
+        // The control arm of the boundary test: the same hole one order of
+        // magnitude lower, where the expected prefix is 19 and no borrow crosses a
+        // width boundary. It is reported with its own expected coordinate, so the
+        // boundary arm's expected coordinate of 99 is not merely the coordinate the
+        // hole happens to fall on.
+        const failure = validateJournalReplica(replicaOf([["aaaaaaaaa", streamWithWrongOwnWriterPrefixAt(20)]]));
+        expect(isJournalCausalClosureError(failure)).toBe(true);
+        expect(failure.rule).toBe("complete local prefix");
+        expect(failure.message).toContain("aaaaaaaaa:20");
+        expect(failure.message).toContain("own-writer context is 18 but must be exactly 19");
     });
 
     test("the retained frontier is the greatest retained coordinate per writer", () => {
