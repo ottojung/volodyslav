@@ -2117,6 +2117,103 @@ describe("IncrementalGraph concurrency", () => {
             expect(await graph.getFreshness("y")).toBe("potentially-outdated");
         }, 15000);
 
+        test("a clear withdraws a proof established against the occurrence the clearing transaction supersedes", async () => {
+            const db = new InMemoryDatabase();
+
+            // z's computor yields a different value on each materialisation, so the
+            // two concurrent re-materialisations below publish different occurrences
+            // of one node and the survivor's proof is observably false.
+            let zCall = 0;
+            const nextZ = () => {
+                zCall += 1;
+                return 1000 * zCall;
+            };
+
+            let xComputorEntered = () => undefined;
+            const xComputorEnteredPromise = new Promise(r => { xComputorEntered = r; });
+            let releaseX = () => undefined;
+            const releaseXPromise = new Promise(r => { releaseX = r; });
+
+            const graph = await createIncrementalGraph(testCapabilities, db, [
+                {
+                    output: "w",
+                    inputs: [],
+                    computor: async () => Promise.resolve(numberComputedValue(7)),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "z",
+                    inputs: ["w"],
+                    computor: async () => Promise.resolve(numberComputedValue(nextZ())),
+                    isDeterministic: false,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "x",
+                    inputs: ["z"],
+                    computor: async ([zValue]) => {
+                        xComputorEntered();
+                        await releaseXPromise;
+                        return numberComputedValue(zValue.value);
+                    },
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "y",
+                    inputs: ["z"],
+                    computor: async ([zValue]) => numberComputedValue(zValue.value),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+            ]);
+
+            // Materialise z with no dependent having validated against it, so
+            // valid[z] does not exist and both concurrent pulls observe it empty.
+            await graph.pull("w");
+            await graph.pull("z");
+            await graph.invalidate("z");
+            expect(await graph.getFreshness("z")).toBe("potentially-outdated");
+
+            // op1 re-materialises z (computor call 2) and reaches x's computor,
+            // which blocks. Its transaction is uncommitted, so committed z is still
+            // potentially-outdated and the next pull re-materialises z again.
+            const op1 = graph.pull("x");
+            await xComputorEnteredPromise;
+
+            // op2 re-materialises z (computor call 3) and publishes before op1 does.
+            const op2Value = await graph.pull("y");
+            expect(op2Value.value).toBe(3000);
+
+            // op1 now publishes, overwriting z with its own older occurrence and
+            // re-adding x to valid[z].
+            releaseX();
+            await op1;
+            expect(await graph.getFreshness("z")).toBe("up-to-date");
+            expect(await graph.getFreshness("y")).toBe("up-to-date");
+
+            // op1's occurrence is the committed one, and y's proof — established
+            // against op2's occurrence of z, which no longer exists — must not
+            // survive op1's clear.
+            const committedZ = await graph.pull("z");
+            expect(committedZ.value).toBe(2000);
+
+            const zKey = JSON.stringify({ head: "z", args: [] });
+            const zId = graph.rootDatabase.nodeKeyToId(zKey);
+            if (zId === undefined) {
+                throw new Error("Expected identifier for z after pull");
+            }
+            const validZ = await graph.storage.valid.get(zId) ?? [];
+            const validZStrings = validZ.map(id => nodeIdentifierToString(id));
+            const yKey = JSON.stringify({ head: "y", args: [] });
+            const yId = graph.rootDatabase.nodeKeyToId(yKey);
+            if (yId === undefined) {
+                throw new Error("Expected identifier for y after pull");
+            }
+            expect(validZStrings).not.toContain(nodeIdentifierToString(yId));
+        }, 15000);
+
         test("concurrent valid[D] additions via withTransaction are merged at commit time", async () => {
             const db = new InMemoryDatabase();
             const graph = await createIncrementalGraph(testCapabilities, db, [
