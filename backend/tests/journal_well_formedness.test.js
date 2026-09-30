@@ -638,23 +638,21 @@ describe("stream contiguity", () => {
         expect(failure.missingSequence).toBe("1");
     });
 
-    // Per-case attribution of the digit-width cases below. The direction of any
-    // one-to-one claim here is from a case to the property its bullet is the
-    // primary holder of: no two bullets primarily hold the same property, so that
-    // direction is one-to-one. The opposite direction, from a case to the
-    // properties its bullet merely mentions, is not one-to-one, because the first,
-    // third and fourth bullets all name the coordinate 99, and the third and fourth
-    // both name it as a borrowed coordinate: the third as the coordinate the
-    // boundary record is rejected against, the fourth as a contrast against its own
-    // borrow at 19. Those are mentions, not primary holdings, and a reader must
-    // not read one bullet as the whole of what a case checks, so shared mentions
-    // and distinct primary holdings coexist without contradiction. What no other
-    // assertion shares with the boundary arm is the pinning of its expected
-    // coordinate: 99 is pinned in exactly one assertion in this file, that arm's own
-    // "must be exactly 99" assertion, so that case is not the only witness of the
-    // distinction between a hole's position and a borrowed coordinate. A reader
-    // changing any one of these cases must expect to move more than a single
-    // assertion:
+    // The four digit-width cases below are four independent tests. Each builds its
+    // own stream and asserts on it inside its own test body: the first two build
+    // the stream inline, the last two through streamWithWrongOwnWriterPrefixAt,
+    // which is a pure function of the single coordinate it is given. No case reads
+    // data another case builds, and no assertion in one case depends on a
+    // coordinate another case chooses, so a reader who changes a coordinate in one
+    // case moves assertions inside that case only.
+    //
+    // Each bullet below names the property its case exists to hold, which is not
+    // everything that case's assertions touch: the first bullet's case also crosses
+    // the decimal borrow at 100, and the third and fourth bullets both name the
+    // borrowed coordinate 99, the third as the coordinate the boundary record is
+    // rejected against and the fourth as a contrast against its own borrow at 19.
+    // The coordinate 99 occurs in one assertion in this file, the boundary arm's
+    // "must be exactly 99" message assertion, so the control arm does not repeat it.
     //
     // - "a single-writer stream past the digit-width boundary is one contiguous
     //   prefix" holds the decimal borrow across the width boundary: its record at
