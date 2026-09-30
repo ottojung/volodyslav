@@ -1049,8 +1049,15 @@ module.exports = {
  *
  * `closedSpine` is a two-writer journal which is well formed under
  * `validateJournalReplica`, has its own-writer context exact, keeps every claimed
- * coordinate retained, and has a dependency-closed selected head set. Four of the
- * builders below are built on it; the rest construct their journals directly.
+ * coordinate retained, and has a dependency-closed selected head set. Five of the
+ * twelve fixture builders in this section are built on it:
+ * `dependencyClosureAcceptingFixture`, `ownPrefixFixtures`, `proofBarrierFixture`,
+ * `retainedRangeFixtures` and `forkFixture`. The other seven construct their
+ * journals directly and inherit none of these guarantees. `forkFixture` is
+ * reachable only through this module's second export, so a count taken from
+ * `adversarialFixtures()` alone misses it;
+ * `interleaving_space_closed_spine_basis_check.js` re-derives both numbers by
+ * driving every export.
  *
  * Each fixture states which rule it isolates, and `journal_interleaving.test.js`
  * asserts that no two fixtures name the same rule.
