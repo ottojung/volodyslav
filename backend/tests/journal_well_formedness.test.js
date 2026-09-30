@@ -638,6 +638,26 @@ describe("stream contiguity", () => {
         expect(failure.missingSequence).toBe("1");
     });
 
+    // Per-case attribution of the digit-width cases below. Each case holds exactly
+    // one of these properties of the suite, and a reader changing any one of them
+    // must move the corresponding assertion rather than accept a silent loss of
+    // coverage:
+    //
+    // - "a single-writer stream past the digit-width boundary is one contiguous
+    //   prefix" holds the decimal borrow across the width boundary: its record at
+    //   coordinate 100 claims the coordinate 99, and the replica is accepted.
+    // - "a hole past the digit-width boundary is a gap at the coordinate it removed"
+    //   is the only holder of the gap report at coordinate 100: the stream removes
+    //   that coordinate and the failure reports it as the missing one.
+    // - "a record past the digit-width boundary must claim its whole own-writer
+    //   prefix" holds that the record on the boundary is rejected against the
+    //   borrowed coordinate 99, asserted in the whole error object so the claim
+    //   cannot be met by a prefix hole at any other coordinate or width.
+    // - "the same own-writer prefix hole away from the width boundary names its own
+    //   borrow" holds that the reported expected coordinate is the borrow's own and
+    //   not the hole's position: the hole is at coordinate 20 and the report names
+    //   19, so the boundary arm's 99 is a borrowed coordinate rather than the
+    //   coordinate the hole falls on.
     test("a single-writer stream past the digit-width boundary is one contiguous prefix", () => {
         const stream = [];
         for (let index = 1; index <= 150; index++) {
