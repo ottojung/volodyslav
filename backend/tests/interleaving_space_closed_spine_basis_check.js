@@ -37,6 +37,13 @@
  *
  * The controls rewrite the module in memory only, run the same measurement over
  * the rewrite, and assert that the measurement moved as the rewrite requires.
+ *
+ * This file measures and reports; it does not hold the golden values. The gate
+ * which pins the count is `interleaving_space_closed_spine_basis_check.test.js`,
+ * which requires this module and asserts the measurement against the numbers the
+ * comment in `interleaving_space.js` states. Keeping the goldens in the gate and
+ * the derivation here means the values being checked are the ones the comment
+ * publishes, and the instrument still re-derives every number it reports.
  */
 
 const fs = require("fs");
@@ -125,10 +132,22 @@ function staticallyDefinedBuilders(source) {
 }
 
 /**
+ * The `globalThis` a `Module._compile`d module sees, discovered from inside the
+ * module itself. A host that compiles the module in its own realm — a test
+ * runner's sandbox, for instance — gives the module a `globalThis` the host code
+ * cannot see, so a trace kept on the host's `globalThis` would be unreachable
+ * from the instrumented bodies and every measurement would report zero
+ * builders.
+ * @returns {object}
+ */
+const CAPTURE_GLOBAL = "module.exports.__instrumentGlobal = globalThis;";
+
+/**
  * Load the module with every builder body entry and the `closedSpine` body entry
  * instrumented, recording into a shared trace.
  * @param {string} source
- * @returns {object} the module's exports
+ * @returns {{ exports: object, traceHost: object }} the module's exports and the
+ *   object the instrumented bodies record their trace on
  */
 function loadInstrumented(source) {
     let rewritten = source;
@@ -144,12 +163,13 @@ function loadInstrumented(source) {
         CLOSED_SPINE_ANCHOR,
         " globalThis.__trace.spine.push(new Error().stack);"
     );
-    globalThis.__trace = { builders: [], spine: [] };
     const loaded = new Module(MODULE_PATH, null);
     loaded.filename = MODULE_PATH;
     loaded.paths = Module._nodeModulePaths(path.dirname(MODULE_PATH));
-    loaded._compile(rewritten, MODULE_PATH);
-    return loaded.exports;
+    loaded._compile(`${rewritten}\n${CAPTURE_GLOBAL}`, MODULE_PATH);
+    const traceHost = loaded.exports.__instrumentGlobal;
+    traceHost.__trace = { builders: [], spine: [] };
+    return { exports: loaded.exports, traceHost };
 }
 
 /**
@@ -179,9 +199,10 @@ function builderOfStack(stack) {
  * whose trace names a builder other than itself delegated, so it is not one of
  * the builders the comment counts.
  * @param {object} exportsOfModule
+ * @param {object} traceHost the `globalThis` the instrumented module records on
  * @returns {{ producers: string[], aggregators: string[], builders: Set<string>, spineBuilders: Set<string>, spineCalls: number }}
  */
-function driveEveryExport(exportsOfModule) {
+function driveEveryExport(exportsOfModule, traceHost) {
     const producers = [];
     const builders = new Set();
     const aggregators = new Set();
@@ -193,7 +214,7 @@ function driveEveryExport(exportsOfModule) {
         if (typeof exported !== "function" || exported.length !== 0) {
             continue;
         }
-        globalThis.__trace = { builders: [], spine: [] };
+        traceHost.__trace = { builders: [], spine: [] };
         let result;
         try {
             result = exported();
@@ -204,16 +225,16 @@ function driveEveryExport(exportsOfModule) {
             continue;
         }
         producers.push(name);
-        const delegated = globalThis.__trace.builders.some((builder) => builder !== name);
+        const delegated = traceHost.__trace.builders.some((builder) => builder !== name);
         if (delegated) {
             aggregators.add(name);
         }
-        for (const builder of globalThis.__trace.builders) {
+        for (const builder of traceHost.__trace.builders) {
             if (builder !== name || !delegated) {
                 builders.add(builder);
             }
         }
-        for (const stack of globalThis.__trace.spine) {
+        for (const stack of traceHost.__trace.spine) {
             spineCalls += 1;
             const builder = builderOfStack(stack);
             if (builder === undefined) {
@@ -238,7 +259,8 @@ function driveEveryExport(exportsOfModule) {
  */
 function measure(source) {
     indexBuilderLines(source);
-    const driven = driveEveryExport(loadInstrumented(source));
+    const { exports: exportsOfModule, traceHost } = loadInstrumented(source);
+    const driven = driveEveryExport(exportsOfModule, traceHost);
     return {
         producers: driven.producers,
         aggregators: driven.aggregators,
@@ -382,4 +404,16 @@ function main() {
     throw new Error(`Unknown control ${control}`);
 }
 
-main();
+/**
+ * Measure the module as it stands on disk.
+ * @returns {{ producers: string[], aggregators: string[], builders: string[], spineBuilders: string[], spineCalls: number, defined: string[] }}
+ */
+function measureAsCommitted() {
+    return measure(fs.readFileSync(MODULE_PATH, "utf8"));
+}
+
+module.exports = { measureAsCommitted };
+
+if (require.main === module) {
+    main();
+}
