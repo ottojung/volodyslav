@@ -21,6 +21,46 @@
 const { compareNodeIdentifier, nodeIdentifierFromString, nodeIdentifierToString } = require('./database');
 
 /**
+ * Apply a transaction's recorded validity mutations to a validity set and
+ * return the sorted result.
+ *
+ * A `clear` withdraws exactly the dependents the transaction observed in the set
+ * it clears, and preserves every other committed dependent. Without that
+ * restriction a clear resolved against committed state erases edges which other
+ * transactions established after this transaction read the set: two transactions
+ * which both materialise a shared dependency each record a clear for that
+ * dependency's outgoing set, and the second clear would drop the first
+ * transaction's dependent. A clear recorded without an observation replaces the
+ * set wholesale.
+ *
+ * @param {NodeIdentifier[]} committed
+ * @param {Array<ValidMutation | ValidClearMutation>} mutations
+ * @returns {NodeIdentifier[]}
+ */
+function applyValidMutations(committed, mutations) {
+    let validSet = committed;
+    for (const m of mutations) {
+        if (m.kind === "clear") {
+            if (m.observed === undefined) {
+                validSet = [];
+                continue;
+            }
+            const observed = m.observed.map(nodeIdentifierToString);
+            validSet = validSet.filter(id => !observed.includes(nodeIdentifierToString(id)));
+        } else if (m.kind === "add") {
+            const depStr = nodeIdentifierToString(m.dependent);
+            if (!validSet.some(id => nodeIdentifierToString(id) === depStr)) {
+                validSet = validSet.concat([m.dependent]);
+            }
+        } else if (m.kind === "remove") {
+            const depStr = nodeIdentifierToString(m.dependent);
+            validSet = validSet.filter(id => nodeIdentifierToString(id) !== depStr);
+        }
+    }
+    return validSet.sort(compareNodeIdentifier);
+}
+
+/**
  * Apply recorded validity mutations to the latest committed state and push
  * the resulting put/del operations into the shared operations array.
  * Used by both withTransaction() and withBatch().
@@ -36,21 +76,8 @@ async function appendValidMutationOps(activeSchemaStorage, operations, validMuta
     }
     for (const [depIdStr, mutations] of validMutations.entries()) {
         const depId = nodeIdentifierFromString(depIdStr);
-        let validSet = await activeSchemaStorage.valid.get(depId) ?? [];
-        for (const m of mutations) {
-            if (m.kind === "clear") {
-                validSet = [];
-            } else if (m.kind === "add") {
-                const depStr = nodeIdentifierToString(m.dependent);
-                if (!validSet.some(id => nodeIdentifierToString(id) === depStr)) {
-                    validSet.push(m.dependent);
-                }
-            } else if (m.kind === "remove") {
-                const depStr = nodeIdentifierToString(m.dependent);
-                validSet = validSet.filter(id => nodeIdentifierToString(id) !== depStr);
-            }
-        }
-        validSet.sort(compareNodeIdentifier);
+        const committed = await activeSchemaStorage.valid.get(depId) ?? [];
+        const validSet = applyValidMutations(committed, mutations);
         if (validSet.length === 0) {
             operations.push(activeSchemaStorage.valid.delOp(depId));
         } else {
@@ -62,4 +89,5 @@ async function appendValidMutationOps(activeSchemaStorage, operations, validMuta
 
 module.exports = {
     appendValidMutationOps,
+    applyValidMutations,
 };

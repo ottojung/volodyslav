@@ -44,7 +44,7 @@ const {
 } = require('./journal_store');
 const { finalizeEmission, makeJournalPublicationError } = require('./journal');
 const { makeTransactionJournal } = require('./journal_staging');
-const { appendValidMutationOps } = require('./validity_mutations');
+const { appendValidMutationOps, applyValidMutations } = require('./validity_mutations');
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
@@ -77,6 +77,12 @@ const { appendValidMutationOps } = require('./validity_mutations');
  *
  * @typedef {object} ValidClearMutation
  * @property {"clear"} kind
+ * @property {NodeIdentifier[] | undefined} observed - The dependents the
+ *   transaction had already read out of the set it is clearing, or `undefined`
+ *   when the transaction never read the set and the clear therefore replaces it
+ *   wholesale. A clear withdraws exactly the dependents the transaction saw:
+ *   dependents committed by another transaction while this one was running were
+ *   never observed, are not withdrawn by it, and survive the merge.
  */
 
 /**
@@ -225,11 +231,25 @@ function makeSublevelBatch(db, operations) {
  * against the latest committed state under the darkroom lock at commit time
  * to prevent lost updates from concurrent graph transactions.
  *
+ * A clear records the dependents the transaction had observed in the set it
+ * clears, so that resolution withdraws exactly those and leaves entries which
+ * another transaction committed after the read. `put` and `del` replace a set
+ * wholesale and therefore record an unobserved clear.
+ *
  * @param {{ get: (key: NodeIdentifier) => Promise<NodeIdentifier[] | undefined>, putOp: (key: NodeIdentifier, value: NodeIdentifier[]) => object, delOp: (key: NodeIdentifier) => object }} db
  * @param {Map<string, Array<ValidMutation | ValidClearMutation>>} validMutations
  * @returns {ValidBatchOps}
  */
 function makeValidBatchOps(db, validMutations) {
+    /** @type {Map<string, NodeIdentifier[]>} */
+    const observedReads = new Map();
+
+    /**
+     * @param {string} k
+     * @returns {ValidClearMutation}
+     */
+    const clearMutation = (k) => ({ kind: "clear", observed: observedReads.get(k) });
+
     return {
         add(depId, dependentId) {
             const k = nodeIdentifierToString(depId);
@@ -251,38 +271,26 @@ function makeValidBatchOps(db, validMutations) {
         },
         clear(depId) {
             const k = nodeIdentifierToString(depId);
-            validMutations.set(k, [{ kind: "clear" }]);
+            validMutations.set(k, [clearMutation(k)]);
         },
         async get(depId) {
             const k = nodeIdentifierToString(depId);
             const muts = validMutations.get(k);
-            let result = await db.get(depId) ?? [];
-            if (muts) {
-                for (const m of muts) {
-                    if (m.kind === "clear") {
-                        result = [];
-                    } else if (m.kind === "add") {
-                        const depStr = nodeIdentifierToString(m.dependent);
-                        if (!result.some(id => nodeIdentifierToString(id) === depStr)) {
-                            result.push(m.dependent);
-                        }
-                    } else if (m.kind === "remove") {
-                        const depStr = nodeIdentifierToString(m.dependent);
-                        result = result.filter(id => nodeIdentifierToString(id) !== depStr);
-                    }
-                }
-                result.sort(compareNodeIdentifier);
+            const result = await db.get(depId) ?? [];
+            observedReads.set(k, result);
+            if (!muts) {
+                return result;
             }
-            return result;
+            return applyValidMutations(result, muts);
         },
         put(depId, value) {
-            this.clear(depId);
+            validMutations.set(nodeIdentifierToString(depId), [{ kind: "clear", observed: undefined }]);
             for (const dep of value) {
                 this.add(depId, dep);
             }
         },
         del(depId) {
-            this.clear(depId);
+            validMutations.set(nodeIdentifierToString(depId), [{ kind: "clear", observed: undefined }]);
         },
     };
 }
