@@ -639,12 +639,14 @@ describe("stream contiguity", () => {
     });
 
     // Per-case attribution of the digit-width cases below. Each bullet names the
-    // property its case is the primary holder of, and the mapping is not one-to-one
-    // in either direction: the cascading decimal borrow is held jointly by three of
-    // these cases, and one case's expected coordinate is also pinned by another
-    // case's assertion. A reader changing any one of them must therefore expect to
-    // move more than a single assertion, and must not read one bullet as the whole
-    // of what a case checks:
+    // property its case is the primary holder of, and no two bullets name the same
+    // property, so the mapping is one-to-one from cases to properties. It is not
+    // one-to-one in the other direction: the cascading decimal borrow is held
+    // jointly by three of these cases, while the boundary arm's expected
+    // coordinate of 99 is pinned in exactly one place in this file, that arm's own
+    // "must be exactly 99" assertion. A reader changing any one of them must
+    // therefore expect to move more than a single assertion, and must not read one
+    // bullet as the whole of what a case checks:
     //
     // - "a single-writer stream past the digit-width boundary is one contiguous
     //   prefix" holds the decimal borrow across the width boundary: its record at
