@@ -1047,12 +1047,10 @@ module.exports = {
  * can see it. These fixtures close that hole by constructing a journal in which the
  * rule under test is the sole thing which separates a right answer from a wrong one.
  *
- * Every fixture is built on `closedSpine`, a two-writer journal which is well
- * formed under `validateJournalReplica`, has its own-writer context exact, keeps
- * every claimed coordinate retained, and has a dependency-closed selected head
- * set. A fixture therefore differs from a supported journal only in the rule it is
- * built to isolate, and a rejection it produces is the rejection it was designed
- * to produce rather than an accident of the surrounding history.
+ * `closedSpine` is a two-writer journal which is well formed under
+ * `validateJournalReplica`, has its own-writer context exact, keeps every claimed
+ * coordinate retained, and has a dependency-closed selected head set. Four of the
+ * builders below are built on it; the rest construct their journals directly.
  *
  * Each fixture states which rule it isolates, and `journal_interleaving.test.js`
  * asserts that no two fixtures name the same rule.

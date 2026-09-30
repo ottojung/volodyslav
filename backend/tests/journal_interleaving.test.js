@@ -852,7 +852,7 @@ describe("the adversarial fixtures isolate one projection rule each", () => {
      * `supported: true` violate no rule at all, so for them the assertion is that
      * the record layer accepts a journal that is wholly well formed.
      */
-    test("every fixture is well formed apart from the rule it names", () => {
+    test("every fixture produces the outcome it declares", () => {
         /** @type {string[]} */
         const wrong = [];
         for (const fixture of adversarialFixtures()) {
@@ -877,8 +877,8 @@ describe("the adversarial fixtures isolate one projection rule each", () => {
         // violate one of them, both must reject and the tests must assert both. A
         // mutation which removes the oracle's check while leaving the record layer's
         // validator intact is exactly the kind of defect that a test asserting only
-        // the validator would miss, and the "well formed apart from the rule it
-        // names" test above is such a test on its own.
+        // the validator would miss, and the "produces the outcome it declares"
+        // test above is such a test on its own.
         for (const fixture of adversarialFixtures()) {
             const outcome = canonicalOutcomeOf(fixture.journal);
             // `projectable` rather than `supported`, because being well formed and
