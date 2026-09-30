@@ -638,10 +638,13 @@ describe("stream contiguity", () => {
         expect(failure.missingSequence).toBe("1");
     });
 
-    // Per-case attribution of the digit-width cases below. Each case holds exactly
-    // one of these properties of the suite, and a reader changing any one of them
-    // must move the corresponding assertion rather than accept a silent loss of
-    // coverage:
+    // Per-case attribution of the digit-width cases below. Each bullet names the
+    // property its case is the primary holder of, and the mapping is not one-to-one
+    // in either direction: the cascading decimal borrow is held jointly by three of
+    // these cases, and one case's expected coordinate is also pinned by another
+    // case's assertion. A reader changing any one of them must therefore expect to
+    // move more than a single assertion, and must not read one bullet as the whole
+    // of what a case checks:
     //
     // - "a single-writer stream past the digit-width boundary is one contiguous
     //   prefix" holds the decimal borrow across the width boundary: its record at
@@ -738,9 +741,11 @@ describe("stream contiguity", () => {
     test("the same own-writer prefix hole away from the width boundary names its own borrow", () => {
         // The control arm of the boundary test: the same hole one order of
         // magnitude lower, where the expected prefix is 19 and no borrow crosses a
-        // width boundary. It is reported with its own expected coordinate, so the
-        // boundary arm's expected coordinate of 99 is not merely the coordinate the
-        // hole happens to fall on.
+        // width boundary. It is reported with its own expected coordinate at width
+        // two. The boundary arm's expected coordinate of 99 is already pinned by
+        // that arm's own "must be exactly 99" assertion, so this case is not the
+        // only witness of the distinction; what it adds is the same distinction
+        // observed away from the width boundary, where no borrow crosses it.
         const failure = validateJournalReplica(replicaOf([["aaaaaaaaa", streamWithWrongOwnWriterPrefixAt(20)]]));
         expect(isJournalCausalClosureError(failure)).toBe(true);
         expect(failure.rule).toBe("complete local prefix");
