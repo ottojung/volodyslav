@@ -15,7 +15,9 @@
 
 const { runMigration } = require("../src/generators/incremental_graph/migration_runner");
 const {
+    deserializeNodeKey,
     getRootDatabase,
+    stringToNodeKeyString,
 } = require("../src/generators/incremental_graph/database");
 const { createIncrementalGraph } = require("../src/generators/incremental_graph");
 const { readCurrentOccurrence, readRetainedJournal } = require("../src/generators/incremental_graph/journal_store");
@@ -27,7 +29,8 @@ const {
 } = require("../src/generators/incremental_graph/journal");
 const { numberComputedValue } = require("./computed_value_fixture");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubLogger, stubDatetime, stubEnvironment } = require("./stubs");
+const { stubLogger, stubDatetime, stubEnvironment, getDatetimeControl } = require("./stubs");
+const { fromISOString } = require("../src/datetime");
 
 jest.mock('../src/generators/incremental_graph/database', () => ({
     ...jest.requireActual('../src/generators/incremental_graph/database'),
@@ -54,6 +57,34 @@ async function readSemanticEvents(db) {
         throw retained;
     }
     return semanticEventsOfReplica(retained);
+}
+
+/**
+ * Raised when a node key the test expects to be materialized has no identifier.
+ */
+class MissingNodeIdentifierError extends Error {
+    /**
+     * @param {string} nodeKey
+     */
+    constructor(nodeKey) {
+        super(`The graph assigned no identifier to node key ${nodeKey}`);
+        this.name = 'MissingNodeIdentifierError';
+        this.nodeKey = nodeKey;
+    }
+}
+
+/**
+ * Read the identifier the migration assigned to a semantic node key.
+ * @param {import('../src/generators/incremental_graph/database/root_database').RootDatabase} db
+ * @param {import('../src/generators/incremental_graph/database').NodeKeyString} nodeKey
+ * @returns {import('../src/generators/incremental_graph/database').NodeIdentifier}
+ */
+function identifierForNodeKey(db, nodeKey) {
+    const nodeIdentifier = db.nodeKeyToId(nodeKey);
+    if (nodeIdentifier === undefined) {
+        throw new MissingNodeIdentifierError(String(nodeKey));
+    }
+    return nodeIdentifier;
 }
 
 describe("migration Pass M1 records", () => {
@@ -149,12 +180,74 @@ describe("migration Pass M1 records", () => {
 
             // The DeleteEvent is semantic absence authority, so the target's current
             // occurrence index no longer resolves the deleted key.
-            const { deserializeNodeKey } = require("../src/generators/incremental_graph/database");
             const occurrence = await readCurrentOccurrence(
                 db.getSchemaStorage().journal,
                 deserializeNodeKey('{"head":"B","args":[]}')
             );
             expect(occurrence).toBeUndefined();
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test("a replacement's journal record and the target graph state name the same modifiedAt", async () => {
+        const caps = getTestCapabilities();
+        const keyA = stringToNodeKeyString('{"head":"A","args":[]}');
+        const publicationInstant = "2024-06-01T00:00:00.000Z";
+        let db;
+        try {
+            db = await getRootDatabase(caps);
+            const nodeDefs = [
+                { output: "A", inputs: [], computor: async () => numberComputedValue(1), isDeterministic: true, hasSideEffects: false },
+            ];
+            const g1 = await createIncrementalGraph(caps, db, nodeDefs);
+            await g1.pull("A");
+            const replacedIdentifier = identifierForNodeKey(db, keyA);
+            const sourceTimestamps = await db.getSchemaStorage().timestamps.get(replacedIdentifier);
+            expect(sourceTimestamps).toBeDefined();
+            const sourceCreatedAt = sourceTimestamps?.createdAt;
+            expect(sourceCreatedAt).toBeDefined();
+            await db.getSchemaStorage().global.put("version", "1");
+            await db.close();
+
+            // The publication instant must differ from the source occurrence's
+            // modifiedAt, otherwise the two representations cannot disagree
+            // visibly and this test would pass under either semantics.
+            getDatetimeControl(caps).setDateTime(fromISOString(publicationInstant));
+
+            db = await getRootDatabase(caps);
+            await runMigration(caps, db, nodeDefs, async (storage) => {
+                await storage.override(
+                    replacedIdentifier,
+                    async () => numberComputedValue(20)
+                );
+            });
+
+            const replacement = (await readSemanticEvents(db)).find(
+                (record) => isValueEvent(record) && record.reason === "migration"
+            );
+            expect(replacement).toBeDefined();
+            if (replacement === undefined || !isValueEvent(replacement)) {
+                throw new Error("the replacement authors no migration ValueEvent");
+            }
+            expect(nodeKeyToCanonicalString(replacement.node)).toBe('{"head":"A","args":[]}');
+
+            const targetTimestamps = await db.getSchemaStorage().timestamps.get(
+                identifierForNodeKey(db, keyA)
+            );
+            expect(targetTimestamps).toBeDefined();
+            if (targetTimestamps === undefined) {
+                throw new Error("the target graph state carries no timestamps for the replaced node");
+            }
+
+            // §11a.3: a replacement preserves the existing materialization and its
+            // createdAt, and takes the migration publication time as its modifiedAt.
+            // The graph and the journal are two representations of that one occurrence,
+            // so they must agree, and both must be the publication time.
+            expect(replacement.createdAt).toBe(sourceCreatedAt);
+            expect(replacement.modifiedAt).toBe(publicationInstant);
+            expect(targetTimestamps.createdAt).toBe(replacement.createdAt);
+            expect(targetTimestamps.modifiedAt).toBe(replacement.modifiedAt);
         } finally {
             if (db) await db.close();
         }

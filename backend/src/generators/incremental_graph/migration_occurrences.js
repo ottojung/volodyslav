@@ -8,9 +8,11 @@
  * existing materialization and `createdAt` and takes the publication time only as its
  * `modifiedAt`.
  *
- * Each occurrence is produced exactly once, here, so the graph state the cutover
- * writes into the target replica and the journal record which explains it cannot
- * disagree about which occurrence they name.
+ * Each occurrence is produced exactly once, here, and every consumer of a produced
+ * occurrence reads it rather than re-deriving it: the cutover reads the occurrence's
+ * value and §11a.3 timestamps for the target replica's graph state, and the M1
+ * `ValueEvent` names the same occurrence. The graph projection and the journal record
+ * therefore describe one occurrence rather than two disagreeing representations of it.
  */
 
 const { makeInvalidMigrationDecisionError } = require("./migration_errors");
@@ -29,8 +31,8 @@ const { stringToNodeKeyString, nodeIdentifierToString } = require("./database");
  * occurrences: a `create` allocates a new materialization and takes the migration
  * publication time for both `createdAt` and `modifiedAt`, while a replacement keeps the
  * existing materialization and `createdAt` and takes the publication time only as its
- * `modifiedAt`. Both are produced here, once, so the graph state written into the
- * target replica and the M1 `ValueEvent` which names the occurrence cannot disagree.
+ * `modifiedAt`. Both are produced here, once, and the cutover reads this occurrence for
+ * the target graph state while M1 names it, so the two representations cannot disagree.
  *
  * @param {Map<NodeIdentifier, Decision>} decisions - The settled decisions, keyed by target materialization.
  * @param {ReadableMigrationStorage} prevStorage - The source replica, which holds the replaced occurrence's timestamps.

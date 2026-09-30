@@ -186,11 +186,15 @@ function makeLazyMigrationSource(prevStorage, oldLookup, decisions, desiredValid
             async get(key) {
                 const decision = decisions.get(key);
                 if (!decision || decision.kind === "delete") return undefined;
-                // A `create` is a new materialization, so it takes the §11a.3 timestamps
-                // the M1 record was built with and the persisted graph state names the
-                // same occurrence the journal does.
+                // A genuine occurrence-producing decision takes the §11a.3 timestamps
+                // the M1 record was built with, so the persisted graph state and the
+                // journal name one occurrence rather than two disagreeing ones. A
+                // `create` is a new materialization and takes the publication time for
+                // both stamps; a replacement keeps the existing materialization and its
+                // `createdAt` and takes the publication time as its `modifiedAt`.
+                // An occurrence-preserving decision transports the source stamps.
                 const produced = producedOccurrences.get(key);
-                if (produced !== undefined && decision.kind === "create") {
+                if (produced !== undefined) {
                     return { createdAt: produced.createdAt, modifiedAt: produced.modifiedAt };
                 }
                 return await prevStorage.timestamps.get(key);

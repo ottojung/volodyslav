@@ -46,9 +46,15 @@ const { stringToNodeKeyString, nodeIdentifierToString } = require("./database");
  * - this typedef cannot enforce the properties by construction;
  * - therefore every function that constructs a `TargetOccurrence` is part of the
  *   proof. The current construction sites are:
- *   - `buildMigrationM1Intents(...)`: satisfies the property because it derives every
- *     field from the migration decision, the source replica's stored timestamps, and
- *     the migration publication instant passed in, and never from a default.
+ *   - `buildProducedOccurrences(...)`: satisfies the property because it is the
+ *     single place a migration produces an occurrence, deriving every field from the
+ *     migration decision, the source replica's stored timestamps, and the migration
+ *     publication instant passed in, and never from a default.
+ *
+ * Because `buildProducedOccurrences` is the only producer, the graph state the cutover
+ * writes into the target replica and the M1 `ValueEvent` which names the occurrence
+ * are derived from the same value and cannot disagree about its identity or its
+ * timestamps.
  *
  * @typedef {object} TargetOccurrence
  * @property {NodeIdentifier} identifier
