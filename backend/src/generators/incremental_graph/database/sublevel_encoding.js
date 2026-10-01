@@ -56,13 +56,25 @@ const TEXT_VALUE_ENCODING = 'utf8';
 const JOURNAL_SUBLEVEL_NAME = 'journal';
 
 /**
- * The declared encoding of every named sublevel. Every replica namespace and
- * every hostname staging namespace has this shape, so the table is keyed by the
- * sublevel name alone.
+ * The declared encoding of every sublevel whose name is fixed in this tree.
+ *
+ * Every replica namespace and every hostname staging namespace has the same
+ * shape, so the table is keyed by the sublevel name alone. It covers the
+ * namespace parents as well as the leaves: a namespace parent's own key range
+ * is not empty of values for every input — a snapshot can carry a key whose
+ * only sublevel name is the parent — and the encoding of that range has to be
+ * decided by a recorded entry rather than by a default.
+ *
+ * The hostname staging namespaces are absent because their names are computed
+ * from a hostname and therefore cannot be keys of a static table;
+ * `NAMESPACE_PARENT_VALUE_ENCODING` records what they declare.
  *
  * @type {Readonly<Record<string, SublevelValueEncoding>>}
  */
 const SUBLEVEL_VALUE_ENCODINGS = Object.freeze({
+    _meta: 'json',
+    x: 'json',
+    y: 'json',
     values: 'json',
     freshness: 'json',
     valid: 'json',
@@ -70,6 +82,17 @@ const SUBLEVEL_VALUE_ENCODINGS = Object.freeze({
     global: 'json',
     [JOURNAL_SUBLEVEL_NAME]: TEXT_VALUE_ENCODING,
 });
+
+/**
+ * The encoding a hostname staging namespace parent declares.
+ *
+ * A staging namespace's name embeds the hostname, so it cannot be a key of
+ * `SUBLEVEL_VALUE_ENCODINGS`. Its encoding is the root's, which is the same
+ * answer the table records for the fixed-name parents `x` and `y`.
+ *
+ * @type {SublevelValueEncoding}
+ */
+const NAMESPACE_PARENT_VALUE_ENCODING = ROOT_VALUE_ENCODING;
 
 /**
  * Thrown when a value cannot be stored in the sublevel the key names, because
@@ -101,10 +124,68 @@ function isSublevelValueEncodingError(object) {
 }
 
 /**
- * The declared encoding of one named sublevel.
+ * Thrown when a sublevel is declared whose name the encoding table does not
+ * list. The sublevel would then be encoded by whatever the code happens to do
+ * by default rather than by a decision anyone recorded, which is the failure
+ * mode this guard exists to prevent.
+ */
+class UndeclaredSublevelValueEncodingError extends Error {
+    /** @param {string} sublevelName */
+    constructor(sublevelName) {
+        super(
+            `Sublevel '${sublevelName}' is declared with an encoding, but ` +
+            `SUBLEVEL_VALUE_ENCODINGS does not list it. Add '${sublevelName}' to the table with the ` +
+            `encoding its values are stored with, so that the raw accessors agree with the declaration.`
+        );
+        this.name = 'UndeclaredSublevelValueEncodingError';
+        this.sublevelName = sublevelName;
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is UndeclaredSublevelValueEncodingError}
+ */
+function isUndeclaredSublevelValueEncodingError(object) {
+    return object instanceof UndeclaredSublevelValueEncodingError;
+}
+
+/**
+ * The declared encoding of a sublevel whose name this tree fixes, and the
+ * accessor every sublevel declaration goes through.
  *
- * A name the table does not list inherits the root encoding, because the root
- * instance is where such a sublevel's parent opened it.
+ * Unlike `valueEncodingForSublevelName`, this refuses a name the table does not
+ * list. A declaration site names a sublevel that exists in this tree, so a name
+ * the table does not know is a sublevel whose encoding nobody decided: either a
+ * new sublevel added without a table entry, or a typo. Failing the declaration
+ * is the only moment at which that is visible, because after the declaration the
+ * two sites have already agreed on a wrong encoding and nothing else objects.
+ *
+ * The raw-key path deliberately does not use this accessor: a raw key's shape is
+ * not this layer's to judge, and a key the snapshot layer will reject still has
+ * to be stored so that the snapshot layer can produce its own diagnosis.
+ *
+ * @param {string} sublevelName
+ * @returns {SublevelValueEncoding}
+ * @throws {UndeclaredSublevelValueEncodingError} If the table does not list the name.
+ */
+function declaredValueEncodingForSublevelName(sublevelName) {
+    const declared = SUBLEVEL_VALUE_ENCODINGS[sublevelName];
+    if (declared === undefined) {
+        throw new UndeclaredSublevelValueEncodingError(sublevelName);
+    }
+    return declared;
+}
+
+/**
+ * The declared encoding of one named sublevel, falling back to the root
+ * encoding for a name the table does not list.
+ *
+ * This is the lenient lookup, for the raw-key path only: a raw key's shape is
+ * not this layer's to judge, so a key naming a sublevel the table does not list
+ * still gets an encoding and lets `encoding.js` reject the key at render time
+ * with its own diagnosis. Declaration sites use
+ * `declaredValueEncodingForSublevelName`, which refuses an unlisted name.
  *
  * @param {string} sublevelName
  * @returns {SublevelValueEncoding}
@@ -214,13 +295,17 @@ function encodeRawValue(rawKey, value) {
 
 module.exports = {
     JOURNAL_SUBLEVEL_NAME,
+    NAMESPACE_PARENT_VALUE_ENCODING,
     ROOT_VALUE_ENCODING,
     SUBLEVEL_VALUE_ENCODINGS,
     TEXT_VALUE_ENCODING,
     SublevelValueEncodingError,
+    UndeclaredSublevelValueEncodingError,
+    declaredValueEncodingForSublevelName,
     decodeRawValue,
     encodeRawValue,
     isSublevelValueEncodingError,
+    isUndeclaredSublevelValueEncodingError,
     valueEncodingForRawKey,
     valueEncodingForSublevelName,
 };

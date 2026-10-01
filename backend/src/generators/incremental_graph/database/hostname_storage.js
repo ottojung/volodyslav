@@ -12,7 +12,11 @@
 
 const { makeTypedDatabase } = require('./typed_database');
 const { unsafeStringToNodeIdentifier, stringToVersion } = require('./types');
-const { encodeRawValue, valueEncodingForSublevelName } = require('./sublevel_encoding');
+const {
+    encodeRawValue,
+    declaredValueEncodingForSublevelName,
+    NAMESPACE_PARENT_VALUE_ENCODING,
+} = require('./sublevel_encoding');
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
 
 /**
@@ -92,17 +96,17 @@ function validateHostname(hostname) {
  */
 function buildBareSchemaStorage(namespaceSublevel) {
     /** @type {SimpleSublevel<ComputedValue, NodeIdentifier>} */
-    const valuesSublevel = namespaceSublevel.sublevel('values', { valueEncoding: valueEncodingForSublevelName('values') });
+    const valuesSublevel = namespaceSublevel.sublevel('values', { valueEncoding: declaredValueEncodingForSublevelName('values') });
     /** @type {SimpleSublevel<Freshness, NodeIdentifier>} */
-    const freshnessSublevel = namespaceSublevel.sublevel('freshness', { valueEncoding: valueEncodingForSublevelName('freshness') });
+    const freshnessSublevel = namespaceSublevel.sublevel('freshness', { valueEncoding: declaredValueEncodingForSublevelName('freshness') });
     /** @type {SimpleSublevel<NodeIdentifier[], NodeIdentifier>} */
-    const validSublevel = namespaceSublevel.sublevel('valid', { valueEncoding: valueEncodingForSublevelName('valid') });
+    const validSublevel = namespaceSublevel.sublevel('valid', { valueEncoding: declaredValueEncodingForSublevelName('valid') });
     /** @type {SimpleSublevel<TimestampRecord, NodeIdentifier>} */
-    const timestampsSublevel = namespaceSublevel.sublevel('timestamps', { valueEncoding: valueEncodingForSublevelName('timestamps') });
+    const timestampsSublevel = namespaceSublevel.sublevel('timestamps', { valueEncoding: declaredValueEncodingForSublevelName('timestamps') });
     /** @type {GlobalSublevelType} */
-    const globalSublevel = namespaceSublevel.sublevel('global', { valueEncoding: valueEncodingForSublevelName('global') });
+    const globalSublevel = namespaceSublevel.sublevel('global', { valueEncoding: declaredValueEncodingForSublevelName('global') });
     /** @type {SimpleSublevel<import('./types').JournalText, import('./types').JournalKey>} */
-    const journalSublevel = namespaceSublevel.sublevel('journal', { valueEncoding: valueEncodingForSublevelName('journal') });
+    const journalSublevel = namespaceSublevel.sublevel('journal', { valueEncoding: declaredValueEncodingForSublevelName('journal') });
 
     /** @type {(operations: DatabaseBatchOperation[]) => Promise<void>} */
     const batch = async (operations) => {
@@ -130,7 +134,7 @@ function buildBareSchemaStorage(namespaceSublevel) {
 function getHostnameNamespaceSublevel(db, hostname) {
     validateHostname(hostname);
     /** @type {SchemaSublevelType} */
-    const hostnameSublevel = db.sublevel(`_h_${hostname}`, { valueEncoding: 'json' });
+    const hostnameSublevel = db.sublevel(`_h_${hostname}`, { valueEncoding: NAMESPACE_PARENT_VALUE_ENCODING });
     return hostnameSublevel;
 }
 

@@ -18,7 +18,7 @@ const {
     TEXT_VALUE_ENCODING,
     decodeRawValue,
     encodeRawValue,
-    valueEncodingForSublevelName,
+    declaredValueEncodingForSublevelName,
 } = require('./sublevel_encoding');
 const { GRAPH_SCHEME_KEY } = require('./graph_scheme');
 const {
@@ -241,15 +241,15 @@ async function loadIdentifierLookupFromGlobal(globalSublevel, context) {
  */
 function buildSchemaStorage(namespaceSublevel, globalSublevel, version) {
     /** @type {SimpleSublevel<ComputedValue, NodeIdentifier>} */
-    const valuesSublevel = namespaceSublevel.sublevel('values', { valueEncoding: valueEncodingForSublevelName('values') });
+    const valuesSublevel = namespaceSublevel.sublevel('values', { valueEncoding: declaredValueEncodingForSublevelName('values') });
     /** @type {SimpleSublevel<Freshness, NodeIdentifier>} */
-    const freshnessSublevel = namespaceSublevel.sublevel('freshness', { valueEncoding: valueEncodingForSublevelName('freshness') });
+    const freshnessSublevel = namespaceSublevel.sublevel('freshness', { valueEncoding: declaredValueEncodingForSublevelName('freshness') });
     /** @type {SimpleSublevel<NodeIdentifier[], NodeIdentifier>} */
-    const validSublevel = namespaceSublevel.sublevel('valid', { valueEncoding: valueEncodingForSublevelName('valid') });
+    const validSublevel = namespaceSublevel.sublevel('valid', { valueEncoding: declaredValueEncodingForSublevelName('valid') });
     /** @type {SimpleSublevel<TimestampRecord, NodeIdentifier>} */
-    const timestampsSublevel = namespaceSublevel.sublevel('timestamps', { valueEncoding: valueEncodingForSublevelName('timestamps') });
+    const timestampsSublevel = namespaceSublevel.sublevel('timestamps', { valueEncoding: declaredValueEncodingForSublevelName('timestamps') });
     /** @type {SimpleSublevel<import('./types').JournalText, import('./types').JournalKey>} */
-    const journalSublevel = namespaceSublevel.sublevel('journal', { valueEncoding: valueEncodingForSublevelName('journal') });
+    const journalSublevel = namespaceSublevel.sublevel('journal', { valueEncoding: declaredValueEncodingForSublevelName('journal') });
 
     // True once this closure's first non-empty batch() verifies any existing global/version.
     // Prevents redundant DB reads on subsequent batch calls.
@@ -403,7 +403,7 @@ class RootDatabaseClass {
         this._seed = seed;
 
         // Root-level _meta sublevel for the replica pointer.
-        this._rootMetaSublevel = db.sublevel('_meta', { valueEncoding: 'json' });
+        this._rootMetaSublevel = db.sublevel('_meta', { valueEncoding: declaredValueEncodingForSublevelName('_meta') });
 
         const namespaceSublevel = this.replicaNamespaceSublevel(currentReplicaName);
         const globalSublevel = this.replicaGlobalSublevel(currentReplicaName);
@@ -875,7 +875,7 @@ class RootDatabaseClass {
      */
     replicaNamespaceSublevel(name) {
         if (name === 'x' || name === 'y') {
-            return this.db.sublevel(name, { valueEncoding: 'json' });
+            return this.db.sublevel(name, { valueEncoding: declaredValueEncodingForSublevelName(name) });
         }
         return assertNeverReplicaName(name);
     }
@@ -885,7 +885,7 @@ class RootDatabaseClass {
      * @returns {GlobalSublevelType}
      */
     replicaGlobalSublevel(name) {
-        return this.replicaNamespaceSublevel(name).sublevel('global', { valueEncoding: 'json' });
+        return this.replicaNamespaceSublevel(name).sublevel('global', { valueEncoding: declaredValueEncodingForSublevelName('global') });
     }
 
     /**
@@ -1220,7 +1220,7 @@ async function makeRootDatabase(capabilities, databasePath) {
         }
     }
 
-    const rootMetaSublevel = db.sublevel('_meta', { valueEncoding: 'json' });
+    const rootMetaSublevel = db.sublevel('_meta', { valueEncoding: declaredValueEncodingForSublevelName('_meta') });
     const storedReplica = await rootMetaSublevel.get('current_replica');
 
     if (storedReplica === undefined) {
