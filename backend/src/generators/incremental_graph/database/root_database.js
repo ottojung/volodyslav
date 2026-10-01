@@ -14,6 +14,12 @@ const {
     versionToString,
 } = require('./types');
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
+const {
+    TEXT_VALUE_ENCODING,
+    decodeRawValue,
+    encodeRawValue,
+    valueEncodingForSublevelName,
+} = require('./sublevel_encoding');
 const { GRAPH_SCHEME_KEY } = require('./graph_scheme');
 const {
     IDENTIFIERS_KEY,
@@ -235,15 +241,15 @@ async function loadIdentifierLookupFromGlobal(globalSublevel, context) {
  */
 function buildSchemaStorage(namespaceSublevel, globalSublevel, version) {
     /** @type {SimpleSublevel<ComputedValue, NodeIdentifier>} */
-    const valuesSublevel = namespaceSublevel.sublevel('values', { valueEncoding: 'json' });
+    const valuesSublevel = namespaceSublevel.sublevel('values', { valueEncoding: valueEncodingForSublevelName('values') });
     /** @type {SimpleSublevel<Freshness, NodeIdentifier>} */
-    const freshnessSublevel = namespaceSublevel.sublevel('freshness', { valueEncoding: 'json' });
+    const freshnessSublevel = namespaceSublevel.sublevel('freshness', { valueEncoding: valueEncodingForSublevelName('freshness') });
     /** @type {SimpleSublevel<NodeIdentifier[], NodeIdentifier>} */
-    const validSublevel = namespaceSublevel.sublevel('valid', { valueEncoding: 'json' });
+    const validSublevel = namespaceSublevel.sublevel('valid', { valueEncoding: valueEncodingForSublevelName('valid') });
     /** @type {SimpleSublevel<TimestampRecord, NodeIdentifier>} */
-    const timestampsSublevel = namespaceSublevel.sublevel('timestamps', { valueEncoding: 'json' });
+    const timestampsSublevel = namespaceSublevel.sublevel('timestamps', { valueEncoding: valueEncodingForSublevelName('timestamps') });
     /** @type {SimpleSublevel<import('./types').JournalText, import('./types').JournalKey>} */
-    const journalSublevel = namespaceSublevel.sublevel('journal', { valueEncoding: 'utf8' });
+    const journalSublevel = namespaceSublevel.sublevel('journal', { valueEncoding: valueEncodingForSublevelName('journal') });
 
     // True once this closure's first non-empty batch() verifies any existing global/version.
     // Prevents redundant DB reads on subsequent batch calls.
@@ -946,14 +952,20 @@ class RootDatabaseClass {
      * `!_meta!current_replica`) reconstructed by prepending `!<sublevelName>!` to the
      * key returned by the sublevel iterator.
      *
+     * The range of one top-level sublevel spans its nested sublevels too, and the
+     * nested sublevels do not all store values the same way, so the iterator reads
+     * every value as text and `decodeRawValue` applies the encoding the key's own
+     * sublevel was declared with.
+     *
      * @param {string} sublevelName - Top-level sublevel name (e.g. "x", "_meta").
      * @returns {AsyncIterable<[string, unknown]>}
      */
     async *_rawEntriesForSublevel(sublevelName) {
         /** @type {SchemaSublevelType} */
-        const sublevel = this.db.sublevel(sublevelName, { valueEncoding: 'json' });
+        const sublevel = this.db.sublevel(sublevelName, { valueEncoding: TEXT_VALUE_ENCODING });
         for await (const [key, value] of sublevel.iterator()) {
-            yield [`!${sublevelName}!` + key, value];
+            const rawKey = `!${sublevelName}!` + String(key);
+            yield [rawKey, decodeRawValue(rawKey, String(value))];
         }
     }
 
@@ -969,7 +981,7 @@ class RootDatabaseClass {
      */
     async *_rawKeysForSublevel(sublevelName) {
         /** @type {SchemaSublevelType} */
-        const sublevel = this.db.sublevel(sublevelName, { valueEncoding: 'json' });
+        const sublevel = this.db.sublevel(sublevelName, { valueEncoding: TEXT_VALUE_ENCODING });
         for await (const key of sublevel.keys()) { yield `!${sublevelName}!` + String(key); }
     }
 
@@ -984,19 +996,30 @@ class RootDatabaseClass {
      */
     async _rawGetInSublevel(sublevelName, innerKey) {
         /** @type {SchemaSublevelType} */
-        const sublevel = this.db.sublevel(sublevelName, { valueEncoding: 'json' });
-        return await sublevel.get(unsafeStringToNodeIdentifier(innerKey));
+        const sublevel = this.db.sublevel(sublevelName, { valueEncoding: TEXT_VALUE_ENCODING });
+        const rawKey = `!${sublevelName}!${innerKey}`;
+        const text = await sublevel.get(unsafeStringToNodeIdentifier(innerKey));
+        if (text === undefined) {
+            return undefined;
+        }
+        return decodeRawValue(rawKey, String(text));
     }
 
     /**
      * Iterate over all raw key/value pairs in the root LevelDB instance.
      * Yields every entry stored at the root level, including all sublevel-prefixed keys.
      * Used by renderToFilesystem to produce a complete snapshot.
+     *
+     * The whole key space spans sublevels which do not all store values the same
+     * way, so every value is read as text and decoded with the encoding its own
+     * sublevel was declared with.
+     *
      * @returns {AsyncIterable<[string, unknown]>}
      */
     async *_rawEntries() {
-        for await (const [key, value] of this.db.iterator()) {
-            yield [String(key), value];
+        for await (const [key, value] of this.db.iterator({ valueEncoding: TEXT_VALUE_ENCODING })) {
+            const rawKey = String(key);
+            yield [rawKey, decodeRawValue(rawKey, String(value))];
         }
     }
 
@@ -1004,6 +1027,10 @@ class RootDatabaseClass {
      * Write a raw key/value pair directly into the root LevelDB instance,
      * bypassing the sublevel abstraction, using sync:false for performance.
      * Used by fs_to_db unification adapter for individual key writes.
+     *
+     * The value is stored with the encoding the key's own sublevel was declared
+     * with, so a value written here is the value a reader of that sublevel reads
+     * back unchanged.
      *
      * Call _rawSync() once after all bulk unification writes are done to
      * ensure the writes are flushed to durable storage.
@@ -1025,8 +1052,9 @@ class RootDatabaseClass {
         // one recognised property to be present. keyEncoding:undefined is a valid
         // AbstractPutOptions property and satisfies the weak-type check without
         // changing runtime behaviour.
-        const opts = { sync: false, keyEncoding: undefined };
-        await this.db.put(unsafeStringToNodeIdentifier(key), value, opts);
+        const { valueEncoding, value: storedValue } = encodeRawValue(key, value);
+        const opts = { sync: false, keyEncoding: undefined, valueEncoding };
+        await this.db.put(unsafeStringToNodeIdentifier(key), storedValue, opts);
     }
 
     /**
@@ -1081,15 +1109,18 @@ class RootDatabaseClass {
     async _rawPutAll(entries) {
         /**
          * Converts a plain raw-entry object into a LevelDB batch put operation,
-         * applying the JSDoc-level NodeIdentifier wrapper expected by this.db.
+         * applying the JSDoc-level NodeIdentifier wrapper expected by this.db and
+         * the encoding the key's own sublevel was declared with.
          * @param {{ key: string, value: * }} entry
-         * @returns {{ type: 'put', key: DatabaseKey, value: * }}
+         * @returns {{ type: 'put', key: DatabaseKey, value: *, valueEncoding: import('./sublevel_encoding').SublevelValueEncoding }}
          */
         function makePutOp(entry) {
+            const { valueEncoding, value } = encodeRawValue(entry.key, entry.value);
             return {
                 type: 'put',
                 key: unsafeStringToNodeIdentifier(entry.key),
-                value: entry.value,
+                value,
+                valueEncoding,
             };
         }
 
