@@ -7,11 +7,12 @@
  * a decision anyone recorded, so every declaration goes through
  * `declaredValueEncodingForSublevelName`, which refuses such a name.
  *
- * Each test here drives the real declaration sites and then reads the stored
- * bytes back through the root instance as `buffer`. That is what makes the gate
- * able to object: comparing the table against itself cannot fail, whereas
- * comparing the table against what a live sublevel actually stored can. Replacing
- * a declaration with a literal that disagrees with the table turns these red.
+ * Each test in the byte-level block drives the real declaration site it names
+ * and then reads the stored bytes back through the root instance as `buffer`.
+ * That is what makes the gate able to object: comparing the table against itself
+ * cannot fail, whereas comparing the bytes a live sublevel actually stored can.
+ * Every sublevel the table lists is covered by such a test, so replacing any
+ * declaration with a literal that disagrees with the table turns these red.
  *
  * The raw-key path keeps its lenient lookup, because judging a raw key's shape
  * is the snapshot layer's job and not this layer's.
@@ -123,6 +124,19 @@ describe('declaring a sublevel whose encoding the table does not list', () => {
         }
     });
 
+    test('refuses every own member of Object.prototype, not only unlisted names', () => {
+        // `constructor`, `toString` and the rest are properties of every object,
+        // so reading the table without an own-property test answers for them.
+        // Such an answer is a function, and a function handed to abstract-level as
+        // a value encoding fails there with a message about `encoding` rather than
+        // with this layer's diagnosis.
+        for (const name of Object.getOwnPropertyNames(Object.prototype)) {
+            expect(() => declaredValueEncodingForSublevelName(name)).toThrow(
+                UndeclaredSublevelValueEncodingError
+            );
+        }
+    });
+
     test('the hostname namespace parent records the same encoding the fixed-name parents do', () => {
         // A staging namespace's name embeds the hostname, so it cannot be a key
         // of the table. Its recorded encoding still has to be the one the table
@@ -187,6 +201,52 @@ describe('the encoding each live sublevel declaration actually stored', () => {
         ).toBe('qai1:1');
     });
 
+    test('a replica freshness entry is stored as JSON text, which the table records for freshness', async () => {
+        const storage = db.getSchemaStorage();
+        await storage.freshness.put('head', { fresh: true });
+        expect(await readStoredText(db, '!x!!freshness!head')).toBe(
+            '{"fresh":true}'
+        );
+    });
+
+    test('a staging freshness entry is stored as JSON text, which the table records for freshness', async () => {
+        // Pinned against a literal rather than against `SUBLEVEL_VALUE_ENCODINGS`,
+        // so that the declaration and the table entry cannot drift together and
+        // leave a text-encoded object stored as `"[object Object]"` with this file
+        // green.
+        const staging = db.hostnameSchemaStorage('alpha');
+        await staging.freshness.put('head', { fresh: true });
+        expect(await readStoredText(db, '!_h_alpha!!freshness!head')).toBe(
+            '{"fresh":true}'
+        );
+    });
+
+    test('a staging valid entry is stored as JSON text, which the table records for valid', async () => {
+        const staging = db.hostnameSchemaStorage('alpha');
+        await staging.valid.put('head', ['node|1']);
+        expect(await readStoredText(db, '!_h_alpha!!valid!head')).toBe(
+            '["node|1"]'
+        );
+    });
+
+    test('a staging timestamps entry is stored as JSON text, which the table records for timestamps', async () => {
+        const staging = db.hostnameSchemaStorage('alpha');
+        await staging.timestamps.put('head', { inserted: 7 });
+        expect(await readStoredText(db, '!_h_alpha!!timestamps!head')).toBe(
+            '{"inserted":7}'
+        );
+    });
+
+    test('a staging Journal record is stored as bare text, which the table records for journal', async () => {
+        // A JSON-declared journal would have wrapped this in quotes and escaped
+        // it, which is the corruption this table exists to prevent.
+        const staging = db.hostnameSchemaStorage('alpha');
+        await staging.journal.put('state', '{"localWriter":"qai1"}');
+        expect(await readStoredText(db, '!_h_alpha!!journal!state')).toBe(
+            '{"localWriter":"qai1"}'
+        );
+    });
+
     test('a hostname staging entry is stored with the encoding the table records for its sublevel', async () => {
         const staging = db.hostnameSchemaStorage('alpha');
         await staging.global.put('version', '3');
@@ -243,6 +303,18 @@ describe('the lenient raw-key lookup', () => {
             throw new Error(`expected a SublevelValueEncodingError, got ${String(thrown)}`);
         }
         expect(thrown.valueEncoding).toBe(TEXT_VALUE_ENCODING);
+    });
+
+    test('falls back to the root encoding for a name the table inherits from Object.prototype', () => {
+        // The lenient path must not resolve an inherited name to a function
+        // either. This is the name a snapshot directory can supply: a snapshot
+        // holding `constructor/anything` reaches the raw key `!x!!constructor!anything`.
+        for (const name of Object.getOwnPropertyNames(Object.prototype)) {
+            expect(valueEncodingForRawKey(`!x!!${name}!anything`)).toBe(ROOT_VALUE_ENCODING);
+        }
+        const encoded = encodeRawValue('!x!!constructor!anything', { n: 1 });
+        expect(encoded.valueEncoding).toBe(ROOT_VALUE_ENCODING);
+        expect(encoded.value).toEqual({ n: 1 });
     });
 
     test('accepts a text value under a text-valued sublevel', () => {

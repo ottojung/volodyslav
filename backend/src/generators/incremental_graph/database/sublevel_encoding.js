@@ -151,6 +151,30 @@ function isUndeclaredSublevelValueEncodingError(object) {
 }
 
 /**
+ * The encoding `SUBLEVEL_VALUE_ENCODINGS` records for its own entry
+ * `sublevelName`, or `undefined` for a name the table does not list.
+ *
+ * Membership is decided by an own-property test rather than by reading the entry
+ * and comparing it to `undefined`. The table is an ordinary object, so a plain
+ * read also answers for every own member of `Object.prototype`: without this
+ * test, `declaredValueEncodingForSublevelName('constructor')` answers `[Function:
+ * Object]` and the strict accessor's refusal never fires for the eleven names
+ * that silently pass the guard. Such a name then reaches abstract-level as a
+ * value encoding and fails there with a message about `encoding`, which hides
+ * the diagnosis this layer exists to produce.
+ *
+ * @param {string} sublevelName
+ * @returns {SublevelValueEncoding | undefined} The recorded encoding, or
+ *   `undefined` when the table has no own entry for the name.
+ */
+function ownDeclaredValueEncoding(sublevelName) {
+    if (!Object.prototype.hasOwnProperty.call(SUBLEVEL_VALUE_ENCODINGS, sublevelName)) {
+        return undefined;
+    }
+    return SUBLEVEL_VALUE_ENCODINGS[sublevelName];
+}
+
+/**
  * The declared encoding of a sublevel whose name this tree fixes, and the
  * accessor every sublevel declaration goes through.
  *
@@ -170,7 +194,7 @@ function isUndeclaredSublevelValueEncodingError(object) {
  * @throws {UndeclaredSublevelValueEncodingError} If the table does not list the name.
  */
 function declaredValueEncodingForSublevelName(sublevelName) {
-    const declared = SUBLEVEL_VALUE_ENCODINGS[sublevelName];
+    const declared = ownDeclaredValueEncoding(sublevelName);
     if (declared === undefined) {
         throw new UndeclaredSublevelValueEncodingError(sublevelName);
     }
@@ -183,15 +207,16 @@ function declaredValueEncodingForSublevelName(sublevelName) {
  *
  * This is the lenient lookup, for the raw-key path only: a raw key's shape is
  * not this layer's to judge, so a key naming a sublevel the table does not list
- * still gets an encoding and lets `encoding.js` reject the key at render time
- * with its own diagnosis. Declaration sites use
+ * still gets an encoding. Membership is an own-property test here too, so a name
+ * such as `constructor` falls back to the root encoding rather than resolving to
+ * a function where an encoding is required. Declaration sites use
  * `declaredValueEncodingForSublevelName`, which refuses an unlisted name.
  *
  * @param {string} sublevelName
  * @returns {SublevelValueEncoding}
  */
 function valueEncodingForSublevelName(sublevelName) {
-    return SUBLEVEL_VALUE_ENCODINGS[sublevelName] ?? ROOT_VALUE_ENCODING;
+    return ownDeclaredValueEncoding(sublevelName) ?? ROOT_VALUE_ENCODING;
 }
 
 /**
@@ -273,6 +298,10 @@ function decodeRawValue(rawKey, text) {
 /**
  * Prepare one value for storage under a raw LevelDB key: report the encoding
  * the key's sublevel stores with, and reject a value that encoding cannot hold.
+ *
+ * The refusal is one-directional: a JSON-valued sublevel stores a text value as a
+ * JSON string literal, because every JSON scalar and container is a legitimate
+ * value there and refusing by type would break real writes.
  *
  * @param {string} rawKey
  * @param {unknown} value
