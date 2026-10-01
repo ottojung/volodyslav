@@ -21,13 +21,16 @@
  * Every occurrence is constructed in this module and nowhere else — by
  * `buildProducedOccurrences` for a `create` or a replacement, and by
  * `readTransportedOccurrence` for an occurrence-preserving decision against a source
- * whose retained history names no occurrence — and every consumer reads a produced
- * occurrence out of the single returned map rather than re-deriving it: the cutover
- * reads the occurrence's value and timestamps for the target replica's graph state, and
- * the M1 `ValueEvent` names the same occurrence. The graph projection and the journal
- * record therefore describe one occurrence rather than two disagreeing
- * representations of it, whether the occurrence was produced at the cut or transported
- * from storage.
+ * whose retained history names no occurrence — and every consumer reads an occurrence
+ * out of the single returned map rather than re-deriving its timestamps: the cutover
+ * reads the occurrence's §11a.3 timestamps for the target replica's graph state, and
+ * the M1 `ValueEvent` names the same occurrence. A transported occurrence's value is
+ * the one field no consumer reads out of that map: the target graph state reads the
+ * source replica's `values` sublevel again, and that read is the same read of the same
+ * key against the same read-only source storage which `readTransportedOccurrence`
+ * performed. The graph projection and the journal record therefore describe one
+ * occurrence rather than two disagreeing representations of it, whether the occurrence
+ * was produced at the cut or transported from storage.
  */
 
 const { makeInvalidMigrationDecisionError } = require("./migration_errors");

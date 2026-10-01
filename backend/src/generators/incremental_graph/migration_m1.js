@@ -66,13 +66,18 @@ const { stringToNodeKeyString, nodeIdentifierToString } = require("./database");
  *     persisted value or timestamp is rejected rather than defaulted.
  *
  * The graph state the cutover writes into the target replica and the M1 `ValueEvent`
- * which names the occurrence cannot disagree about its identity or its timestamps,
- * because both read occurrences out of the single map `buildProducedOccurrences`
- * returns: the cutover reads the occurrence's `value` and its §11a.3 timestamps for
- * the target replica's graph state, and M1 reads the same occurrence's `value` and
- * timestamps for the `ValueEvent`. That agreement rests on there being one map, not on
- * there being one construction site, so it holds for a transported occurrence exactly
- * as it holds for a produced one.
+ * which names the occurrence cannot disagree, and the mechanism differs by provenance.
+ * Their identity agrees because both name the key of the settled decisions map —
+ * `buildMigrationM1Intents` iterates that map, and the lazy source the cutover
+ * unifies from yields the same keys out of it — not because there is one construction
+ * site. For a `create` or a replacement, their value and their §11a.3 timestamps agree
+ * because both read the occurrence out of the single map `buildProducedOccurrences`
+ * returns. For a transported occurrence only the timestamps come out of that map: the
+ * target graph state's value is read from the source replica's `values` sublevel
+ * instead, while the `ValueEvent` carries the value `readTransportedOccurrence` read
+ * from that same sublevel. Those two are the same read of the same key against the
+ * same read-only source storage, which the cutover never writes, so they cannot
+ * disagree either.
  *
  * @typedef {object} TargetOccurrence
  * @property {NodeIdentifier} identifier

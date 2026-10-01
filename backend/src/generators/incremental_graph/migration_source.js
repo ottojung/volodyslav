@@ -8,9 +8,10 @@
  * set, which is the same bound the synchronization path works to.
  *
  * The state the source yields is a projection of the Journal the same cutover
- * builds in the target, and the occurrences a genuine create or replacement
- * produces are passed in rather than re-derived here, so the graph state and the
- * M1 records name the same occurrence with the same timestamps.
+ * builds in the target, and the §11a.3 timestamps of every occurrence the migration
+ * authors — produced at the cut or transported from the source replica's storage —
+ * are passed in rather than re-derived here, so the graph state and the M1 records
+ * name the same occurrence with the same timestamps.
  */
 
 const { compareNodeIdentifier, GRAPH_SCHEME_KEY, IDENTIFIERS_KEY, LAST_NODE_INDEX_KEY } = require("./database");
@@ -47,8 +48,9 @@ const { buildDecisionsMap } = require("./migration_validity");
  * @param {string} fingerprint - The database fingerprint to carry forward.
  * @param {string} graphSchemeString
  * @param {ReadonlyMap<NodeIdentifier, import('./migration_m1').TargetOccurrence>} producedOccurrences - The
- *   occurrences a genuine create or replace produced, already carrying their §11a.3 timestamps. The M1
- *   records name the same occurrences, so the graph state and the journal describe one value.
+ *   occurrences a `create` or a replacement produced and the occurrences an occurrence-preserving decision
+ *   transported, already carrying their §11a.3 timestamps. The M1 records name the same occurrences, so the
+ *   graph state and the journal describe one value.
  * @returns {ReadableSchemaStorage}
  */
 function makeLazyMigrationSource(prevStorage, oldLookup, decisions, desiredValid, newVersion, maxAllocatedIndex, sourceLastNodeIndex, fingerprint, graphSchemeString, producedOccurrences) {

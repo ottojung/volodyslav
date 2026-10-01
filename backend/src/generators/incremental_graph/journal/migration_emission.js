@@ -62,9 +62,14 @@ const {
  * `ValueId` no converted record names carries the source replica's persisted payload
  * and the source replica's two persisted timestamps exactly, under the `NodeIdentifier`
  * the migration decision was keyed by rather than one read back out of the source
- * replica, and is authored as `reason="bootstrap"`. All three cases are stated by the
- * identifier and the timestamps the caller passes here, so this module does not need
- * to know which decision produced the occurrence.
+ * replica, and is authored as `reason="bootstrap"`. The only case this module has to
+ * tell apart is that transported one, and it tells it apart by `reason`, the field it
+ * branches on: the identifier and the timestamps together do not name it, since a
+ * replacement whose source `createdAt` equals the publication instant, or a
+ * transported occurrence whose `modifiedAt` equals it, is indistinguishable from the
+ * other cases by timestamps alone. So this module does not need to know which decision
+ * produced the occurrence — it never sees a decision — but the caller has to state
+ * which case this is, because `reason` is the field that states it.
  *
  * The properties that this typedef carries are:
  * - `node` is a target-representation `NodeKey` which is present in the migration
