@@ -13,10 +13,12 @@
  * their guarantees differ. An ordinary publication's `ValueEvent` is the first
  * occurrence of a node the graph is computing for the first time. A migration
  * `ValueEvent` is a new occurrence over a target key whose *previous* occurrence
- * already exists in converted history, so its authority is seeded from the migration
+ * converted history already names, so its authority is seeded from the migration
  * physical time like every other non-value event, and no `ValidateEvent` accompanies
  * it: M1 authors values and absence only, and M2 (§16) and M3 (§17) author the proof
- * and persistent-staleness records separately.
+ * and persistent-staleness records separately. The one exception is the transported
+ * `bootstrap` occurrence, for which converted history names no occurrence at all and
+ * whose authority is therefore seeded from its own `modifiedAt`.
  *
  * This module is pure. It takes the committed writer state and the settled migration
  * target, and returns the exact records the migration publication must make durable
@@ -57,10 +59,12 @@ const {
  * publication time; a `replace` preserves the existing `NodeIdentifier` and
  * `createdAt` and sets `modifiedAt` to the migration publication time
  * (`incremental-graph-journal-migrations.md` §11a.3). A transported occurrence whose
- * `ValueId` no converted record names preserves the source's `NodeIdentifier`,
- * payload and timestamps exactly and is authored as `reason="bootstrap"`. All three
- * cases are stated by the timestamps the caller passes here, so this module does not
- * need to know which decision produced the occurrence.
+ * `ValueId` no converted record names carries the source replica's persisted payload
+ * and the source replica's two persisted timestamps exactly, under the `NodeIdentifier`
+ * the migration decision was keyed by rather than one read back out of the source
+ * replica, and is authored as `reason="bootstrap"`. All three cases are stated by the
+ * identifier and the timestamps the caller passes here, so this module does not need
+ * to know which decision produced the occurrence.
  *
  * The properties that this typedef carries are:
  * - `node` is a target-representation `NodeKey` which is present in the migration
@@ -76,9 +80,14 @@ const {
  * - therefore every function that constructs a `MigrationValueIntent` is part of the
  *   proof. The current construction site is:
  *   - `buildMigrationM1Intents(...)`: satisfies the property because it emits one
- *     intent per decision whose occurrence no converted record names, whose value is
- *     the target payload the decision settled, and whose `reason` it reads from
- *     whether that decision produced the occurrence or transported it.
+ *     intent per decision whose occurrence no converted record names, taking the
+ *     intent's value and timestamps out of the single occurrence map rather than
+ *     deriving them per `reason`: for a produced occurrence the map holds what the
+ *     decision settled, and for a transported occurrence it holds what
+ *     `readTransportedOccurrence` read back from the source replica's storage. Its
+ *     `nodeIdentifier` is the key the settled decisions map is keyed by, which is why
+ *     it is the decision's own materialization in both cases, and its `reason` it
+ *     reads from the occurrence.
  *
  * @typedef {object} MigrationValueIntent
  * @property {"migrate-value"} kind
@@ -95,19 +104,20 @@ const {
  * migration target graph, and which therefore authors one required
  * `DeleteEvent(reason="migration")`.
  *
- * A key whose converted history already selects absence authors no record, so the
- * caller only supplies keys whose absence the migration itself establishes.
- *
  * The properties that this typedef carries are:
- * - `node` is a target-representation `NodeKey` which is absent from the migration
- *   target graph and was not already absent in converted history.
+ * - `node` names an occurrence the migration decided absent.
  *
  * The proof of those properties is guaranteed by:
  * - this class cannot enforce the properties by construction;
- * - therefore every function that constructs a `MigrationDeleteIntent` is part of
- *   the proof. The current construction site is:
- *   - `absentKeys(...)`: satisfies the property because it emits one intent per
- *     `ConvertedBeforePresent - TargetPresent` key the migration decided absent.
+ * - therefore every function that constructs a `MigrationDeleteIntent` is part of the
+ *   proof. The current construction site is:
+ *   - `buildMigrationM1Intents(...)`: satisfies the property because it emits one
+ *     intent per decision of kind `delete`, resolving that decision's `node` from the
+ *     source replica's identifier lookup and rejecting a decision whose key the source
+ *     replica does not materialize rather than emitting an intent for it.
+ *
+ * Nothing here reads the converted retained history, so this module neither knows nor
+ * needs to know which keys that history already selects absent.
  *
  * @typedef {object} MigrationDeleteIntent
  * @property {"migrate-delete"} kind
