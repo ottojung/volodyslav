@@ -31,16 +31,20 @@ const { stringToNodeKeyString, nodeIdentifierToString } = require("./database");
 /** @typedef {import('./database/node_key').NodeKey} NodeKey */
 
 /**
- * The target value occurrence of a genuinely created or replaced node, together with
- * the timestamps §11a.3 assigns it.
+ * The target value occurrence of a node the migration's target graph materializes,
+ * together with the timestamps §11a.3 assigns it.
  *
- * The properties that this typedef carries are:
+ * The properties that this class carries are:
  * - `identifier` is the target materialization the occurrence belongs to;
  * - `value` is the target-version `ComputedValue` of that occurrence;
  * - `createdAt`/`modifiedAt` are the canonical instants §11a.3 assigns: a `create`
- *   gets `createdAt == modifiedAt ==` the migration publication time, and a
- *   replacement preserves the existing `createdAt` while taking the publication time
- *   as its `modifiedAt`.
+ *   gets `createdAt == modifiedAt ==` the migration publication time, a replacement
+ *   preserves the existing `createdAt` while taking the publication time as its
+ *   `modifiedAt`, and a transported occurrence preserves both instants of the source
+ *   replica it came from;
+ * - `reason` states why the occurrence is authored: `migration` when the decision
+ *   produced the occurrence at the cut, `bootstrap` when the decision transported an
+ *   occurrence converted history does not name.
  *
  * The proof of those properties is guaranteed by:
  * - this typedef cannot enforce the properties by construction;
@@ -62,22 +66,24 @@ const { stringToNodeKeyString, nodeIdentifierToString } = require("./database");
  * @property {ComputedValue} value
  * @property {string} createdAt
  * @property {string} modifiedAt
+ * @property {"migration" | "bootstrap"} reason
  */
 
 /**
  * Build the M1 value/absence intents of one settled migration.
  *
- * For each target-present key whose decision genuinely produces a new occurrence, the
- * result carries one `migrate-value` intent. For each converted-source-present key the
- * migration decided absent, the result carries one `migrate-delete` intent. An
- * occurrence-preserving `keep` or `invalidate` contributes no intent at all: its
- * `ValueId` is the one converted history already retains.
+ * For each target-present key whose decision produces an occurrence no converted
+ * record names, the result carries one `migrate-value` intent. For each
+ * converted-source-present key the migration decided absent, the result carries one
+ * `migrate-delete` intent. An occurrence-preserving `keep` or `invalidate` whose
+ * converted history names the occurrence contributes no intent at all: its `ValueId`
+ * is the one converted history already retains.
  *
  * @param {Map<NodeIdentifier, Decision>} decisions - The settled decisions, keyed by target materialization.
  * @param {import('./database/identifier_lookup').IdentifierLookup} sourceLookup - The source replica's
  *   identifier lookup, which supplies the source NodeKey of every transported key.
- * @param {ReadonlyMap<NodeIdentifier, TargetOccurrence>} producedOccurrences - The occurrences the
- *   migration genuinely produced, already carrying their §11a.3 timestamps and values.
+ * @param {ReadonlyMap<NodeIdentifier, TargetOccurrence>} producedOccurrences - The occurrences no
+ *   converted record names, already carrying their §11a.3 timestamps and values.
  * @param {(nodeKeyString: import('./database/types').NodeKeyString) => NodeKey} toNodeKey - Narrows a persisted NodeKeyString to
  *   the `NodeKey` the journal record names.
  * @returns {Array<MigrationIntent>}
@@ -90,20 +96,19 @@ function buildMigrationM1Intents(decisions, sourceLookup, producedOccurrences, t
         if (decision.kind === "delete") {
             continue;
         }
-        const producesOccurrence = decision.kind === "create" || decision.kind === "override";
-        if (!producesOccurrence) {
-            // `keep` and `invalidate` are occurrence-preserving. The transported
-            // occurrence keeps the ValueId converted history already gave it, so §15
-            // requires no ValueEvent at all. Proof (M2) and persistent staleness (M3)
-            // are separate passes and author nothing here.
-            continue;
-        }
         const occurrence = producedOccurrences.get(identifier);
         if (occurrence === undefined) {
-            throw makeInvalidMigrationDecisionError(
-                "migration decision " + decision.kind + " for " + nodeIdentifierToString(identifier) +
-                    " produced no target value occurrence"
-            );
+            if (decision.kind === "create" || decision.kind === "override") {
+                throw makeInvalidMigrationDecisionError(
+                    "migration decision " + decision.kind + " for " + nodeIdentifierToString(identifier) +
+                        " produced no target value occurrence"
+                );
+            }
+            // The converted history names this occurrence, so §15 requires no
+            // ValueEvent for it: `keep` and `invalidate` preserve the `ValueId`
+            // already retained. Proof (M2) and persistent staleness (M3) are
+            // separate passes and author nothing here.
+            continue;
         }
         intents.push({
             kind: "migrate-value",
@@ -112,6 +117,7 @@ function buildMigrationM1Intents(decisions, sourceLookup, producedOccurrences, t
             payload: occurrence.value,
             createdAt: occurrence.createdAt,
             modifiedAt: occurrence.modifiedAt,
+            reason: occurrence.reason,
         });
     }
 

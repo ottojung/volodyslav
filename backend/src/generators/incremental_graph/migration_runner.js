@@ -30,6 +30,7 @@ const { buildMigrationJournal } = require("./migration_journal");
 const { verifyTargetReplica } = require("./migration_verification");
 const { makeLazyMigrationSource } = require("./migration_source");
 const { makeJournalAuthor } = require("./journal");
+const { readCurrentOccurrence } = require("./journal_store");
 const { checkpointMigration } = require("./database");
 const { unifyStores, makeDbToDbAdapter, deserializeNodeKey } = require("./database");
 const { fromISOString } = require("../../datetime");
@@ -116,6 +117,37 @@ async function runMigration(capabilities, rootDatabase, nodeDefs, callback) {
 /**
  * @typedef {import('./types').Version} Version
  */
+
+/**
+ * The predicate which tells a migration whether converted history names a value
+ * occurrence of a node key.
+ *
+ * M1's occurrence-preserving rule — a `keep` or an `invalidate` authors no
+ * `ValueEvent`, because the transported occurrence keeps the `ValueId` converted
+ * history already gave it — holds exactly when the source replica's retained Journal
+ * names that occurrence. A source replica whose retained history predates the Journal
+ * names none, and every occurrence-preserving decision against it transports a value
+ * no record describes.
+ *
+ * The predicate reads the source replica's own occurrence index, which is the same
+ * read the ordinary publication path makes when a certificate names an input
+ * occurrence, so the migration decides M1 on the same fact a later pull would.
+ *
+ * @param {SchemaStorage} prevStorage - The still-active source replica.
+ * @returns {(nodeKeyString: NodeKeyString) => Promise<boolean>}
+ */
+function makeOccurrenceNamer(prevStorage) {
+    return async (nodeKeyString) => {
+        const occurrence = await readCurrentOccurrence(
+            prevStorage.journal,
+            deserializeNodeKey(nodeKeyString)
+        );
+        if (occurrence instanceof Error) {
+            throw occurrence;
+        }
+        return occurrence !== undefined;
+    };
+}
 
 /**
  * The unlocked version of runMigration. Should not be called directly.
@@ -280,7 +312,8 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
                 decisions,
                 prevStorage,
                 oldLookup,
-                publicationInstant
+                publicationInstant,
+                makeOccurrenceNamer(prevStorage)
             );
 
             const lazySource = makeLazyMigrationSource(
