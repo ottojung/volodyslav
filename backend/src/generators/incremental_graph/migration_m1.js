@@ -16,8 +16,10 @@
  *
  * The occurrence-identity rule this module implements is §15's: a genuine
  * `create`/`replace` authors a `ValueEvent`, and an occurrence-preserving `keep` or
- * `invalidate` authors none, because the transported occurrence keeps the `ValueId`
- * converted history already gave it.
+ * `invalidate` authors one only when the source replica's retained history names no
+ * occurrence for it, because converted history then names no `ValueId` for it. An
+ * occurrence-preserving decision whose converted history does name the occurrence
+ * authors none, keeping the `ValueId` converted history already gave it.
  */
 
 const { makeInvalidMigrationDecisionError } = require("./migration_errors");
@@ -50,15 +52,27 @@ const { stringToNodeKeyString, nodeIdentifierToString } = require("./database");
  * - this typedef cannot enforce the properties by construction;
  * - therefore every function that constructs a `TargetOccurrence` is part of the
  *   proof. The current construction sites are:
- *   - `buildProducedOccurrences(...)`: satisfies the property because it is the
- *     single place a migration produces an occurrence, deriving every field from the
- *     migration decision, the source replica's stored timestamps, and the migration
- *     publication instant passed in, and never from a default.
+ *   - `buildProducedOccurrences(...)`: satisfies the property because for a `create`
+ *     and for a replacement it derives every field from the migration decision, the
+ *     source replica's stored timestamps, and the migration publication instant passed
+ *     in, and never from a default, because a missing value or a missing stored
+ *     timestamp is rejected rather than defaulted.
+ *   - `readTransportedOccurrence(...)`: satisfies the property because it derives
+ *     `nodeKeyString` from the source replica's identifier lookup and derives
+ *     `value`, `createdAt` and `modifiedAt` from the source replica's own persisted
+ *     `values` and `timestamps`, taking the source replica's persisted value as the
+ *     occurrence's value rather than re-deriving it from a decision, and it tags the
+ *     result `bootstrap` because no migration decision produced it. A missing
+ *     persisted value or timestamp is rejected rather than defaulted.
  *
- * Because `buildProducedOccurrences` is the only producer, the graph state the cutover
- * writes into the target replica and the M1 `ValueEvent` which names the occurrence
- * are derived from the same value and cannot disagree about its identity or its
- * timestamps.
+ * The graph state the cutover writes into the target replica and the M1 `ValueEvent`
+ * which names the occurrence cannot disagree about its identity or its timestamps,
+ * because both read occurrences out of the single map `buildProducedOccurrences`
+ * returns: the cutover reads the occurrence's `value` and its §11a.3 timestamps for
+ * the target replica's graph state, and M1 reads the same occurrence's `value` and
+ * timestamps for the `ValueEvent`. That agreement rests on there being one map, not on
+ * there being one construction site, so it holds for a transported occurrence exactly
+ * as it holds for a produced one.
  *
  * @typedef {object} TargetOccurrence
  * @property {NodeIdentifier} identifier
