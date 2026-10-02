@@ -89,114 +89,244 @@ async function internalEnsureInitialized(interfaceInstance) {
 }
 
 /**
- * Select and execute the bootstrap path when the live LevelDB is absent.
+ * Thrown when the absent-installation decision cannot be made, so that neither
+ * restoration nor fresh identity creation is permitted.
+ */
+class AbsentInstallationRecoveryError extends Error {
+    /**
+     * @param {string} reason
+     */
+    constructor(reason) {
+        super(`Cannot decide absent-installation recovery: ${reason}`);
+        this.name = 'AbsentInstallationRecoveryError';
+        this.reason = reason;
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is AbsentInstallationRecoveryError}
+ */
+function isAbsentInstallationRecoveryError(object) {
+    return object instanceof AbsentInstallationRecoveryError;
+}
+
+/**
+ * @typedef {{ kind: 'exists', publishedHead: string }} RecoverySourceExists
+ * @property {'exists'} kind
+ * @property {string} publishedHead - the published commit the source held.
  *
- * Protocol section 7.1:
- *  1. Check if `<hostname>-main` exists on the remote.
- *  2. If yes  → reset-to-hostname sync (restores snapshot; fatal on any error).
- *  3. If no   → normal sync from empty local DB (fatal on any error).
+ * @typedef {{ kind: 'definitely-absent' }} RecoverySourceDefinitelyAbsent
+ * @property {'definitely-absent'} kind
+ *
+ * @typedef {{ kind: 'indeterminate-or-error', reason: string }} RecoverySourceIndeterminate
+ * @property {'indeterminate-or-error'} kind
+ * @property {string} reason
+ *
+ * @typedef {RecoverySourceExists | RecoverySourceDefinitelyAbsent | RecoverySourceIndeterminate} RecoveryQueryAnswer
+ */
+
+/**
+ * Build the installation recovery source for this deployment's transport.
+ *
+ * The properties that this value carries are:
+ * - its `query` answers exactly the question the absent-installation decision
+ *   asks, returning one `RecoveryQueryAnswer` variant and nothing else;
+ * - it exposes no hostname, branch name, repository locator or path, so the
+ *   transport locators stay outside the source's semantic interface.
+ *
+ * The proof of those properties is guaranteed by:
+ * - `internalMakeInstallationRecoverySource(capabilities)`: satisfies the first
+ *   property because its `query` returns the result of
+ *   `internalQueryInstallationRecoverySource`, which returns one of the three
+ *   `RecoveryQueryAnswer` variants on every path.
+ * - The second property holds because the transport locators are read from
+ *   `capabilities.environment` inside that closure and are never stored on the
+ *   returned value.
+ *
+ * @param {GeneratorsCapabilities} capabilities
+ * @returns {{ query: () => Promise<RecoveryQueryAnswer> }}
+ */
+function internalMakeInstallationRecoverySource(capabilities) {
+    return {
+        async query() {
+            const remotePath = capabilities.environment.generatorsRepository();
+            const recoveryRef = `refs/heads/${defaultBranch(capabilities)}`;
+            capabilities.logger.logInfo(
+                { remotePath, recoveryRef },
+                'Bootstrap: querying the installation recovery source'
+            );
+            return await internalQueryInstallationRecoverySource(
+                capabilities,
+                remotePath,
+                recoveryRef
+            );
+        },
+    };
+}
+
+/**
+ * Ask the recovery source whether this installation has recoverable
+ * synchronized state.
+ *
+ * Only two answers permit startup to continue. A published head which the
+ * source can hold is `exists`; a publication ref which is absent is
+ * `definitely-absent`. Every other outcome — an unreadable remote, an
+ * unparseable ref, a head which cannot be fetched, or a head which moved
+ * between the listing and the fetch — is `indeterminate-or-error`, because a
+ * source which cannot deliver what it reported must not be treated as absence.
+ *
+ * @param {GeneratorsCapabilities} capabilities
+ * @param {string} remotePath
+ * @param {string} recoveryRef
+ * @returns {Promise<RecoveryQueryAnswer>}
+ */
+async function internalQueryInstallationRecoverySource(capabilities, remotePath, recoveryRef) {
+    let listedHead;
+    try {
+        // `-c safe.directory=*` avoids "detected dubious ownership" errors when
+        // the remote is a local path with strict safe.directory enforcement.
+        const lsRemoteResult = await capabilities.git.call(
+            "-c", "safe.directory=*",
+            "ls-remote", "--heads", "--", remotePath, recoveryRef
+        );
+        listedHead = lsRemoteResult.stdout.trim().split(/\s+/)[0] ?? '';
+    } catch (error) {
+        return {
+            kind: 'indeterminate-or-error',
+            reason: `recovery source could not be queried: ${error}`,
+        };
+    }
+
+    if (listedHead === '') {
+        return { kind: 'definitely-absent' };
+    }
+    if (!/^[0-9a-f]{40}$/.test(listedHead)) {
+        return {
+            kind: 'indeterminate-or-error',
+            reason: `recovery source reported an unreadable published head: ${listedHead}`,
+        };
+    }
+
+    const isHeld = await internalHoldPublishedHead(
+        capabilities,
+        remotePath,
+        recoveryRef,
+        listedHead
+    );
+    if (!isHeld) {
+        return {
+            kind: 'indeterminate-or-error',
+            reason: `recovery source could not hold published head ${listedHead}`,
+        };
+    }
+    return { kind: 'exists', publishedHead: listedHead };
+}
+
+/**
+ * The continuation-safe-head test for the Git-backed transport.
+ *
+ * The transport publishes this installation's database through its
+ * transport-managed remote branch, and a published branch which is still
+ * treated as ordinary recoverable state is not silently rewound. Every copy of a
+ * writer record which survived the loss of the local database therefore reached
+ * a published head no later than the one this installation restores, so the
+ * held published head is the frontier and the suffix lost with the database
+ * cannot re-enter supported retained history.
+ *
+ * Executing that argument requires the source to actually hold the head it
+ * reports: the checkpoint clone must exist and the reported commit must be
+ * fetchable under exactly that identity. A head which moved while it was being
+ * obtained is not the reported head, so it is not continuation-safe here.
+ *
+ * @param {GeneratorsCapabilities} capabilities
+ * @param {string} remotePath
+ * @param {string} recoveryRef
+ * @param {string} publishedHead
+ * @returns {Promise<boolean>}
+ */
+async function internalHoldPublishedHead(capabilities, remotePath, recoveryRef, publishedHead) {
+    try {
+        const checkpointGitDir = await workingRepository.getRepository(
+            capabilities,
+            CHECKPOINT_WORKING_PATH,
+            { url: remotePath }
+        );
+        await capabilities.git.call(
+            '-C', checkpointGitDir, '-c', 'safe.directory=*',
+            'fetch', '--quiet', 'origin', recoveryRef
+        );
+        const fetchedHead = await capabilities.git.call(
+            '-C', checkpointGitDir, '-c', 'safe.directory=*',
+            'rev-parse', 'FETCH_HEAD^{commit}'
+        );
+        return fetchedHead.stdout.trim() === publishedHead;
+    } catch (error) {
+        capabilities.logger.logDebug(
+            { publishedHead, error: String(error) },
+            'Bootstrap: could not hold the reported published head'
+        );
+        return false;
+    }
+}
+
+/**
+ * Restore a completely absent installation from the published head the
+ * recovery source held.
+ *
+ * This is a receiver-less restoration: the local storage and its writer
+ * identity come from the held published snapshot, so it is reached only when no
+ * local database exists. It authors no semantic event of its own.
+ *
+ * @param {GeneratorsCapabilities} capabilities
+ * @param {RecoverySourceExists} recovery
+ * @returns {Promise<void>}
+ */
+async function internalRestoreAbsentFrom(capabilities, recovery) {
+    capabilities.logger.logInfo(
+        { hostname: capabilities.environment.hostname(), publishedHead: recovery.publishedHead },
+        'Bootstrap: installation recovery source reported a continuation-safe published head; restoring the absent installation'
+    );
+    // The transport binds receiver-less restoration to the installation's
+    // published branch, which is exactly the branch the recovery source held.
+    await synchronizeNoLock(capabilities, {
+        resetToHostname: capabilities.environment.hostname(),
+    });
+    capabilities.logger.logInfo(
+        { publishedHead: recovery.publishedHead },
+        'Bootstrap: absent installation restored from the published head'
+    );
+}
+
+/**
+ * Decide and execute the absent-installation path when the live LevelDB is
+ * absent.
+ *
+ * The decision is the recovery source's answer and nothing else: restore a
+ * continuation-safe published head, create a fresh installation only on
+ * definite absence, and fail when the answer is indeterminate. Normal
+ * synchronization from an empty local database is not a recovery path, because
+ * it would author a new identity over state whose recovery status is unknown.
  *
  * @param {GeneratorsCapabilities} capabilities
  * @returns {Promise<void>}
  */
 async function internalBootstrap(capabilities) {
-    const hostname = capabilities.environment.hostname();
-    const remotePath = capabilities.environment.generatorsRepository();
-    const hostnameBranch = defaultBranch(capabilities);
-    const hostnameBranchRef = `refs/heads/${hostnameBranch}`;
+    const source = internalMakeInstallationRecoverySource(capabilities);
+    const answer = await source.query();
 
-    capabilities.logger.logInfo(
-        { hostname, remotePath, hostnameBranch },
-        'Bootstrap: checking if hostname branch exists on remote'
-    );
-
-    // Query the remote without requiring a local clone.  Any error here
-    // (e.g. remote unreachable) propagates as a fatal startup crash.
-    // `-c safe.directory=*` avoids "detected dubious ownership" errors when
-    // the remote is a local path with strict safe.directory enforcement.
-    const lsRemoteResult = await capabilities.git.call(
-        "-c", "safe.directory=*",
-        "ls-remote", "--heads", "--", remotePath, hostnameBranchRef
-    );
-    const hostnameBranchExists = lsRemoteResult.stdout.trim() !== '';
-
-    if (hostnameBranchExists) {
-        capabilities.logger.logInfo(
-            { hostname, hostnameBranch },
-            'Bootstrap: hostname branch found; using reset-to-hostname sync path'
-        );
-        // Phase 1 (protocol §7.1.2): restore from remote snapshot.
-        // Any error is fatal (protocol §8.3).
-        await synchronizeNoLock(capabilities, { resetToHostname: hostname });
-        capabilities.logger.logInfo(
-            { hostname },
-            'Bootstrap: reset-to-hostname sync completed'
-        );
-    } else {
-        capabilities.logger.logInfo(
-            { hostname, hostnameBranch },
-            'Bootstrap: hostname branch does not exist remotely; using normal sync fallback'
-        );
-        // Phase 1 fallback (protocol §7.1.3): normal sync from empty local DB.
-        // Any error is fatal (protocol §8.3).
-        //
-        // Pre-initialize the checkpoint repo before calling synchronizeNoLock so
-        // that synchronizeNoLock's checkpointDatabase step does not attempt to
-        // clone the remote with `--branch=<hostname>-main` (which would fail
-        // because that branch is absent).  With a local repo already present,
-        // workingRepository.synchronize falls into the pull+push path, where
-        // pull returns early when the remote branch does not exist yet, and push
-        // creates the branch for the first time.
-        await internalInitCheckpointRepoForFallback(capabilities);
-        await synchronizeNoLock(capabilities);
-        capabilities.logger.logInfo(
-            { hostname },
-            'Bootstrap: fallback normal sync completed'
-        );
+    if (answer.kind === 'exists') {
+        await internalRestoreAbsentFrom(capabilities, answer);
+        return;
     }
-}
-
-/**
- * Ensure the checkpoint git repository exists locally and has the origin
- * remote configured.  Called before the V4 fallback sync so that
- * `synchronizeNoLock` does not try to clone the remote with a
- * `--branch=<hostname>-main` that doesn't exist yet.
- *
- * The operation is idempotent: if the repo already exists and already has
- * an origin remote, this is a no-op.
- *
- * @param {GeneratorsCapabilities} capabilities
- * @returns {Promise<void>}
- */
-async function internalInitCheckpointRepoForFallback(capabilities) {
-    const remotePath = capabilities.environment.generatorsRepository();
-    const checkpointDir = path.join(
-        capabilities.environment.workingDirectory(),
-        CHECKPOINT_WORKING_PATH
-    );
-
-    // Ensure the local checkpoint repo exists (idempotent).
-    await workingRepository.getRepository(capabilities, CHECKPOINT_WORKING_PATH, "empty");
-
-    // Add the origin remote so workingRepository.synchronize uses the
-    // pull+push path instead of the fetchAndReconcile path (needsRemoteSetup).
-    const hasOrigin = await capabilities.git.call(
-        "-C", checkpointDir, "-c", "safe.directory=*",
-        "remote", "get-url", "origin"
-    ).then(() => true).catch((err) => {
-        capabilities.logger.logDebug(
-            { checkpointDir, err: String(err) },
-            'Bootstrap: git remote get-url origin returned non-zero (treating as absent)'
+    if (answer.kind === 'definitely-absent') {
+        capabilities.logger.logInfo(
+            {},
+            'Bootstrap: installation recovery source reports definite absence; creating a fresh installation'
         );
-        return false;
-    });
-
-    if (!hasOrigin) {
-        await capabilities.git.call(
-            "-C", checkpointDir, "-c", "safe.directory=*",
-            "remote", "add", "origin", remotePath
-        );
+        return;
     }
+    throw new AbsentInstallationRecoveryError(answer.reason);
 }
 
 /**
@@ -346,6 +476,8 @@ async function internalSynchronizeDatabaseNoLock(interfaceInstance, options) {
 }
 
 module.exports = {
+    AbsentInstallationRecoveryError,
+    isAbsentInstallationRecoveryError,
     internalEnsureInitialized,
     internalEnsureInitializedWithMigration,
     internalIsInitialized,
