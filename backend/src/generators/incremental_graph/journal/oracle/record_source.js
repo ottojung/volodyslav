@@ -170,11 +170,17 @@ function validateContributorRecord(record, authorName) {
  * @param {string} authorName
  * @param {Iterable<JournalRecord>} iterable
  * @param {JournalSequence} claimedLength
+ * @param {JournalSequence} [startSequence] - The first coordinate this reader
+ *   offers, for a prefix which begins part-way through a writer's stream. It
+ *   defaults to the canonical first coordinate, so a whole retained prefix is
+ *   read as before. A reader over a suffix admits nothing before this
+ *   coordinate, which is what lets a receiver's own retained prefix and an
+ *   imported suffix of the same writer be unioned into one contiguous stream.
  * @returns {PrefixReader}
  */
-function readerOverIterable(authorName, iterable, claimedLength) {
+function readerOverIterable(authorName, iterable, claimedLength, startSequence) {
     const iterator = iterable[Symbol.iterator]();
-    let expected = canonicalSequence("1");
+    let expected = startSequence === undefined ? canonicalSequence("1") : startSequence;
     let lastRead = ZERO_JOURNAL_SEQUENCE;
     /** @type {JournalError | undefined} */
     let failure;
