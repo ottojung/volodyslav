@@ -30,6 +30,7 @@ const {
     CHECKPOINT_WORKING_PATH,
 } = require("../incremental_graph");
 const { defaultBranch, workingRepository } = require("../../gitstore");
+const { restoreAbsentFromPublishedHead } = require("./absent_restore");
 const { createDefaultGraphDefinition } = require("./default_graph");
 const { makeSynchronizeDatabaseError } = require("./errors");
 const { allEvents, config, diarySummary, ontology } = require("../individual");
@@ -271,34 +272,6 @@ async function internalHoldPublishedHead(capabilities, remotePath, recoveryRef, 
 }
 
 /**
- * Restore a completely absent installation from the published head the
- * recovery source held.
- *
- * This is a receiver-less restoration: the local storage and its writer
- * identity come from the held published snapshot, so it is reached only when no
- * local database exists. It authors no semantic event of its own.
- *
- * @param {GeneratorsCapabilities} capabilities
- * @param {RecoverySourceExists} recovery
- * @returns {Promise<void>}
- */
-async function internalRestoreAbsentFrom(capabilities, recovery) {
-    capabilities.logger.logInfo(
-        { hostname: capabilities.environment.hostname(), publishedHead: recovery.publishedHead },
-        'Bootstrap: installation recovery source reported a continuation-safe published head; restoring the absent installation'
-    );
-    // The transport binds receiver-less restoration to the installation's
-    // published branch, which is exactly the branch the recovery source held.
-    await synchronizeNoLock(capabilities, {
-        resetToHostname: capabilities.environment.hostname(),
-    });
-    capabilities.logger.logInfo(
-        { publishedHead: recovery.publishedHead },
-        'Bootstrap: absent installation restored from the published head'
-    );
-}
-
-/**
  * Decide and execute the absent-installation path when the live LevelDB is
  * absent.
  *
@@ -316,7 +289,7 @@ async function internalBootstrap(capabilities) {
     const answer = await source.query();
 
     if (answer.kind === 'exists') {
-        await internalRestoreAbsentFrom(capabilities, answer);
+        await restoreAbsentFromPublishedHead(capabilities, answer);
         return;
     }
     if (answer.kind === 'definitely-absent') {
