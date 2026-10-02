@@ -9,10 +9,10 @@
  *
  * This suite drives the production path — `createIncrementalGraph`, then `invalidate`,
  * then `pull` — over the repository's real computors, and asserts the requirement in
- * both directions against the RECOVERED state read back through a fresh database
- * handle. It is deliberately not a test of emission in isolation: emission's own
- * suites prove that `finalizeEmission` produces correct records, which says nothing
- * about whether a production operation publishes them.
+ * both directions against the committed state read back out of the store through the
+ * handle the suite opened in `beforeEach`. It is deliberately not a test of emission
+ * in isolation: a record the record layer accepts is a statement about the record,
+ * not about whether a production operation publishes it.
  *
  * It also injects a failure at the publication boundary and asserts that the
  * recovered state is free of both kinds of mismatch, so a commit seam which

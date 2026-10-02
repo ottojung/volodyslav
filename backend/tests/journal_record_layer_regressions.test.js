@@ -2,7 +2,9 @@
  * Regression tests for the six correctness findings in the review of the Journal
  * record layer at head a0d37f15.
  *
- * Each block below pins one finding. The behaviour asserted is the external one:
+ * The first six blocks below pin one finding each; the seventh pins the record
+ * layer's standing invariants after those fixes. The behaviour asserted is the
+ * external one:
  * what a validator returns, what a reader delivers, what a constructor rejects,
  * and what a record's canonical encoding is after a caller has finished with the
  * objects it passed in.

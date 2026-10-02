@@ -11,9 +11,12 @@
  * `N` is a member of `valid[D]`.
  *
  * The invariant is a property of the replica, not of a node, so this file
- * checks it over the entire materialized set after every operation of every
- * scenario, and never over a named node in isolation. A single scenario can
- * leave one particular dependent in a legal state while another dependent
+ * checks it over the entire materialized set and never over a named node in
+ * isolation. A scenario's operations are not checked one at a time: in the
+ * supersession scenario the anchor pull, the source pull and the invalidation
+ * run before the first check, and in the repeated-supersession scenario both
+ * dependents are pulled before the first check. A single scenario can leave one
+ * particular dependent in a legal state while another dependent
  * somewhere else in the same replica is up-to-date without a proof; only the
  * whole-replica form of the assertion sees that.
  */
