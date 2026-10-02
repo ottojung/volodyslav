@@ -1,7 +1,10 @@
 /**
  * Invalidation operations for IncrementalGraph.
  *
- * Transaction context is passed explicitly through the call stack.
+ * One explicit invalidation is one user operation: one transaction, one atomic write
+ * carrying the freshness and validity mutations together with the Journal
+ * invalidation records which state that the node's incoming proof was invalidated and
+ * which dependents' exact occurrences became stale.
  */
 
 /** @typedef {import('./graph_state').BatchBuilder} BatchBuilder */
@@ -26,6 +29,7 @@ const { lookupNodeIdentifier } = require("./graph_state");
 const { internalGetOrCreateConcreteNode } = require("./instantiation");
 const { propagatePotentiallyOutdated } = require("./propagation");
 const { removeIncomingValidity } = require("./validity");
+const { stageNodeInvalidation, stageValueInvalidations } = require("./emit");
 
 /**
  * @param {IncrementalGraphInvalidateAccess} incrementalGraph
@@ -82,9 +86,11 @@ async function internalUnsafeInvalidate(
         // 3. Preserve outgoing validity proofs
         // 4. Propagate stale freshness downstream without mutating validity
         tx.batch.freshness.put(outputIdentifier, "potentially-outdated");
+        stageNodeInvalidation(tx, concreteKey);
         removeIncomingValidity(tx.batch, outputIdentifier, inputEdges);
         const dependents = await tx.batch.valid.get(outputIdentifier);
-        await propagatePotentiallyOutdated(incrementalGraph.storage, tx.batch, dependents);
+        const becameStale = await propagatePotentiallyOutdated(incrementalGraph.storage, tx.batch, dependents);
+        await stageValueInvalidations(tx, concreteKey, becameStale);
 
         return { value: undefined };
     });

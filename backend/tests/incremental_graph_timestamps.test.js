@@ -15,6 +15,7 @@ const {
 } = require("../src/generators/incremental_graph");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger, stubEnvironment } = require("./stubs");
+const { metaEventComputedValue, numberComputedValue } = require("./computed_value_fixture");
 const { isDateTime, make: makeDatetime } = require("../src/datetime");
 
 /**
@@ -151,7 +152,7 @@ describe("generators/incremental_graph timestamps", () => {
                     inputs: [],
                     computor: async () => {
                         callCount++;
-                        return { type: "meta_events", meta_events: [{ count: callCount }] };
+                        return metaEventComputedValue(String(callCount));
                     },
                     isDeterministic: false,
                     hasSideEffects: false,
@@ -187,10 +188,8 @@ describe("generators/incremental_graph timestamps", () => {
                 {
                     output: "item(x)",
                     inputs: [],
-                    computor: async (_inputs, _old, bindings) => ({
-                        type: "meta_events",
-                        meta_events: [{ id: bindings[0] }],
-                    }),
+                    computor: async (_inputs, _old, bindings) =>
+                        metaEventComputedValue(String(bindings[0])),
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -356,7 +355,7 @@ describe("generators/incremental_graph timestamps", () => {
                     inputs: [],
                     computor: async () => {
                         counter++;
-                        return { type: "meta_events", meta_events: [{ seq: counter }] };
+                        return metaEventComputedValue(String(counter));
                     },
                     isDeterministic: false,
                     hasSideEffects: false,
@@ -392,7 +391,7 @@ describe("generators/incremental_graph timestamps", () => {
                 {
                     output: "src",
                     inputs: [],
-                    computor: async () => ({ type: "meta_events", meta_events: [{ v: srcCell.value }] }),
+                    computor: async () => metaEventComputedValue(String(srcCell.value)),
                     isDeterministic: false,
                     hasSideEffects: false,
                 },
@@ -444,7 +443,7 @@ describe("generators/incremental_graph timestamps", () => {
                     inputs: [],
                     computor: async () => {
                         counter++;
-                        return { type: "meta_events", meta_events: [{ seq: counter }] };
+                        return metaEventComputedValue(String(counter));
                     },
                     isDeterministic: false,
                     hasSideEffects: false,
@@ -485,14 +484,14 @@ describe("generators/incremental_graph timestamps", () => {
                 {
                     output: "node1",
                     inputs: [],
-                    computor: async () => ({ type: "meta_events", meta_events: [{ id: 1 }] }),
+                    computor: async () => metaEventComputedValue("1"),
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
                 {
                     output: "node2",
                     inputs: [],
-                    computor: async () => ({ type: "meta_events", meta_events: [{ id: 2 }] }),
+                    computor: async () => metaEventComputedValue("2"),
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -601,21 +600,21 @@ describe("invalidation preserves timestamps", () => {
             {
                 output: "root",
                 inputs: [],
-                computor: async () => ({ value: 1 }),
+                computor: async () => numberComputedValue(1),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
             {
                 output: "mid",
                 inputs: ["root"],
-                computor: async ([r]) => ({ value: r.value + 1 }),
+                computor: async ([r]) => numberComputedValue(r.value + 1),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
             {
                 output: "leaf",
                 inputs: ["mid"],
-                computor: async ([m]) => ({ value: m.value + 1 }),
+                computor: async ([m]) => numberComputedValue(m.value + 1),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -658,21 +657,21 @@ describe("invalidation preserves timestamps", () => {
             {
                 output: "src",
                 inputs: [],
-                computor: async () => ({ value: 1 }),
+                computor: async () => numberComputedValue(1),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
             {
                 output: "dep",
                 inputs: ["src"],
-                computor: async ([s]) => ({ value: s.value + 1 }),
+                computor: async ([s]) => numberComputedValue(s.value + 1),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
             {
                 output: "leaf",
                 inputs: ["dep"],
-                computor: async ([d]) => ({ value: d.value + 1 }),
+                computor: async ([d]) => numberComputedValue(d.value + 1),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -719,14 +718,14 @@ describe("invalidation preserves timestamps", () => {
             {
                 output: "a",
                 inputs: [],
-                computor: async () => ({ value: 1 }),
+                computor: async () => numberComputedValue(1),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
             {
                 output: "b",
                 inputs: ["a"],
-                computor: async ([a]) => ({ value: a.value + 1 }),
+                computor: async ([a]) => numberComputedValue(a.value + 1),
                 isDeterministic: true,
                 hasSideEffects: false,
             },

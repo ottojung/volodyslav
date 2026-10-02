@@ -82,6 +82,11 @@ fail hard instead of being silently accepted or replaced.
   `r/global/fingerprint` becomes the local allocation fingerprint.
 - On non-first-boot reset, the pre-import local fingerprint is written back
   to the target replica's global sublevel before the replica switch.
+  The normative Journal 3 statement of this rule, including the single
+  completely-absent-receiver exception, is
+  `incremental-graph-journal-reset.md` §Writer identity; this file is a
+  pre-Journal description scheduled for rewrite per
+  `incremental-graph-journal-checklist.md` §16a.
 
 ## Render and scan
 

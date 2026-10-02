@@ -376,6 +376,29 @@ ValueIds are intentionally excluded from source-projection equality. For each ta
 
 The equivalence is stable under later ordinary `Unchanged` revalidation of an upstream input: a dependent which reset established as persistently stale does not become fresh unless that dependent itself later validates/recomputes.
 
+## Writer identity
+
+A reset receiver retains its own `DatabaseFingerprint`.
+
+Let R be the receiver's own writer identity before reset. Then:
+
+```text
+localWriter_after_reset == R
+```
+
+for every record the receiver authors in reset's Passes 1–3 and for every record the receiver authors afterwards. Because `JournalAuthor = DatabaseFingerprint` and `JournalRecordId.author` is the leading coordinate of every record id (`incremental-graph-journal-types.md` §Primitive identities), this is the statement that reset authors under its own writer and never under a foreign one, as `incremental-graph-journal-theorems.md` Law 8 requires.
+
+Import transfers history, not identity. Every imported record retains its original `JournalAuthor`, as required above in §First retain the observed history and by `incremental-graph-journal-lifecycle.md` §5; an imported record is never rewritten to carry the receiver's own writer, and holding imported history never makes the receiver its author.
+
+Adoption of the source's writer identity happens if and only if the receiver is completely absent, and then only through the absent-state restoration lifecycle, not through reset:
+
+- a completely absent local database restores `localWriter_after_restore == S.localWriter` under `incremental-graph-journal-theorems.md` Law 10, whose precondition is "the local database is completely absent" and which `incremental-graph-journal-lifecycle.md` §4 orders before any new `DatabaseFingerprint` is generated;
+- an already-existing receiver is not in that path, so adoption there is inadmissible, not merely disfavoured: `incremental-graph-journal-lifecycle.md` §10 states that a completely absent installation does not use reset, and `incremental-graph-journal-lifecycle.md` §5 states that two independently live installations intentionally authoring under one fingerprint are unsupported.
+
+Consequently the receiver is a distinct identity which holds imported history, and its writer namespace stays coherent: its `DatabaseFingerprint` and its local allocator index are both receiver-local, per `incremental-graph-journal-types.md` §NodeIdentifier uniqueness basis. A conforming implementation therefore persists the receiver's pre-import fingerprint into the activated replica's global sublevel before the active replica switch, rather than letting the imported replica's fingerprint become the receiver's identity.
+
+This rule is the normative Journal 3 statement of the receiver-identity behavior previously described only in the pre-Journal `incremental-graph-fingerprint.md`; that file is a pointer to this section and is scheduled for rewrite per `incremental-graph-journal-checklist.md` §16a.
+
 ## Allocation watermark
 
 Reset does not adopt the source writer's allocation watermark.

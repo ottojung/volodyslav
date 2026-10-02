@@ -205,7 +205,7 @@ Acceptance:
 - deterministic target absence delete;
 - `changed == false` only when the source frontier is already covered and Passes 1–3 author nothing; projection-neutral import still returns `changed == true`;
 - repeat satisfied reset may no-op after the source frontier is covered;
-- receiver allocator remains local;
+- receiver allocator remains local, and the receiver retains its own `DatabaseFingerprint` per `incremental-graph-journal-reset.md` §Writer identity; reset adopts the source writer identity if and only if the receiver is completely absent, and imported records keep their own `JournalAuthor`;
 - replay equals target semantic graph;
 - reset causal-later semantics never reused for bootstrap conflicts.
 

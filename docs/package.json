@@ -6,10 +6,11 @@
     "build": "docusaurus build"
   },
   "dependencies": {
-    "@docusaurus/core": "^3.10.1",
-    "@docusaurus/preset-classic": "^3.10.1",
-    "@docusaurus/theme-mermaid": "^3.10.1",
-    "@mermaid-js/layout-elk": "^0.2.2",
+    "@docusaurus/core": "^3.10.2",
+    "@docusaurus/preset-classic": "^3.10.2",
+    "@docusaurus/theme-mermaid": "^3.10.2",
+    "@mermaid-js/layout-elk": "^1.0.0",
+    "@mdx-js/react": "^3.0.0",
     "katex": "^0.18.5",
     "react": "^19.2.4",
     "react-dom": "^19.2.8",
