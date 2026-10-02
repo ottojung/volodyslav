@@ -56,6 +56,17 @@ const TEXT_VALUE_ENCODING = 'utf8';
 const JOURNAL_SUBLEVEL_NAME = 'journal';
 
 /**
+ * The name of the sublevel Journal 3 synchronization stages into. Its name is
+ * fixed because `$id-4373538486707762` forbids a transport locator in
+ * implementation-owned persisted state, and a sublevel name is persisted state
+ * an implementation would otherwise be tempted to derive from the peer it is
+ * staging from.
+ *
+ * @type {'sync_staging'}
+ */
+const SYNC_STAGING_SUBLEVEL_NAME = 'sync_staging';
+
+/**
  * The declared encoding of every sublevel whose name is fixed in this tree.
  *
  * Every replica namespace and every hostname staging namespace has the same
@@ -80,6 +91,7 @@ const SUBLEVEL_VALUE_ENCODINGS = Object.freeze({
     valid: 'json',
     timestamps: 'json',
     global: 'json',
+    [SYNC_STAGING_SUBLEVEL_NAME]: ROOT_VALUE_ENCODING,
     [JOURNAL_SUBLEVEL_NAME]: TEXT_VALUE_ENCODING,
 });
 
@@ -325,6 +337,7 @@ function encodeRawValue(rawKey, value) {
 module.exports = {
     JOURNAL_SUBLEVEL_NAME,
     NAMESPACE_PARENT_VALUE_ENCODING,
+    SYNC_STAGING_SUBLEVEL_NAME,
     ROOT_VALUE_ENCODING,
     SUBLEVEL_VALUE_ENCODINGS,
     TEXT_VALUE_ENCODING,
