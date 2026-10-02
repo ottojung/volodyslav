@@ -10,10 +10,10 @@
  * source.
  *
  * These tests publish exactly such a snapshot: a real published head carrying
- * this installation's retained Journal, republished with its rendered graph
- * sublevels deleted. A restoration which copies the rendered snapshot
- * materializes nothing from those records; a Journal-level restoration
- * materializes the whole graph from them.
+ * this installation's retained Journal, published without its rendered
+ * projection. A restoration which imports that projection materializes nothing
+ * from those records; a Journal-level restoration materializes the whole graph
+ * from them.
  */
 
 jest.setTimeout(30000);
@@ -27,11 +27,10 @@ const {
     LIVE_DATABASE_WORKING_PATH,
     GRAPH_SCHEME_KEY,
     deriveInputPositions,
-    makeRootDatabase,
     nodeKeyStringToString,
     parseGraphScheme,
-    stringToNodeKeyString,
     renderToFilesystem,
+    stringToNodeKeyString,
 } = require("../src/generators/incremental_graph/database");
 const {
     makeJournalAuthor,
@@ -51,6 +50,7 @@ const {
 const GRAPH_SUBLEVELS = ["values", "freshness", "timestamps", "valid", "inputs"];
 
 /**
+ * @typedef {import('../src/generators/incremental_graph/database/root_database').RootDatabase} RootDatabase
  * @typedef {object} Occurrence
  * @property {string} nodeKeyString
  * @property {*} payload
@@ -99,12 +99,12 @@ function liveDatabasePathOf(capabilities) {
 }
 
 /**
- * Build this installation's state, publish it, and leave the published head
- * holding the retained Journal alone.
+ * Build this installation's state and publish it as a head which carries the
+ * retained Journal alone.
  *
  * @param {object} capabilities
  * @param {ReadonlyArray<object>} events
- * @returns {Promise<void>}
+ * @returns {Promise<RootDatabase>} The published installation's live database.
  */
 async function publishRetainedJournalOnlySnapshot(capabilities, events) {
     ensureLiveDatabaseDirectory(capabilities);
@@ -136,20 +136,20 @@ async function publishRetainedJournalOnlySnapshot(capabilities, events) {
     const publishedInterface = makeInterface(() => capabilities);
     await publishedInterface.ensureInitialized();
     await publishedInterface.update(events);
-    if (publishedInterface._database !== null) {
-        await publishedInterface._database.close();
-    }
+    const publishedDatabase = publishedInterface._database;
 
     const publishTree = await capabilities.creator.createTemporaryDirectory();
     try {
-        const database = await makeRootDatabase(capabilities, liveDatabasePathOf(capabilities));
-        const replicaName = database.currentReplicaName();
         const replicaDirectory = path.join(publishTree, DATABASE_SUBPATH, "r");
-        await renderToFilesystem(capabilities, database, replicaDirectory, replicaName);
-        await database.close();
-
-        const journalDirectory = path.join(replicaDirectory, "journal");
-        expect(await capabilities.checker.directoryExists(journalDirectory)).not.toBeNull();
+        await renderToFilesystem(
+            capabilities,
+            publishedDatabase,
+            replicaDirectory,
+            publishedDatabase.currentReplicaName()
+        );
+        expect(
+            await capabilities.checker.directoryExists(path.join(replicaDirectory, "journal"))
+        ).not.toBeNull();
 
         for (const sublevel of GRAPH_SUBLEVELS) {
             const directory = path.join(replicaDirectory, sublevel);
@@ -177,121 +177,128 @@ async function publishRetainedJournalOnlySnapshot(capabilities, events) {
     } finally {
         await capabilities.deleter.deleteDirectory(publishTree);
     }
+    return publishedDatabase;
 }
 
 /**
- * Read the occurrence facts the live database materializes.
+ * The occurrences the database materializes.
  *
- * @param {object} capabilities
+ * @param {RootDatabase} database
  * @returns {Promise<Array<Occurrence>>}
  */
-async function readMaterializedOccurrences(capabilities) {
-    const database = await makeRootDatabase(capabilities, liveDatabasePathOf(capabilities));
-    try {
-        const storage = database.getSchemaStorage();
-        /** @type {Array<Occurrence>} */
-        const occurrences = [];
-        for (const [nodeIdentifier, nodeKey] of database.getActiveIdentifierLookup().serialized) {
-            const payload = await storage.values.get(nodeIdentifier);
-            if (payload === undefined) {
-                throw new Error(
-                    "the restored database materializes an occurrence with no value"
-                );
-            }
-            occurrences.push({
-                nodeKeyString: nodeKeyStringToString(nodeKey),
-                payload,
-            });
+async function readMaterializedOccurrences(database) {
+    const storage = database.getSchemaStorage();
+    /** @type {Array<Occurrence>} */
+    const occurrences = [];
+    for (const [nodeIdentifier, nodeKey] of database.getActiveIdentifierLookup().serialized) {
+        const payload = await storage.values.get(nodeIdentifier);
+        if (payload === undefined) {
+            throw new Error("the database materializes an occurrence with no value");
         }
-        return occurrences.sort((left, right) =>
-            left.nodeKeyString < right.nodeKeyString ? -1 : 1
-        );
-    } finally {
-        await database.close();
-    }
-}
-
-/**
- * Replay the live database's own retained Journal and report the occurrences
- * that replay selects.
- *
- * @param {object} capabilities
- * @returns {Promise<Array<Occurrence>>}
- */
-async function replayRetainedJournalOfLiveDatabase(capabilities) {
-    const database = await makeRootDatabase(capabilities, liveDatabasePathOf(capabilities));
-    try {
-        const storage = database.getSchemaStorage();
-        const graphScheme = parseGraphScheme(
-            await storage.global.get(GRAPH_SCHEME_KEY),
-            "restored database graph scheme"
-        );
-        const localWriter = makeJournalAuthor(database.getFingerprint());
-        if (localWriter instanceof Error) {
-            throw localWriter;
-        }
-        const retained = await readRetainedJournal(storage.journal);
-        if (retained instanceof Error) {
-            throw retained;
-        }
-        const projection = projectRetainedJournal({
-            source: makeReplicaSource(retained),
-            localWriter,
-            currentInputKeysOfNode: (nodeKeyString) => {
-                try {
-                    return deriveInputPositions(
-                        graphScheme,
-                        stringToNodeKeyString(nodeKeyString)
-                    ).map(nodeKeyStringToString);
-                } catch {
-                    return [];
-                }
-            },
+        occurrences.push({
+            nodeKeyString: nodeKeyStringToString(nodeKey),
+            payload,
         });
-        if (projection instanceof Error) {
-            throw projection;
-        }
-        return projection.occurrences.map((occurrence) => ({
-            nodeKeyString: occurrence.nodeKeyString,
-            payload: occurrence.payload,
-        }));
-    } finally {
-        await database.close();
     }
+    return occurrences.sort((left, right) =>
+        left.nodeKeyString < right.nodeKeyString ? -1 : 1
+    );
+}
+
+/**
+ * The occurrences the database's own retained Journal replays to.
+ *
+ * @param {RootDatabase} database
+ * @returns {Promise<Array<Occurrence>>}
+ */
+async function replayRetainedJournalOf(database) {
+    const storage = database.getSchemaStorage();
+    const graphScheme = parseGraphScheme(
+        await storage.global.get(GRAPH_SCHEME_KEY),
+        "restored database graph scheme"
+    );
+    const localWriter = makeJournalAuthor(database.getFingerprint());
+    if (localWriter instanceof Error) {
+        throw localWriter;
+    }
+    const retained = await readRetainedJournal(storage.journal);
+    if (retained instanceof Error) {
+        throw retained;
+    }
+    const projection = projectRetainedJournal({
+        source: makeReplicaSource(retained),
+        localWriter,
+        currentInputKeysOfNode: (nodeKeyString) => {
+            try {
+                return deriveInputPositions(
+                    graphScheme,
+                    stringToNodeKeyString(nodeKeyString)
+                ).map(nodeKeyStringToString);
+            } catch {
+                return [];
+            }
+        },
+    });
+    if (projection instanceof Error) {
+        throw projection;
+    }
+    return projection.occurrences.map((occurrence) => ({
+        nodeKeyString: occurrence.nodeKeyString,
+        payload: occurrence.payload,
+    }));
+}
+
+/**
+ * Delete the live database and restore the installation from the published head.
+ *
+ * @param {object} capabilities
+ * @returns {Promise<RootDatabase>} The restored installation's live database.
+ */
+async function deleteAndRestore(capabilities) {
+    await capabilities.deleter.deleteDirectory(liveDatabasePathOf(capabilities));
+    const restoredInterface = makeInterface(() => capabilities);
+    await restoredInterface.ensureInitialized();
+    const restoredDatabase = restoredInterface._database;
+    expect(restoredDatabase).not.toBeNull();
+    return restoredDatabase;
 }
 
 describe("journal-level absent-installation restoration", () => {
     test("materializes the graph by replaying the held snapshot's retained journal", async () => {
         const capabilities = makeRestoreCapabilities();
-        await publishRetainedJournalOnlySnapshot(capabilities, [
+        const publishedDatabase = await publishRetainedJournalOnlySnapshot(capabilities, [
             makeEvent("event-1", "First event"),
             makeEvent("event-2", "Second event"),
         ]);
-        const publishedOccurrences = await readMaterializedOccurrences(capabilities);
+        const publishedOccurrences = await readMaterializedOccurrences(publishedDatabase);
         expect(publishedOccurrences.length).toBeGreaterThan(0);
+        await publishedDatabase.close();
 
-        await capabilities.deleter.deleteDirectory(liveDatabasePathOf(capabilities));
-        const restoredInterface = makeInterface(() => capabilities);
-        await restoredInterface.ensureInitialized().catch(() => undefined);
-
-        expect(await readMaterializedOccurrences(capabilities)).toEqual(
-            publishedOccurrences
-        );
+        const restoredDatabase = await deleteAndRestore(capabilities);
+        try {
+            expect(await readMaterializedOccurrences(restoredDatabase)).toEqual(
+                publishedOccurrences
+            );
+        } finally {
+            await restoredDatabase.close();
+        }
     });
 
     test("restores a graph which is exactly the replay of its retained journal", async () => {
         const capabilities = makeRestoreCapabilities();
-        await publishRetainedJournalOnlySnapshot(capabilities, [
+        const publishedDatabase = await publishRetainedJournalOnlySnapshot(capabilities, [
             makeEvent("event-1", "First event"),
             makeEvent("event-2", "Second event"),
         ]);
+        await publishedDatabase.close();
 
-        await capabilities.deleter.deleteDirectory(liveDatabasePathOf(capabilities));
-        const restoredInterface = makeInterface(() => capabilities);
-        await restoredInterface.ensureInitialized().catch(() => undefined);
-
-        expect(await replayRetainedJournalOfLiveDatabase(capabilities)).toEqual(
-            await readMaterializedOccurrences(capabilities)
-        );
+        const restoredDatabase = await deleteAndRestore(capabilities);
+        try {
+            expect(await replayRetainedJournalOf(restoredDatabase)).toEqual(
+                await readMaterializedOccurrences(restoredDatabase)
+            );
+        } finally {
+            await restoredDatabase.close();
+        }
     });
 });
