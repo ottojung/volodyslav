@@ -104,6 +104,18 @@ async function importResetSnapshotIntoDatabase(capabilities, database, workTree,
         requireValidFingerprint(rawFingerprint, 'reset snapshot fingerprint');
         const lookup = parseIdentifierLookup(rawLookup, 'reset snapshot');
         await assertValidReplicaMaterializationState(targetStorage, lookup, 'reset snapshot');
+        // The snapshot carries the source replica's DatabaseFingerprint. When
+        // the live database already existed, the activated replica's fingerprint
+        // is rewritten to the pre-import receiver fingerprint: a reset receiver
+        // keeps its own writer identity and authors every record it writes
+        // afterwards under that writer, per
+        // docs/specs/incremental-graph-journal-reset.md §Writer identity.
+        // Adoption of the source writer happens if and only if the receiver is
+        // completely absent, in which case `isExistingDb` is false and this
+        // write-back does not run. Do not remove these writes as redundant: the
+        // imported fingerprint is otherwise silently adopted and the receiver
+        // authors under a foreign writer, which
+        // incremental-graph-journal-theorems.md Law 8 forbids.
         if (isExistingDb) {
             await targetGlobal.put(
                 'fingerprint',
