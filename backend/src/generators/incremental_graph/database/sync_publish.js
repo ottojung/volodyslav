@@ -153,25 +153,34 @@ function freshnessOf(occurrence) {
  * @returns {Map<string, NodeIdentifier[]>}
  */
 function invertedValidityOf(occurrences) {
-    /** @type {Map<string, NodeIdentifier[]>} */
-    const validatedDependents = new Map();
+    /** @type {Map<string, ProjectedOccurrence>} */
+    const byNodeKeyString = new Map();
     for (const occurrence of occurrences) {
-        const dependency = nodeIdentifierToString(occurrence.nodeIdentifier);
-        const incumbent = validatedDependents.get(dependency);
-        if (incumbent === undefined) {
-            validatedDependents.set(dependency, []);
-            continue;
-        }
-        incumbent.push(occurrence.nodeIdentifier);
+        byNodeKeyString.set(occurrence.nodeKeyString, occurrence);
     }
     /** @type {Map<string, NodeIdentifier[]>} */
     const inverted = new Map();
     for (const occurrence of occurrences) {
-        const dependency = nodeIdentifierToString(occurrence.nodeIdentifier);
-        const dependents = validatedDependents.get(dependency);
-        if (dependents !== undefined && dependents.length > 0) {
-            inverted.set(dependency, dependents.sort(compareNodeIdentifier));
+        for (const inputKeyString of occurrence.validInputs) {
+            const dependency = byNodeKeyString.get(inputKeyString);
+            if (dependency === undefined) {
+                // `edgeValid` requires both endpoints present, so a projection
+                // which names an input it does not contain cannot reach here;
+                // skipping it keeps a malformed projection from inventing an
+                // entry under an identifier the target does not hold.
+                continue;
+            }
+            const key = nodeIdentifierToString(dependency.nodeIdentifier);
+            const dependents = inverted.get(key);
+            if (dependents === undefined) {
+                inverted.set(key, [occurrence.nodeIdentifier]);
+                continue;
+            }
+            dependents.push(occurrence.nodeIdentifier);
         }
+    }
+    for (const dependents of inverted.values()) {
+        dependents.sort(compareNodeIdentifier);
     }
     return inverted;
 }
