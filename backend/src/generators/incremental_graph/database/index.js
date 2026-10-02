@@ -127,6 +127,13 @@ const {
     parseIdentifierLookup,
 } = require('./sync_merge_identifier_lookup');
 
+const {
+    AbsentRestoreError,
+    isAbsentRestoreError,
+    restoreAbsentFrom,
+} = require('./restore_absent');
+
+
 module.exports = {
     getRootDatabase,
     makeRootDatabase,
@@ -232,4 +239,7 @@ module.exports = {
     isFinalMergeStateError,
     isReplicaStateInvariantError,
     parseIdentifierLookup,
+    AbsentRestoreError,
+    isAbsentRestoreError,
+    restoreAbsentFrom,
 };

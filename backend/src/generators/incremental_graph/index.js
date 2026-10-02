@@ -52,7 +52,45 @@ const {
     isCreateExistingNode,
 } = require('./migration_errors');
 const { migrationCallback } = require('./migration');
-const { synchronizeNoLock } = require('./database');
+const { synchronizeNoLock, restoreAbsentFrom, AbsentRestoreError, isAbsentRestoreError } = require('./database');
+const {
+    encodeJournalRecord,
+    journalRecordIdToString,
+    makeReplicaSource,
+    projectRetainedJournal,
+    validateJournalReplica,
+} = require('./journal');
+const {
+    makeJournalOccurrenceKey,
+    makeJournalRecordKey,
+    readCommittedWriterState,
+    readRetainedJournal,
+    serializeWriterState,
+} = require('./journal_store');
+
+/**
+ * The Journal's own vocabulary, which an absent-installation restoration reads
+ * its held snapshot through.
+ *
+ * `database/restore_absent` reaches the Journal through this value rather than
+ * through its own `require`s, because every Journal module reaches this folder's
+ * index for the shared key vocabulary: a `database/` module which required one
+ * of them directly would be required while that index is still initialising,
+ * and would observe a half-built export object.
+ */
+const journalRestoration = {
+    encodeJournalRecord,
+    journalRecordIdToString,
+    makeJournalOccurrenceKey,
+    makeJournalRecordKey,
+    makeReplicaSource,
+    projectRetainedJournal,
+    readCommittedWriterState,
+    readRetainedJournal,
+    serializeWriterState,
+    validateJournalReplica,
+};
+
 const { prepareIncrementalGraphStorage } = require('./prepare_graph_storage');
 
 /** @typedef {import('./types').IncrementalGraphCapabilities} IncrementalGraphCapabilities */
@@ -114,5 +152,9 @@ module.exports = {
     holidayActivity,
     migrationCallback,
     synchronizeNoLock,
+    journalRestoration,
+    restoreAbsentFrom,
+    AbsentRestoreError,
+    isAbsentRestoreError,
     prepareIncrementalGraphStorage,
 };
