@@ -150,9 +150,17 @@ const {
 } = require("./reference_rules");
 
 // Ordinary emission finalization
-const { finalizeEmission } = require("./emission");
+const { allocateAuthority, contextOf, finalizeEmission } = require("./emission");
 const { finalizeMigrationEmission } = require("./migration_emission");
-const { makeReplicaSource, projectRetainedJournal } = require("./oracle");
+const {
+    isPresent,
+    isProjection,
+    makeReplicaSource,
+    makeUnionSource,
+    projectRetainedJournal,
+    readerOverIterable,
+    selectSemanticHeads,
+} = require("./oracle");
 
 /** @typedef {import('./errors').AnyJournalError} AnyJournalError */
 /** @typedef {import('./basis').InvalidateScope} InvalidateScope */
@@ -182,7 +190,9 @@ const { makeReplicaSource, projectRetainedJournal } = require("./oracle");
 /** @typedef {import('../database/node_key').NodeKey} NodeKey */
 
 module.exports = {
+    allocateAuthority,
     authorityCompare,
+    contextOf,
     DELETE_REASONS,
     INVALIDATE_REASONS,
     JournalError,
@@ -206,6 +216,10 @@ module.exports = {
     isInvalidateScope,
     isJournalAuthor,
     isJournalError,
+    isPresent,
+    isProjection,
+    readerOverIterable,
+    selectSemanticHeads,
     isJournalForkError,
     isJournalFrontier,
     isJournalRecord,
@@ -260,10 +274,10 @@ module.exports = {
     validateCausalContextClosure,
     validateCompleteLocalPrefix,
     validateCurrentShapeBasis,
+    validateNoForwardOwnWriterReference,
     validateEventContext,
     validateInvalidationScope,
     validateJournalReplica,
-    validateNoForwardOwnWriterReference,
     validateOrdinaryBasisReasons,
     validateRecordReferences,
     validateRetainedRangeCoverage,
@@ -283,6 +297,7 @@ module.exports = {
     makeJournalSourceReadError,
     makeJournalVersionCompatibilityError,
     makeJournalWriterBehindError,
+    makeUnionSource,
     makeReplicaSource,
     projectRetainedJournal,
     isJournalBootstrapForkError,
