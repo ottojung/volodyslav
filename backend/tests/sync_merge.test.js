@@ -37,6 +37,7 @@ const {
     FinalMergeStateError,
 } = require('../src/generators/incremental_graph/database/sync_merge_validation');
 const { createIncrementalGraph, makeUnchanged } = require('../src/generators/incremental_graph');
+const { numberComputedValue } = require('./computed_value_fixture');
 const {
     IdentifierLookupConflictError,
     isIdentifierLookupConflictError,
@@ -109,6 +110,34 @@ async function writeIdentifierLookup(storage, entries) {
 }
 
 
+
+/**
+ * Raised when a node key the test expects to be materialized has no identifier.
+ */
+class MissingNodeIdentifierError extends Error {
+    /**
+     * @param {import('../src/generators/incremental_graph/database').NodeKeyString} nodeKey
+     */
+    constructor(nodeKey) {
+        super(`The graph assigned no identifier to node key ${nodeKey}`);
+        this.name = 'MissingNodeIdentifierError';
+        this.nodeKey = nodeKey;
+    }
+}
+
+/**
+ * Read the identifier the graph assigned to a semantic node key.
+ * @param {import('../src/generators/incremental_graph/database/root_database').RootDatabase} db
+ * @param {import('../src/generators/incremental_graph/database').NodeKeyString} nodeKey
+ * @returns {import('../src/generators/incremental_graph/database').NodeIdentifier}
+ */
+function identifierForNodeKey(db, nodeKey) {
+    const nodeIdentifier = db.nodeKeyToId(nodeKey);
+    if (nodeIdentifier === undefined) {
+        throw new MissingNodeIdentifierError(nodeKey);
+    }
+    return nodeIdentifier;
+}
 
 /**
  * @param {Array<import('../src/generators/incremental_graph/database').NodeIdentifier>} nodeIdentifiers
@@ -2333,43 +2362,38 @@ describe('mergeHostIntoReplica', () => {
         try {
             db = await getRootDatabase(testCapabilities);
 
-            const nodeA = nodeIdentifierFromString('117-abcdefghi');
-            const nodeB = nodeIdentifierFromString('118-abcdefghi');
-            const nodeC = nodeIdentifierFromString('119-abcdefghi');
             const keyA = stringToNodeKeyString('{"head":"prop_A","args":[]}');
             const keyB = stringToNodeKeyString('{"head":"prop_B","args":[]}');
             const keyC = stringToNodeKeyString('{"head":"prop_C","args":[]}');
 
-            const L = db.schemaStorageForReplica('x');
-            await writeNode(L, nodeA, TS1, { v: 1 });
-            await writeNode(L, nodeB, TS1, { v: 2 });
-            await writeNode(L, nodeC, TS1, { v: 3 });
-            await L.valid.put(nodeA, [nodeB]);
-            await L.valid.put(nodeB, [nodeC]);
-            await L.freshness.put(nodeB, 'potentially-outdated');
-            await L.freshness.put(nodeC, 'potentially-outdated');
-            await writeIdentifierLookup(L, [[nodeA, keyA], [nodeB, keyB], [nodeC, keyC]]);
-
-            // Reload DB to populate in-memory identifier lookup from LevelDB
-            await db.close();
-            db = await getRootDatabase(testCapabilities);
-
             // constructorIncrementalGraph handles fresh DB initialization (version + graph_scheme).
-            // The scheme derived from these nodeDefs must match what's needed for invalidation
-            // propagation (linear A→B→C chain).
-
+            // The scheme derived from these nodeDefs is the linear A→B→C chain.
             const graph = await createIncrementalGraph(testCapabilities, db, [
-                { output: 'prop_A', inputs: [], computor: async () => ({ v: 2 }), isDeterministic: true, hasSideEffects: false },
-                { output: 'prop_B', inputs: ['prop_A'], computor: async () => ({ v: 2 }), isDeterministic: true, hasSideEffects: false },
-                { output: 'prop_C', inputs: ['prop_B'], computor: async () => ({ v: 3 }), isDeterministic: true, hasSideEffects: false },
+                { output: 'prop_A', inputs: [], computor: async () => numberComputedValue(1), isDeterministic: true, hasSideEffects: false },
+                { output: 'prop_B', inputs: ['prop_A'], computor: async () => numberComputedValue(2), isDeterministic: true, hasSideEffects: false },
+                { output: 'prop_C', inputs: ['prop_B'], computor: async () => numberComputedValue(3), isDeterministic: true, hasSideEffects: false },
             ]);
 
-            await graph.invalidate('prop_A');
-            await graph.pull('prop_A');
+            // Materialize the whole chain through the real graph, so each node carries the
+            // committed journal value occurrence the publication path validates against.
+            await graph.pull('prop_C');
+
+            const nodeA = identifierForNodeKey(db, keyA);
+            const nodeB = identifierForNodeKey(db, keyB);
+            const nodeC = identifierForNodeKey(db, keyC);
 
             const schema = db.getSchemaStorage();
-            const cFreshness = await schema.freshness.get(nodeC);
-            expect(cFreshness).toBe('potentially-outdated');
+            expect(await schema.freshness.get(nodeA)).toBe('up-to-date');
+            expect(await schema.freshness.get(nodeB)).toBe('up-to-date');
+            expect(await schema.freshness.get(nodeC)).toBe('up-to-date');
+
+            // Invalidation reaches C only if propagation continues along the A→B→C
+            // frontier after it has marked B stale itself.
+            await graph.invalidate('prop_A');
+
+            expect(await schema.freshness.get(nodeA)).toBe('potentially-outdated');
+            expect(await schema.freshness.get(nodeB)).toBe('potentially-outdated');
+            expect(await schema.freshness.get(nodeC)).toBe('potentially-outdated');
         } finally {
             if (db) await db.close();
         }

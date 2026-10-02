@@ -129,6 +129,12 @@ export default [
         ecmaVersion: "latest",
         sourceType: "module",
         ecmaFeatures: { jsx: true },
+        // `tsconfigRootDir` anchors the `project` glob to the directory holding
+        // this config file. Without it the path resolves against the process
+        // CWD, so `eslint .` run from `backend/` looks for a
+        // `backend/tsconfig.json` that does not exist and every parsed file
+        // fails with TS5012.
+        tsconfigRootDir: import.meta.dirname,
         project: "./tsconfig.json",
       },
       globals: {

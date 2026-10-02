@@ -12,6 +12,11 @@
 
 const { makeTypedDatabase } = require('./typed_database');
 const { unsafeStringToNodeIdentifier, stringToVersion } = require('./types');
+const {
+    encodeRawValue,
+    declaredValueEncodingForSublevelName,
+    NAMESPACE_PARENT_VALUE_ENCODING,
+} = require('./sublevel_encoding');
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
 
 /**
@@ -91,15 +96,17 @@ function validateHostname(hostname) {
  */
 function buildBareSchemaStorage(namespaceSublevel) {
     /** @type {SimpleSublevel<ComputedValue, NodeIdentifier>} */
-    const valuesSublevel = namespaceSublevel.sublevel('values', { valueEncoding: 'json' });
+    const valuesSublevel = namespaceSublevel.sublevel('values', { valueEncoding: declaredValueEncodingForSublevelName('values') });
     /** @type {SimpleSublevel<Freshness, NodeIdentifier>} */
-    const freshnessSublevel = namespaceSublevel.sublevel('freshness', { valueEncoding: 'json' });
+    const freshnessSublevel = namespaceSublevel.sublevel('freshness', { valueEncoding: declaredValueEncodingForSublevelName('freshness') });
     /** @type {SimpleSublevel<NodeIdentifier[], NodeIdentifier>} */
-    const validSublevel = namespaceSublevel.sublevel('valid', { valueEncoding: 'json' });
+    const validSublevel = namespaceSublevel.sublevel('valid', { valueEncoding: declaredValueEncodingForSublevelName('valid') });
     /** @type {SimpleSublevel<TimestampRecord, NodeIdentifier>} */
-    const timestampsSublevel = namespaceSublevel.sublevel('timestamps', { valueEncoding: 'json' });
+    const timestampsSublevel = namespaceSublevel.sublevel('timestamps', { valueEncoding: declaredValueEncodingForSublevelName('timestamps') });
     /** @type {GlobalSublevelType} */
-    const globalSublevel = namespaceSublevel.sublevel('global', { valueEncoding: 'json' });
+    const globalSublevel = namespaceSublevel.sublevel('global', { valueEncoding: declaredValueEncodingForSublevelName('global') });
+    /** @type {SimpleSublevel<import('./types').JournalText, import('./types').JournalKey>} */
+    const journalSublevel = namespaceSublevel.sublevel('journal', { valueEncoding: declaredValueEncodingForSublevelName('journal') });
 
     /** @type {(operations: DatabaseBatchOperation[]) => Promise<void>} */
     const batch = async (operations) => {
@@ -115,6 +122,7 @@ function buildBareSchemaStorage(namespaceSublevel) {
         valid: makeTypedDatabase(validSublevel),
         timestamps: makeTypedDatabase(timestampsSublevel),
         global: makeTypedDatabase(globalSublevel),
+        journal: makeTypedDatabase(journalSublevel),
     };
 }
 
@@ -126,7 +134,7 @@ function buildBareSchemaStorage(namespaceSublevel) {
 function getHostnameNamespaceSublevel(db, hostname) {
     validateHostname(hostname);
     /** @type {SchemaSublevelType} */
-    const hostnameSublevel = db.sublevel(`_h_${hostname}`, { valueEncoding: 'json' });
+    const hostnameSublevel = db.sublevel(`_h_${hostname}`, { valueEncoding: NAMESPACE_PARENT_VALUE_ENCODING });
     return hostnameSublevel;
 }
 
@@ -212,25 +220,31 @@ async function setHostnameGlobal(db, hostname, key, value) {
  * Write raw `{ sublevelName, subkey, value }` entries into a hostname's
  * staging namespace without going through the typed schema layer.
  *
+ * Each value is stored with the encoding the named sublevel was declared with, so
+ * a value written here is the value a reader of that sublevel reads back unchanged.
+ *
  * @param {RootLevelType} db - The root LevelDB instance.
  * @param {string} hostname
  * @param {Array<{ sublevelName: string, subkey: string, value: * }>} entries
  * @returns {Promise<void>}
  * @throws {InvalidHostnameError} If the hostname is invalid.
+ * @throws {import('./sublevel_encoding').SublevelValueEncodingError} If a text-valued
+ *   sublevel is handed a value that is not text.
  */
 async function rawPutAllToHostname(db, hostname, entries) {
     validateHostname(hostname);
     /**
      * @param {{ sublevelName: string, subkey: string, value: * }} entry
-     * @returns {{ type: 'put', key: DatabaseKey, value: * }}
+     * @returns {{ type: 'put', key: DatabaseKey, value: *, valueEncoding: import('./sublevel_encoding').SublevelValueEncoding }}
      */
     function makePutOp(entry) {
+        const rawKey = hostnameRawKey(hostname, entry.sublevelName, entry.subkey);
+        const { valueEncoding, value } = encodeRawValue(rawKey, entry.value);
         return {
             type: 'put',
-            key: unsafeStringToNodeIdentifier(
-                hostnameRawKey(hostname, entry.sublevelName, entry.subkey)
-            ),
-            value: entry.value,
+            key: unsafeStringToNodeIdentifier(rawKey),
+            value,
+            valueEncoding,
         };
     }
 

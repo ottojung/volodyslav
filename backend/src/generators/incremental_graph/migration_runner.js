@@ -11,7 +11,6 @@
 
 const { compileValidatedGraphSchema } = require("./graph_schema");
 const {
-    compareNodeIdentifier,
     IDENTIFIERS_KEY,
     LAST_NODE_INDEX_KEY,
     MissingIdentifierLookupError,
@@ -22,12 +21,18 @@ const {
     GraphSchemeError,
     MissingGraphSchemeError,
 } = require("./database");
-const { makeInvalidMigrationDecisionError } = require("./migration_errors");
 const { holidayActivity } = require("./lock");
 const { makeMigrationStorage } = require("./migration_storage");
 const { buildDecisionsMap, buildDesiredValid, loadMaterializedNodes } = require("./migration_validity");
+const { buildMigrationM1Intents } = require("./migration_m1");
+const { buildProducedOccurrences } = require("./migration_occurrences");
+const { buildMigrationJournal } = require("./migration_journal");
+const { verifyTargetReplica } = require("./migration_verification");
+const { makeLazyMigrationSource } = require("./migration_source");
+const { makeJournalAuthor } = require("./journal");
 const { checkpointMigration } = require("./database");
-const { unifyStores, makeDbToDbAdapter } = require("./database");
+const { unifyStores, makeDbToDbAdapter, deserializeNodeKey } = require("./database");
+const { fromISOString } = require("../../datetime");
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
@@ -81,156 +86,6 @@ const { unifyStores, makeDbToDbAdapter } = require("./database");
  * @property {Datetime} datetime - Datetime utilities.
  * @property {Interface} interface - An interface instance with an update() method.
  * @property {import('../../random/seed').NonDeterministicSeed} seed - Random seed capability.
- */
-
-/**
- * Create a lazy read-only source that yields the desired migration state.
- *
- * Values are computed from prevStorage on demand — no values are accumulated
- * in memory simultaneously.  Combined with makeDbToDbAdapter + unifyStores this
- * achieves O(|max value| + |keys|) peak memory for migration, matching sync.
- *
- * For 'keep' decisions the target sublevel value is read twice (once during
- * keys() to check existence, once during readSource()) — this is an I/O
- * trade-off that avoids per-value memory retention.
- *
- * @param {ReadableMigrationStorage} prevStorage
- * @param {import('./database/identifier_lookup').IdentifierLookup} oldLookup
- * @param {Map<NodeIdentifier, Decision>} decisions
- * @param {Map<NodeIdentifier, NodeIdentifier[]>} desiredValid
- * @param {import('./database/types').Version} newVersion
- * @param {import('../../datetime').Datetime} datetime - Datetime capability for generating timestamps.
- * @param {number} maxAllocatedIndex - The max allocated local index during this migration.
- * @param {number} sourceLastNodeIndex - The validated durable last_node_index from the source replica.
- * @param {string} fingerprint - The database fingerprint to carry forward.
- * @param {string} graphSchemeString
- * @returns {ReadableSchemaStorage}
- */
-function makeLazyMigrationSource(prevStorage, oldLookup, decisions, desiredValid, newVersion, datetime, maxAllocatedIndex, sourceLastNodeIndex, fingerprint, graphSchemeString) {
-    const producedValues = new Map();
-
-    /**
-     * @param {NodeIdentifier} key
-     * @param {Decision} decision
-     * @returns {Promise<ComputedValue | undefined>}
-     */
-    async function readFinalValue(key, decision) {
-        if (decision.kind === "create" || decision.kind === "override") {
-            const keyString = String(key);
-            let valuePromise = producedValues.get(keyString);
-            if (valuePromise === undefined) {
-                valuePromise = decision.value(key);
-                producedValues.set(keyString, valuePromise);
-            }
-            try {
-                const value = await valuePromise;
-                if (value === null || value === undefined) {
-                    throw makeInvalidMigrationDecisionError(`Migration value producer for ${keyString} did not return a computed value`);
-                }
-                return value;
-            } finally {
-                producedValues.delete(keyString);
-            }
-        }
-        return await prevStorage.values.get(key);
-    }
-
-    const sortedDecisionOutputKeys = [...decisions.keys()]
-        .sort(compareNodeIdentifier);
-
-    const sortedValidKeys = [...desiredValid.keys()].sort(compareNodeIdentifier);
-
-    return {
-        values: {
-            async *keys() {
-                for (const outputKey of sortedDecisionOutputKeys) {
-                    const decision = decisions.get(outputKey);
-                    if (!decision || decision.kind === "delete") continue;
-                    yield outputKey;
-                }
-            },
-            async get(key) {
-                const decision = decisions.get(key);
-                if (!decision || decision.kind === "delete") return undefined;
-                return await readFinalValue(key, decision);
-            },
-        },
-        freshness: {
-            async *keys() {
-                for (const outputKey of sortedDecisionOutputKeys) {
-                    const decision = decisions.get(outputKey);
-                    if (!decision || decision.kind === "delete") continue;
-                    yield outputKey;
-                }
-            },
-            async get(key) {
-                const decision = decisions.get(key);
-                if (!decision || decision.kind === "delete") return undefined;
-                if (decision.kind === "create") return decision.freshness;
-                if (decision.kind === "invalidate") return "potentially-outdated";
-                return await prevStorage.freshness.get(key);
-            },
-        },
-        valid: {
-            async *keys() {
-                for (const key of sortedValidKeys) {
-                    yield key;
-                }
-            },
-            async get(key) {
-                return desiredValid.get(key);
-            },
-        },
-        timestamps: {
-            async *keys() {
-                for (const outputKey of sortedDecisionOutputKeys) {
-                    const decision = decisions.get(outputKey);
-                    if (!decision || decision.kind === "delete") continue;
-                    yield outputKey;
-                }
-            },
-            async get(key) {
-                const decision = decisions.get(key);
-                if (!decision || decision.kind === "delete") return undefined;
-                const existing = await prevStorage.timestamps.get(key);
-                if (decision.kind === "create") {
-                    const nowIso = datetime.now().toISOString();
-                    return { createdAt: nowIso, modifiedAt: nowIso };
-                }
-                if (decision.kind === "invalidate" || decision.kind === "override" || decision.kind === "keep") {
-                    return existing;
-                }
-                return existing;
-            },
-        },
-        global: {
-            async *keys() {
-                yield 'version';
-                yield IDENTIFIERS_KEY;
-                yield LAST_NODE_INDEX_KEY;
-                yield 'fingerprint';
-                yield GRAPH_SCHEME_KEY;
-            },
-            async get(key) {
-                if (key === 'version') {
-                    return newVersion;
-                }
-                if (key === IDENTIFIERS_KEY) {
-                    return buildDecisionsMap(oldLookup, decisions);
-                }
-                if (key === LAST_NODE_INDEX_KEY) {
-                    return Math.max(sourceLastNodeIndex, maxAllocatedIndex);
-                }
-                if (key === 'fingerprint') {
-                    return fingerprint;
-                }
-                if (key === GRAPH_SCHEME_KEY) {
-                    return graphSchemeString;
-                }
-                return await prevStorage.global.get(key);
-            },
-        },
-    };
 }
 
 /**
@@ -418,17 +273,27 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             // Create a lazy source that computes desired values on demand.
             // Combined with makeDbToDbAdapter + unifyStores this keeps peak
             // memory at O(|max value| + |keys|), matching the sync path.
+            // The migration publication instant, which §11a.3 makes the `modifiedAt` of
+            // every genuinely produced occurrence and the seed of every M1 authority.
+            const publicationInstant = capabilities.datetime.now().toISOString();
+            const producedOccurrences = await buildProducedOccurrences(
+                decisions,
+                prevStorage,
+                oldLookup,
+                publicationInstant
+            );
+
             const lazySource = makeLazyMigrationSource(
                 prevStorage,
                 oldLookup,
                 decisions,
                 desiredValid,
                 currentVersion,
-                capabilities.datetime,
                 migrationStorage.getMaxAllocatedIndex(),
                 sourceLastNodeIndex,
                 rootDatabase.getFingerprint(),
-                graphSchemeString
+                graphSchemeString,
+                producedOccurrences
             );
 
             // Gently unify the desired state into the target replica.
@@ -436,10 +301,46 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             // The new version is included in the lazy source's global sublevel,
             // so it is written atomically with the data — no separate version write.
             await unifyStores(makeDbToDbAdapter(lazySource, toStorage));
+
+            // Build the target's Journal before the cutover. The graph state just
+            // unified is a projection of this history, so a target which received
+            // values without the history explaining them has nodes with no value
+            // occurrence to validate against and the first ordinary publication after
+            // the cutover fails.
+            const migrationIntents = buildMigrationM1Intents(
+                decisions,
+                oldLookup,
+                producedOccurrences,
+                /**
+                 * @param {NodeKeyString} nodeKeyString
+                 * @returns {import('./database/node_key').NodeKey}
+                 */
+                (nodeKeyString) => deserializeNodeKey(nodeKeyString)
+            );
+            await buildMigrationJournal(
+                prevStorage,
+                toStorage,
+                rootDatabase.getFingerprint(),
+                migrationIntents,
+                fromISOString(publicationInstant).toMillis(),
+                Math.max(sourceLastNodeIndex, migrationStorage.getMaxAllocatedIndex())
+            );
+
             // One final fsync: all unification writes use sync:false for performance;
             // _rawSync() issues an empty batch with sync:true to flush the WAL
             // without rewriting any keys.
             await rootDatabase._rawSync();
+
+            // §22 step 5. The target's graph state is a projection of the retained
+            // history just carried into it plus the M1 records just appended, and
+            // nothing else here reads the target's Journal, so the target is
+            // replayed here and compared against the graph it persists. A cutover
+            // which selected a target whose two representations disagreed would
+            // otherwise report success over an inconsistent replica.
+            //
+            // §22 step 6. The one atomic cutover which selects the target. Everything
+            // above wrote only the still-inactive target, so a failure anywhere above
+            // leaves the previous active pair selected.
 
             // Validate the target replica before activating it.
             // This checks the invariant: every up-to-date node has valid flags
@@ -450,8 +351,18 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             }
             const targetLookup = parseIdentifierLookup(rawIdentifiers, 'migration target replica');
             await assertValidReplicaMaterializationState(toStorage, targetLookup, 'migration target replica');
+            const localWriter = makeJournalAuthor(rootDatabase.getFingerprint());
+            if (localWriter instanceof Error) {
+                throw localWriter;
+            }
+            await verifyTargetReplica(
+                toStorage,
+                targetLookup,
+                newGraphScheme,
+                localWriter,
+                toReplica
+            );
 
-            // Persist the new active replica pointer after all writes succeed.
             await rootDatabase.setCurrentReplicaPointer(toReplica);
         }
     );

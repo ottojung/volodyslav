@@ -406,6 +406,18 @@ function versionToString(Version) {
  * @typedef {AllEventsEntry | SortedEventsDescendingEntry | SortedEventsAscendingEntry | LastNEntriesEntry | FirstNEntriesEntry | EventsCountEntry | ConfigEntry | MetaEventsEntry | EventContextDatabaseEntry | EventEntry | BasicContextEntry | CaloriesEntry | TranscriptionEntry | EventTranscriptionEntry | EventAudiosListEntry | EntryDescriptionEntry | DiaryMostImportantInfoSummaryEntry | OntologyEntry} ComputedValue
  */
 
+const { COMPUTED_VALUE_TYPE_TAGS } = require("./computed_value");
+
+/**
+ * The `type` discriminant of every member of the `ComputedValue` union, derived
+ * from the executable form of the union in `./computed_value.js`.
+ *
+ * A value which belongs to the union carries exactly one of these tags, so a
+ * consumer which must decide whether an untrusted object is a `ComputedValue`
+ * reads the discriminant first and then the member shape behind it.
+ * @type {ReadonlySet<string>}
+ */
+
 /**
  * Freshness state for a materialized node record.
  * @typedef {'up-to-date' | 'potentially-outdated'} Freshness
@@ -424,7 +436,7 @@ function versionToString(Version) {
  */
 
 /**
- * @typedef {ComputedValue | Freshness | NodeIdentifier[] | TimestampRecord | Version | IdentifiersKeysMap} DatabaseStoredValue
+ * @typedef {ComputedValue | Freshness | NodeIdentifier[] | TimestampRecord | Version | IdentifiersKeysMap | JournalText} DatabaseStoredValue
  */
 
 /**
@@ -440,6 +452,167 @@ function versionToString(Version) {
  */
 
 /**
+ * A Journal sublevel write. Journal keys are opaque strings in a namespace of
+ * their own, so they are not `DatabaseKey`s and carry their own operation shape.
+ * @typedef {{ type: 'put', sublevel: SimpleSublevel<JournalText, JournalKey>, key: JournalKey, value: JournalText }} JournalPutOperation
+ */
+
+/**
+ * A Journal sublevel removal.
+ * @typedef {{ type: 'del', sublevel: SimpleSublevel<JournalText, JournalKey>, key: JournalKey }} JournalDelOperation
+ */
+
+/**
+ * A key of the Journal sublevel: the canonical name of one retained record, of one
+ * node's current value occurrence, or of the Journal's committed-pair metadata.
+ *
+ * The properties that this class carries are:
+ * - The string is a key of the Journal sublevel's own key space and of no other
+ *   sublevel's.
+ *
+ * The proof of those properties is guaranteed by:
+ * - This class can only be introduced through these functions:
+ *   - `makeJournalRecordKey(author, sequence)`: satisfies the property because it
+ *     builds the key from the `record|` family prefix, a Journal author and a
+ *     canonical Journal coordinate.
+ *   - `makeJournalOccurrenceKey(node)`: satisfies the property because it builds the
+ *     key from the `occurrence|` family prefix and a node's canonical semantic key.
+ *   - `makeJournalStateKey()`: satisfies the property because it is the single
+ *     `state` key of the metadata family.
+ *
+ * @typedef {JournalKeyClass} JournalKey
+ */
+
+/**
+ * The canonical current-format text of one retained Journal record, or the JSON
+ * text of one Journal committed-pair metadata record.
+ *
+ * The properties that this class carries are:
+ * - The string is text the Journal sublevel persists and the Journal's own
+ *   current-format readers accept.
+ *
+ * The proof of those properties is guaranteed by:
+ * - This class can only be introduced through these functions:
+ *   - `stringToJournalText(text)`: satisfies the property because the Journal
+ *     sublevel only ever receives its argument, and every producer is
+ *     `encodeJournalRecord(record)` or `JSON.stringify(...)` of validated state.
+ *
+ * @typedef {JournalTextClass} JournalText
+ */
+
+class JournalTextClass {
+    /**
+     * @private
+     * @type {undefined}
+     */
+    __brand;
+    constructor() {
+        if (this.__brand !== undefined) {
+            throw new Error("JournalText cannot be instantiated");
+        }
+    }
+}
+
+/**
+ * @param {unknown} value
+ * @returns {value is JournalText}
+ */
+function castToJournalTextUnsafe(value) {
+    return typeof value === "string";
+}
+
+/**
+ * Convert a string to JournalText.
+ * @param {string} text
+ * @returns {JournalText}
+ */
+function stringToJournalText(text) {
+    if (castToJournalTextUnsafe(text)) {
+        return text;
+    }
+    throw new Error("Invalid journal text");
+}
+
+/**
+ * @param {unknown} value
+ * @returns {value is string}
+ */
+function isJournalTextString(value) {
+    return typeof value === "string";
+}
+
+/**
+ * @param {JournalText} text
+ * @returns {string}
+ */
+function journalTextToString(text) {
+    if (isJournalTextString(text)) {
+        return text;
+    }
+    throw new Error("Invalid journal text type");
+}
+
+class JournalKeyClass {
+    /**
+     * @private
+     * @type {undefined}
+     */
+    __brand;
+    constructor() {
+        if (this.__brand !== undefined) {
+            throw new Error("JournalKey cannot be instantiated");
+        }
+    }
+}
+
+/**
+ * @param {unknown} value
+ * @returns {value is JournalKey}
+ */
+function castToJournalKeyUnsafe(value) {
+    return typeof value === "string";
+}
+
+/**
+ * Convert a string to a JournalKey.
+ * @param {string} journalKey
+ * @returns {JournalKey}
+ */
+function stringToJournalKey(journalKey) {
+    if (castToJournalKeyUnsafe(journalKey)) {
+        return journalKey;
+    }
+    throw new Error("Invalid journal key");
+}
+
+/**
+ * @param {JournalKey} journalKey
+ * @returns {string}
+ */
+function journalKeyToString(journalKey) {
+    if (isJournalKeyString(journalKey)) {
+        return journalKey;
+    }
+    throw new Error("Invalid journal key type");
+}
+
+/**
+ * @param {unknown} value
+ * @returns {value is string}
+ */
+function isJournalKeyString(value) {
+    return typeof value === "string";
+}
+
+/**
+ * @param {unknown} value
+ * @returns {value is JournalKey}
+ */
+function isJournalKey(value) {
+    return castToJournalKeyUnsafe(value);
+}
+
+/**
  * @template L, K, V
  * @typedef {import('abstract-level').AbstractBatchPutOperation<L, K, V>} AbstractBatchPutOperation
  */
@@ -451,7 +624,7 @@ function versionToString(Version) {
 
 /**
  * A batch operation for the database.
- * @typedef {DatabasePutOperation<ComputedValue> | DatabasePutOperation<Freshness> | DatabasePutOperation<NodeIdentifier[]> | DatabasePutOperation<TimestampRecord> | DatabasePutOperation<Version> | DatabasePutOperation<IdentifiersKeysMap> | DatabaseDelOperation<ComputedValue> | DatabaseDelOperation<Freshness> | DatabaseDelOperation<NodeIdentifier[]> | DatabaseDelOperation<TimestampRecord> | DatabaseDelOperation<Version> | DatabaseDelOperation<IdentifiersKeysMap>} DatabaseBatchOperation
+ * @typedef {DatabasePutOperation<ComputedValue> | DatabasePutOperation<Freshness> | DatabasePutOperation<NodeIdentifier[]> | DatabasePutOperation<TimestampRecord> | DatabasePutOperation<Version> | DatabasePutOperation<IdentifiersKeysMap> | DatabaseDelOperation<ComputedValue> | DatabaseDelOperation<Freshness> | DatabaseDelOperation<NodeIdentifier[]> | DatabaseDelOperation<TimestampRecord> | DatabaseDelOperation<Version> | DatabaseDelOperation<IdentifiersKeysMap> | JournalPutOperation | JournalDelOperation} DatabaseBatchOperation
  */
 
 class SchemaPatternClass {
@@ -519,7 +692,7 @@ function schemaPatternToString(schemaPattern) {
  */
 
 /**
- * @typedef {NodeIdentifier | 'version' | 'identifiers_keys_map'} DatabaseKey
+ * @typedef {NodeIdentifier | 'version' | 'identifiers_keys_map' | JournalKey} DatabaseKey
  */
 
 /**
@@ -545,6 +718,7 @@ function schemaPatternToString(schemaPattern) {
  */
 
 module.exports = {
+    COMPUTED_VALUE_TYPE_TAGS,
     versionToString,
     stringToVersion,
     VersionClass,
@@ -552,6 +726,13 @@ module.exports = {
     stringToNodeIdentifier,
     unsafeStringToNodeIdentifier,
     NodeIdentifierClass,
+    JournalKeyClass,
+    JournalTextClass,
+    stringToJournalText,
+    journalTextToString,
+    stringToJournalKey,
+    journalKeyToString,
+    isJournalKey,
     nodeNameToString,
     stringToNodeName,
     NodeNameClass,
