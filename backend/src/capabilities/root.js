@@ -107,8 +107,7 @@ const schedule = require('../scheduler');
 const runtimeStateStorage = require('../runtime_state_storage');
 const threadingCapability = require('../threading');
 const levelDatabaseCapability = require('../level_database');
-const { makeInterface } = require('../generators');
-const { isCohortBootstrapSource, makeJournalPublicationError } = require('../generators/incremental_graph/journal');
+const { makeInterface, isCohortBootstrapSource, makeJournalPublicationError } = require('../generators');
 const { makeTemporary } = require('../temporary');
 
 /**

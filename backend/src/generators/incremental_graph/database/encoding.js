@@ -46,7 +46,7 @@
  */
 
 const { TEXT_VALUE_ENCODING, valueEncodingForRawKey } = require('./sublevel_encoding');
-const { journalTextToString, stringToJournalText } = require('./types');
+const { isJournalText, journalTextToString, stringToJournalText } = require('./types');
 
 /** @typedef {import('./types').JournalText} JournalText */
 
@@ -260,9 +260,27 @@ function parseValue(content) {
  */
 function serializeRawValue(rawKey, value) {
     if (valueEncodingForRawKey(rawKey) === TEXT_VALUE_ENCODING) {
-        return journalTextToString(/** @type {JournalText} */ (value));
+        if (!isJournalText(value)) {
+            throw new JournalTextRequiredError(rawKey);
+        }
+        return journalTextToString(value);
     }
     return serializeValue(value);
+}
+
+/**
+ * Thrown when a value that a text-valued sublevel holds is not text.
+ */
+class JournalTextRequiredError extends Error {
+    /** @param {string} rawKey */
+    constructor(rawKey) {
+        super(
+            `Cannot render '${rawKey}' as a snapshot file: the sublevel that key names stores its values as ` +
+                'utf8 text, so a snapshot file holds that text rather than a JSON document'
+        );
+        this.name = 'JournalTextRequiredError';
+        this.rawKey = rawKey;
+    }
 }
 
 /**

@@ -71,17 +71,16 @@ describe('configuring the cohort bootstrap source on the root capabilities', () 
     test('each refused shape fails with a JournalPublicationError by name', () => {
         /** @type {unknown[]} */
         const refused = [{}, 0, 'source', [], () => undefined, { queryCanonicalBootstrap: () => null }];
-        for (const value of refused) {
-            let thrown;
+        const thrown = refused.map((value) => {
             try {
                 capabilitiesRoot.make({ cohortBootstrapSource: value });
             } catch (error) {
-                thrown = error;
+                return error;
             }
-            if (!isJournalPublicationError(thrown)) {
-                throw new Error(`configuring ${JSON.stringify(value)} did not fail with a JournalPublicationError`);
-            }
-        }
+            return undefined;
+        });
+        expect(thrown).toHaveLength(refused.length);
+        expect(thrown.every((error) => isJournalPublicationError(error))).toBe(true);
     });
 
     test('the refusal is the same error the canonical-bootstrap gate itself raises', () => {
