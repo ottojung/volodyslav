@@ -15,7 +15,13 @@
  *   transport-neutral source and its §4 conditional-publication arbitration, where
  *   publication, not the query, selects the one durable cohort artifact; and
  * - `stageCanonicalBootstrap` is the deterministic staging of passes C1–C4 (§5),
- *   which is what §6 retries when a publication outcome is still unknown.
+ *   which is what §6 retries when a publication outcome is still unknown;
+ * - `resumeCanonicalBootstrapCreator` is the §6 creator-resume consumer, which
+ *   installs a replica's own canonical cut once replaying it reproduces
+ *   still-persisted legacy semantics; and
+ * - `joinCanonicalBootstrap` is the §7 joining consumer, which merges a second
+ *   replica's persisted pre-Journal graph with the cohort's frozen canonical cut
+ *   through passes J1, J2, J2b and J3.
  *
  * Everything here is pure. Nothing performs I/O, mints an identifier, or consults
  * a clock; a transport is supplied by the caller through `makeCohortBootstrapSource`.
@@ -32,6 +38,15 @@ const {
     isCanonicalBootstrapCandidate,
     stageCanonicalBootstrap,
 } = require("./canonical_candidate");
+const {
+    deriveLegacyFreshness,
+    isResumedCanonicalCreator,
+    resumeCanonicalBootstrapCreator,
+} = require("./creator_resume");
+const {
+    isJoinedCanonicalBootstrap,
+    joinCanonicalBootstrap,
+} = require("./join_bootstrap");
 const {
     arbitrateCanonicalBootstrap,
     isCanonicalBootstrapDefinitelyAbsent,
@@ -57,11 +72,19 @@ const {
 /** @typedef {import('./cohort_source').CanonicalBootstrapPublicationResult} CanonicalBootstrapPublicationResult */
 /** @typedef {import('./cohort_source').CohortBootstrapSource} CohortBootstrapSource */
 /** @typedef {import('./cohort_source').ArbitrationRequest} ArbitrationRequest */
+/** @typedef {import('./creator_resume').CreatorResumeRequest} CreatorResumeRequest */
+/** @typedef {import('./creator_resume').ResumedCanonicalCreator} ResumedCanonicalCreator */
+/** @typedef {import('./join_bootstrap').JoinCanonicalBootstrapRequest} JoinCanonicalBootstrapRequest */
+/** @typedef {import('./join_bootstrap').JoinedCanonicalBootstrap} JoinedCanonicalBootstrap */
 
 module.exports = {
     arbitrateCanonicalBootstrap,
     artifactSupportsBootstrapTarget,
     canonicalArtifactReplica,
+    deriveLegacyFreshness,
+    isJoinedCanonicalBootstrap,
+    isResumedCanonicalCreator,
+    joinCanonicalBootstrap,
     isCanonicalBootstrapCandidate,
     isCanonicalBootstrapDefinitelyAbsent,
     isCanonicalBootstrapExists,
@@ -78,5 +101,6 @@ module.exports = {
     publishCanonicalBootstrap,
     queryCanonicalBootstrap,
     readLegacyBootstrapState,
+    resumeCanonicalBootstrapCreator,
     stageCanonicalBootstrap,
 };
