@@ -54,6 +54,7 @@ const {
 const { migrationCallback } = require('./migration');
 const { synchronizeNoLock } = require('./database');
 const { prepareIncrementalGraphStorage } = require('./prepare_graph_storage');
+const { runCanonicalBootstrapGate } = require('./journal_bootstrap_gate');
 
 /** @typedef {import('./types').IncrementalGraphCapabilities} IncrementalGraphCapabilities */
 /** @typedef {import('./class').IncrementalGraph} IncrementalGraph */
@@ -115,4 +116,5 @@ module.exports = {
     migrationCallback,
     synchronizeNoLock,
     prepareIncrementalGraphStorage,
+    runCanonicalBootstrapGate,
 };

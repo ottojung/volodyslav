@@ -6,6 +6,17 @@ const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubDatetime, stubLogger, stubRandomSeed } = require("./stubs");
 const { stubIncrementalDatabaseRemoteBranches } = require("./stub_incremental_database_remote");
 const { forceVersion, assertDirectoriesExactlyEqual } = require("./migration_fixture_helpers");
+const {
+    fixtureAbsentCohortSource,
+    fixtureIndeterminateCohortSource,
+    fixtureInputKeys,
+    readFixtureReplica,
+} = require("./journal_startup_fixture");
+const { makeJournalAuthor } = require("../src/generators/incremental_graph/journal");
+const {
+    isUnresolvedStartupCanonicalBootstrap,
+    resolveCanonicalBootstrapForStartup,
+} = require("../src/generators/incremental_graph/journal_bootstrap_startup");
 
 jest.setTimeout(30000);
 
@@ -163,5 +174,79 @@ describe("populated rendered fixture migration", () => {
             )
         );
         expect(writerState.allocatorWatermark).toBe(lastNodeIndex);
+    });
+});
+
+describe("Journal 3 startup canonical bootstrap over the pre-Journal fixture", () => {
+    /**
+     * The fixture replica as the startup gate's supported pre-Journal source.
+     * @returns {object}
+     */
+    function source() {
+        return readFixtureReplica(LASTVERSION_FIXTURE);
+    }
+
+    /**
+     * @param {object} replica
+     * @param {object} calls
+     * @returns {Promise<unknown>}
+     */
+    function resolve(replica, calls) {
+        return resolveCanonicalBootstrapForStartup({
+            legacyState: replica.legacyState,
+            localWriter: makeJournalAuthor(replica.fingerprint),
+            target: { databaseVersion: CURRENT_VERSION, graphSchemeString: replica.graphSchemeString },
+            source: fixtureAbsentCohortSource(calls),
+            currentInputKeysOfNode: fixtureInputKeys(replica.graphSchemeString),
+        });
+    }
+
+    test("the fixture replica is a supported pre-Journal source", () => {
+        const replica = source();
+        expect(replica.legacyState).not.toBeInstanceOf(Error);
+        expect(replica.legacyState.nodes.length).toBeGreaterThan(0);
+        expect(replica.version).toBe(PREVIOUS_VERSION);
+        expect(replica.fingerprint).toBe("testfingerprnt");
+    });
+
+    test("a cohort with nothing held publishes this fixture's own cut and resumes the creator", async () => {
+        const replica = source();
+        const calls = { queries: 0, publications: 0, published: [] };
+        const resolution = await resolve(replica, calls);
+        expect(resolution).not.toBeInstanceOf(Error);
+        expect(resolution.operation).toBe("resume-canonical-creator");
+        expect(resolution.records.length).toBeGreaterThan(0);
+        expect(calls.queries).toBe(1);
+        expect(calls.publications).toBe(1);
+        // The staged candidate is a pure function of persisted state, so its authority
+        // times are the fixture's own timestamps rather than a publication clock.
+        expect(resolution.projection.occurrences).toHaveLength(replica.legacyState.nodes.length);
+        expect(resolution.databaseVersion).toBe(CURRENT_VERSION);
+    });
+
+    test("an indeterminate answer is unresolved and installs no cutover", async () => {
+        const replica = source();
+        const resolution = await resolveCanonicalBootstrapForStartup({
+            legacyState: replica.legacyState,
+            localWriter: makeJournalAuthor(replica.fingerprint),
+            target: { databaseVersion: CURRENT_VERSION, graphSchemeString: replica.graphSchemeString },
+            source: fixtureIndeterminateCohortSource(undefined),
+            currentInputKeysOfNode: fixtureInputKeys(replica.graphSchemeString),
+        });
+        expect(isUnresolvedStartupCanonicalBootstrap(resolution)).toBe(true);
+        expect(resolution).not.toHaveProperty("records");
+        expect(resolution).not.toHaveProperty("projection");
+    });
+
+    test("a pre-Journal fixture with no configured cohort source fails closed", async () => {
+        const replica = source();
+        const resolution = await resolveCanonicalBootstrapForStartup({
+            legacyState: replica.legacyState,
+            localWriter: makeJournalAuthor(replica.fingerprint),
+            target: { databaseVersion: CURRENT_VERSION, graphSchemeString: replica.graphSchemeString },
+            currentInputKeysOfNode: fixtureInputKeys(replica.graphSchemeString),
+        });
+        expect(resolution).toBeInstanceOf(Error);
+        expect(resolution.message).toMatch(/cohort bootstrap source/);
     });
 });

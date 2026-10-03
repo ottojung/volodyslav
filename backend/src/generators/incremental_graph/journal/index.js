@@ -154,6 +154,27 @@ const { finalizeEmission } = require("./emission");
 const { finalizeMigrationEmission } = require("./migration_emission");
 const { makeReplicaSource, projectRetainedJournal } = require("./oracle");
 
+// The canonical-bootstrap path, whose only import point is its own subfolder index.
+// Re-exported here because a caller outside `journal` must not reach past this file:
+// startup resolves a canonical bootstrap through the same seam as every other Journal
+// consumer, not through a second entry point into the subfolder.
+const {
+    arbitrateCanonicalBootstrap,
+    artifactSupportsBootstrapTarget,
+    canonicalArtifactReplica,
+    deriveLegacyFreshness,
+    isCanonicalBootstrapSnapshot,
+    isJoinedCanonicalBootstrap,
+    isLegacyBootstrapState,
+    isResumedCanonicalCreator,
+    joinCanonicalBootstrap,
+    makeCanonicalBootstrapSnapshot,
+    makeCohortBootstrapSource,
+    readLegacyBootstrapState,
+    resumeCanonicalBootstrapCreator,
+    stageCanonicalBootstrap,
+} = require("./bootstrap");
+
 /** @typedef {import('./errors').AnyJournalError} AnyJournalError */
 /** @typedef {import('./basis').InvalidateScope} InvalidateScope */
 /** @typedef {import('./basis').ValidationBasis} ValidationBasis */
@@ -180,8 +201,30 @@ const { makeReplicaSource, projectRetainedJournal } = require("./oracle");
 /** @typedef {import('./types').JournalRecordId} JournalRecordId */
 /** @typedef {import('./types').JournalSequence} JournalSequence */
 /** @typedef {import('../database/node_key').NodeKey} NodeKey */
+/** @typedef {import('./bootstrap').LegacyBootstrapState} LegacyBootstrapState */
+/** @typedef {import('./bootstrap').CanonicalBootstrapSnapshot} CanonicalBootstrapSnapshot */
+/** @typedef {import('./bootstrap').CanonicalBootstrapCandidate} CanonicalBootstrapCandidate */
+/** @typedef {import('./bootstrap').CanonicalBootstrapOutcome} CanonicalBootstrapOutcome */
+/** @typedef {import('./bootstrap').CohortBootstrapSource} CohortBootstrapSource */
+/** @typedef {import('./bootstrap').BootstrapTarget} BootstrapTarget */
+/** @typedef {import('./bootstrap').ResumedCanonicalCreator} ResumedCanonicalCreator */
+/** @typedef {import('./bootstrap').JoinedCanonicalBootstrap} JoinedCanonicalBootstrap */
 
 module.exports = {
+    arbitrateCanonicalBootstrap,
+    artifactSupportsBootstrapTarget,
+    canonicalArtifactReplica,
+    deriveLegacyFreshness,
+    isCanonicalBootstrapSnapshot,
+    isJoinedCanonicalBootstrap,
+    isLegacyBootstrapState,
+    isResumedCanonicalCreator,
+    joinCanonicalBootstrap,
+    makeCanonicalBootstrapSnapshot,
+    makeCohortBootstrapSource,
+    readLegacyBootstrapState,
+    resumeCanonicalBootstrapCreator,
+    stageCanonicalBootstrap,
     authorityCompare,
     DELETE_REASONS,
     INVALIDATE_REASONS,
