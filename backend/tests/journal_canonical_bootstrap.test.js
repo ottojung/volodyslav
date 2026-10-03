@@ -639,3 +639,84 @@ describe("the conditional-publication arbitration", () => {
         expect(journalAuthorToString(candidate.creatorWriter)).toBe(CREATOR);
     });
 });
+
+describe("a canonical bootstrap cut refuses what it cannot hold or name", () => {
+    test("refuses a cut which names no exact database version", () => {
+        const candidate = stagedOf(sourceState({}), CREATOR);
+        const refusal = makeCanonicalBootstrapSnapshot({
+            records: candidate.records,
+            creatorWriter: candidate.creatorWriter,
+            bootstrapFrontier: candidate.bootstrapFrontier,
+            databaseVersion: undefined,
+            graphSchemeString: GRAPH_SCHEME,
+        });
+        expect(refusal instanceof Error).toBe(true);
+        expect(
+            isJournalVersionCompatibilityError(refusal)
+        ).toBe(false);
+    });
+
+    test("refuses a cut whose database version is not a version string", () => {
+        const candidate = stagedOf(sourceState({}), CREATOR);
+        for (const databaseVersion of [undefined, null, "", 3, {}]) {
+            expect(
+                makeCanonicalBootstrapSnapshot({
+                    records: candidate.records,
+                    creatorWriter: candidate.creatorWriter,
+                    bootstrapFrontier: candidate.bootstrapFrontier,
+                    databaseVersion,
+                    graphSchemeString: GRAPH_SCHEME,
+                }) instanceof Error
+            ).toBe(true);
+        }
+    });
+
+    test("a cut which names no version cannot be mistaken for the published form of a candidate", () => {
+        const candidate = stagedOf(sourceState({}), CREATOR);
+        const unversioned = makeCanonicalBootstrapSnapshot({
+            records: candidate.records,
+            creatorWriter: candidate.creatorWriter,
+            bootstrapFrontier: candidate.bootstrapFrontier,
+            databaseVersion: undefined,
+            graphSchemeString: GRAPH_SCHEME,
+        });
+        expect(unversioned instanceof Error).toBe(true);
+        expect(publishedArtifactIsStagedCandidate(unversioned, candidate)).toBe(false);
+    });
+
+    test("a malformed coordinate is an error, not an absent one", () => {
+        const artifact = artifactOf(stagedOf(sourceState({}), CREATOR));
+        const creator = artifact.creatorWriter;
+        expect(artifact.get(creator, "junk") instanceof Error).toBe(true);
+        expect(artifact.get(creator, "3x") instanceof Error).toBe(true);
+        expect(artifact.get(creator, 3) instanceof Error).toBe(true);
+        expect(artifact.iterate(creator, undefined, "junk") instanceof Error).toBe(true);
+        expect(artifact.iterate(creator, "junk", "3") instanceof Error).toBe(true);
+    });
+
+    test("a malformed range yields no records to iterate", async () => {
+        const artifact = artifactOf(stagedOf(sourceState({}), CREATOR));
+        const creator = artifact.creatorWriter;
+        for (const range of [
+            artifact.iterate(creator, undefined, "junk"),
+            artifact.iterate(creator, "junk", "3"),
+            artifact.iterate(creator, undefined, "03"),
+        ]) {
+            expect(range instanceof Error).toBe(true);
+            expect(isAsyncIterable(range)).toBe(false);
+        }
+    });
+});
+
+/**
+ * @param {unknown} value
+ * @returns {boolean}
+ */
+function isAsyncIterable(value) {
+    return (
+        typeof value === "object" &&
+        value !== null &&
+        Symbol.asyncIterator in value &&
+        !(value instanceof Error)
+    );
+}

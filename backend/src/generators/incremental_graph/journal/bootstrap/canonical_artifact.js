@@ -30,6 +30,7 @@ const {
     journalSequenceAtFrontier,
     makeJournalFrontier,
     makeJournalSequence,
+    isJournalSequence,
 } = require("../types");
 const { isJournalRecord } = require("../records");
 const { makeJournalReplica, replicaFrontier } = require("../replica");
@@ -45,16 +46,21 @@ const { validateJournalReplica } = require("../well_formedness");
 /** @typedef {import('../../database/types').Version} Version */
 
 /**
- * The sequence a caller named, when it names a canonical one.
+ * The sequence a caller named, or the reason the name is not a coordinate.
+ *
+ * A coordinate which is not canonical is an error rather than an absent
+ * coordinate, because `incremental-graph-journal-api.md` snapshot law 4 forbids a
+ * range from silently skipping coordinates: a caller that named `junk` must learn
+ * that it named nothing, not that the cut holds nothing at that coordinate.
+ *
  * @param {JournalSequence | string} value
- * @returns {JournalSequence | undefined}
+ * @returns {JournalSequence | JournalError}
  */
-function ownWriterSequence(value) {
-    if (typeof value !== "string") {
+function namedSequence(value) {
+    if (isJournalSequence(value)) {
         return value;
     }
-    const parsed = makeJournalSequence(value);
-    return parsed instanceof Error ? undefined : parsed;
+    return makeJournalSequence(value);
 }
 
 /**
@@ -69,20 +75,31 @@ function isOwnWriter(creatorWriter, author) {
 }
 
 /**
- * The cut's record at one own-writer coordinate, or `undefined`.
+ * Whether a value is the exact database version text a bootstrap target names, so
+ * that a cut always carries a version to compare rather than an absent value.
+ * @param {unknown} value
+ * @returns {boolean}
+ */
+function isDatabaseVersionText(value) {
+    return typeof value === "string" && value.length > 0;
+}
+
+/**
+ * The cut's record at one own-writer coordinate, or `undefined` when the cut does
+ * not contain that coordinate.
  * @param {JournalAuthor} creatorWriter
  * @param {ReadonlyArray<JournalRecord>} records
  * @param {JournalAuthor | string} author
  * @param {JournalSequence | string} sequence
- * @returns {JournalRecord | undefined}
+ * @returns {JournalRecord | undefined | JournalError}
  */
 function ownWriterRecord(creatorWriter, records, author, sequence) {
     if (!isOwnWriter(creatorWriter, author)) {
         return undefined;
     }
-    const wanted = ownWriterSequence(sequence);
-    if (wanted === undefined) {
-        return undefined;
+    const wanted = namedSequence(sequence);
+    if (wanted instanceof Error) {
+        return wanted;
     }
     return records.find((record) => compareJournalSequence(record.id.sequence, wanted) === 0);
 }
@@ -107,7 +124,11 @@ function ownWriterRecord(creatorWriter, records, author, sequence) {
  *   `validateJournalReplica` then proves there are no holes, forks or dangling
  *   references and that the cut is causally closed; the constructor rejects a cut
  *   naming more than one writer, requires `bootstrapFrontier` to equal the replica
- *   frontier, and requires every record's author to be `creatorWriter`.
+ *   frontier, and requires every record's author to be `creatorWriter`. It also
+ *   requires an exact non-empty `databaseVersion` string and a non-empty
+ *   `graphSchemeString`, so `artifactSupportsBootstrapTarget` and
+ *   `publishedArtifactIsStagedCandidate` compare two versions rather than one
+ *   version and an absent value.
  *
  * @param {ReadonlyArray<JournalRecord>} records
  * @param {JournalAuthor} creatorWriter
@@ -134,10 +155,12 @@ class CanonicalBootstrapSnapshotClass {
 
     /**
      * The record at an own-writer coordinate of the cut, or `undefined` when the
-     * cut does not contain that coordinate.
+     * cut does not contain that coordinate. A coordinate which is not a canonical
+     * coordinate is an error, so a caller cannot mistake a malformed name for an
+     * absent record (`incremental-graph-journal-api.md` snapshot law 4).
      * @param {JournalAuthor | string} author
      * @param {JournalSequence | string} sequence
-     * @returns {JournalRecord | undefined}
+     * @returns {JournalRecord | undefined | JournalError}
      */
     get(author, sequence) {
         return ownWriterRecord(this.creatorWriter, this.records, author, sequence);
@@ -146,25 +169,33 @@ class CanonicalBootstrapSnapshotClass {
     /**
      * Iterate the cut after an exclusive own-writer coordinate, through an
      * inclusive one. An absent exclusive coordinate starts at the beginning of
-     * the cut, which is frontier zero.
+     * the cut, which is frontier zero. A range which names a coordinate that is
+     * not canonical is an error instead of an iterable, so a range never silently
+     * skips coordinates (`incremental-graph-journal-api.md` snapshot law 4).
      * @param {JournalAuthor | string} author
      * @param {JournalSequence | string | undefined} afterExclusive
      * @param {JournalSequence | string} throughInclusive
-     * @returns {AsyncIterable<JournalRecord>}
+     * @returns {AsyncIterable<JournalRecord> | JournalError}
      */
     iterate(author, afterExclusive, throughInclusive) {
-        const through = ownWriterSequence(throughInclusive);
-        const after = afterExclusive === undefined ? undefined : ownWriterSequence(afterExclusive);
-        const records =
-            !isOwnWriter(this.creatorWriter, author) || through === undefined
-                ? []
-                : this.records.filter((record) => {
+        const through = namedSequence(throughInclusive);
+        if (through instanceof Error) {
+            return through;
+        }
+        const after =
+            afterExclusive === undefined ? undefined : namedSequence(afterExclusive);
+        if (after instanceof Error) {
+            return after;
+        }
+        const records = !isOwnWriter(this.creatorWriter, author)
+            ? []
+            : this.records.filter((record) => {
                       const own = record.id.sequence;
-                      if (after !== undefined && compareJournalSequence(own, after) <= 0) {
-                          return false;
-                      }
-                      return compareJournalSequence(own, through) <= 0;
-                  });
+                  if (after !== undefined && compareJournalSequence(own, after) <= 0) {
+                      return false;
+                  }
+                  return compareJournalSequence(own, through) <= 0;
+              });
         return {
             [Symbol.asyncIterator]: async function* () {
                 for (const record of records) {
@@ -220,6 +251,9 @@ function makeCanonicalBootstrapSnapshot(request) {
     }
     if (!isJournalFrontier(bootstrapFrontier)) {
         return makeJournalRecordValidationError("a canonical bootstrap cut names no bootstrap frontier", "unknown");
+    }
+    if (!isDatabaseVersionText(databaseVersion)) {
+        return makeJournalRecordValidationError("a canonical bootstrap cut persists no database version", "unknown");
     }
     if (typeof graphSchemeString !== "string" || graphSchemeString.length === 0) {
         return makeJournalRecordValidationError("a canonical bootstrap cut persists no graph scheme string", "unknown");
