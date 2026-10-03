@@ -142,6 +142,125 @@ describe('reading the Journal sublevel through the raw accessors', () => {
 });
 
 // ---------------------------------------------------------------------------
+// What a rendered snapshot holds on disk
+// ---------------------------------------------------------------------------
+
+/**
+ * @param {string} directory
+ * @param {string} relativePath
+ * @returns {string}
+ */
+function readRenderedFile(directory, relativePath) {
+    return fs.readFileSync(path.join(directory, relativePath), 'utf8');
+}
+
+describe('the bytes a rendered snapshot holds', () => {
+    test('a rendered occurrence record id is the bare id text, not a JSON string literal', async () => {
+        const { capabilities, tmpDir } = makeTestCapabilities();
+        const source = await makeDatabaseWithJournalText(capabilities);
+        const renderDir = path.join(tmpDir, 'render', 'x');
+        try {
+            await renderToFilesystem(capabilities, source, renderDir, source.currentReplicaName());
+        } finally {
+            await source.close();
+        }
+        expect(readRenderedFile(renderDir, path.join('journal', OCCURRENCE_KEY))).toBe('qai1:1');
+    });
+
+    test('a rendered record is its canonical text, with no JSON quoting around it', async () => {
+        const { capabilities, tmpDir } = makeTestCapabilities();
+        const source = await makeDatabaseWithJournalText(capabilities);
+        const renderDir = path.join(tmpDir, 'render', 'x');
+        try {
+            await renderToFilesystem(capabilities, source, renderDir, source.currentReplicaName());
+        } finally {
+            await source.close();
+        }
+        const rendered = readRenderedFile(renderDir, path.join('journal', RECORD_KEY));
+        expect(rendered).toBe(RECORD_TEXT);
+        expect(rendered.startsWith('"')).toBe(false);
+    });
+
+    test('a rendered committed-pair state is its canonical text as well', async () => {
+        const { capabilities, tmpDir } = makeTestCapabilities();
+        const source = await makeDatabaseWithJournalText(capabilities);
+        const renderDir = path.join(tmpDir, 'render', 'x');
+        try {
+            await renderToFilesystem(capabilities, source, renderDir, source.currentReplicaName());
+        } finally {
+            await source.close();
+        }
+        expect(readRenderedFile(renderDir, path.join('journal', STATE_KEY))).toBe(STATE_TEXT);
+    });
+
+    test('a JSON-valued sublevel of the same snapshot is still rendered as a JSON document', async () => {
+        const { capabilities, tmpDir } = makeTestCapabilities();
+        const source = await makeDatabaseWithJournalText(capabilities);
+        const replica = source.currentReplicaName();
+        await source.schemaStorageForReplica(replica).values.put('all_events', {
+            type: 'all_events',
+            events: [],
+        });
+        const renderDir = path.join(tmpDir, 'render', 'x');
+        try {
+            await renderToFilesystem(capabilities, source, renderDir, replica);
+        } finally {
+            await source.close();
+        }
+        const rendered = readRenderedFile(renderDir, path.join('values', 'all_events'));
+        expect(JSON.parse(rendered)).toEqual({ type: 'all_events', events: [] });
+    });
+
+    test('a snapshot directory holding canonical Journal text is scanned back into the database', async () => {
+        const { capabilities, tmpDir } = makeTestCapabilities();
+        const snapshotDir = path.join(tmpDir, 'handmade', 'x');
+        fs.mkdirSync(path.join(snapshotDir, 'journal'), { recursive: true });
+        fs.writeFileSync(
+            path.join(snapshotDir, 'journal', OCCURRENCE_KEY),
+            'qai1:1',
+            'utf8'
+        );
+        fs.writeFileSync(path.join(snapshotDir, 'journal', RECORD_KEY), RECORD_TEXT, 'utf8');
+
+        const target = await getRootDatabase(capabilities);
+        try {
+            await scanFromFilesystem(capabilities, target, snapshotDir, target.currentReplicaName());
+            const journal = target.schemaStorageForReplica(target.currentReplicaName()).journal;
+            expect(await journal.get(OCCURRENCE_KEY)).toBe(OCCURRENCE_TEXT);
+            expect(await journal.get(RECORD_KEY)).toBe(RECORD_TEXT);
+        } finally {
+            await target.close();
+        }
+    });
+
+    test('a Journal value persisted as a JSON string literal is still scanned back as that text', async () => {
+        const { capabilities, tmpDir } = makeTestCapabilities();
+        const snapshotDir = path.join(tmpDir, 'escaped', 'x');
+        fs.mkdirSync(path.join(snapshotDir, 'journal'), { recursive: true });
+        fs.writeFileSync(
+            path.join(snapshotDir, 'journal', OCCURRENCE_KEY),
+            JSON.stringify('qai1:1'),
+            'utf8'
+        );
+        fs.writeFileSync(
+            path.join(snapshotDir, 'journal', RECORD_KEY),
+            JSON.stringify(RECORD_TEXT),
+            'utf8'
+        );
+
+        const target = await getRootDatabase(capabilities);
+        try {
+            await scanFromFilesystem(capabilities, target, snapshotDir, target.currentReplicaName());
+            const journal = target.schemaStorageForReplica(target.currentReplicaName()).journal;
+            expect(await journal.get(OCCURRENCE_KEY)).toBe(OCCURRENCE_TEXT);
+            expect(await journal.get(RECORD_KEY)).toBe(RECORD_TEXT);
+        } finally {
+            await target.close();
+        }
+    });
+});
+
+// ---------------------------------------------------------------------------
 // Writing through the raw accessors
 // ---------------------------------------------------------------------------
 
