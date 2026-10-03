@@ -54,12 +54,16 @@ const {
 const { migrationCallback } = require('./migration');
 const { synchronizeNoLock } = require('./database');
 const { prepareIncrementalGraphStorage } = require('./prepare_graph_storage');
+const { runCanonicalBootstrapGate } = require('./journal_bootstrap_gate');
+const { isCohortBootstrapSource, makeJournalPublicationError } = require('./journal');
 
 /** @typedef {import('./types').IncrementalGraphCapabilities} IncrementalGraphCapabilities */
 /** @typedef {import('./class').IncrementalGraph} IncrementalGraph */
 /** @typedef {import('./unchanged').Unchanged} Unchanged */
 
 module.exports = {
+    isCohortBootstrapSource,
+    makeJournalPublicationError,
     makeRootDatabase,
     getRootDatabase,
     LIVE_DATABASE_WORKING_PATH,
@@ -115,4 +119,5 @@ module.exports = {
     migrationCallback,
     synchronizeNoLock,
     prepareIncrementalGraphStorage,
+    runCanonicalBootstrapGate,
 };

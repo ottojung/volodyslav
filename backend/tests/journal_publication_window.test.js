@@ -11,8 +11,9 @@
  * - which sublevels each of those writes carries; and
  * - what the journal sublevel of the recovered database holds afterwards.
  *
- * These numbers are the ones the pinning suite `journal_atomicity_requirement.test.js`
- * is measured against.
+ * These numbers are what this file measures. `journal_atomicity_requirement.test.js`
+ * pins the recovered-state consequence of the same requirement; it asserts nothing
+ * about the number of durable writes or the sublevels each of them carries.
  */
 
 const fs = require("fs");

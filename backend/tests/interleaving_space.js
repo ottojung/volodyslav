@@ -1044,19 +1044,23 @@ module.exports = {
  * The enumerated space above is exhaustive but coarse: in it the ordering keys
  * almost always agree with one another, so a mutation which drops one key still
  * produces the right answer and neither the confluence check nor the differential
- * can see it. These fixtures close that hole the only way it can be closed, by
- * constructing a journal in which the rule under test is the sole thing which
- * separates a right answer from a wrong one.
+ * can see it. These fixtures close that hole by constructing a journal in which the
+ * rule under test is the sole thing which separates a right answer from a wrong one.
  *
- * Every fixture is built on `closedSpine`, a two-writer journal which is well
- * formed under `validateJournalReplica`, has its own-writer context exact, keeps
- * every claimed coordinate retained, and has a dependency-closed selected head
- * set. A fixture therefore differs from a supported journal only in the rule it is
- * built to isolate, and a rejection it produces is the rejection it was designed
- * to produce rather than an accident of the surrounding history.
+ * `closedSpine` is a two-writer journal which is well formed under
+ * `validateJournalReplica`, has its own-writer context exact, keeps every claimed
+ * coordinate retained, and has a dependency-closed selected head set. Five of the
+ * twelve fixture builders in this section are built on it:
+ * `dependencyClosureAcceptingFixture`, `ownPrefixFixtures`, `proofBarrierFixture`,
+ * `retainedRangeFixtures` and `forkFixture`. The other seven construct their
+ * journals directly and inherit none of these guarantees. `forkFixture` is
+ * reachable only through this module's second export, so a count taken from
+ * `adversarialFixtures()` alone misses it;
+ * `interleaving_space_closed_spine_basis_check.js` re-derives both numbers by
+ * driving every export.
  *
- * Each fixture states which rule it isolates, so a mutation which removes that
- * rule is caught by the fixture which names it rather than by luck.
+ * Each fixture states which rule it isolates, and `journal_interleaving.test.js`
+ * asserts that no two fixtures name the same rule.
  */
 
 /**

@@ -11,7 +11,15 @@
  *   directions, on concrete inputs, and the journal suite could not tell which
  *   answer the oracle used.
  *
- * Each test below names the mutation it exists to catch.
+ * Each test below is named for the behaviour it pins.
+ *
+ * One of the review's decisive mutations is pinned by name of behaviour. The
+ * review calls the deletion of `isEligibleCertificate`'s own current-shape block
+ * decisive at `docs/reviews/BOARD92-INDEPENDENT-REVIEW.md:158` ("Mutation 3 (the
+ * decisive one)"), lists the same mutation as M5 at `:314`, and calls M5 the
+ * sharpest of the mutations that stayed green at `:324`. The test named "the two
+ * predicates agree on every reason and every input set" pins the agreement of
+ * the two predicates, which is exactly what that mutation removed.
  */
 
 const {
@@ -476,11 +484,10 @@ describe("blocker 2: the current-shape rule is one rule, not two", () => {
     });
 
     test("the two predicates agree on every reason and every input set", () => {
-        // The mutation the review named as decisive: swapping one implementation
-        // of the current-shape rule for the other changed nothing any journal
-        // test could see. So the two verdicts are gathered over the whole cross
-        // product the divergence lives on and compared, which makes a divergence
-        // name the exact input that produced it.
+        // Swapping one implementation of the current-shape rule for the other
+        // changed nothing any journal test could see. So the two verdicts are
+        // gathered over the whole cross product the divergence lives on and
+        // compared, which makes a divergence name the exact input that produced it.
         const schemas = [
             ["K has one current input", currentInputsOfK],
             ["K has two current inputs", (nodeKeyString) =>

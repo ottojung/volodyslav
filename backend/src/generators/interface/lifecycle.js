@@ -28,10 +28,11 @@ const {
     createIncrementalGraph,
     LIVE_DATABASE_WORKING_PATH,
     CHECKPOINT_WORKING_PATH,
+    runCanonicalBootstrapGate,
 } = require("../incremental_graph");
 const { defaultBranch, workingRepository } = require("../../gitstore");
 const { createDefaultGraphDefinition } = require("./default_graph");
-const { makeSynchronizeDatabaseError } = require("./errors");
+const { makeSynchronizeDatabaseError, makeUnresolvedCanonicalBootstrapError } = require("./errors");
 const { allEvents, config, diarySummary, ontology } = require("../individual");
 
 /** @param {InterfaceLifecycleAccess} interfaceInstance */
@@ -234,7 +235,9 @@ async function internalEnsureInitializedWithMigration(
             nodeDefs,
             migrationCallback(capabilities),
         );
-        capabilities.logger.logDebug({}, 'Initialization: migration gate completed, constructing incremental graph');
+        capabilities.logger.logDebug({}, 'Initialization: migration gate completed, running canonical bootstrap gate');
+        await internalCanonicalBootstrapGate(capabilities, database, nodeDefs);
+        capabilities.logger.logDebug({}, 'Initialization: canonical bootstrap gate completed, constructing incremental graph');
         const incrementalGraph = await createIncrementalGraph(
             capabilities,
             database,
@@ -258,6 +261,36 @@ async function internalEnsureInitializedWithMigration(
             );
         }
         throw error;
+    }
+}
+
+/**
+ * Run the Journal 3 canonical-bootstrap gate before any graph API is exposed.
+ *
+ * `incremental-graph-journal-lifecycle.md` §8.2 requires startup to resolve a canonical
+ * bootstrap for a supported pre-Journal replica before graph construction, and requires
+ * an unresolved publication outcome to fail startup while leaving the pre-Journal
+ * database selected. The gate reports that outcome rather than retrying it, because §6
+ * requires a re-query through the owned procedure before another publication attempt.
+ *
+ * The cohort bootstrap source is deployment configuration carried on the capabilities
+ * rather than persisted database state, so an installation which configures none still
+ * starts normally for every replica that is not a supported pre-Journal source.
+ *
+ * @param {GeneratorsCapabilities} capabilities
+ * @param {RootDatabase} database
+ * @param {NodeDef[]} nodeDefs
+ * @returns {Promise<void>}
+ */
+async function internalCanonicalBootstrapGate(capabilities, database, nodeDefs) {
+    const outcome = await runCanonicalBootstrapGate({
+        rootDatabase: database,
+        nodeDefs,
+        source: capabilities.cohortBootstrapSource,
+        logger: capabilities.logger,
+    });
+    if (outcome.status === 'unresolved-canonical-bootstrap') {
+        throw makeUnresolvedCanonicalBootstrapError(outcome.detail);
     }
 }
 

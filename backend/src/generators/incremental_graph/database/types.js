@@ -534,6 +534,18 @@ function stringToJournalText(text) {
 }
 
 /**
+ * Whether a value is Journal text.
+ *
+ * Journal text is a string, so this is the only test the representation admits.
+ *
+ * @param {unknown} value
+ * @returns {value is JournalText}
+ */
+function isJournalText(value) {
+    return typeof value === 'string';
+}
+
+/**
  * @param {unknown} value
  * @returns {value is string}
  */
@@ -730,6 +742,7 @@ module.exports = {
     JournalTextClass,
     stringToJournalText,
     journalTextToString,
+    isJournalText,
     stringToJournalKey,
     journalKeyToString,
     isJournalKey,

@@ -2,20 +2,25 @@
  * End-to-end: a real computor's real output, through emission, into a durable
  * record store, read back through the persisted-text path, and replayed.
  *
- * This is the test which makes the Journal 3 end-to-end path exist. Until now the
- * record layer (`journal/`) and the replay oracle (`journal/oracle/`) had no
- * caller in `backend/src` or `frontend/src`: `makeValueEvent`, `encodeJournalRecord`,
- * the persisted-text read path `tryDecodeJournalRecord`, and `projectRetainedJournal`
- * were each exercised only by their own unit suites. This suite drives the four
- * real computors whose output needs neither a filesystem nor an AI capability —
- * `all_events`, `meta_events`, `event_context`, `event(e)`, and `entry_description(e)` —
- * through the whole path and asserts the emission law
- * `incremental-graph-journal-emission.md` states: `project(Jafter) == Gafter`.
+ * The record layer (`journal/`) and the replay oracle (`journal/oracle/`) each have
+ * unit suites, and `journal_computor_output_shapes.test.js` drives the record layer
+ * over computor output that suite calls the computor to obtain. This suite drives
+ * both over records that came out of `finalizeEmission` on a graph transition the
+ * test materialized, so
+ * the emission law `incremental-graph-journal-emission.md` states,
+ * `project(Jafter) == Gafter`, is asserted over the whole emission path rather
+ * than over a record the test built for the purpose. It drives the five real
+ * computors whose output needs neither
+ * a filesystem nor an AI capability —
+ * `all_events`, `meta_events`, `event_context`, `event(e)`, and
+ * `entry_description(e)` — through the whole path.
  *
- * Every value in this file is either the real output of a real computor, the real
- * graph scheme derived from the repository's real node definitions, or a value
- * the real store read back from durable storage through the persisted-text read
- * path. No fixture is hand-written to stand in for a computor.
+ * The graph scheme this suite compiles comes from `createDefaultGraphDefinition`
+ * in `interface/default_graph.js`, filtered to the five heads below, and the
+ * computor attached to each of those heads is the one that module attaches. The
+ * remaining values in this file are either the real output of a real computor or
+ * a value the real store read back from durable storage through the
+ * persisted-text read path.
  */
 
 const {
@@ -41,11 +46,11 @@ const {
 } = require("../src/generators/incremental_graph/database");
 const { makeNodeIdentifier } = require("../src/generators/incremental_graph/database/node_identifier");
 
+const { createDefaultGraphDefinition } = require("../src/generators/interface/default_graph");
 const allEventsModule = require("../src/generators/individual/all_events/wrapper");
-const metaEventsComputor = require("../src/generators/individual/meta_events/wrapper").computor;
-const eventContextComputor = require("../src/generators/individual/event_context/wrapper").computor;
-const eventComputor = require("../src/generators/individual/event/wrapper").computor;
-const entryDescriptionComputor = require("../src/generators/individual/entry_description/wrapper").computor;
+
+/** The outputs the real graph declares for the five heads this suite materializes. */
+const MATERIALIZED_HEADS = new Set(["all_events", "meta_events", "event_context", "event(e)", "entry_description(e)"]);
 
 const eventId = require("../src/event/id");
 const { fromISOString } = require("../src/datetime");
@@ -140,33 +145,43 @@ function realEvents() {
 }
 
 /**
- * The real node definitions for the five heads this suite materializes, with the
- * real computors attached, compiled and validated by the repository's own schema
- * compiler. The graph scheme used to derive each node's current direct inputs is
- * therefore the real adjacency from `interface/default_graph.js`, not a hand-built
- * dependency map.
+ * The real node definitions for the five heads this suite materializes, taken
+ * from `interface/default_graph.js` itself and compiled and validated by the
+ * repository's own schema compiler. The computor attached to each head is the
+ * one that module attaches, and the graph scheme used to derive each node's
+ * current direct inputs is that module's adjacency for those heads.
+ *
+ * The other heads the real graph declares are left out because this suite does
+ * not materialize them and never drives their computors. The five heads are
+ * closed under the adjacency the module declares for them, so no current input
+ * of a materialized node is missing from the compiled scheme.
  * @returns {{graphScheme: object, computors: Record<string, Function>}}
  */
 function realGraph() {
     const box = allEventsModule.makeBox();
     box.value = realEvents();
-    const allEventsComputor = allEventsModule.makeComputor(box, {});
-    const computors = {
-        all_events: allEventsComputor,
-        meta_events: metaEventsComputor,
-        event_context: eventContextComputor,
-        event: eventComputor,
-        entry_description: entryDescriptionComputor,
-    };
-    const nodeDefs = [
-        { output: "all_events", inputs: [], computor: allEventsComputor, isDeterministic: false, hasSideEffects: false },
-        { output: "meta_events", inputs: ["all_events"], computor: metaEventsComputor, isDeterministic: true, hasSideEffects: false },
-        { output: "event_context", inputs: ["meta_events"], computor: eventContextComputor, isDeterministic: true, hasSideEffects: false },
-        { output: "event(e)", inputs: ["all_events"], computor: eventComputor, isDeterministic: true, hasSideEffects: false },
-        { output: "entry_description(e)", inputs: ["event(e)"], computor: entryDescriptionComputor, isDeterministic: true, hasSideEffects: false },
-    ];
+    const nodeDefs = createDefaultGraphDefinition({}, undefined, box)
+        .filter((nodeDef) => MATERIALIZED_HEADS.has(nodeDef.output));
+    if (nodeDefs.length !== MATERIALIZED_HEADS.size) {
+        throw new Error("the real graph no longer defines exactly the heads this suite materializes");
+    }
+    const computors = {};
+    for (const nodeDef of nodeDefs) {
+        computors[nodeHeadOf(nodeDef.output)] = nodeDef.computor;
+    }
     const schema = compileValidatedGraphSchema(nodeDefs);
     return { graphScheme: schema.graphScheme, computors };
+}
+
+/**
+ * The head name of a node definition's output, which is the output without its
+ * parameter list.
+ * @param {string} output - A node definition's output, such as `event(e)`.
+ * @returns {string}
+ */
+function nodeHeadOf(output) {
+    const parenthesis = output.indexOf("(");
+    return parenthesis === -1 ? output : output.substring(0, parenthesis);
 }
 
 /**

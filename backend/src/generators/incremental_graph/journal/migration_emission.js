@@ -13,10 +13,12 @@
  * their guarantees differ. An ordinary publication's `ValueEvent` is the first
  * occurrence of a node the graph is computing for the first time. A migration
  * `ValueEvent` is a new occurrence over a target key whose *previous* occurrence
- * already exists in converted history, so its authority is seeded from the migration
+ * converted history already names, so its authority is seeded from the migration
  * physical time like every other non-value event, and no `ValidateEvent` accompanies
  * it: M1 authors values and absence only, and M2 (§16) and M3 (§17) author the proof
- * and persistent-staleness records separately.
+ * and persistent-staleness records separately. The one exception is the transported
+ * `bootstrap` occurrence, for which converted history names no occurrence at all and
+ * whose authority is therefore seeded from its own `modifiedAt`.
  *
  * This module is pure. It takes the committed writer state and the settled migration
  * target, and returns the exact records the migration publication must make durable
@@ -42,7 +44,7 @@ const { makeJournalPublicationError } = require("./errors");
 const { nodeKeyToCanonicalString } = require("./basis");
 const { predecessorJournalSequence, requireSuccessorJournalSequence } = require("./coordinates");
 const { makeDeleteEvent, makeValueEvent, makeWriterStateRecord } = require("./records");
-const { allocateAuthority, contextOf } = require("./emission");
+const { allocateAuthority, contextOf, epochMillisecondsOf } = require("./emission");
 const {
     frontierJoin,
     makeJournalFrontier,
@@ -50,29 +52,47 @@ const {
 } = require("./types");
 
 /**
- * One target-present key whose occurrence the migration genuinely creates or
- * replaces, and which therefore authors a `ValueEvent(reason="migration")`.
+ * One target-present key whose occurrence converted history does not name, and which
+ * therefore authors a `ValueEvent`.
  *
  * A `create` allocates a new `NodeIdentifier` and sets `createdAt` to the migration
  * publication time; a `replace` preserves the existing `NodeIdentifier` and
  * `createdAt` and sets `modifiedAt` to the migration publication time
- * (`incremental-graph-journal-migrations.md` §11a.3). Both cases are stated by the
- * timestamps the caller passes here, so this module does not need to know which
- * decision produced the occurrence.
+ * (`incremental-graph-journal-migrations.md` §11a.3). A transported occurrence whose
+ * `ValueId` no converted record names carries the source replica's persisted payload
+ * and the source replica's two persisted timestamps exactly, under the `NodeIdentifier`
+ * the migration decision was keyed by rather than one read back out of the source
+ * replica, and is authored as `reason="bootstrap"`. The only case this module has to
+ * tell apart is that transported one, and it tells it apart by `reason`, the field it
+ * branches on: the identifier and the timestamps together do not name it, since a
+ * replacement whose source `createdAt` equals the publication instant, or a
+ * transported occurrence whose `modifiedAt` equals it, is indistinguishable from the
+ * other cases by timestamps alone. So this module does not need to know which decision
+ * produced the occurrence — it never sees a decision — but the caller has to state
+ * which case this is, because `reason` is the field that states it.
  *
  * The properties that this typedef carries are:
  * - `node` is a target-representation `NodeKey` which is present in the migration
- *   target graph and whose occurrence is new rather than transported;
- * - `payload` is the target-version `ComputedValue` of exactly that occurrence.
+ *   target graph and whose occurrence converted history does not already name;
+ * - `payload` is the target-version `ComputedValue` of exactly that occurrence;
+ * - `reason` names why the occurrence is authored: `migration` when the migration
+ *   genuinely produces the occurrence at the cut, and `bootstrap` when the migration
+ *   transports a persisted legacy occurrence which no converted record names.
  *
  * The proof of those properties is guaranteed by:
  * - this class cannot enforce the properties by construction, since it is a
  *   structural record of an already-settled decision;
  * - therefore every function that constructs a `MigrationValueIntent` is part of the
- *   proof. The current construction sites are:
- *   - `newlyOccurringValues(...)`: satisfies the property because it emits one
- *     intent per `create`/`replace` decision the migration settled, whose value is
- *     the decision's own semantic target payload.
+ *   proof. The current construction site is:
+ *   - `buildMigrationM1Intents(...)`: satisfies the property because it emits one
+ *     intent per decision whose occurrence no converted record names, taking the
+ *     intent's value and timestamps out of the single occurrence map rather than
+ *     deriving them per `reason`: for a produced occurrence the map holds what the
+ *     decision settled, and for a transported occurrence it holds what
+ *     `readTransportedOccurrence` read back from the source replica's storage. Its
+ *     `nodeIdentifier` is the key the settled decisions map is keyed by, which is why
+ *     it is the decision's own materialization in both cases, and its `reason` it
+ *     reads from the occurrence.
  *
  * @typedef {object} MigrationValueIntent
  * @property {"migrate-value"} kind
@@ -81,6 +101,7 @@ const {
  * @property {ComputedValue} payload - The target-version value.
  * @property {string} createdAt - Canonical whole-millisecond instant the occurrence was created.
  * @property {string} modifiedAt - Canonical whole-millisecond instant the occurrence was last modified.
+ * @property {"migration" | "bootstrap"} reason - Why this occurrence is authored.
  */
 
 /**
@@ -88,19 +109,20 @@ const {
  * migration target graph, and which therefore authors one required
  * `DeleteEvent(reason="migration")`.
  *
- * A key whose converted history already selects absence authors no record, so the
- * caller only supplies keys whose absence the migration itself establishes.
- *
  * The properties that this typedef carries are:
- * - `node` is a target-representation `NodeKey` which is absent from the migration
- *   target graph and was not already absent in converted history.
+ * - `node` names an occurrence the migration decided absent.
  *
  * The proof of those properties is guaranteed by:
  * - this class cannot enforce the properties by construction;
- * - therefore every function that constructs a `MigrationDeleteIntent` is part of
- *   the proof. The current construction site is:
- *   - `absentKeys(...)`: satisfies the property because it emits one intent per
- *     `ConvertedBeforePresent - TargetPresent` key the migration decided absent.
+ * - therefore every function that constructs a `MigrationDeleteIntent` is part of the
+ *   proof. The current construction site is:
+ *   - `buildMigrationM1Intents(...)`: satisfies the property because it emits one
+ *     intent per decision of kind `delete`, resolving that decision's `node` from the
+ *     source replica's identifier lookup and rejecting a decision whose key the source
+ *     replica does not materialize rather than emitting an intent for it.
+ *
+ * Nothing here reads the converted retained history, so this module neither knows nor
+ * needs to know which keys that history already selects absent.
  *
  * @typedef {object} MigrationDeleteIntent
  * @property {"migrate-delete"} kind
@@ -222,7 +244,23 @@ function finalizeMigrationEmission(request) {
         // an occurrence timestamp: a migration `ValueEvent` is semantic production at
         // the migration cut, not the ordinary restatement of a historical
         // `modifiedAt` as its authority seed.
-        const allocated = allocateAuthority(highWater, publicationInstant);
+        //
+        // A `bootstrap` `ValueEvent` is the exception: it restates a persisted legacy
+        // occurrence which converted history does not name, so its authority must be
+        // seeded from that occurrence's own `modifiedAt`. Seeding it from the migration
+        // instant would give upgrade time precedence over history and would make the
+        // occurrence sort after every historical record it actually precedes.
+        let seedPhysical = publicationInstant;
+        if (intent.kind === "migrate-value" && intent.reason === "bootstrap") {
+            seedPhysical = epochMillisecondsOf(intent.modifiedAt);
+            if (!Number.isSafeInteger(seedPhysical) || seedPhysical < 0) {
+                return makeJournalPublicationError(
+                    "modifiedAt must be a canonical whole-millisecond instant to allocate " +
+                        "authority, got " + JSON.stringify(intent.modifiedAt)
+                );
+            }
+        }
+        const allocated = allocateAuthority(highWater, seedPhysical);
         if ("error" in allocated) {
             return allocated.error;
         }
@@ -236,7 +274,7 @@ function finalizeMigrationEmission(request) {
                 intent.payload,
                 intent.createdAt,
                 intent.modifiedAt,
-                "migration"
+                intent.reason
             );
         } else {
             record = makeDeleteEvent(base, "migration");
