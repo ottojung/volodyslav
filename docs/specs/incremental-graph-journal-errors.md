@@ -123,6 +123,16 @@ This category names the established-writer rollback condition defined normativel
 
 The taxonomy does not define a separate recovery rule: this error is not a request to repair an existing receiver by importing its missing own-writer suffix.
 
+## JournalBackedFieldwiseMergeError
+
+Meaning:
+
+> The per-host fieldwise merge was asked to merge a replica that carries Journal state, so it refused instead of reusing another writer's materialized rows.
+
+The condition is defined normatively in `incremental-graph-journal-sync.md` §IncrementalGraph-facing behavior; its user-visible consequence is in `incremental-graph-journal-user-contract.md` §Normal-mode synchronization refuses a journal-backed per-host merge.
+
+The error names which merge source carried the Journal sublevel — the staged host snapshot or the local synchronization source — and it is raised before the inactive replica is copied, so both replicas and the active replica pointer are unchanged. It is a refusal of a forbidden operation rather than a compatibility, fork, or lifecycle-corruption diagnosis, and the aggregate form reports it per host.
+
 ## JournalProjectionError
 
 Meaning:

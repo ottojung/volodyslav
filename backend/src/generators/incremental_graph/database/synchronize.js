@@ -210,6 +210,12 @@ async function mergeRemoteHostBranches(capabilities, state) {
  * The caller must ensure the database is locked (not written to) for the
  * duration of this call.
  *
+ * Normal mode merges each remote host fieldwise, and a host whose replica carries
+ * Journal state is refused rather than merged, so a replica that has published a
+ * transition makes normal mode fail that host with `SyncMergeAggregateError`.
+ * `resetToHostname` is the route for a Journal-backed replica; see
+ * `docs/specs/incremental-graph-journal-user-contract.md`.
+ *
  * @param {Capabilities} capabilities
  * @param {{ resetToHostname?: string }} [options]
  * @return {Promise<void>}

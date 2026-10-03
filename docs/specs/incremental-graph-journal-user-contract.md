@@ -49,6 +49,14 @@ So mixed input histories affect validity/freshness, not cache existence, unless 
 
 Synchronization persistent-stale marker authoring is owned by `incremental-graph-journal-sync.md` §Phase 2 using `selfProofReady(K)` from `incremental-graph-journal-replay.md` §Persistent propagated staleness, including its no-duplicate rule. The user-visible consequence is that later upstream `Unchanged` cannot erase required sync-persisted staleness.
 
+## Normal-mode synchronization refuses a journal-backed per-host merge
+
+Ordinary per-host synchronization merges a remote host's materialized rows fieldwise, which `incremental-graph-journal-sync.md` §IncrementalGraph-facing behavior forbids once a replica is a Journal projection. That merge therefore refuses when either merge source carries Journal state: the staged host snapshot, or the local synchronization source.
+
+The user-visible consequence is unconditional, because every journal publication leaves a non-empty Journal sublevel: an installation whose replica has published any transition fails that host in normal-mode `synchronize()` with `SyncMergeAggregateError` naming the refusal, and the remaining hosts still synchronize. The error is a refusal of a forbidden operation, not evidence of corrupt or incompatible state, and it leaves both replicas and the active replica pointer untouched.
+
+For such an installation the supported route is `resetTo(source)`, reached by the reset-to-hostname mode of `synchronize()`.
+
 ## Synchronization can reveal unsupported local rollback
 
 The user-visible result for the established-writer rollback condition is `JournalWriterBehindError`; the condition is defined in `incremental-graph-journal-lifecycle.md` §5 and synchronization behavior in `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is unsupported state.
