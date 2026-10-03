@@ -51,11 +51,11 @@ Synchronization persistent-stale marker authoring is owned by `incremental-graph
 
 ## Synchronization can reveal unsupported local rollback
 
-The user-visible result for the established-writer rollback condition is `JournalWriterBehindError`; the condition is defined in `incremental-graph-journal-lifecycle.md` §5 and synchronization behavior in `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is unsupported state.
+The user-visible result for the established-writer rollback condition is `JournalWriterBehindError`; the condition is defined in `database-lifecycle.md` §20 and synchronization behavior in `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is unsupported state.
 
 ## Release recovery
 
-Journal 3 release recovery is forward-only as accepted by `$id-5083197642258146`. Restoring an existing database from an earlier checkpoint or rewinding its remote publication is not a supported rollback path; the lifecycle classification is owned by `incremental-graph-journal-lifecycle.md` §14.
+Journal 3 release recovery is forward-only as accepted by `$id-5083197642258146`. Restoring an existing database from an earlier checkpoint or rewinding its remote publication is not a supported rollback path; the lifecycle classification is owned by `database-lifecycle.md` §29.
 
 A corrected release moves state forward through supported operations and, when needed, a canonical Journal-aware migration. If a known-good source remains version/schema compatible, `resetTo()` may restore its observable projection while retaining the receiver's already-observed history.
 
@@ -67,7 +67,7 @@ A machine whose local database is completely absent queries an installation reco
 - definite absence -> fresh identity may be created;
 - read/query/continuation-safety uncertainty -> fail, no fresh fallback.
 
-Continuation safety is defined in `incremental-graph-journal-lifecycle.md` §4.1.
+Continuation safety is defined in `database-lifecycle.md` §19.1.
 
 The recovery source abstraction does not require one server, one branch, one authority, or one storage topology. Transport locators such as hostnames or branch names remain outside IncrementalGraph-owned persisted state and semantic recovery APIs.
 
@@ -179,7 +179,7 @@ requires an established writable receiver and one held compatible source snapsho
 
 The reset result reports `changed = false` only when the receiver already retained the entire source snapshot frontier and reset authored no repair records. Missing source history makes the reset a persistent change even if the observable graph projection was already equal to the target.
 
-If the reset source is ahead for the receiver's own writer, the user-visible failure follows `incremental-graph-journal-reset.md` §Preconditions and the lifecycle boundary in `incremental-graph-journal-lifecycle.md` §5.
+If the reset source is ahead for the receiver's own writer, the user-visible failure follows `incremental-graph-journal-reset.md` §Preconditions and the lifecycle boundary in `database-lifecycle.md` §20.
 
 Reset retains history and establishes the source projection relative to all history it observed. A compatible receiver/source union may be temporarily non-projectable because Value/Delete winners mix across replicas; reset uses raw deterministic head selection for its first occurrence/presence repair rather than sync-normalizing or rejecting that staging union.
 

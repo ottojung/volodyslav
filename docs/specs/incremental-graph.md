@@ -509,12 +509,16 @@ interface IncrementalGraph {
 
 **REQ-IFACE-07 (getModificationTime):** `getModificationTime(nodeName, bindings?)` MUST return the persisted `modifiedAt` for the currently materialized node instance. MUST throw `MissingTimestampError` if the node is not materialized or if no timestamp record exists for it.
 
+Under Journal 3, both timestamps are persisted fields of the materialized value occurrence and are part of the retained record, not properties of the projection. The record codec reads and writes `createdAt` and `modifiedAt` alongside `nodeIdentifier` and `payload` (`journal/codec.js`, `journal/codec_read.js`), so a retained record and the projection it replays into cannot disagree about them. `incremental-graph-journal-types.md` owns the canonical timestamp representation, including the rule that an otherwise valid occurrence is not rejected merely because its two timestamps are out of chronological order.
+
 **REQ-IFACE-08 (Timestamp Invariants):**
 * `getCreationTime(N, B)` and `getModificationTime(N, B)` are persisted physical timestamps; no ordering relation between them is required.
+* Under Journal 3, a foreign writer's value occurrence transports its persisted `createdAt`/`modifiedAt` pair unchanged, in the same way synchronization `take` copies the source pair. Journal import and replay MUST NOT substitute merge execution time or another manufactured timestamp.
 * Initial computation with no existing timestamp record sets both `createdAt` and `modifiedAt` to the current time. Migration `create` does the same.
 * A changed computor result for an already-materialized node preserves its existing `createdAt` and sets `modifiedAt` to the current time. Successive `modifiedAt` values are not required to increase numerically; local wall-clock movement or an earlier synchronization that copied a future-skewed timestamp can make a later value change record a numerically earlier `modifiedAt`.
 * Synchronization `take` copies the source node's persisted `createdAt` and `modifiedAt` pair. Synchronization `keep` preserves the existing pair. Synchronization MUST NOT substitute merge execution time or another manufactured timestamp.
 * Reset imports the source snapshot's persisted timestamp records. It MUST NOT substitute reset execution time or another manufactured timestamp.
+* Canonical bootstrap transports the pre-Journal source's persisted timestamp pair unchanged, on both the creator-resume and join paths. Creator resume rejects a resume whose occurrence timestamps disagree with the persisted legacy node timestamps, returning `JournalBootstrapForkError` and naming the mismatched pair (`journal/bootstrap/creator_resume.js:320-334`), and the join support check compares the same pair to decide whether the joining replica may keep the canonical `ValueId` instead of authoring a historical value (`journal/bootstrap/joining_support.js:333-340`).
 * Migration `keep`, `override`, and `invalidate` preserve the existing timestamp pair. Migration `create` initializes both timestamps to the current time.
 * `modifiedAt` MUST NOT change when:
   * a node becomes `potentially-outdated` (invalidation);

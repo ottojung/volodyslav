@@ -11,8 +11,7 @@ This model separates three concerns:
 - `NodeIdentifier` is the persisted storage identity of a materialized node
 - filesystem snapshots and internal storage operate directly on stored identifiers
 
-This document is the **intended target design specification** for IncrementalGraph
-node addressing. It describes the model as it is meant to be.
+This document is the canonical specification for IncrementalGraph node addressing.
 
 ## Terms
 

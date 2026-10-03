@@ -2,6 +2,43 @@
 
 This document describes the **migration system** for upgrading incremental-graph database state between application versions.
 
+## Scope: this is the pre-Journal `MigrationStorage` API
+
+This document owns the materialized-node migration API described by
+`MigrationStorage`: scope `S`, the per-node decisions, propagation, and
+`runMigration`. That API is still the implemented migration path in
+`migration_storage_class.js`, `migration_decisions.js`, and `migration_runner.js`.
+
+Journal 3 adds a second, different mechanism beside it. When a database-version
+transition changes the persisted representation of Journal records themselves, the
+rewrite is owned by the Journal-aware `JournalFormatCodec` described in
+`incremental-graph-journal-migrations.md`, not by this document. The two do not
+overlap: this API migrates materialized nodes of a replica whose format is not being
+rewritten; that codec rewrites retained Journal history in place, preserving record
+identities and historical meaning.
+
+A pre-Journal source that requires semantic, time, or allocator-dependent migration
+before Journal identity exists is bootstrap-incompatible rather than migratable, and
+startup fails it by name. `incremental-graph-journal-migrations.md` states that rule and
+the `JournalVersionCompatibilityError` it raises.
+
+## Startup ordering
+
+Migration is one of two gates. Startup runs them in this order, and ordinary
+synchronization runs after both:
+
+1. the migration gate, described below;
+2. the canonical-bootstrap gate — `runCanonicalBootstrapGate`, re-exported from
+   `incremental_graph/index.js` and called by `interface/lifecycle.js` between the
+   migration gate and `createIncrementalGraph`. A replica that is fresh, empty, or
+   already retains Journal records is left alone; a supported pre-Journal replica has a
+   canonical cut installed and its replica pointer moved; an indeterminate cohort answer
+   installs nothing and raises `UnresolvedCanonicalBootstrapError`.
+
+Synchronization does not perform either gate. A fixture or deployment that represents
+pre-Journal state supplies its own `CohortBootstrapSource`, because that transport is
+deployment configuration rather than persisted database state.
+
 > Note: this migration flow always performs a replica cutover on success. Even
 > when node values appear unchanged, migrations still bump `meta/version`, so
 > there is no no-op replica-switch optimization in the migration path.
@@ -94,6 +131,31 @@ Within a **preexisting stale `keep`/`override` region**, every stale node loses 
 `override()` MUST NOT be used when the migration changes the meaning or value of a node. If the value itself changes, use `invalidate()` instead, which triggers downstream recomputation so that dependents observe the new value.
 
 The intended use case is format migration: the database version changes the serialization format but the represented value is still meaningfully the same value. In that scenario missing invalidation in `override()` is correct by design — not a bug.
+
+### `override` is retained API, and this is a known gap
+
+`incremental-graph-journal-checklist.md` §16a requires the legacy `override` API,
+`OverrideConflictError`, and `override` decision documentation to be deleted from this
+document when the code path is deleted. The code path still exists:
+`migration_storage_class.js` defines `override()`, `migration_decisions.js` declares the
+`override` decision variant, and `migration_errors.js` defines
+`OverrideConflictError` and `InvalidMigrationDecisionError`.
+
+The requirement is therefore **not discharged**, and this section is deliberately left in
+place rather than deleted ahead of the code. Two properties make that the honest state:
+
+* `override` is still callable, so removing its documentation would leave a live,
+  undocumented public method on `MigrationStorage`;
+* the Journal-aware replacement is not a drop-in substitute. `JournalFormatCodec` is a
+  pure directed source→target rewrite over retained history, and it does not accept a
+  per-node callback that is told the previous-version node value. `override` also carries
+  a cache-state proof requirement (`InvalidMigrationDecisionError`), which the codec
+  does not express.
+
+When the `override` path is deleted from the source, this section, the `override` row in
+the decision-method table, the `OverrideConflictError` and `InvalidMigrationDecisionError`
+rows in the error table, and the idempotency exception that names `override` must be
+deleted in the same change.
 
 `invalidate` preserves the cached value if it exists, marks nodes as `"potentially-outdated"`, and preserves `modifiedAt`.
 

@@ -16,17 +16,25 @@ Volodyslav treats the following as release-safety concerns:
 * partial writes becoming observable;
 * generated state diverging from durable state;
 * installation of code with known unresolved correctness blockers;
-* inability to roll back after a bad deployment.
+* loss of retained Journal history during recovery.
 
 A release is safe only when these failure modes have been considered and the relevant safeguards are in place.
 
-## Durable checkpoints and rollback
+## Recovery is forward-only
 
-The most important mitigation is that Volodyslav keeps checkpoints of its most important database state.
+Journal 3 makes the Journal the semantic authority for IncrementalGraph state, so recovery does not restore an older database over a newer one.
 
-This means the system is not relying only on “the current database directory is valid.” Important persisted state is checkpointed over time, so a bad change does not have to be final. If an upgrade, migration, synchronization, or computation produces a bad result, rollback remains possible.
+Replacing an existing local database with an older checkpoint, or rewinding its remote publication to an earlier state, can make already-published writer coordinates disappear and later be re-authored while an older copy may still re-enter supported history. Journal 3 therefore does not treat either operation as release recovery; see `$id-5083197642258146`.
 
-This changes the release model: the system is allowed to evolve its storage format and computation engine, but those changes must preserve recoverability. A failed release should be reversible.
+Recovery from a bad release moves retained history forward:
+
+* a corrected release uses ordinary supported operations;
+* when a database-version transition is required, the corrected release adds a new canonical Journal-aware migration step;
+* when version and schema remain compatible, `resetTo()` may re-establish a known-good source projection while retaining all history already observed by the receiver. That is semantic rebaselining, not database rollback.
+
+Checkpoints remain useful. They support diagnosis and data inspection of a database directory, and `incremental-graph-journal-replay.md` derives current state from retained history. A checkpoint is not replacement authority for an existing Journal database, and it is not permission to rewind remote publication.
+
+A failed release is corrected forward. It is not undone.
 
 ## Atomicity in the database
 
@@ -56,6 +64,8 @@ Volodyslav synchronization should validate versions, validate identifier metadat
 
 Known synchronization cases that are not correctly handled must be treated as release blockers. For example, if two hosts can independently assign different storage identifiers to the same semantic node key and the current merge algorithm cannot repair that situation, that is not merely a TODO. It is a condition that must prevent installation until resolved.
 
+Under Journal 3 the same condition has a second name: a writer fork. `incremental-graph-journal-errors.md` classifies it, and the journal sublevel's disjointness rules make an unarbitrated divergence a fork rather than a merge problem, because each writer's stream is contiguous and immutable. Startup takes the corresponding decision before any graph API exists: `journal_bootstrap_gate.js` resolves a canonical bootstrap for a supported pre-Journal replica, and `lifecycle.js` throws `UnresolvedCanonicalBootstrapError` rather than constructing a graph over an unresolved publication.
+
 ## Release-blocker markers
 
 Some unsafe states are useful to keep in the repository temporarily while a larger change is being developed. For those cases, Volodyslav uses explicit release-blocker markers.
@@ -81,7 +91,7 @@ Builds, tests, linting, and type checking are part of release safety, but they a
 
 They help catch implementation errors before installation. They are especially important for persistence code, migration code, synchronization code, and filesystem rendering code, where small regressions can affect durable state.
 
-However, passing tests does not automatically mean a release is safe. Known unresolved correctness issues still require release blockers, and durable-state changes still require rollback and migration planning.
+However, passing tests does not automatically mean a release is safe. Known unresolved correctness issues still require release blockers, and durable-state changes still require migration planning and a forward-recovery plan.
 
 ## Policy
 
@@ -89,7 +99,7 @@ A change that affects durable state, synchronization, migration, installation, o
 
 1. What persisted state can this change read or write?
 2. Can a failure leave active state partially updated?
-3. Is there a checkpoint or rollback path?
+3. If the release is bad, what is the forward-recovery path?
 4. Does the stored format have version metadata?
 5. Are migrations explicit?
 6. Is incoming synchronized state staged before publication?
@@ -97,4 +107,4 @@ A change that affects durable state, synchronization, migration, installation, o
 8. Are known unresolved correctness issues marked as release blockers?
 9. Can installation accidentally proceed while a blocker remains?
 
-Release safety is not one mechanism. It is the combination of rollback, explicit formats, atomic database publication, staging, validation, tests, and install-time guards.
+Release safety is not one mechanism. It is the combination of forward recovery, explicit formats, atomic database publication, staging, validation, tests, and install-time guards.

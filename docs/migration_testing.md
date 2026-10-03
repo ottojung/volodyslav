@@ -18,6 +18,22 @@ At startup, the incremental graph compares:
 
 If versions differ, migration runs in a staged replica and then swaps the active replica pointer.
 
+Startup then runs the Journal 3 canonical-bootstrap gate, which is a separate step with a
+separate decision:
+
+- a replica that is fresh, empty, or already retains Journal records is left alone
+  (`no-pre-journal-state`);
+- a replica that is a supported pre-Journal source is offered to the cohort, and the
+  resolved canonical cut is installed into the inactive replica before the replica pointer
+  moves (`canonical-bootstrapped`);
+- an indeterminate cohort answer installs nothing and fails startup
+  (`unresolved-canonical-bootstrap`, raised as `UnresolvedCanonicalBootstrapError`).
+
+Ordinary synchronization runs after both gates. Synchronization does not perform the
+pre-Journal bootstrap, and a fixture that represents pre-Journal state brings its own
+`CohortBootstrapSource`, because that transport is deployment configuration rather than
+persisted database state.
+
 Conceptually, migration must preserve these invariants:
 
 - **No partial cutover**: users either stay on old state or atomically switch to fully migrated state.
@@ -64,7 +80,9 @@ This is the test that performs migration against a **mock remote repository fixt
 
 1. Build capabilities (environment/logger/datetime stubs and forced app version).
 2. Seed a mocked incremental-database remote branch from the old-version fixture.
-3. Initialize interface and trigger synchronization (which runs migration when needed).
+3. Initialize the interface. Startup runs the migration gate and then the
+   canonical-bootstrap gate before any graph API is exposed; only then does the test
+   trigger synchronization.
 4. Clone the resulting remote branch.
 5. Compare its rendered database directory against the canonical “current populated” fixture.
 
@@ -78,6 +96,26 @@ This test acts like a golden-output test for migration. Instead of asserting man
 
 It also remains reasonably robust because it compares canonical fixture directories rather than low-level LevelDB internals.
 
+### Journal 3 startup canonical bootstrap
+
+The same file also owns the describe block "Journal 3 startup canonical bootstrap over the
+pre-Journal fixture", over `mock-incremental-database-remote-populated-lastversion`. That
+fixture is a supported pre-Journal source (fingerprint `testfingerprnt`, stored version
+`0.0.0-dev-previous`), and the block covers:
+
+- the fixture is a supported pre-Journal source;
+- a cohort holding nothing publishes the fixture's own canonical cut and startup resumes the
+  creator (one query, one publication, one projected occurrence per materialized legacy
+  node, target version `0.0.0-dev`);
+- an indeterminate answer is unresolved and installs nothing, asserted by the absence of
+  `records` and `projection` on the result;
+- a pre-Journal fixture with no configured cohort source fails closed.
+
+The block reads a rendered fixture off disk through `backend/tests/journal_startup_fixture.js`
+rather than through a live replica. That helper builds the same weak observation
+`readPreJournalSourceState` builds from a live replica, and supplies the fixture's own
+`CohortBootstrapSource`.
+
 ---
 
 ## Layer 3 — smoke test that exercises the migrated repository
@@ -88,7 +126,8 @@ This is the behavioral smoke test over a realistic populated fixture. It ensures
 
 ### What this smoke test covers
 
-After bootstrapping from fixture-backed remote state, it exercises:
+After startup completes its migration and canonical-bootstrap gates over fixture-backed
+remote state, it exercises:
 
 - initialization and synchronization lifecycle,
 - core reads (`getAllEvents`, `getEvent`, `getConfig`),
@@ -107,6 +146,19 @@ Together they reduce blind spots:
 
 - **equivalence without usability** risk, and
 - **usability with hidden structural drift** risk.
+
+### Journal 3 startup lifecycle
+
+The same file also owns the describe block "populated fixture in the Journal 3 startup
+lifecycle", over `mock-incremental-database-remote-populated`. That fixture is already a
+Journal replica — current version, and more than zero retained `record|` keys — so startup
+leaves it alone and never bootstraps it a second time. The block also checks that the
+fixture's persisted graph is one the canonical-bootstrap creator can stage and resume, using
+the identifiers the replica already stores and the `last_node_index` it already persists.
+
+Startup itself is covered end to end by `backend/tests/journal_startup_lifecycle.test.js`,
+which drives `InterfaceClass.ensureInitialized` over live replicas built by the production
+path, including a live database left as supported pre-Journal state.
 
 ---
 
@@ -144,7 +196,8 @@ If a migration change is intentional and alters canonical rendered output, updat
 Migration confidence in Volodyslav comes from combining:
 
 - **strict engine invariants**,
-- **golden fixture migration reproduction**, and
-- **realistic behavioral smoke coverage**.
+- **golden fixture migration reproduction**,
+- **realistic behavioral smoke coverage**, and
+- **Journal 3 startup-gate coverage** over both pre-Journal and already-Journal fixtures.
 
 That combination is what makes migration changes safer than relying on only unit tests or only end-to-end tests.
