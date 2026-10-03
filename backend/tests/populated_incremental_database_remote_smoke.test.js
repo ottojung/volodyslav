@@ -104,8 +104,8 @@ describe("populated incremental-database remote smoke", () => {
 
         const config = await iface.getConfig();
         expect(config.help).toBe("Event logging help text");
-        expect(config.shortcuts.some(([k]) => k === "gym")).toBe(true);
-        expect(config.shortcuts.some(([k]) => k === "shipx")).toBe(true);
+        expect(config.shortcuts.some((shortcut) => shortcut.pattern === "gym")).toBe(true);
+        expect(config.shortcuts.some((shortcut) => shortcut.pattern === "shipx")).toBe(true);
 
         const focusA = await iface.getEvent(ANCHOR_IDS.focusA);
         expect(focusA).toBeTruthy();
