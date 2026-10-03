@@ -6,13 +6,14 @@ const { createIncrementalGraph } = require("../src/generators/incremental_graph"
 const { createDefaultGraphDefinition } = require("../src/generators/interface/default_graph");
 const allEvents = require("../src/generators/individual/all_events/wrapper");
 const { getMockedRootCapabilities } = require("./spies");
+const { fixtureAbsentCohortSource } = require("./journal_startup_fixture");
+const { ensureLiveDatabaseDirectory, stubDatetime, stubEnvironment, stubLogger, stubRandomSeed } = require("./stubs");
+const { runCanonicalBootstrapGate } = require("../src/generators/incremental_graph/journal_bootstrap_gate");
 const {
-    makeIdentifierLookup,
+    getRootDatabase,
+    scanFromFilesystem,
     serializeNodeKey,
     stringToNodeName,
-    nodeIdToKeyFromLookup,
-    nodeKeyToIdFromLookup,
-    nodeIdentifierFromString,
 } = require("../src/generators/incremental_graph/database");
 
 function nodeKey(head, args = []) {
@@ -24,125 +25,60 @@ function writeJson(filePath, value) {
     fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`);
 }
 
+const FINGERPRINT = "testfingerprint";
+const ALL_EVENTS_ID = "1-" + FINGERPRINT;
+const EVENTS_COUNT_ID = "2-" + FINGERPRINT;
+
 function makeSnapshot({ parentFreshness = "up-to-date", counter = 1, includeCounter = true, lastNodeIndex = 1 } = {}) {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "volodyslav-migration-"));
     const r = path.join(root, "rendered", "r");
     writeJson(path.join(r, "global", "identifiers_keys_map"), [
-        ["a", nodeKey("all_events")],
-        ["b", nodeKey("events_count")],
+        [ALL_EVENTS_ID, nodeKey("all_events")],
+        [EVENTS_COUNT_ID, nodeKey("events_count")],
     ]);
-    writeJson(path.join(r, "global", "fingerprint"), "testfingerprint");
+    writeJson(path.join(r, "global", "fingerprint"), FINGERPRINT);
     writeJson(path.join(r, "global", "last_node_index"), lastNodeIndex);
     writeJson(path.join(r, "global", "version"), "0.0.0-dev");
-    writeJson(path.join(r, "values", "a"), { type: "all_events", events: [] });
-    writeJson(path.join(r, "values", "b"), { type: "events_count", count: 0 });
-    writeJson(path.join(r, "freshness", "a"), "up-to-date");
-    writeJson(path.join(r, "freshness", "b"), parentFreshness);
+    writeJson(path.join(r, "values", ALL_EVENTS_ID), { type: "all_events", events: [] });
+    writeJson(path.join(r, "values", EVENTS_COUNT_ID), { type: "events_count", count: 0 });
+    writeJson(path.join(r, "freshness", ALL_EVENTS_ID), "up-to-date");
+    writeJson(path.join(r, "freshness", EVENTS_COUNT_ID), parentFreshness);
     fs.mkdirSync(path.join(r, "inputs"), { recursive: true });
     fs.mkdirSync(path.join(r, "revdeps"), { recursive: true });
-    writeJson(path.join(r, "revdeps", "a"), ["b"]);
-    if (includeCounter) writeJson(path.join(r, "counters", "a"), counter);
+    writeJson(path.join(r, "revdeps", ALL_EVENTS_ID), [EVENTS_COUNT_ID]);
+    if (includeCounter) writeJson(path.join(r, "counters", ALL_EVENTS_ID), counter);
     return root;
 }
 
-function readJson(filePath) {
-    return JSON.parse(fs.readFileSync(filePath, "utf8"));
-}
-
-function deepClone(value) {
-    return JSON.parse(JSON.stringify(value));
-}
-
-class MigratedSnapshotDatabase {
-    constructor(snapshotRoot) {
-        const replica = path.join(snapshotRoot, "rendered", "r");
-        this.schemaMap = new Map();
-        this.version = readJson(path.join(replica, "global", "version"));
-        this.fingerprint = readJson(path.join(replica, "global", "fingerprint"));
-        this.lastNodeIndex = readJson(path.join(replica, "global", "last_node_index"));
-        this.identifierLookup = makeIdentifierLookup(readJson(path.join(replica, "global", "identifiers_keys_map")));
-        this.nextId = this.lastNodeIndex;
-        for (const sublevel of ["values", "freshness", "valid", "timestamps", "global"]) {
-            const directory = path.join(replica, sublevel);
-            if (!fs.existsSync(directory)) continue;
-            for (const key of fs.readdirSync(directory)) {
-                this.schemaMap.set(`${sublevel}:${key}`, readJson(path.join(directory, key)));
-            }
-        }
+/**
+ * Open the migrated snapshot as a real database replica and complete the lifecycle
+ * transition a supported pre-Journal installation must go through.
+ *
+ * `incremental-graph-journal-lifecycle.md` §8.2 makes a pre-Journal materialized
+ * replica a canonical-bootstrap source, so a fixture which opens one and then publishes
+ * graph semantics has to install the resolved canonical cut first. Without that cut the
+ * replica persists materialized values with no Journal value occurrence, and the
+ * publication seam correctly refuses to validate a recomputation against nothing.
+ *
+ * @param {string} snapshotRoot - The migrated snapshot root.
+ * @param {object} capabilities - Root capabilities.
+ * @param {object[]} nodeDefs - The running release's node definitions.
+ * @returns {Promise<object>} The database whose active replica retains the canonical cut.
+ */
+async function openBootstrappedSnapshotDatabase(snapshotRoot, capabilities, nodeDefs) {
+    const replica = path.join(snapshotRoot, "rendered", "r");
+    const db = await getRootDatabase(capabilities);
+    await scanFromFilesystem(capabilities, db, replica, db.currentReplicaName());
+    const outcome = await runCanonicalBootstrapGate({
+        rootDatabase: db,
+        nodeDefs,
+        source: fixtureAbsentCohortSource({ queries: 0, publications: 0, published: [] }),
+    });
+    if (outcome.status !== "canonical-bootstrapped") {
+        throw new Error("the migrated snapshot did not complete its canonical bootstrap: " + outcome.status);
     }
-
-    currentReplicaName() { return "r"; }
-
-    getVersion() { return this.version; }
-
-    getFingerprint() { return this.fingerprint; }
-
-    getLastNodeIndex() { return this.lastNodeIndex; }
-
-    advanceLastNodeIndex(value) { this.lastNodeIndex = Math.max(this.lastNodeIndex, value); }
-
-    getActiveIdentifierLookup() { return this.identifierLookup; }
-
-    cloneActiveIdentifierLookup() { return makeIdentifierLookup(this.identifierLookup.serialized); }
-
-    replaceActiveIdentifierLookup(lookup) { this.identifierLookup = lookup; }
-
-    nodeIdToKey(nodeIdentifier) { return nodeIdToKeyFromLookup(this.identifierLookup, nodeIdentifier); }
-
-    nodeKeyToId(nodeKeyString) { return nodeKeyToIdFromLookup(this.identifierLookup, nodeKeyString); }
-
-    getCurrentAllocationWatermark() { return this.nextId; }
-
-    generateNodeIdentifier() {
-        this.nextId += 1;
-        return nodeIdentifierFromString(`${this.nextId.toString(36)}-${this.fingerprint}`);
-    }
-
-    releaseIdentifierReservations() {}
-
-    getSchemaStorage() {
-        const createSublevel = (name) => {
-            const prefix = `${name}:`;
-            return {
-                get: async (key) => {
-                    const value = this.schemaMap.get(prefix + String(key));
-                    return value === undefined ? undefined : deepClone(value);
-                },
-                put: async (key, value) => {
-                    this.schemaMap.set(prefix + String(key), deepClone(value));
-                },
-                del: async (key) => {
-                    this.schemaMap.delete(prefix + String(key));
-                },
-                putOp: (key, value) => ({ type: "put", sublevel: createSublevel(name), key, value }),
-                delOp: (key) => ({ type: "del", sublevel: createSublevel(name), key }),
-                keys: async function* () {
-                    for (const storedKey of this.schemaMap.keys()) {
-                        if (storedKey.startsWith(prefix)) yield storedKey.substring(prefix.length);
-                    }
-                }.bind(this),
-                clear: async () => {
-                    for (const storedKey of [...this.schemaMap.keys()]) {
-                        if (storedKey.startsWith(prefix)) this.schemaMap.delete(storedKey);
-                    }
-                },
-            };
-        };
-        return {
-            values: createSublevel("values"),
-            freshness: createSublevel("freshness"),
-            valid: createSublevel("valid"),
-            timestamps: createSublevel("timestamps"),
-            global: createSublevel("global"),
-            journal: createSublevel("journal"),
-            batch: async (operations) => {
-                for (const operation of operations) {
-                    if (operation.type === "put") await operation.sublevel.put(operation.key, operation.value);
-                    else if (operation.type === "del") await operation.sublevel.del(operation.key);
-                }
-            },
-        };
-    }
+    await db.initializeActiveIdentifierLookup();
+    return db;
 }
 
 function graphDefinitionsWithCountedEventsCount(capabilities) {
@@ -165,38 +101,38 @@ describe("migrate-snapshot-to-flag-validity", () => {
         const root = makeSnapshot();
         migrateSnapshot(root);
         const r = path.join(root, "rendered", "r");
-        expect(JSON.parse(fs.readFileSync(path.join(r, "freshness", "b"), "utf8"))).toBe("potentially-outdated");
-        expect(fs.existsSync(path.join(r, "valid", "a"))).toBe(false);
+        expect(JSON.parse(fs.readFileSync(path.join(r, "freshness", EVENTS_COUNT_ID), "utf8"))).toBe("potentially-outdated");
+        expect(fs.existsSync(path.join(r, "valid", ALL_EVENTS_ID))).toBe(false);
     });
 
     test("potentially-outdated node omits validity flags", () => {
         const root = makeSnapshot({ parentFreshness: "potentially-outdated", counter: 7 });
         migrateSnapshot(root);
         const r = path.join(root, "rendered", "r");
-        expect(JSON.parse(fs.readFileSync(path.join(r, "freshness", "b"), "utf8"))).toBe("potentially-outdated");
-        expect(fs.existsSync(path.join(r, "valid", "a"))).toBe(false);
+        expect(JSON.parse(fs.readFileSync(path.join(r, "freshness", EVENTS_COUNT_ID), "utf8"))).toBe("potentially-outdated");
+        expect(fs.existsSync(path.join(r, "valid", ALL_EVENTS_ID))).toBe(false);
     });
 
     test("snapshot with identifier but no cached value is rejected", () => {
         const root = makeSnapshot();
         const r = path.join(root, "rendered", "r");
-        fs.rmSync(path.join(r, "values", "b"));
-        fs.rmSync(path.join(r, "freshness", "b"));
-        writeJson(path.join(r, "freshness", "a"), "potentially-outdated");
-        expect(() => migrateSnapshot(root)).toThrow("Identifier has no cached value: b");
+        fs.rmSync(path.join(r, "values", EVENTS_COUNT_ID));
+        fs.rmSync(path.join(r, "freshness", EVENTS_COUNT_ID));
+        writeJson(path.join(r, "freshness", ALL_EVENTS_ID), "potentially-outdated");
+        expect(() => migrateSnapshot(root)).toThrow(`Identifier has no cached value: ${EVENTS_COUNT_ID}`);
     });
 
     test("dependency changes before parent pull is represented by absent validity", () => {
         const root = makeSnapshot({ parentFreshness: "potentially-outdated", counter: 2 });
         migrateSnapshot(root);
-        expect(fs.existsSync(path.join(root, "rendered", "r", "valid", "a"))).toBe(false);
+        expect(fs.existsSync(path.join(root, "rendered", "r", "valid", ALL_EVENTS_ID))).toBe(false);
     });
 
     test.each([
-        ["missing identifiers entry", (r) => writeJson(path.join(r, "global", "identifiers_keys_map"), [["a", nodeKey("all_events")]])],
-        ["missing counter", (r) => fs.rmSync(path.join(r, "counters", "a"))],
-        ["malformed freshness", (r) => writeJson(path.join(r, "freshness", "b"), "stale")],
-        ["malformed dependency counter", (r) => writeJson(path.join(r, "counters", "a"), "1")],
+        ["missing identifiers entry", (r) => writeJson(path.join(r, "global", "identifiers_keys_map"), [[ALL_EVENTS_ID, nodeKey("all_events")]])],
+        ["missing counter", (r) => fs.rmSync(path.join(r, "counters", ALL_EVENTS_ID))],
+        ["malformed freshness", (r) => writeJson(path.join(r, "freshness", EVENTS_COUNT_ID), "stale")],
+        ["malformed dependency counter", (r) => writeJson(path.join(r, "counters", ALL_EVENTS_ID), "1")],
         ["missing fingerprint", (r) => fs.rmSync(path.join(r, "global", "fingerprint"))],
         ["malformed last_node_index", (r) => writeJson(path.join(r, "global", "last_node_index"), "1")],
         ["missing version", (r) => fs.rmSync(path.join(r, "global", "version"))],
@@ -211,12 +147,18 @@ describe("migrate-snapshot-to-flag-validity", () => {
         const root = makeSnapshot({ parentFreshness: "potentially-outdated", counter: 3 });
         migrateSnapshot(root);
         const capabilities = getMockedRootCapabilities();
+        stubLogger(capabilities);
+        stubEnvironment(capabilities);
+        stubDatetime(capabilities);
+        stubRandomSeed(capabilities);
+        ensureLiveDatabaseDirectory(capabilities);
         const { nodeDefs, eventsCountCalls } = graphDefinitionsWithCountedEventsCount(capabilities);
-        const db = new MigratedSnapshotDatabase(root);
+        const db = await openBootstrappedSnapshotDatabase(root, capabilities, nodeDefs);
         const graph = await createIncrementalGraph(capabilities, db, nodeDefs);
 
         await expect(graph.pull("events_count")).resolves.toEqual({ type: "events_count", count: 0 });
         expect(eventsCountCalls()).toBe(1);
+        await db.close();
     });
 
 
