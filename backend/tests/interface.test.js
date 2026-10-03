@@ -502,8 +502,14 @@ describe("generators/interface", () => {
             await expect(iface.getAllEvents()).resolves.toHaveLength(26);
             await expect(iface.getConfig()).resolves.toMatchObject({
                 help: expect.stringContaining("Event logging help text"),
+                // getConfig answers the graph's runtime Config form (Shortcut objects);
+                // the tuple form is the serialized wire shape the /config route emits.
                 shortcuts: expect.arrayContaining([
-                    ["breakfast", "food [when this morning]", "Quick breakfast entry"],
+                    {
+                        pattern: "breakfast",
+                        replacement: "food [when this morning]",
+                        description: "Quick breakfast entry",
+                    },
                 ]),
             });
             expect(isInterface(iface)).toBe(true);
