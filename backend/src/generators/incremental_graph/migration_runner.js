@@ -24,6 +24,7 @@ const {
 const { holidayActivity } = require("./lock");
 const { makeMigrationStorage } = require("./migration_storage");
 const { buildDecisionsMap, buildDesiredValid, loadMaterializedNodes } = require("./migration_validity");
+const { tryUnsupportedPersistedIdentifier } = require("./migration_source_domain");
 const { buildMigrationM1Intents } = require("./migration_m1");
 const { buildProducedOccurrences } = require("./migration_occurrences");
 const { buildMigrationJournal } = require("./migration_journal");
@@ -246,6 +247,20 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
                 rawOldIdentifiers,
                 `migration source replica (${fromReplica})`
             );
+
+            // Every identifier of this replica is transported into the target
+            // unchanged, so a source persisting one outside the supported
+            // NodeIdentifier domain is not a supported migration source. It is
+            // rejected here, before the callback runs and before the target
+            // replica is written, rather than leaving a target behind which
+            // materializes nodes no Journal record can name.
+            const unsupportedIdentifier = tryUnsupportedPersistedIdentifier(
+                oldLookup,
+                `migration source replica (${fromReplica})`
+            );
+            if (unsupportedIdentifier !== undefined) {
+                throw unsupportedIdentifier;
+            }
 
             await assertValidReplicaMaterializationState(
                 prevStorage,

@@ -25,6 +25,7 @@ const { fromISOString } = require("../src/datetime");
 const {
     isUndecidedNodes,
     isDecisionConflict,
+    isUnsupportedPersistedIdentifierError,
 } = require("../src/generators/incremental_graph");
 const { toJsonKey } = require("./test_json_key_helper");
 const { getMockedRootCapabilities } = require("./spies");
@@ -547,6 +548,41 @@ describe("runMigration", () => {
         expect(caught).toBeDefined();
         expect(isMalformedIdentifierLookupError(caught)).toBe(true);
         expect(mock.setCurrentReplicaPointerCalled).toBe(false);
+    });
+
+    test("rejects source whose persisted identifier is outside the supported domain, before writing a target", async () => {
+        const capabilities = await getTestCapabilities();
+        const xStorage = makeSchemaStorage();
+        const yStorage = makeSchemaStorage();
+
+        // The shape a pre-identifier-fingerprint source replica persisted: a
+        // bare nine-letter text with no base36 index and no separator.
+        const legacyIdentifier = "gafdmopql";
+        fixtureNode("A");
+        await xStorage.global.put("version", "1.0.0");
+        await seedIdentifiers(
+            xStorage,
+            [[nodeIdentifierFromString(legacyIdentifier), toJsonKey("A")]],
+            0
+        );
+
+        const mock = makeRootDatabaseMock({ prevVersion: "1.0.0", currentVersion: "2.0.0", xStorage, yStorage });
+        const nodeDefs = [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }];
+        await seedGraphSchemeOnly(xStorage, nodeDefs);
+
+        let caught;
+        try {
+            await runMigration(capabilities, mock.rootDatabase, nodeDefs, async () => { throw new Error("callback should not execute"); });
+        } catch (e) { caught = e; }
+
+        expect(isUnsupportedPersistedIdentifierError(caught)).toBe(true);
+        expect(caught.identifier).toBe(legacyIdentifier);
+        expect(String(caught.message)).toMatch(/outside the supported NodeIdentifier domain/);
+        expect(mock.setCurrentReplicaPointerCalled).toBe(false);
+        // The defect this boundary closes: the target would otherwise persist the
+        // identifier it transported, leaving a replica whose materialized nodes no
+        // Journal record can name.
+        expect(await yStorage.global.get(IDENTIFIERS_KEY)).toBeUndefined();
     });
 
     test("rejects source with missing LAST_NODE_INDEX_KEY", async () => {

@@ -274,7 +274,62 @@ function isInvalidMigrationDecision(object) {
     return object instanceof InvalidMigrationDecision;
 }
 
+/**
+ * Thrown when a migration source replica persists an identifier outside the
+ * supported `NodeIdentifier` domain.
+ *
+ * `docs/specs/incremental-graph-journal-types.md` §Persisted identifier form
+ * across the bootstrap and migration boundary makes the domain a statement
+ * about the persisted forms of every supported source era, and its fail-closed
+ * consequence applies to this boundary as it does to the bootstrap boundary:
+ * a replica persisting an identifier outside the domain is not a supported
+ * source, so the migration rejects it instead of emitting a target replica that
+ * materializes nodes no Journal record can name.
+ *
+ * The identifier is reported rather than corrected. Re-minting or normalizing it
+ * would change which physical identity a materialized node has, which is a
+ * persisted-data-format change and not a repair a single transition may perform.
+ */
+class UnsupportedPersistedIdentifier extends Error {
+    /**
+     * @param {string} context
+     * @param {string} identifier
+     */
+    constructor(context, identifier) {
+        super(
+            `Unsupported persisted NodeIdentifier in ${context}: the replica persists ` +
+            `${JSON.stringify(identifier)}, which is outside the supported NodeIdentifier domain. ` +
+            "This replica is not a supported migration source, because a migration transports each " +
+            "persisted identifier unchanged and the resulting target replica would materialize nodes " +
+            "that no Journal record can name. The identifier is not re-minted or normalized, because " +
+            "that would change which physical identity a materialized node has."
+        );
+        this.name = "UnsupportedPersistedIdentifierError";
+        this.context = context;
+        this.identifier = identifier;
+    }
+}
+
+/**
+ * @param {string} context
+ * @param {string} identifier
+ * @returns {UnsupportedPersistedIdentifier}
+ */
+function makeUnsupportedPersistedIdentifierError(context, identifier) {
+    return new UnsupportedPersistedIdentifier(context, identifier);
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is UnsupportedPersistedIdentifier}
+ */
+function isUnsupportedPersistedIdentifierError(object) {
+    return object instanceof UnsupportedPersistedIdentifier;
+}
+
 module.exports = {
+    makeUnsupportedPersistedIdentifierError,
+    isUnsupportedPersistedIdentifierError,
     makeDecisionConflictError,
     makeInvalidMigrationDecisionError,
     isInvalidMigrationDecision,

@@ -50,6 +50,8 @@ const {
     isMissingDependencyMetadata,
     makeCreateExistingNodeError,
     isCreateExistingNode,
+    makeUnsupportedPersistedIdentifierError,
+    isUnsupportedPersistedIdentifierError,
 } = require('./migration_errors');
 const { migrationCallback } = require('./migration');
 const { synchronizeNoLock } = require('./database');
@@ -115,6 +117,8 @@ module.exports = {
     isMissingDependencyMetadata,
     makeCreateExistingNodeError,
     isCreateExistingNode,
+    makeUnsupportedPersistedIdentifierError,
+    isUnsupportedPersistedIdentifierError,
     holidayActivity,
     migrationCallback,
     synchronizeNoLock,
