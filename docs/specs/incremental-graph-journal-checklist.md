@@ -116,7 +116,9 @@ Acceptance:
 ### Bootstrap semantic-identity target
 
 - bootstrap journals the persisted legacy graph directly;
-- materialized NodeKeys, NodeIdentifiers, payloads, timestamps, freshness, validity, allocator watermark, and graph interpretation are preserved exactly at the cut;
+- materialized NodeKeys, NodeIdentifiers, payloads, timestamps, freshness, validity, allocator watermark, and graph interpretation are preserved exactly at the cut, where preserving a NodeIdentifier means transporting the source replica's persisted identifier text unchanged and never re-minting it;
+- a supported pre-Journal source's persisted identifiers lie in the supported NodeIdentifier domain of `incremental-graph-journal-types.md` §Persisted identifier form across the bootstrap and migration boundary; a source holding an identifier outside that domain fails `JournalVersionCompatibilityError` before Pass C1 authors history, and is never repaired by substituting a freshly allocated identifier for that node;
+- Pass C1's `legacyNodeIdentifier(K)` is the source replica's persisted identifier for K; a per-identifier substitution or normalization during bootstrap is a defect;
 - no ordinary legacy migration callback runs before canonical bootstrap;
 - a path needing semantic `create`/`invalidate`/`delete`, schema-semantic transformation, wall clock, randomness, or allocator-dependent new graph identity is rejected as incompatible before bootstrap history;
 - actual graph/schema migration happens after bootstrap via Journal-aware migration.
