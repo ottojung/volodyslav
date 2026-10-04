@@ -1412,16 +1412,12 @@ describe("resetToSource, making the target's staleness durable", () => {
 });
 
 /*
- * PENDING-WITH-REASON: reset's atomic cutover — `reset.md` §Atomicity requires the
- * receiver to expose either the old journal plus old graph or `Jreset` plus
- * `project(Jreset)`, never a split state — is a property of the persistence front,
- * which writes the retained records and lowers the projection in one write. The
- * algorithm layer returns both halves of that pair and commits nothing, and this
- * pass has no database available: podman and the Oracle container are reserved by
- * the front working board issue 82. The assertion belongs to a storage-level test
- * and is left unwritten rather than skipped silently.
+ * This suite is the algorithm layer: `resetToSource` returns the retained records and
+ * the projection they lower to, and commits nothing itself. `reset.md` §Atomicity is
+ * therefore not observable from here; the receiver exposing either the old journal plus
+ * the old graph or `Jreset` plus `project(Jreset)`, and never a split, is asserted
+ * against the production reset in `journal_reset_atomicity.test.js`.
  */
-
 describe("resetToSource, maintaining the counted proof summary", () => {
     test("the staged summary is the summary of the committed journal when the target adds proof", () => {
         const receiver = receiverProvenPair();
