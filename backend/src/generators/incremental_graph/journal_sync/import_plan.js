@@ -47,30 +47,22 @@
 /** @typedef {import('../journal/oracle/record_source').JournalSource} JournalSource */
 /** @typedef {import('../journal/types').NodeKey} NodeKey */
 
+const { validateImportedRecord } = require("./admission");
+const { readRetainedOverlap } = require("./retained_overlap");
+
 const {
     compareJournalSequence,
     isJournalError,
     isSameJournalAuthor,
-    isSemanticEvent,
-    isValidateEvent,
     journalAuthorToString,
     journalRecordIdToString,
-    journalSequenceAtFrontier,
     journalSequenceToString,
     makeJournalFrontier,
     makeJournalGapError,
     makeJournalRecordValidationError,
-    makeJournalReferenceCausalityError,
     makeJournalWriterBehindError,
-    nodeKeyToCanonicalString,
-    predecessorJournalSequence,
     readerOverIterable,
     requireSuccessorJournalSequence,
-    validateCompleteLocalPrefix,
-    validateCurrentShapeBasis,
-    validateNoForwardOwnWriterReference,
-    validateOrdinaryBasisReasons,
-    validateRetainedRangeCoverage,
     ZERO_JOURNAL_SEQUENCE,
 } = require("../journal");
 
@@ -178,129 +170,35 @@ function advanceFrontier(frontier, author, sequence) {
 }
 
 /**
- * Is the coordinate a record references covered by what that record observed?
- *
- * A reference is causal exactly when the referencing event's context already
- * covers the referenced coordinate. Within one writer publication the context's
- * own coordinate is the record's predecessor, so an earlier same-writer
- * coordinate is covered by that same rule.
- *
- * @param {SemanticEvent} event
- * @param {JournalRecordId} referenced
- * @returns {boolean}
- */
-function referenceIsObserved(event, referenced) {
-    const record = event;
-    if (
-        compareJournalSequence(
-            referenced.sequence,
-            journalSequenceAtFrontier(record.context, referenced.author)
-        ) <= 0
-    ) {
-        return true;
-    }
-    if (!isSameJournalAuthor(referenced.author, record.id.author)) {
-        return false;
-    }
-    const predecessor = predecessorJournalSequence(record.id.sequence);
-    return !(predecessor instanceof Error) &&
-        compareJournalSequence(referenced.sequence, predecessor) <= 0;
-}
-
-/**
- * The ValueId coordinates one record names, or an empty array when it names none.
- *
- * @param {JournalRecord} record
- * @returns {ReadonlyArray<JournalRecordId>}
- */
-function referencedIdsOf(record) {
-    if (isValidateEvent(record)) {
-        return [record.value];
-    }
-    if (record.kind === "invalidate" && record.scope.kind === "value") {
-        return [record.scope.value];
-    }
-    return [];
-}
-
-/**
- * The canonical NodeKey identities a record's validation basis names.
- * @param {JournalRecord} record
- * @returns {ReadonlyArray<string>}
- */
-function basisInputsOf(record) {
-    if (!isValidateEvent(record)) {
-        return [];
-    }
-    return record.basis.map((entry) => nodeKeyToCanonicalString(entry.input));
-}
-
-/**
- * Check one newly admitted record against the bounded validation contract.
- *
- * @param {JournalRecord} record
- * @param {JournalFrontier} frontier - The union frontier including `record`.
- * @param {(nodeKeyString: string) => ReadonlyArray<string>} currentInputKeysOfNode
- * @returns {JournalError | undefined}
- */
-function validateImportedRecord(record, frontier, currentInputKeysOfNode) {
-    if (!isSemanticEvent(record)) {
-        return validateNoForwardOwnWriterReference(record);
-    }
-    const ownPrefix = validateCompleteLocalPrefix(record);
-    if (ownPrefix !== undefined) {
-        return ownPrefix;
-    }
-    const retained = validateRetainedRangeCoverage(record, frontier);
-    if (retained !== undefined) {
-        return retained;
-    }
-    const forward = validateNoForwardOwnWriterReference(record);
-    if (forward !== undefined) {
-        return forward;
-    }
-    for (const referenced of referencedIdsOf(record)) {
-        if (referenceIsObserved(record, referenced)) {
-            continue;
-        }
-        return makeJournalReferenceCausalityError(
-            journalRecordIdToString(record.id),
-            journalRecordIdToString(referenced),
-            "the referencing record's context does not cover the coordinate it names"
-        );
-    }
-    if (!isValidateEvent(record)) {
-        return undefined;
-    }
-    const reasons = validateOrdinaryBasisReasons(record);
-    if (reasons !== undefined) {
-        return reasons;
-    }
-    const basisInputs = basisInputsOf(record);
-    const unique = new Set(basisInputs);
-    if (unique.size !== basisInputs.length) {
-        return makeJournalRecordValidationError(
-            "the admitted validation basis names a semantic input twice",
-            journalRecordIdToString(record.id)
-        );
-    }
-    return validateCurrentShapeBasis(record, currentInputKeysOfNode);
-}
-
-/**
  * Read one writer's missing suffix out of the source, admitting only a record at
  * exactly the next expected coordinate, and validate it as it is admitted.
  *
+ * A coordinate the source offers at or below `afterSequence` is evidence about a
+ * coordinate the receiver already retains, so it is compared against the
+ * receiver's own record rather than admitted, and two records which claim that
+ * identity with different canonical meaning are refused as a writer fork. A
+ * source which opens above `afterSequence` reaches none of this.
+ *
  * @param {JournalSource} source
+ * @param {JournalSource} receiver
  * @param {JournalAuthor} author
  * @param {JournalSequence} afterSequence - The receiver's retained length.
  * @param {JournalFrontier} frontier - The union frontier before this writer.
  * @param {(nodeKeyString: string) => ReadonlyArray<string>} currentInputKeysOfNode
  * @returns {{suffix: ImportedSuffix, frontier: JournalFrontier} | {error: JournalError}}
  */
-function acquireSuffix(source, author, afterSequence, frontier, currentInputKeysOfNode) {
+function acquireSuffix(source, receiver, author, afterSequence, frontier, currentInputKeysOfNode) {
     const reader = source.prefixReaderOf(author);
     const authorName = journalAuthorToString(author);
+    const overlap = readRetainedOverlap(
+        reader,
+        receiver.prefixReaderOf(author),
+        authorName,
+        afterSequence
+    );
+    if ("error" in overlap) {
+        return overlap;
+    }
     /** @type {JournalRecord[]} */
     const records = [];
     /** @type {JournalFrontier} */
@@ -312,8 +210,10 @@ function acquireSuffix(source, author, afterSequence, frontier, currentInputKeys
     /** @type {import('../journal/types').JournalSequence} */
     let expected = firstExpected;
 
+    let next = overlap.pending;
     for (;;) {
-        const record = reader.nextRecord();
+        const record = next === undefined ? reader.nextRecord() : next;
+        next = undefined;
         if (record === undefined) {
             const failure = reader.failure();
             if (failure !== undefined) {
@@ -433,7 +333,14 @@ function planForeignSuffixImport(plan) {
         if (compareJournalSequence(sourceLength, after) <= 0) {
             continue;
         }
-        const acquired = acquireSuffix(source, author, after, frontier, currentInputKeysOfNode);
+        const acquired = acquireSuffix(
+            source,
+            receiver,
+            author,
+            after,
+            frontier,
+            currentInputKeysOfNode
+        );
         if ("error" in acquired) {
             return { error: acquired.error };
         }
@@ -492,5 +399,4 @@ module.exports = {
     importedSourceOf,
     isImportPlan,
     planForeignSuffixImport,
-    validateImportedRecord,
 };

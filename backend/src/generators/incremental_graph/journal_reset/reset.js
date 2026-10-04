@@ -55,18 +55,17 @@
 
 const {
     isValueEvent,
-    journalRecordIdToString,
     makeJournalProjectionError,
     nodeKeyToCanonicalString,
 } = require("../journal");
 const { assertCompatibleIdentity, planForeignSuffixImport } = require("../journal_sync");
 const { finalizeResetRecords, ResetPublicationClass } = require("./authoring");
+const { verifyTargetEquivalence } = require("./equivalence");
 const { deleteRequestOf, iterateResetDomain, valueRequestOf } = require("./pass1");
 const {
     eligibleEffectiveProofUnion,
     planProofBarriers,
     planTargetValidations,
-    sameEdgeSet,
 } = require("./pass2");
 const { hasUncoveredValueInvalidationOf, planFreshnessMarkers } = require("./pass3");
 const {
@@ -293,11 +292,6 @@ function resetToSource(request) {
         }
         valueIds.set(nodeKeyToCanonicalString(record.node), record.id);
     }
-    const p1 = cut();
-    if ("error" in p1) {
-        return p1;
-    }
-
     /** @type {Map<string, NodeKey>} */
     const targetNodes = new Map();
     for (const occurrence of target.occurrences) {
@@ -331,6 +325,10 @@ function resetToSource(request) {
                 nodeKeyString: occurrence.nodeKeyString,
                 nodeKey: occurrence.nodeKey,
                 valueId,
+                nodeIdentifier: occurrence.nodeIdentifier,
+                payload: occurrence.payload,
+                createdAt: occurrence.createdAt,
+                modifiedAt: occurrence.modifiedAt,
                 validInputs: occurrence.validInputs,
                 fresh: occurrence.fresh,
             };
@@ -425,52 +423,6 @@ function resetToSource(request) {
             retainedState
         ),
     };
-}
-
-/**
- * Does the committed result equal the requested target semantic graph?
- *
- * The comparison is exactly the reset theorem's: present keys, payloads,
- * identifiers, timestamps, freshness and validity edges. ValueIds are excluded,
- * because reset preserves the union's occurrence whenever it already has the
- * target's immutable occurrence state.
- *
- * @param {Projection} final
- * @param {Iterable<ResetTargetOccurrence>} targetOccurrences
- * @returns {JournalError | undefined}
- */
-function verifyTargetEquivalence(final, targetOccurrences) {
-    const finalByKey = new Map(
-        final.occurrences.map((occurrence) => [occurrence.nodeKeyString, occurrence])
-    );
-    for (const occurrence of targetOccurrences) {
-        const committed = finalByKey.get(occurrence.nodeKeyString);
-        if (committed === undefined) {
-            return makeJournalProjectionError(
-                "the committed result does not contain a target-present node",
-                occurrence.nodeKeyString
-            );
-        }
-        if (journalRecordIdToString(committed.valueId) !== journalRecordIdToString(occurrence.valueId)) {
-            return makeJournalProjectionError(
-                "the committed occurrence is not the occurrence reset settled on",
-                occurrence.nodeKeyString
-            );
-        }
-        if (!sameEdgeSet(committed.validInputs, occurrence.validInputs)) {
-            return makeJournalProjectionError(
-                "the committed validity edges are not the target's",
-                occurrence.nodeKeyString
-            );
-        }
-        if (committed.fresh !== occurrence.fresh) {
-            return makeJournalProjectionError(
-                "the committed freshness is not the target's",
-                occurrence.nodeKeyString
-            );
-        }
-    }
-    return undefined;
 }
 
 module.exports = {
