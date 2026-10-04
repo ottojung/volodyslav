@@ -48,7 +48,7 @@ const {
 const {
     publishSyncOutcome,
     planSyncPublication,
-} = require('../src/generators/incremental_graph/database/sync_publish');
+} = require('../src/generators/incremental_graph/journal_publish/sync_publish');
 
 const {
     readRetainedLengths,
