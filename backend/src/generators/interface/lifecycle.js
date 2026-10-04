@@ -28,12 +28,30 @@ const {
     createIncrementalGraph,
     LIVE_DATABASE_WORKING_PATH,
     CHECKPOINT_WORKING_PATH,
+    resetJournalReceiverToSnapshot,
     runCanonicalBootstrapGate,
 } = require("../incremental_graph");
 const { defaultBranch, workingRepository } = require("../../gitstore");
 const { createDefaultGraphDefinition } = require("./default_graph");
 const { makeSynchronizeDatabaseError, makeUnresolvedCanonicalBootstrapError } = require("./errors");
 const { allEvents, config, diarySummary, ontology } = require("../individual");
+
+/**
+ * The synchronization options a reset-to-hostname operation is performed with.
+ *
+ * A reset of a receiver which retains Journal records is performed by the Journal reset
+ * rather than by adopting the snapshot's rows, so the operation is given that reset. A
+ * synchronization which is not a reset is returned unchanged.
+ *
+ * @param {{ resetToHostname?: string } | undefined} options
+ * @returns {{ resetToHostname?: string, journalReset?: import('../incremental_graph/journal_publish').ResetReceiverToSnapshot } | undefined}
+ */
+function withJournalReset(options) {
+    if (options?.resetToHostname === undefined) {
+        return options;
+    }
+    return { ...options, journalReset: resetJournalReceiverToSnapshot };
+}
 
 /** @param {InterfaceLifecycleAccess} interfaceInstance */
 function internalIsInitialized(interfaceInstance) {
@@ -128,7 +146,10 @@ async function internalBootstrap(capabilities) {
         );
         // Phase 1 (protocol §7.1.2): restore from remote snapshot.
         // Any error is fatal (protocol §8.3).
-        await synchronizeNoLock(capabilities, { resetToHostname: hostname });
+        await synchronizeNoLock(
+            capabilities,
+            withJournalReset({ resetToHostname: hostname })
+        );
         capabilities.logger.logInfo(
             { hostname },
             'Bootstrap: reset-to-hostname sync completed'
@@ -320,7 +341,7 @@ async function internalSynchronizeDatabaseNoLock(interfaceInstance, options) {
     const ontologyBox = interfaceInstance._ontologyBox;
     if (database === null) {
         capabilities.logger.logDebug({ options }, 'Synchronize: interface database is not open; synchronizing directly');
-        await synchronizeNoLock(capabilities, options);
+        await synchronizeNoLock(capabilities, withJournalReset(options));
         return;
     }
 
@@ -348,7 +369,7 @@ async function internalSynchronizeDatabaseNoLock(interfaceInstance, options) {
 
     try {
         capabilities.logger.logDebug({ options }, 'Synchronize: running synchronizeNoLock');
-        await synchronizeNoLock(capabilities, options);
+        await synchronizeNoLock(capabilities, withJournalReset(options));
     } catch (error) {
         synchronizeFailure = error;
     }

@@ -155,13 +155,13 @@ const {
 const { allocateAuthority, contextOf, finalizeEmission } = require("./emission");
 const { finalizeMigrationEmission } = require("./migration_emission");
 const {
-    isPresent,
-    isProjection,
-    makeReplicaSource,
-    makeUnionSource,
-    projectRetainedJournal,
+    compareCertificates, coversValueInvalidations, deriveFreshness, effectiveInputsOf,
+    HeadSelectionClass, isEligibleCertificate, isPresent, isProjection, makeReplicaSource,
+    makeUnionSource, NodeFreshnessClass, occurrenceOf, ProjectionClass, projectRetainedJournal,
     readerOverIterable,
-    selectSemanticHeads,
+    SelectedCertificateClass, selectSemanticHeads, selectedValueId, selfProofReady,
+    streamWithReport, summarizeInvalidations, validateDependencyClosure,
+    validateNodeIdentifierDistinctness
 } = require("./oracle");
 
 // The canonical-bootstrap path, whose only import point is its own subfolder index.
@@ -240,6 +240,10 @@ allocateAuthority,
     stageCanonicalBootstrap,
     authorityCompare,
     contextOf,
+    compareCertificates, coversValueInvalidations, deriveFreshness, effectiveInputsOf,
+    HeadSelectionClass, isEligibleCertificate, NodeFreshnessClass, occurrenceOf, ProjectionClass,
+    SelectedCertificateClass, selectedValueId, selfProofReady, validateDependencyClosure,
+    validateNodeIdentifierDistinctness,
     DELETE_REASONS,
     INVALIDATE_REASONS,
     JournalError,
@@ -267,6 +271,8 @@ allocateAuthority,
     isProjection,
     readerOverIterable,
     selectSemanticHeads,
+    streamWithReport,
+    summarizeInvalidations,
     isJournalForkError,
     isJournalFrontier,
     isJournalRecord,

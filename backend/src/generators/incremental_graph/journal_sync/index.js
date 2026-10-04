@@ -35,6 +35,8 @@ const {
 } = require("./authoring");
 const {
     importedSourceOf,
+    ImportedSuffixClass,
+    ImportPlanClass,
     isImportPlan,
     planForeignSuffixImport,
 } = require("./import_plan");
@@ -52,6 +54,8 @@ const {
 } = require("./synchronize");
 
 module.exports = {
+    ImportedSuffixClass,
+    ImportPlanClass,
     SnapshotIdentityClass,
     SyncOutcomeClass,
     SyncPublicationClass,

@@ -1,5 +1,5 @@
 /**
- * Lowering `project(Jfinal)` into a replica namespace.
+ * Lowering a computed projection into a replica namespace.
  *
  * `incremental-graph-journal-sync.md` §Atomic publication requires that
  * cutover publish, together, `Jfinal`, `project(Jfinal)`, the local writer
@@ -41,30 +41,63 @@
  * which is graph-sized work rather than history-sized work.
  */
 
+const {
+    journalKeyToString,
+    stringToJournalText,
+    stringToNodeKeyString,
+    IDENTIFIERS_KEY,
+    makeIdentifierLookup,
+    serializeIdentifierLookup,
+    LAST_NODE_INDEX_KEY,
+    compareNodeIdentifier,
+    nodeIdentifierToString,
+} = require('../database');
 /** @typedef {import('../journal/errors').AnyJournalError} JournalError */
 /** @typedef {import('../journal/records').JournalRecord} JournalRecord */
 /** @typedef {import('../journal_sync').SyncOutcome} SyncOutcome */
+/** @typedef {import('../journal_reset').ResetOutcome} ResetOutcome */
+/**
+ * The two computed outcomes a projection is lowered from.
+ *
+ * `SyncOutcome` and `ResetOutcome` differ in what they carry beyond the three fields
+ * this lowering reads — a synchronization reports whether it advanced the receiver's
+ * state, a reset reports the same fact plus the settled `ValueId` of each target-present
+ * node and its retained replay state — and agree on `records`, `projection` and
+ * `publication.writerState`, which are the whole of what a lowering consumes. Both are
+ * therefore lowered by one rule rather than by two rules about what a projection
+ * persists.
+ *
+ * The proof of those properties is guaranteed by:
+ * - `synchronizeRetainedJournal(...)`: it returns `records`, `projection` and
+ *   `publication`, and `SyncPublication.writerState` is the committed state after
+ *   `records`.
+ * - `resetToSource(...)`: it returns `[...imported, ...authored]` as `records`, the
+ *   final cut as `projection`, and `ResetPublicationClass(authored, state)`, whose
+ *   `writerState` is the committed state after those records.
+ *
+ * @typedef {SyncOutcome | ResetOutcome} PublishableOutcome
+ */
 /** @typedef {import('../journal/oracle/projection').Projection} Projection */
 /** @typedef {import('../journal/oracle/projection').ProjectedOccurrence} ProjectedOccurrence */
-/** @typedef {import('./types').ComputedValue} ComputedValue */
-/** @typedef {import('./types').Freshness} Freshness */
-/** @typedef {import('./types').JournalKey} JournalKey */
-/** @typedef {import('./types').JournalText} JournalText */
-/** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
-/** @typedef {import('./types').TimestampRecord} TimestampRecord */
-/** @typedef {import('./types').IdentifiersKeysMap} IdentifiersKeysMap */
-/** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
+/** @typedef {import('../database/types').ComputedValue} ComputedValue */
+/** @typedef {import('../database/types').Freshness} Freshness */
+/** @typedef {import('../database/types').JournalKey} JournalKey */
+/** @typedef {import('../database/types').JournalText} JournalText */
+/** @typedef {import('../database/types').NodeIdentifier} NodeIdentifier */
+/** @typedef {import('../database/types').TimestampRecord} TimestampRecord */
+/** @typedef {import('../database/types').IdentifiersKeysMap} IdentifiersKeysMap */
+/** @typedef {import('../database/root_database').SchemaStorage} SchemaStorage */
 
 /**
  * @template T
  * @template K
- * @typedef {import('./typed_database').GenericDatabase<T, K>} GenericDatabase
+ * @typedef {import('../database/typed_database').GenericDatabase<T, K>} GenericDatabase
  */
 
 /**
  * @template T
- * @template [K=import('./types').DatabaseKey]
- * @typedef {import('./types').SimpleSublevel<T, K>} SimpleSublevel
+ * @template [K=import('../database/types').DatabaseKey]
+ * @typedef {import('../database/types').SimpleSublevel<T, K>} SimpleSublevel
  */
 
 const {
@@ -78,18 +111,6 @@ const {
     makeJournalRecordKey,
     serializeWriterState,
 } = require('../journal_store');
-const {
-    journalKeyToString,
-    stringToJournalText,
-    stringToNodeKeyString,
-} = require('./types');
-const {
-    IDENTIFIERS_KEY,
-    makeIdentifierLookup,
-    serializeIdentifierLookup,
-} = require('./identifier_lookup');
-const { LAST_NODE_INDEX_KEY } = require('./root_database');
-const { compareNodeIdentifier, nodeIdentifierToString } = require('./node_identifier');
 
 /** The Journal sublevel's occurrence-index key family. */
 const OCCURRENCE_KEY_PREFIX = 'occurrence|';
@@ -280,9 +301,9 @@ async function unprojectedIdentifiers(values, freshness, timestamps, presentIden
  * @typedef {object} SyncPublishRequest
  * @property {SchemaStorage} target - The namespace to lower into: an inactive
  *   replica, or the staging sublevel of an operation which has not cut over.
- * @property {SyncOutcome} outcome - What `synchronizeRetainedJournal`
- *   computed: the records to retain, the receiver-authored publication and
- *   exactly `project(Jfinal)`.
+ * @property {PublishableOutcome} outcome - What `synchronizeRetainedJournal` or
+ *   `resetToSource` computed: the records to retain, the receiver-authored publication
+ *   and exactly the projection those records project to.
  */
 
 /**
