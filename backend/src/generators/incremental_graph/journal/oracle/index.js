@@ -41,6 +41,7 @@ const {
     edgeValid,
     isNodeFreshness,
     isProjection,
+    NodeFreshnessClass,
     occurrenceOf,
     ProjectionClass,
     selfProofReady,
@@ -51,6 +52,7 @@ const { projectRetainedJournal, readContextAndWatermark } = require("./project")
 
 module.exports = {
     HeadSelectionClass,
+    NodeFreshnessClass,
     ProjectionClass,
     SelectedCertificateClass,
     compareCertificates,

@@ -155,7 +155,8 @@ const { finalizeMigrationEmission } = require("./migration_emission");
 const {
     compareCertificates, coversValueInvalidations, deriveFreshness, effectiveInputsOf,
     HeadSelectionClass, isEligibleCertificate, isPresent, isProjection, makeReplicaSource,
-    makeUnionSource, occurrenceOf, ProjectionClass, projectRetainedJournal, readerOverIterable,
+    makeUnionSource, NodeFreshnessClass, occurrenceOf, ProjectionClass, projectRetainedJournal,
+    readerOverIterable,
     SelectedCertificateClass, selectSemanticHeads, selectedValueId, selfProofReady,
     streamWithReport, summarizeInvalidations, validateDependencyClosure,
     validateNodeIdentifierDistinctness
@@ -238,7 +239,7 @@ allocateAuthority,
     authorityCompare,
     contextOf,
     compareCertificates, coversValueInvalidations, deriveFreshness, effectiveInputsOf,
-    HeadSelectionClass, isEligibleCertificate, occurrenceOf, ProjectionClass,
+    HeadSelectionClass, isEligibleCertificate, NodeFreshnessClass, occurrenceOf, ProjectionClass,
     SelectedCertificateClass, selectedValueId, selfProofReady, validateDependencyClosure,
     validateNodeIdentifierDistinctness,
     DELETE_REASONS,
