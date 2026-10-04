@@ -21,7 +21,8 @@
 /** @typedef {import('./reset').ResetOutcome} ResetOutcome */
 /** @typedef {import('./reset').ResetRequestBody} ResetRequestBody */
 /** @typedef {import('./authoring').ResetRequest} ResetRequest */
-/** @typedef {import('./pass1').ResetDomain} ResetDomain */
+/** @typedef {import('./pass1').ResetDomainEntry} ResetDomainEntry */
+/** @typedef {import('./retained').RetainedReplayState} RetainedReplayState */
 /** @typedef {import('./pass2').ProofBarriers} ProofBarriers */
 /** @typedef {import('./pass2').TargetValidations} TargetValidations */
 /** @typedef {import('./pass3').FreshnessMarkers} FreshnessMarkers */
@@ -29,7 +30,7 @@
 
 const { ResetSourceClass, isResetSource, makeResetSource } = require("./source");
 const { ResetPublicationClass, isResetPublication } = require("./authoring");
-const { ResetDomainClass, isResetDomain } = require("./pass1");
+const { ResetDomainEntryClass, isResetDomainEntry } = require("./pass1");
 const { ProofBarriersClass, TargetValidationsClass } = require("./pass2");
 const { FreshnessMarkersClass } = require("./pass3");
 const {
@@ -41,27 +42,39 @@ const {
     selectOccurrences,
     stageAdmittedRecords,
 } = require("./proof_summary");
+const {
+    RetainedReplayStateClass,
+    isRetainedReplayState,
+    projectRetainedReplay,
+    stageRetainedRecords,
+} = require("./retained");
+const { buildRetainedReplayState } = require("./retained_maintenance");
 const { ResetOutcomeClass, isResetOutcome, resetToSource } = require("./reset");
 
 module.exports = {
     FreshnessMarkersClass,
     ProofBarriersClass,
     ProofSummaryClass,
-    buildProofSummary,
-    countEligibleProofEdges,
-    eligibleProofEdgeUnion,
-    isProofSummary,
-    selectOccurrences,
-    stageAdmittedRecords,
-    ResetDomainClass,
+    ResetDomainEntryClass,
     ResetOutcomeClass,
     ResetPublicationClass,
     ResetSourceClass,
+    RetainedReplayStateClass,
     TargetValidationsClass,
-    isResetDomain,
+    buildProofSummary,
+    buildRetainedReplayState,
+    countEligibleProofEdges,
+    eligibleProofEdgeUnion,
+    isProofSummary,
+    isResetDomainEntry,
     isResetOutcome,
     isResetPublication,
     isResetSource,
+    isRetainedReplayState,
     makeResetSource,
+    projectRetainedReplay,
     resetToSource,
+    selectOccurrences,
+    stageAdmittedRecords,
+    stageRetainedRecords,
 };

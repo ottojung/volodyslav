@@ -29,9 +29,12 @@
  * - Pass 3 makes the target's persistent stale flags durable, and the result is
  *   then checked against the target semantic graph the theorem names.
  *
- * Nothing here is a whole-journal materialisation. Import reads one missing suffix
- * at a time, the raw head view is a running maximum per node, and each pass is
- * graph-sized work over the reset domain, which `reset.md` §Streamability permits.
+ * Every cut is read from the activated replica's retained replay state, extended
+ * by the records reset admits or authors, because §Pass 1 closure guarantee,
+ * §Pass 2 and §Pass 3 all require the required state to be computed as a delta over
+ * the affected closure rather than by replaying unrelated retained history. Reset
+ * refuses a receiver which does not supply that state instead of falling back to a
+ * scan, exactly as it refuses a missing counted proof summary.
  */
 
 /** @typedef {import('../journal/errors').AnyJournalError} JournalError */
@@ -39,38 +42,26 @@
 /** @typedef {import('../journal/records').JournalRecord} JournalRecord */
 /** @typedef {import('../journal/types').AuthorityTime} AuthorityTime */
 /** @typedef {import('../journal/types').JournalAuthor} JournalAuthor */
-/** @typedef {import('../journal/types').JournalRecordId} JournalRecordId */
 /** @typedef {import('../journal/types').NodeKey} NodeKey */
-/** @typedef {import('../journal/oracle/projection').ProjectedOccurrence} ProjectedOccurrence */
-/** @typedef {import('../journal/oracle/record_source').JournalSource} JournalSource */
 /** @typedef {import('../journal/oracle/projection').Projection} Projection */
+/** @typedef {import('../journal/oracle/record_source').JournalSource} JournalSource */
 /** @typedef {import('../journal_sync').SnapshotIdentity} SnapshotIdentity */
 /** @typedef {import('./authoring').ResetPublication} ResetPublication */
 /** @typedef {import('./authoring').ResetRequest} ResetRequest */
 /** @typedef {import('./pass1').ResetValueId} ResetValueId */
 /** @typedef {import('./pass2').ResetTargetOccurrence} ResetTargetOccurrence */
-/** @typedef {import('./proof_summary').ProofSummary} ProofSummary */
+/** @typedef {import('./retained').RetainedReplayState} RetainedReplayState */
 /** @typedef {import('./source').ResetSource} ResetSource */
 
 const {
-    isJournalError,
     isValueEvent,
     journalRecordIdToString,
     makeJournalProjectionError,
-    selectSemanticHeads,
-    summarizeInvalidations,
+    nodeKeyToCanonicalString,
 } = require("../journal");
 const { assertCompatibleIdentity, planForeignSuffixImport } = require("../journal_sync");
-const {
-    authorLookupOf,
-    extendWithOwnRange,
-    observedUnion,
-    occurrencesByKey,
-    projectCut,
-    selectedOccurrencesOf,
-} = require("./cuts");
 const { finalizeResetRecords, ResetPublicationClass } = require("./authoring");
-const { planResetDomain, resetRequestsOf } = require("./pass1");
+const { deleteRequestOf, iterateResetDomain, valueRequestOf } = require("./pass1");
 const {
     eligibleEffectiveProofUnion,
     planProofBarriers,
@@ -79,10 +70,14 @@ const {
 } = require("./pass2");
 const { hasUncoveredValueInvalidationOf, planFreshnessMarkers } = require("./pass3");
 const {
-    isProofSummary,
-    selectOccurrences,
-    stageAdmittedRecords,
-} = require("./proof_summary");
+    authorLookupOf,
+    invalidationSummaryOf,
+    isRetainedReplayState,
+    projectRetainedReplay,
+    selectedHeadsOf,
+    selectedOccurrencesOf,
+    stageRetainedRecords,
+} = require("./retained");
 
 /**
  * The properties that this class carries are:
@@ -95,15 +90,16 @@ const {
  * - `changed` is true exactly when this reset imported a record the receiver did
  *   not already retain or authored a semantic record, which is the specification's
  *   persistent-change definition rather than a semantic-record count; and
- * - `proofSummary` is the counted proof summary of `Jreset`, which the
+ * - `retainedState` is the retained replay state of `Jreset`, which the
  *   persistence front stages with the records and cuts over with them, because
  *   `incremental-graph-journal-storage.md` §Change-bounded proof summary requires
- *   imported and reset-authored records to update a staged summary before cutover.
+ *   imported and reset-authored records to update a staged summary before cutover
+ *   and §Derived indexes requires the same of a maintained candidate index.
  *
  * The proof of those properties is guaranteed by:
- * - `resetToSource(...)`: it appends each imported record without touching it,
- *   appends only what `finalizeResetRecords` allocated, takes `projection` from a
- *   `projectRetainedJournal` over exactly those records, and derives `changed` from
+ * - `resetToSource(...)`: it stages each imported record without touching it,
+ *   stages only what `finalizeResetRecords` allocated, takes `projection` from the
+ *   retained state extended by exactly those records, and derives `changed` from
  *   the two counts directly; and
  * - `valueIds` is filled from `selectedHeads(J0)` for preserved occurrences and from
  *   the allocated `ValueEvent`s for authored ones, and Passes 2 and 3 author no
@@ -115,7 +111,7 @@ const {
  * @param {Projection} projection
  * @param {Map<string, ResetValueId>} valueIds
  * @param {boolean} changed
- * @param {ProofSummary} proofSummary
+ * @param {RetainedReplayState} retainedState
  */
 class ResetOutcomeClass {
     /**
@@ -124,15 +120,15 @@ class ResetOutcomeClass {
      * @param {Projection} projection
      * @param {Map<string, ResetValueId>} valueIds
      * @param {boolean} changed
-     * @param {ProofSummary} proofSummary
+     * @param {RetainedReplayState} retainedState
      */
-    constructor(records, publication, projection, valueIds, changed, proofSummary) {
+    constructor(records, publication, projection, valueIds, changed, retainedState) {
         this.records = records;
         this.publication = publication;
         this.projection = projection;
         this.valueIds = valueIds;
         this.changed = changed;
-        this.proofSummary = proofSummary;
+        this.retainedState = retainedState;
     }
 }
 
@@ -158,11 +154,12 @@ function isResetOutcome(value) {
  * @property {(nodeKeyString: string) => ReadonlyArray<string>} currentInputKeysOfNode
  * @property {SnapshotIdentity} receiverIdentity - The receiver's active version and
  *   graph scheme, compared against the held snapshot's own metadata.
- * @property {ProofSummary} proofSummary - The receiver's retained counted proof
- *   summary, which `incremental-graph-journal-storage.md` §Change-bounded proof
- *   summary requires the activated replica to maintain and which reset updates as
- *   it admits records. Reset refuses a missing summary rather than deriving the
- *   union by scanning retained history.
+ * @property {RetainedReplayState} retainedState - The activated replica's retained
+ *   per-node replay state, which carries its counted proof summary. Reset refuses a
+ *   missing state instead of deriving the required cuts by scanning retained
+ *   history, because `incremental-graph-journal-reset.md` §Pass 1 closure guarantee
+ *   requires the affected state to be computed as a delta over the retained
+ *   projection/index state.
  */
 
 /**
@@ -181,14 +178,14 @@ function resetToSource(request) {
         publicationInstant,
         currentInputKeysOfNode,
         receiverIdentity,
-        proofSummary,
+        retainedState,
     } = request;
 
-    if (!isProofSummary(proofSummary)) {
+    if (!isRetainedReplayState(retainedState)) {
         return {
             error: makeJournalProjectionError(
-                "reset requires the receiver's counted proof summary and does not fall back " +
-                    "to scanning retained certificate history",
+                "reset requires the receiver's retained replay state and does not fall back " +
+                    "to replaying retained history",
                 ""
             ),
         };
@@ -216,30 +213,25 @@ function resetToSource(request) {
     for (const suffix of plan.suffixes) {
         imported.push(...suffix.records);
     }
-    let journal = observedUnion({ receiver, plan });
 
     // The raw maintenance view. `project(J0)` is deliberately not taken: two valid
     // replicas can have a compatible union whose cross-authority winners are not
-    // dependency-closed, and Pass 1 is what repairs that.
-    const rawHeads = selectSemanticHeads(journal);
-    if ("error" in rawHeads) {
-        return rawHeads;
-    }
+    // dependency-closed, and Pass 1 is what repairs that. The head view is the
+    // retained one with the imported records folded in, so no retained Value/Delete
+    // record is visited again.
+    stageRetainedRecords(retainedState, imported);
+    const rawHeads = selectedHeadsOf(retainedState);
 
     const target = source.projection;
-    const domain = planResetDomain({ selections: rawHeads.selections, target });
-
-    // The receiver's retained summary, updated as this reset admits records.
-    const summary = proofSummary;
-    stageAdmittedRecords({ summary, records: imported });
+    const domain = iterateResetDomain({ selections: rawHeads, target });
 
     /** @type {JournalRecord[]} */
     const authored = [];
     /** @type {CommittedWriterState} */
     let state = committed;
     /**
-     * Allocate one pass's records as the next contiguous own-writer range, extend
-     * the journal with exactly that range, or report the failure which stopped it.
+     * Allocate one pass's records as the next contiguous own-writer range, stage them
+     * into the retained state, or report the failure which stopped it.
      *
      * @param {ReadonlyArray<ResetRequest>} requests
      * @returns {{publication: ResetPublication} | {error: JournalError}}
@@ -255,67 +247,61 @@ function resetToSource(request) {
         if ("error" in allocated) {
             return allocated;
         }
-        const extended = extendWithOwnRange(journal, localWriter, allocated.records);
-        if (isJournalError(extended)) {
-            return { error: extended };
-        }
-        journal = extended;
+        stageRetainedRecords(retainedState, allocated.records);
         authored.push(...allocated.records);
         state = allocated.writerState;
         return { publication: allocated };
     };
 
     /**
-     * Project the journal the passes have reached so far.
+     * The cut the passes have reached, read as a delta over the affected closure.
      * @returns {Projection | {error: JournalError}}
      */
-    const project = () => projectCut(journal, localWriter, currentInputKeysOfNode);
+    const cut = () => projectRetainedReplay(retainedState);
 
     // ---- Pass 1: target presence and value occurrences -------------------
-    const passOne = allocateInto(resetRequestsOf(domain));
+    /** @type {Map<string, ResetValueId>} */
+    const valueIds = new Map();
+    /** @type {import('./authoring').ResetRequest[]} */
+    const presenceRequests = [];
+    for (const entry of domain()) {
+        const request = valueRequestOf(entry);
+        if (request !== undefined) {
+            presenceRequests.push(request);
+            continue;
+        }
+        const winner = entry.selection === undefined ? undefined : entry.selection.winner;
+        if (winner !== undefined && isValueEvent(winner)) {
+            valueIds.set(entry.nodeKeyString, winner.id);
+        }
+    }
+    /** @type {import('./authoring').ResetRequest[]} */
+    const absenceRequests = [];
+    for (const entry of domain()) {
+        const request = deleteRequestOf(entry);
+        if (request !== undefined) {
+            absenceRequests.push(request);
+        }
+    }
+    const passOne = allocateInto([...presenceRequests, ...absenceRequests]);
     if ("error" in passOne) {
         return passOne;
     }
-    const p1 = project();
+    for (const record of passOne.publication.records) {
+        if (!isValueEvent(record)) {
+            continue;
+        }
+        valueIds.set(nodeKeyToCanonicalString(record.node), record.id);
+    }
+    const p1 = cut();
     if ("error" in p1) {
         return p1;
     }
-    selectOccurrences({ summary, occurrences: selectedOccurrencesOf(p1) });
 
-    /** @type {Map<string, ResetValueId>} */
-    const valueIds = new Map();
-    /** @type {number} */
-    let nextValueRecord = 0;
-    for (const nodeKeyString of domain.keys) {
-        const request = domain.values.get(nodeKeyString);
-        if (request === undefined) {
-            const selection = rawHeads.selections.get(nodeKeyString);
-            const winner = selection === undefined ? undefined : selection.winner;
-            if (winner !== undefined && isValueEvent(winner)) {
-                valueIds.set(nodeKeyString, winner.id);
-            }
-            continue;
-        }
-        const record = passOne.publication.records[nextValueRecord];
-        nextValueRecord += 1;
-        if (record === undefined) {
-            return {
-                error: makeJournalProjectionError(
-                    "Pass 1 authored fewer occurrences than it planned",
-                    nodeKeyString
-                ),
-            };
-        }
-        valueIds.set(nodeKeyString, record.id);
-    }
-
-    /** @type {ResetTargetOccurrence[]} */
-    const targetOccurrences = [];
-    /** @type {Map<string, ResetTargetOccurrence>} */
-    const targetOccurrenceByKey = new Map();
+    /** @type {Map<string, NodeKey>} */
+    const targetNodes = new Map();
     for (const occurrence of target.occurrences) {
-        const valueId = valueIds.get(occurrence.nodeKeyString);
-        if (valueId === undefined) {
+        if (!valueIds.has(occurrence.nodeKeyString)) {
             return {
                 error: makeJournalProjectionError(
                     "the target-present node has no settled occurrence",
@@ -323,37 +309,45 @@ function resetToSource(request) {
                 ),
             };
         }
-        const settled = {
-            nodeKeyString: occurrence.nodeKeyString,
-            nodeKey: occurrence.nodeKey,
-            valueId,
-            validInputs: occurrence.validInputs,
-            fresh: occurrence.fresh,
-        };
-        targetOccurrences.push(settled);
-        targetOccurrenceByKey.set(occurrence.nodeKeyString, settled);
+        targetNodes.set(occurrence.nodeKeyString, occurrence.nodeKey);
     }
-
     /**
      * @param {string} nodeKeyString
      * @returns {NodeKey | undefined}
      */
-    const nodeKeyOf = (nodeKeyString) => {
-        const occurrence = targetOccurrenceByKey.get(nodeKeyString);
-        return occurrence === undefined ? undefined : occurrence.nodeKey;
+    const nodeKeyOf = (nodeKeyString) => targetNodes.get(nodeKeyString);
+    /**
+     * The target-present occurrences reset settled on, as an ordered view over the
+     * source's committed projection rather than as one collection.
+     * @returns {Generator<ResetTargetOccurrence>}
+     */
+    const targetOccurrences = function* occurrences() {
+        for (const occurrence of target.occurrences) {
+            const valueId = valueIds.get(occurrence.nodeKeyString);
+            if (valueId === undefined) {
+                continue;
+            }
+            yield {
+                nodeKeyString: occurrence.nodeKeyString,
+                nodeKey: occurrence.nodeKey,
+                valueId,
+                validInputs: occurrence.validInputs,
+                fresh: occurrence.fresh,
+            };
+        }
     };
 
     // ---- Pass 2: target validity and proof -------------------------------
-    // The union is a count read, not a fold: the summary already holds the
+    // The union is a count read, not a fold: the retained state already holds the
     // imported and Pass 1 records, and its selected occurrences are the ones Pass 1
     // settled, so nothing below revisits retained certificate history.
     const unions = eligibleEffectiveProofUnion({
-        summary,
-        targetOccurrences,
-        authorOf: authorLookupOf(journal),
+        summary: retainedState.proofs,
+        targetOccurrences: [...targetOccurrences()],
+        authorOf: authorLookupOf(retainedState),
     });
     const barriers = planProofBarriers({
-        targetOccurrences,
+        targetOccurrences: targetOccurrences(),
         unions,
         nodeKeyOf,
     });
@@ -364,14 +358,14 @@ function resetToSource(request) {
     if ("error" in barrierPublication) {
         return barrierPublication;
     }
-    const afterBarriers = project();
+    const afterBarriers = cut();
     if ("error" in afterBarriers) {
         return afterBarriers;
     }
 
     const validations = planTargetValidations({
         postBarrier: afterBarriers,
-        targetOccurrences,
+        targetOccurrences: targetOccurrences(),
         resetValueIdOf: (nodeKeyString) => valueIds.get(nodeKeyString),
         nodeKeyOf,
         currentInputKeysOfNode,
@@ -383,32 +377,27 @@ function resetToSource(request) {
     if ("error" in validationPublication) {
         return validationPublication;
     }
-    stageAdmittedRecords({ summary, records: barrierPublication.publication.records });
-    stageAdmittedRecords({ summary, records: validationPublication.publication.records });
-    const afterValidations = project();
+    const afterValidations = cut();
     if ("error" in afterValidations) {
         return afterValidations;
     }
 
     // ---- Pass 3: target freshness ----------------------------------------
-    const summariesAfterValidations = summarizeInvalidations(
-        journal,
-        selectedOccurrencesOf(afterValidations)
-    );
-    if ("error" in summariesAfterValidations) {
-        return summariesAfterValidations;
-    }
-    const authorOf = authorLookupOf(journal);
+    const selectedOccurrences = selectedOccurrencesOf(retainedState);
     const markers = planFreshnessMarkers({
         postValidation: afterValidations,
-        targetOccurrences,
+        targetOccurrences: targetOccurrences(),
         hasUncoveredValueInvalidation: (nodeKeyString) => {
+            const occurrence = selectedOccurrences.get(nodeKeyString);
             const freshness = afterValidations.freshness.get(nodeKeyString);
             return hasUncoveredValueInvalidationOf(
-                summariesAfterValidations.summaries,
+                invalidationSummaryOf(
+                    retainedState,
+                    nodeKeyString,
+                    occurrence === undefined ? undefined : occurrence.valueId
+                ),
                 freshness === undefined ? undefined : freshness.certificate,
-                nodeKeyString,
-                authorOf
+                authorLookupOf(retainedState)
             );
         },
     });
@@ -416,14 +405,12 @@ function resetToSource(request) {
     if ("error" in markerPublication) {
         return markerPublication;
     }
-    stageAdmittedRecords({ summary, records: markerPublication.publication.records });
-    const final = project();
+    const final = cut();
     if ("error" in final) {
         return final;
     }
-    selectOccurrences({ summary, occurrences: selectedOccurrencesOf(final) });
 
-    const mismatch = verifyTargetEquivalence(final, targetOccurrences);
+    const mismatch = verifyTargetEquivalence(final, targetOccurrences());
     if (mismatch !== undefined) {
         return { error: mismatch };
     }
@@ -435,7 +422,7 @@ function resetToSource(request) {
             final,
             valueIds,
             imported.length > 0 || authored.length > 0,
-            summary
+            retainedState
         ),
     };
 }
@@ -449,11 +436,13 @@ function resetToSource(request) {
  * target's immutable occurrence state.
  *
  * @param {Projection} final
- * @param {ReadonlyArray<ResetTargetOccurrence>} targetOccurrences
+ * @param {Iterable<ResetTargetOccurrence>} targetOccurrences
  * @returns {JournalError | undefined}
  */
 function verifyTargetEquivalence(final, targetOccurrences) {
-    const finalByKey = occurrencesByKey(final);
+    const finalByKey = new Map(
+        final.occurrences.map((occurrence) => [occurrence.nodeKeyString, occurrence])
+    );
     for (const occurrence of targetOccurrences) {
         const committed = finalByKey.get(occurrence.nodeKeyString);
         if (committed === undefined) {

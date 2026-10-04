@@ -27,7 +27,7 @@
 /** @typedef {import('./authoring').ResetDeleteRequest} ResetDeleteRequest */
 /** @typedef {import('./authoring').ResetValueRequest} ResetValueRequest */
 
-const { isPresent, isValueEvent } = require("../journal");
+const { isValueEvent } = require("../journal");
 const { nodeIdentifierToString } = require("../database");
 
 /**
@@ -120,150 +120,152 @@ function hasTargetOccurrenceState(selected, target) {
 }
 
 /**
+ * One member of `selectedPresent(H0) union present(PS)`, decided as it is reached.
+ *
  * The properties that this class carries are:
- * - `keys` is exactly `selectedPresent(H0) union present(PS)` in ascending
- *   canonical order, and every member is in one of `values` or `deletes`;
- * - `values` names, for each target-present node of the domain, the `ValueEvent`
- *   reset must author, or `undefined` when the raw union's selected occurrence
- *   already has the target's immutable occurrence state; and
- * - `deletes` names exactly the target-absent nodes whose selected head is a
- *   `ValueEvent`, in ascending canonical order.
+ * - `nodeKeyString` is a member of the reset domain in ascending canonical order;
+ * - `selection` is the raw union's `selectedHeads` entry for that node, or
+ *   `undefined` when the node is present only in the target; and
+ * - `target` is the source's committed occurrence for that node, or `undefined`
+ *   when the node is target-absent.
  *
  * The proof of those properties is guaranteed by:
- * - `planResetDomain(...)`: it unions the keys `isPresent(selections, key)` holds
- *   with the keys `present(PS)` holds, sorts them, and for each key consults the
- *   target occurrence map first, so a historical key which is selected-absent in
- *   the union and absent from the target is in neither list and contributes no
- *   request; and
- * - `hasTargetOccurrenceState(...)`: it returns true exactly when the selected
- *   `ValueEvent`'s `nodeIdentifier`, `payload`, `createdAt` and `modifiedAt` are
- *   the target's, which is the condition under which the specification preserves
- *   the occurrence and authors no `ValueEvent`.
+ * - `iterateResetDomain(plan)`: it merges the two ascending key sequences it is
+ *   given and yields one entry per distinct key, so a node in both sources is
+ *   yielded once with both members, and every yielded key is a member of the
+ *   union the specification defines.
  *
- * @param {ReadonlyArray<string>} keys
- * @param {Map<string, ResetValueRequest | undefined>} values
- * @param {ReadonlyArray<ResetDeleteRequest>} deletes
+ * @param {string} nodeKeyString
+ * @param {HeadSelection | undefined} selection
+ * @param {ProjectedOccurrence | undefined} target
  */
-class ResetDomainClass {
+class ResetDomainEntryClass {
     /**
-     * @param {ReadonlyArray<string>} keys
-     * @param {Map<string, ResetValueRequest | undefined>} values
-     * @param {ReadonlyArray<ResetDeleteRequest>} deletes
+     * @param {string} nodeKeyString
+     * @param {HeadSelection | undefined} selection
+     * @param {ProjectedOccurrence | undefined} target
      */
-    constructor(keys, values, deletes) {
-        this.keys = keys;
-        this.values = values;
-        this.deletes = deletes;
+    constructor(nodeKeyString, selection, target) {
+        this.nodeKeyString = nodeKeyString;
+        this.selection = selection;
+        this.target = target;
     }
 }
 
-/** @typedef {ResetDomainClass} ResetDomain */
+/** @typedef {ResetDomainEntryClass} ResetDomainEntry */
 
 /**
  * @param {unknown} value
- * @returns {value is ResetDomain}
+ * @returns {value is ResetDomainEntry}
  */
-function isResetDomain(value) {
-    return value instanceof ResetDomainClass;
+function isResetDomainEntry(value) {
+    return value instanceof ResetDomainEntryClass;
 }
 
 /**
- * @param {Projection} target
- * @returns {Map<string, ProjectedOccurrence>}
- */
-function occurrencesByKey(target) {
-    return new Map(target.occurrences.map((occurrence) => [occurrence.nodeKeyString, occurrence]));
-}
-
-/**
- * Plan the target presence and value occurrences the raw union still owes.
+ * The reset domain as an ordered view rather than as one collection.
+ *
+ * `incremental-graph-journal-reset.md` §Streamability forbids reset from
+ * requiring the complete reset domain to be materialized in RAM as one
+ * collection, and permits the passes to be implemented as ordered iteration with
+ * bounded iterator buffers. Both members of the domain already arrive in ascending
+ * canonical order - `selectedHeads` keys are sorted and the source's committed
+ * projection lists its occurrences in ascending order - so the domain is the merge
+ * of two ascending sequences, and the merge holds one member of each.
+ *
+ * The view is re-iterable: Pass 1 walks it once for the target occurrences and
+ * once for the target absences, and neither walk needs the other one's results.
  *
  * @param {object} plan
  * @param {Map<string, HeadSelection>} plan.selections - The raw `selectedHeads(J0)` view.
  * @param {Projection} plan.target - The source's committed projection `PS`.
- * @returns {ResetDomain}
+ * @returns {() => Generator<ResetDomainEntry>}
  */
-function planResetDomain(plan) {
+function iterateResetDomain(plan) {
     const { selections, target } = plan;
-    const present = occurrencesByKey(target);
-
-    /** @type {Set<string>} */
-    const domain = new Set();
-    for (const nodeKeyString of [...selections.keys()].sort()) {
-        if (isPresent(selections, nodeKeyString)) {
-            domain.add(nodeKeyString);
-        }
-    }
-    for (const occurrence of target.occurrences) {
-        domain.add(occurrence.nodeKeyString);
-    }
-    const keys = [...domain].sort();
-
-    /** @type {Map<string, ResetValueRequest | undefined>} */
-    const values = new Map();
-    /** @type {ResetDeleteRequest[]} */
-    const deletes = [];
-    for (const nodeKeyString of keys) {
-        const targetOccurrence = present.get(nodeKeyString);
-        if (targetOccurrence !== undefined) {
-            const selection = selections.get(nodeKeyString);
-            const winner = selection === undefined ? undefined : selection.winner;
-            if (
-                winner !== undefined &&
-                isValueEvent(winner) &&
-                hasTargetOccurrenceState(winner, targetOccurrence)
-            ) {
-                values.set(nodeKeyString, undefined);
+    const selectedKeys = [...selections.keys()].sort();
+    return function* entries() {
+        let selectedIndex = 0;
+        let targetIndex = 0;
+        for (;;) {
+            const selectedKey = selectedKeys[selectedIndex];
+            const occurrence = target.occurrences[targetIndex];
+            if (selectedKey === undefined && occurrence === undefined) {
+                return;
+            }
+            if (occurrence === undefined || (selectedKey !== undefined && selectedKey < occurrence.nodeKeyString)) {
+                const selection = selections.get(selectedKey ?? "");
+                selectedIndex += 1;
+                yield new ResetDomainEntryClass(selectedKey ?? "", selection, undefined);
                 continue;
             }
-            const node = selection === undefined ? targetOccurrence.nodeKey : selection.nodeKey;
-            values.set(nodeKeyString, {
-                kind: "value",
-                node,
-                nodeIdentifier: targetOccurrence.nodeIdentifier,
-                payload: targetOccurrence.payload,
-                createdAt: targetOccurrence.createdAt,
-                modifiedAt: targetOccurrence.modifiedAt,
-            });
-            continue;
+            if (selectedKey === undefined || occurrence.nodeKeyString < selectedKey) {
+                targetIndex += 1;
+                yield new ResetDomainEntryClass(occurrence.nodeKeyString, undefined, occurrence);
+                continue;
+            }
+            selectedIndex += 1;
+            targetIndex += 1;
+            yield new ResetDomainEntryClass(selectedKey, selections.get(selectedKey), occurrence);
         }
-        const selection = selections.get(nodeKeyString);
-        const winner = selection === undefined ? undefined : selection.winner;
-        if (winner === undefined || !isValueEvent(winner)) {
-            continue;
-        }
-        if (selection !== undefined) {
-            deletes.push({ kind: "delete", node: selection.nodeKey });
-        }
-    }
-    return new ResetDomainClass(keys, values, deletes);
+    };
 }
 
 /**
- * The Pass 1 request list in the one order reset allocates it: the target
- * occurrences of the domain, then the target absences.
+ * The `ValueEvent` reset must author for one domain member, if any.
  *
- * @param {ResetDomain} domain
- * @returns {import('./authoring').ResetRequest[]}
+ * @param {ResetDomainEntry} entry
+ * @returns {ResetValueRequest | undefined}
  */
-function resetRequestsOf(domain) {
-    /** @type {import('./authoring').ResetRequest[]} */
-    const requests = [];
-    for (const nodeKeyString of domain.keys) {
-        const request = domain.values.get(nodeKeyString);
-        if (request !== undefined) {
-            requests.push(request);
-        }
+function valueRequestOf(entry) {
+    const target = entry.target;
+    if (target === undefined) {
+        return undefined;
     }
-    requests.push(...domain.deletes);
-    return requests;
+    const selection = entry.selection;
+    const winner = selection === undefined ? undefined : selection.winner;
+    if (winner !== undefined && isValueEvent(winner) && hasTargetOccurrenceState(winner, target)) {
+        return undefined;
+    }
+    const node = selection === undefined ? target.nodeKey : selection.nodeKey;
+    return {
+        kind: "value",
+        node,
+        nodeIdentifier: target.nodeIdentifier,
+        payload: target.payload,
+        createdAt: target.createdAt,
+        modifiedAt: target.modifiedAt,
+    };
+}
+
+/**
+ * The `DeleteEvent` reset must author for one domain member, if any.
+ *
+ * A target-absent member whose selected head is a `ValueEvent` is deleted, and a
+ * member which is already selected-absent contributes nothing, which is what makes
+ * a repeated reset to the same absent target accumulate no redundant deletes.
+ *
+ * @param {ResetDomainEntry} entry
+ * @returns {ResetDeleteRequest | undefined}
+ */
+function deleteRequestOf(entry) {
+    if (entry.target !== undefined) {
+        return undefined;
+    }
+    const selection = entry.selection;
+    const winner = selection === undefined ? undefined : selection.winner;
+    if (winner === undefined || !isValueEvent(winner) || selection === undefined) {
+        return undefined;
+    }
+    return { kind: "delete", node: selection.nodeKey };
 }
 
 module.exports = {
-    ResetDomainClass,
+    ResetDomainEntryClass,
+    deleteRequestOf,
     hasTargetOccurrenceState,
-    isResetDomain,
+    isResetDomainEntry,
+    iterateResetDomain,
     payloadEquals,
-    planResetDomain,
-    resetRequestsOf,
+    valueRequestOf,
 };

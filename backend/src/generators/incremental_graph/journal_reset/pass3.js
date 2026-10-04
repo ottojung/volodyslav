@@ -65,7 +65,7 @@ function isFreshnessMarkers(value) {
  *
  * @param {object} plan
  * @param {Projection} plan.postValidation - The projection at this pass's cut.
- * @param {ReadonlyArray<ResetTargetOccurrence>} plan.targetOccurrences
+ * @param {Iterable<ResetTargetOccurrence>} plan.targetOccurrences
  * @param {(nodeKeyString: string, valueId: ResetValueId) => boolean} plan.hasUncoveredValueInvalidation
  * @returns {FreshnessMarkers}
  */
@@ -101,15 +101,17 @@ function planFreshnessMarkers(plan) {
  * of two derived values the cut already produced, not a scan of invalidation
  * history: the summary is the per-writer maximum the replay pass maintains.
  *
- * @param {ReadonlyMap<string, import('../journal/oracle/invalidations').InvalidationSummary>} summaries
+ * The summary is the admitted maxima projected for one node and one occurrence, so
+ * an occurrence the retained state does not select has no value-scoped maximum at
+ * all and the answer is the vacuous one.
+ *
+ * @param {import('../journal/oracle/invalidations').InvalidationSummary} summary
  * @param {import('../journal/oracle/certificates').SelectedCertificate | undefined} certificate
- * @param {string} nodeKeyString
  * @param {(name: string) => JournalAuthor | undefined} authorOf
  * @returns {boolean}
  */
-function hasUncoveredValueInvalidationOf(summaries, certificate, nodeKeyString, authorOf) {
-    const summary = summaries.get(nodeKeyString);
-    if (summary === undefined || summary.valueScoped.size === 0) {
+function hasUncoveredValueInvalidationOf(summary, certificate, authorOf) {
+    if (summary.valueScoped.size === 0) {
         return false;
     }
     if (certificate === undefined) {
@@ -119,7 +121,7 @@ function hasUncoveredValueInvalidationOf(summaries, certificate, nodeKeyString, 
     for (const entry of summary.valueScoped) {
         const author = authorOf(entry[0]);
         if (author === undefined) {
-            throw new Error("an invalidation summary names a writer the source does not hold");
+            throw new Error("an invalidation summary names a writer the receiver does not retain");
         }
         if (compareJournalSequence(journalSequenceAtFrontier(context, author), entry[1]) < 0) {
             return true;

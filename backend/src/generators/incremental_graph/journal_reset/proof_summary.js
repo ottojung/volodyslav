@@ -449,6 +449,7 @@ module.exports = {
     buildProofSummary,
     countEligibleProofEdges,
     eligibleProofEdgeUnion,
+    invalidationViewOf,
     isProofSummary,
     selectOccurrences,
     stageAdmittedRecords,

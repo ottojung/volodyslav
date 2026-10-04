@@ -25,19 +25,24 @@ const {
     successorJournalSequence,
 } = require("./record_source");
 const { streamEveryRecord, streamWithReport, validateContextClaim } = require("./scan");
-const { isPresent, selectSemanticHeads, selectedValueId } = require("./heads");
+const { HeadSelectionClass, isPresent, selectSemanticHeads, selectedValueId } = require("./heads");
 const { isInvalidationSummary, summarizeInvalidations, summaryIsCovered } = require("./invalidations");
 const {
+    compareCertificates,
+    coversValueInvalidations,
     effectiveInputsOf,
     isEligibleCertificate,
     isSelectedCertificate,
     selectCertificates,
+    SelectedCertificateClass,
 } = require("./certificates");
 const {
     deriveFreshness,
     edgeValid,
     isNodeFreshness,
     isProjection,
+    occurrenceOf,
+    ProjectionClass,
     selfProofReady,
     validateDependencyClosure,
     validateNodeIdentifierDistinctness,
@@ -45,6 +50,11 @@ const {
 const { projectRetainedJournal, readContextAndWatermark } = require("./project");
 
 module.exports = {
+    HeadSelectionClass,
+    ProjectionClass,
+    SelectedCertificateClass,
+    compareCertificates,
+    coversValueInvalidations,
     deriveFreshness,
     effectiveInputsOf,
     edgeValid,
@@ -54,6 +64,7 @@ module.exports = {
     isPresent,
     isProjection,
     isSelectedCertificate,
+    occurrenceOf,
     makeReplicaSource,
     makeUnionSource,
     projectRetainedJournal,

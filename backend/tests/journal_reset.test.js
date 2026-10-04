@@ -46,7 +46,7 @@ const {
 const { SnapshotIdentityClass } = require("../src/generators/incremental_graph/journal_sync");
 
 const {
-    buildProofSummary,
+    buildRetainedReplayState,
     countEligibleProofEdges,
     eligibleProofEdgeUnion,
     isResetOutcome,
@@ -308,35 +308,28 @@ function sourceSnapshotOf(records, options) {
 }
 
 /**
- * The counted proof summary the activated replica of `source` maintains, as the
+ * The retained replay state the activated replica of `source` maintains, as the
  * persistence front loads it before a reset.
  *
  * Building it here is the maintenance traversal `incremental-graph-journal-storage.md`
- * §Change-bounded proof summary permits for a missing or stale summary. Reset
- * itself never performs it.
+ * §Change-bounded proof summary and §Derived indexes permit for a missing derived
+ * index. Reset itself never performs it and refuses a receiver which does not hold
+ * the state.
  *
  * @param {import("../src/generators/incremental_graph/journal").JournalSource} source
  * @param {(nodeKeyString: string) => ReadonlyArray<string>} currentInputKeysOfNode
- * @returns {import("../src/generators/incremental_graph/journal_reset").ProofSummary}
+ * @returns {import("../src/generators/incremental_graph/journal_reset").RetainedReplayState}
  */
-function retainedProofSummary(source, currentInputKeysOfNode) {
-    const projection = projectRetainedJournal({
+function retainedReplayState(source, currentInputKeysOfNode) {
+    const built = buildRetainedReplayState({
         source,
         localWriter: LOCAL_AUTHOR,
         currentInputKeysOfNode,
     });
-    if (projection instanceof Error) {
-        throw new Error("the receiver fixture does not project: " + projection.message);
-    }
-    const built = buildProofSummary({
-        source,
-        occurrences: new Map(projection.occurrences.map((occurrence) => [occurrence.nodeKeyString, occurrence])),
-        currentInputKeysOfNode,
-    });
     if ("error" in built) {
-        throw new Error("the receiver fixture has no proof summary: " + built.error.message);
+        throw new Error("the receiver fixture has no retained replay state: " + built.error.message);
     }
-    return built.summary;
+    return built.state;
 }
 
 /**
@@ -352,7 +345,7 @@ function reset(options) {
     const receiver = makeReplicaSource(replicaOf(options.receiver));
     return resetToSource({
         receiver,
-        proofSummary: retainedProofSummary(
+        retainedState: retainedReplayState(
             receiver,
             options.currentInputKeysOfNode === undefined ? twoInputSchema : options.currentInputKeysOfNode
         ),
@@ -620,7 +613,7 @@ describe("resetToSource, establishing target presence over the raw union", () =>
         const secondReceiver = makeReplicaSource(replicaOf(retained));
         const second = resetToSource({
             receiver: secondReceiver,
-            proofSummary: retainedProofSummary(secondReceiver, twoInputSchema),
+            retainedState: retainedReplayState(secondReceiver, twoInputSchema),
             source,
             localWriter: LOCAL_AUTHOR,
             committed: first.publication.writerState,
@@ -834,7 +827,7 @@ describe("resetToSource, weakening proof with occurrence-scoped barriers", () =>
         const secondReceiver = makeReplicaSource(replicaOf(retained));
         const second = outcomeOf(resetToSource({
             receiver: secondReceiver,
-            proofSummary: retainedProofSummary(secondReceiver, twoInputSchema),
+            retainedState: retainedReplayState(secondReceiver, twoInputSchema),
             source: sourceSnapshotOf(sourcePair(
                 [{ node: NODE_A, value: "unknown" }, { node: NODE_D, value: "unknown" }],
                 { reason: "migration" }
@@ -1188,7 +1181,7 @@ describe("resetToSource, weakening proof with occurrence-scoped barriers", () =>
         // both certificates, `D` only by the one which observed the barrier and
         // proved it again. Both are positive, and `D`'s is positive because it is a
         // count rather than a flag the earlier barrier cleared.
-        const before = retainedProofSummary(makeReplicaSource(replicaOf(receiver)), twoInputSchema);
+        const before = retainedReplayState(makeReplicaSource(replicaOf(receiver)), twoInputSchema).proofs;
         const authorOf = (name) => (name === WRITER_LOCAL ? LOCAL_AUTHOR : undefined);
         expect(countEligibleProofEdges({
             summary: before,
@@ -1208,7 +1201,7 @@ describe("resetToSource, weakening proof with occurrence-scoped barriers", () =>
         // The summary staged for cutover with reset's own records has retired both
         // edges, so it agrees with the projection it is published beside.
         expect([...eligibleProofEdgeUnion({
-            summary: outcome.proofSummary,
+            summary: outcome.retainedState.proofs,
             nodeKeyString: KEY_B,
             valueId: WRITER_LOCAL + ":5",
             authorOf,
@@ -1230,14 +1223,14 @@ describe("resetToSource, weakening proof with occurrence-scoped barriers", () =>
  */
 function expectStagedSummaryIsTheCommittedSummary(receiver, outcome) {
     const committed = makeReplicaSource(replicaOf([...receiver, ...outcome.records]));
-    const rebuilt = retainedProofSummary(committed, twoInputSchema);
+    const rebuilt = retainedReplayState(committed, twoInputSchema).proofs;
     const authorOf = (name) => (name === WRITER_LOCAL ? LOCAL_AUTHOR : PEER_AUTHOR);
     for (const occurrence of outcome.projection.occurrences) {
         const nodeKeyString = occurrence.nodeKeyString;
         const valueId = journalRecordIdToString(occurrence.valueId);
         for (const inputKeyString of twoInputSchema(nodeKeyString)) {
             expect(countEligibleProofEdges({
-                summary: outcome.proofSummary,
+                summary: outcome.retainedState.proofs,
                 nodeKeyString,
                 valueId,
                 inputKeyString,
@@ -1251,7 +1244,7 @@ function expectStagedSummaryIsTheCommittedSummary(receiver, outcome) {
             }));
         }
         expect([...eligibleProofEdgeUnion({
-            summary: outcome.proofSummary,
+            summary: outcome.retainedState.proofs,
             nodeKeyString,
             valueId,
             authorOf,
@@ -1501,5 +1494,145 @@ describe("resetToSource, maintaining the counted proof summary", () => {
             (record) => record.kind === "invalidate" && record.scope.kind === "proof"
         ).length).toBeGreaterThan(0);
         expectStagedSummaryIsTheCommittedSummary(receiver, outcome);
+    });
+});
+
+/**
+ * A `JournalSource` which counts every retained record a caller reads through it.
+ *
+ * @param {import("../src/generators/incremental_graph/journal").JournalSource} source
+ * @returns {{source: import("../src/generators/incremental_graph/journal").JournalSource, reads: () => number}}
+ */
+function countingSource(source) {
+    let reads = 0;
+    return {
+        reads: () => reads,
+        source: {
+            writers: () => source.writers(),
+            retainedLengthOf: (author) => source.retainedLengthOf(author),
+            prefixReaderOf: (author) => {
+                const reader = source.prefixReaderOf(author);
+                return {
+                    nextRecord: () => {
+                        reads += 1;
+                        return reader.nextRecord();
+                    },
+                    failure: () => reader.failure(),
+                };
+            },
+        },
+    };
+}
+
+/**
+ * A receiver whose retained history is `depth` unselected revalidations of `A`
+ * under its own writer, so the records it retains are many more than the ones its
+ * current state depends on.
+ *
+ * @param {number} depth
+ */
+function receiverWithRetainedRevalidations(depth) {
+    const records = receiverProvenPair();
+    let authority = 200;
+    let sequence = 7;
+    for (let index = 0; index < depth; index += 1) {
+        records.push(validate({
+            writer: WRITER_LOCAL,
+            sequence: String(sequence),
+            node: NODE_A,
+            context: [],
+            authority,
+            value: WRITER_LOCAL + ":1",
+            basis: [],
+            reason: "unchanged",
+        }));
+        authority += 1;
+        sequence += 1;
+    }
+    return records;
+}
+
+describe("resetToSource, reading each cut as a delta over the retained state", () => {
+    test("reset reads no retained record, so retained history which changes no state changes no work", () => {
+        const shallowRecords = receiverWithRetainedRevalidations(1);
+        const deepRecords = receiverWithRetainedRevalidations(40);
+        const shallow = countingSource(makeReplicaSource(replicaOf(shallowRecords)));
+        const deep = countingSource(makeReplicaSource(replicaOf(deepRecords)));
+        const target = sourceSnapshotOf(sourcePair([
+            { node: NODE_A, value: "unknown" },
+            { node: NODE_D, value: "unknown" },
+        ], { reason: "migration" }));
+
+        const firstOutcome = outcomeOf(resetToSource({
+            receiver: shallow.source,
+            retainedState: retainedReplayState(makeReplicaSource(replicaOf(shallowRecords)), twoInputSchema),
+            source: target,
+            localWriter: LOCAL_AUTHOR,
+            committed: committedAfter(receiverWithRetainedRevalidations(1), 500),
+            observedHighWater: authorityOf(500),
+            publicationInstant: INSTANT,
+            currentInputKeysOfNode: twoInputSchema,
+            receiverIdentity: new SnapshotIdentityClass("v1", "scheme"),
+        }));
+        const deepOutcome = outcomeOf(resetToSource({
+            receiver: deep.source,
+            retainedState: retainedReplayState(makeReplicaSource(replicaOf(deepRecords)), twoInputSchema),
+            source: target,
+            localWriter: LOCAL_AUTHOR,
+            committed: committedAfter(receiverWithRetainedRevalidations(40), 500),
+            observedHighWater: authorityOf(500),
+            publicationInstant: INSTANT,
+            currentInputKeysOfNode: twoInputSchema,
+            receiverIdentity: new SnapshotIdentityClass("v1", "scheme"),
+        }));
+
+        expect(deepOutcome.publication.records.map((record) => record.kind))
+            .toEqual(firstOutcome.publication.records.map((record) => record.kind));
+        expect(deep.reads()).toBe(shallow.reads());
+        expect(deep.reads()).toBeLessThan(deepRecords.length);
+    });
+
+    test("the committed result equals the projection of the retained journal it will publish", () => {
+        const receiver = receiverProvenPair();
+        const outcome = outcomeOf(reset({
+            receiver,
+            source: sourceSnapshotOf(sourcePair(
+                [{ node: NODE_A, value: "unknown" }, { node: NODE_D, value: "unknown" }],
+                { reason: "migration" }
+            )),
+        }));
+        const committed = projectRetainedJournal({
+            source: makeReplicaSource(replicaOf([...receiver, ...outcome.records])),
+            localWriter: LOCAL_AUTHOR,
+            currentInputKeysOfNode: twoInputSchema,
+        });
+        if (committed instanceof Error) {
+            throw new Error("the committed journal does not project: " + committed.message);
+        }
+        expect(outcome.projection.occurrences).toEqual(committed.occurrences);
+        expect([...outcome.projection.selfProofReadyNodes].sort())
+            .toEqual([...committed.selfProofReadyNodes].sort());
+        expect([...outcome.projection.unmarkedPropagatedStaleness].sort())
+            .toEqual([...committed.unmarkedPropagatedStaleness].sort());
+    });
+
+    test("a receiver without retained replay state is refused rather than replayed", () => {
+        const receiver = makeReplicaSource(replicaOf(receiverProvenPair()));
+        const result = resetToSource({
+            receiver,
+            proofSummary: retainedReplayState(receiver, twoInputSchema).proofs,
+            source: sourceSnapshotOf(sourcePair([
+                { node: NODE_A, value: "unknown" },
+                { node: NODE_D, value: "unknown" },
+            ], { reason: "migration" })),
+            localWriter: LOCAL_AUTHOR,
+            committed: committedAfter(receiverProvenPair(), 500),
+            observedHighWater: authorityOf(500),
+            publicationInstant: INSTANT,
+            currentInputKeysOfNode: twoInputSchema,
+            receiverIdentity: new SnapshotIdentityClass("v1", "scheme"),
+        });
+
+        expect("outcome" in result).toBe(false);
     });
 });

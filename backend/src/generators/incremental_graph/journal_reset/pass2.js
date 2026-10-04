@@ -71,7 +71,7 @@ const { eligibleProofEdgeUnion } = require("./proof_summary");
  * @param {object} request
  * @param {ProofSummary} request.summary - The proof summary at the
  *   post-value-repair cut.
- * @param {ReadonlyArray<ResetTargetOccurrence>} request.targetOccurrences - The
+ * @param {Iterable<ResetTargetOccurrence>} request.targetOccurrences - The
  *   target-present occurrences Pass 1 settled on.
  * @param {(name: string) => import('../journal/types').JournalAuthor | undefined} request.authorOf
  * @returns {Map<string, Set<string>>}
@@ -139,7 +139,7 @@ function isProofBarriers(value) {
  * Plan the proof-edge barriers the target does not want exposed.
  *
  * @param {object} plan
- * @param {ReadonlyArray<ResetTargetOccurrence>} plan.targetOccurrences - The
+ * @param {Iterable<ResetTargetOccurrence>} plan.targetOccurrences - The
  *   target-present occurrences of the reset domain, in ascending canonical order.
  * @param {Map<string, Set<string>>} plan.unions - `eligibleEffectiveProofUnion` at
  *   the fixed post-value-repair cut.
@@ -240,7 +240,7 @@ function sameEdgeSet(left, right) {
  *
  * @param {object} plan
  * @param {Projection} plan.postBarrier - The projection at the post-barrier cut.
- * @param {ReadonlyArray<ResetTargetOccurrence>} plan.targetOccurrences
+ * @param {Iterable<ResetTargetOccurrence>} plan.targetOccurrences
  * @param {(nodeKeyString: string) => ResetValueId | undefined} plan.resetValueIdOf
  * @param {(nodeKeyString: string) => NodeKey | undefined} plan.nodeKeyOf
  * @param {(nodeKeyString: string) => ReadonlyArray<string>} plan.currentInputKeysOfNode
