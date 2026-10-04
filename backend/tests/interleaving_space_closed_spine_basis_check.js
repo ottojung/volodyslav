@@ -27,8 +27,10 @@
  *    instead of being resolved by preferring one of the two.
  *
  * Nothing is written to disk: the module source is read, rewritten in memory, and
- * compiled through `Module` under the *original* filename, so its relative
- * requires resolve exactly as they do at run time.
+ * compiled through `Module` under a sibling filename of its own, so the module's
+ * directory — and therefore every relative require and every `__dirname`-derived
+ * path inside it — is the one it has at run time, while every position the
+ * instrument reads belongs to the source it read.
  *
  * Usage:
  *   node backend/tests/interleaving_space_closed_spine_basis_check.js
