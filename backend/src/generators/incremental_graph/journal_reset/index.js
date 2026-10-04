@@ -25,17 +25,34 @@
 /** @typedef {import('./pass2').ProofBarriers} ProofBarriers */
 /** @typedef {import('./pass2').TargetValidations} TargetValidations */
 /** @typedef {import('./pass3').FreshnessMarkers} FreshnessMarkers */
+/** @typedef {import('./proof_summary').ProofSummary} ProofSummary */
 
 const { ResetSourceClass, isResetSource, makeResetSource } = require("./source");
 const { ResetPublicationClass, isResetPublication } = require("./authoring");
 const { ResetDomainClass, isResetDomain } = require("./pass1");
 const { ProofBarriersClass, TargetValidationsClass } = require("./pass2");
 const { FreshnessMarkersClass } = require("./pass3");
+const {
+    ProofSummaryClass,
+    buildProofSummary,
+    countEligibleProofEdges,
+    eligibleProofEdgeUnion,
+    isProofSummary,
+    selectOccurrences,
+    stageAdmittedRecords,
+} = require("./proof_summary");
 const { ResetOutcomeClass, isResetOutcome, resetToSource } = require("./reset");
 
 module.exports = {
     FreshnessMarkersClass,
     ProofBarriersClass,
+    ProofSummaryClass,
+    buildProofSummary,
+    countEligibleProofEdges,
+    eligibleProofEdgeUnion,
+    isProofSummary,
+    selectOccurrences,
+    stageAdmittedRecords,
     ResetDomainClass,
     ResetOutcomeClass,
     ResetPublicationClass,

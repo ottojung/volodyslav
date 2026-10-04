@@ -30,6 +30,8 @@ const {
     makeJournalReplica,
     makeJournalSequence,
     makeReplicaSource,
+    makeInvalidateEvent,
+    makeProofScope,
     makeValidateEvent,
     makeValidationBasisEntry,
     makeValueEvent,
@@ -44,6 +46,9 @@ const {
 const { SnapshotIdentityClass } = require("../src/generators/incremental_graph/journal_sync");
 
 const {
+    buildProofSummary,
+    countEligibleProofEdges,
+    eligibleProofEdgeUnion,
     isResetOutcome,
     makeResetSource,
     resetToSource,
@@ -303,6 +308,38 @@ function sourceSnapshotOf(records, options) {
 }
 
 /**
+ * The counted proof summary the activated replica of `source` maintains, as the
+ * persistence front loads it before a reset.
+ *
+ * Building it here is the maintenance traversal `incremental-graph-journal-storage.md`
+ * §Change-bounded proof summary permits for a missing or stale summary. Reset
+ * itself never performs it.
+ *
+ * @param {import("../src/generators/incremental_graph/journal").JournalSource} source
+ * @param {(nodeKeyString: string) => ReadonlyArray<string>} currentInputKeysOfNode
+ * @returns {import("../src/generators/incremental_graph/journal_reset").ProofSummary}
+ */
+function retainedProofSummary(source, currentInputKeysOfNode) {
+    const projection = projectRetainedJournal({
+        source,
+        localWriter: LOCAL_AUTHOR,
+        currentInputKeysOfNode,
+    });
+    if (projection instanceof Error) {
+        throw new Error("the receiver fixture does not project: " + projection.message);
+    }
+    const built = buildProofSummary({
+        source,
+        occurrences: new Map(projection.occurrences.map((occurrence) => [occurrence.nodeKeyString, occurrence])),
+        currentInputKeysOfNode,
+    });
+    if ("error" in built) {
+        throw new Error("the receiver fixture has no proof summary: " + built.error.message);
+    }
+    return built.summary;
+}
+
+/**
  * @param {object} options
  * @param {ReadonlyArray<import("../src/generators/incremental_graph/journal").JournalRecord>} options.receiver
  * @param {import("../src/generators/incremental_graph/journal_reset").ResetSource} options.source
@@ -312,8 +349,13 @@ function sourceSnapshotOf(records, options) {
  * @param {number} [options.publicationInstant]
  */
 function reset(options) {
+    const receiver = makeReplicaSource(replicaOf(options.receiver));
     return resetToSource({
-        receiver: makeReplicaSource(replicaOf(options.receiver)),
+        receiver,
+        proofSummary: retainedProofSummary(
+            receiver,
+            options.currentInputKeysOfNode === undefined ? twoInputSchema : options.currentInputKeysOfNode
+        ),
         source: options.source,
         localWriter: LOCAL_AUTHOR,
         committed: committedAfter(options.receiver, options.authority === undefined ? 500 : options.authority),
@@ -575,8 +617,10 @@ describe("resetToSource, establishing target presence over the raw union", () =>
         const first = outcomeOf(reset({ receiver, source }));
 
         const retained = [...receiver, ...first.records];
+        const secondReceiver = makeReplicaSource(replicaOf(retained));
         const second = resetToSource({
-            receiver: makeReplicaSource(replicaOf(retained)),
+            receiver: secondReceiver,
+            proofSummary: retainedProofSummary(secondReceiver, twoInputSchema),
             source,
             localWriter: LOCAL_AUTHOR,
             committed: first.publication.writerState,
@@ -787,8 +831,10 @@ describe("resetToSource, weakening proof with occurrence-scoped barriers", () =>
         }));
         const retained = [...receiver, ...first.records];
 
+        const secondReceiver = makeReplicaSource(replicaOf(retained));
         const second = outcomeOf(resetToSource({
-            receiver: makeReplicaSource(replicaOf(retained)),
+            receiver: secondReceiver,
+            proofSummary: retainedProofSummary(secondReceiver, twoInputSchema),
             source: sourceSnapshotOf(sourcePair(
                 [{ node: NODE_A, value: "unknown" }, { node: NODE_D, value: "unknown" }],
                 { reason: "migration" }
@@ -922,7 +968,7 @@ describe("resetToSource, weakening proof with occurrence-scoped barriers", () =>
                 context: [],
                 authority: 106,
                 basis: [
-                    { node: NODE_A, value: WRITER_LOCAL + ":1" },
+                    { node: NODE_A, value: "unknown" },
                     { node: NODE_D, value: WRITER_LOCAL + ":3" },
                 ],
             }),
@@ -938,15 +984,19 @@ describe("resetToSource, weakening proof with occurrence-scoped barriers", () =>
 
         const outcome = outcomeOf(reset({ receiver, source }));
 
-        // The settled occurrence is the receiver's second materialization, so both
-        // barriers name it and neither names the occurrence it replaced.
+        // The settled occurrence is the receiver's second materialization, so the
+        // barrier names it and not the occurrence it replaced. Only `D` is
+        // barriered, because only the settled occurrence's own certificate proves
+        // it: `A` is proved by the certificate of the occurrence this reset
+        // replaced, which is not exposed to the target at all.
         const proofBarriers = authoredOf(outcome).filter(
             (record) => record.kind === "invalidate" && record.scope.kind === "proof"
         );
-        expect(proofBarriers).toHaveLength(2);
+        expect(proofBarriers).toHaveLength(1);
         for (const barrier of proofBarriers) {
             expect(nodeKeyToCanonicalString(barrier.node)).toBe(KEY_B);
             expect(journalRecordIdToString(barrier.scope.value)).toBe(WRITER_LOCAL + ":7");
+            expect(nodeKeyToCanonicalString(barrier.scope.input)).toBe(KEY_D);
         }
 
         // Both barriers took effect against the settled occurrence.
@@ -1012,7 +1062,207 @@ describe("resetToSource, weakening proof with occurrence-scoped barriers", () =>
             twoInputSchema
         )].sort()).toEqual([KEY_A, KEY_D]);
     });
+
+    /**
+     * The receiver's supported pair in which `B` carries two certificates of the
+     * same occurrence and an earlier proof barrier sits between them: the first
+     * certificate does not observe the barrier, the second proves `D` again after
+     * observing it. The edge `D -> B` is therefore proved by one certificate and
+     * retired for the other, which is exactly the situation
+     * `incremental-graph-journal-storage.md` §Change-bounded proof summary says a
+     * count is required for: retiring it for the first certificate must not retire
+     * it for the second.
+     *
+     * @returns {ReadonlyArray<import("../src/generators/incremental_graph/journal").JournalRecord>}
+     */
+    function receiverWithReestablishedEdge() {
+        return [
+            materialize({
+                writer: WRITER_LOCAL,
+                sequence: "1",
+                node: NODE_A,
+                context: [],
+                authority: 100,
+            }),
+            validateOwnMaterialization({
+                writer: WRITER_LOCAL,
+                valueSequence: "1",
+                node: NODE_A,
+                context: [],
+                authority: 100,
+                basis: [],
+            }),
+            materialize({
+                writer: WRITER_LOCAL,
+                sequence: "3",
+                node: NODE_D,
+                context: [],
+                authority: 102,
+            }),
+            validateOwnMaterialization({
+                writer: WRITER_LOCAL,
+                valueSequence: "3",
+                node: NODE_D,
+                context: [],
+                authority: 102,
+                basis: [],
+            }),
+            materialize({
+                writer: WRITER_LOCAL,
+                sequence: "5",
+                node: NODE_B,
+                context: [],
+                authority: 104,
+            }),
+            validateOwnMaterialization({
+                writer: WRITER_LOCAL,
+                valueSequence: "5",
+                node: NODE_B,
+                context: [],
+                authority: 104,
+                basis: [
+                    { node: NODE_A, value: WRITER_LOCAL + ":1" },
+                    { node: NODE_D, value: WRITER_LOCAL + ":3" },
+                ],
+            }),
+            made(makeInvalidateEvent(
+                {
+                    id: WRITER_LOCAL + ":7",
+                    context: contextOf([[WRITER_LOCAL, "6"]]),
+                    authorityTime: authorityOf(106),
+                    node: NODE_B,
+                },
+                makeProofScope(
+                    made(makeJournalRecordId(LOCAL_AUTHOR, makeJournalSequence("5"))),
+                    NODE_D
+                ),
+                "reset"
+            )),
+            made(makeValidateEvent(
+                {
+                    id: WRITER_LOCAL + ":8",
+                    context: contextOf([[WRITER_LOCAL, "7"]]),
+                    authorityTime: authorityOf(108),
+                    node: NODE_B,
+                },
+                WRITER_LOCAL + ":5",
+                [
+                    makeValidationBasisEntry(NODE_A, WRITER_LOCAL + ":1"),
+                    makeValidationBasisEntry(NODE_D, WRITER_LOCAL + ":3"),
+                ],
+                "compute"
+            )),
+        ].sort((left, right) => sequenceOf(left) - sequenceOf(right));
+    }
+
+    test("an edge one certificate re-establishes after a barrier is still barriered", () => {
+        const receiver = receiverWithReestablishedEdge();
+        const source = sourceSnapshotOf(sourcePair(
+            [{ node: NODE_A, value: "unknown" }, { node: NODE_D, value: "unknown" }],
+            { reason: "migration" }
+        ));
+
+        const outcome = outcomeOf(reset({ receiver, source }));
+
+        // The count of `D -> B` is one, contributed by the certificate which
+        // observed the retained barrier and proved the edge again, so the edge is
+        // in the union and reset barriers it. A flag which the retained barrier
+        // cleared would drop it from the union, leave it exposed, and author one
+        // barrier here instead of two.
+        const proofBarriers = authoredOf(outcome).filter(
+            (record) => record.kind === "invalidate" && record.scope.kind === "proof"
+        );
+        expect(proofBarriers).toHaveLength(2);
+        expect(proofBarriers.map((barrier) => nodeKeyToCanonicalString(barrier.scope.input)).sort())
+            .toEqual([KEY_A, KEY_D]);
+        for (const barrier of proofBarriers) {
+            expect(journalRecordIdToString(barrier.scope.value)).toBe(WRITER_LOCAL + ":5");
+        }
+
+        const committed = outcome.projection.occurrences.find(
+            (occurrence) => occurrence.nodeKeyString === KEY_B
+        );
+        expect(committed === undefined ? undefined : [...committed.validInputs]).toEqual([]);
+
+        // The count itself, read before reset authors anything: `A` is proved by
+        // both certificates, `D` only by the one which observed the barrier and
+        // proved it again. Both are positive, and `D`'s is positive because it is a
+        // count rather than a flag the earlier barrier cleared.
+        const before = retainedProofSummary(makeReplicaSource(replicaOf(receiver)), twoInputSchema);
+        const authorOf = (name) => (name === WRITER_LOCAL ? LOCAL_AUTHOR : undefined);
+        expect(countEligibleProofEdges({
+            summary: before,
+            nodeKeyString: KEY_B,
+            valueId: WRITER_LOCAL + ":5",
+            inputKeyString: KEY_A,
+            authorOf,
+        })).toBe(2);
+        expect(countEligibleProofEdges({
+            summary: before,
+            nodeKeyString: KEY_B,
+            valueId: WRITER_LOCAL + ":5",
+            inputKeyString: KEY_D,
+            authorOf,
+        })).toBe(1);
+
+        // The summary staged for cutover with reset's own records has retired both
+        // edges, so it agrees with the projection it is published beside.
+        expect([...eligibleProofEdgeUnion({
+            summary: outcome.proofSummary,
+            nodeKeyString: KEY_B,
+            valueId: WRITER_LOCAL + ":5",
+            authorOf,
+        })]).toEqual([]);
+    });
 });
+
+/**
+ * The summary reset staged for cutover is maintained from the receiver's retained
+ * one by admitting the records reset admits and reselecting the occurrences its
+ * passes settle. Its counts must therefore be the counts a full maintenance
+ * traversal of the committed journal produces, for every node and every current
+ * input of the schema. A summary which kept the pre-reset occurrences, or which
+ * never admitted the records reset admitted, disagrees with the journal it is
+ * published beside.
+ *
+ * @param {ReadonlyArray<import("../src/generators/incremental_graph/journal").JournalRecord>} receiver
+ * @param {import("../src/generators/incremental_graph/journal_reset").ResetOutcome} outcome
+ */
+function expectStagedSummaryIsTheCommittedSummary(receiver, outcome) {
+    const committed = makeReplicaSource(replicaOf([...receiver, ...outcome.records]));
+    const rebuilt = retainedProofSummary(committed, twoInputSchema);
+    const authorOf = (name) => (name === WRITER_LOCAL ? LOCAL_AUTHOR : PEER_AUTHOR);
+    for (const occurrence of outcome.projection.occurrences) {
+        const nodeKeyString = occurrence.nodeKeyString;
+        const valueId = journalRecordIdToString(occurrence.valueId);
+        for (const inputKeyString of twoInputSchema(nodeKeyString)) {
+            expect(countEligibleProofEdges({
+                summary: outcome.proofSummary,
+                nodeKeyString,
+                valueId,
+                inputKeyString,
+                authorOf,
+            })).toBe(countEligibleProofEdges({
+                summary: rebuilt,
+                nodeKeyString,
+                valueId,
+                inputKeyString,
+                authorOf,
+            }));
+        }
+        expect([...eligibleProofEdgeUnion({
+            summary: outcome.proofSummary,
+            nodeKeyString,
+            valueId,
+            authorOf,
+        })].sort()).toEqual([...eligibleProofEdgeUnion({
+            summary: rebuilt,
+            nodeKeyString,
+            valueId,
+            authorOf,
+        })].sort());
+    }
+}
 
 describe("resetToSource, making the target's staleness durable", () => {
     /**
@@ -1178,3 +1428,78 @@ describe("resetToSource, making the target's staleness durable", () => {
  * the front working board issue 82. The assertion belongs to a storage-level test
  * and is left unwritten rather than skipped silently.
  */
+
+describe("resetToSource, maintaining the counted proof summary", () => {
+    test("the staged summary is the summary of the committed journal when the target adds proof", () => {
+        const receiver = receiverProvenPair();
+        const outcome = outcomeOf(reset({
+            receiver,
+            source: sourceSnapshotOf(sourcePair(
+                [
+                    { node: NODE_A, value: WRITER_PEER + ":1" },
+                    { node: NODE_D, value: WRITER_PEER + ":3" },
+                ],
+                { payload: OTHER_PAYLOAD }
+            )),
+        }));
+        expect(authoredOf(outcome).filter((record) => record.kind === "validate").length)
+            .toBeGreaterThan(0);
+        expectStagedSummaryIsTheCommittedSummary(receiver, outcome);
+    });
+
+    test("the staged summary is the summary of the committed journal when an occurrence is replaced", () => {
+        const receiver = receiverProvenPair();
+        const outcome = outcomeOf(reset({
+            receiver,
+            source: sourceSnapshotOf(sourcePair(
+                [
+                    { node: NODE_A, value: WRITER_PEER + ":1" },
+                    { node: NODE_D, value: WRITER_PEER + ":3" },
+                ],
+                { payload: OTHER_PAYLOAD, reason: "migration" }
+            )),
+        }));
+        expect(authoredOf(outcome).filter((record) => record.kind === "value").length)
+            .toBeGreaterThan(0);
+        expectStagedSummaryIsTheCommittedSummary(receiver, outcome);
+    });
+
+    test("the staged summary counts no certificate of the occurrence reset replaced", () => {
+        // The receiver proves `B` against both inputs, the target replaces `B`'s
+        // occurrence and proves nothing, so at the post-value-repair cut no
+        // eligible certificate names the settled occurrence and the union is empty.
+        // A summary which still selected the replaced occurrence would read the
+        // receiver's own certificate from it and author barriers the target does
+        // not need.
+        const receiver = receiverProvenPair();
+        const outcome = outcomeOf(reset({
+            receiver,
+            source: sourceSnapshotOf(sourcePair(
+                [{ node: NODE_A, value: "unknown" }, { node: NODE_D, value: "unknown" }],
+                { payload: OTHER_PAYLOAD, reason: "migration" }
+            )),
+        }));
+        const settled = outcome.valueIds.get(KEY_B);
+        expect(settled === undefined ? undefined : journalRecordIdToString(settled))
+            .not.toBe(WRITER_LOCAL + ":5");
+        expect(authoredOf(outcome).filter(
+            (record) => record.kind === "invalidate" && record.scope.kind === "proof"
+        )).toHaveLength(0);
+        expectStagedSummaryIsTheCommittedSummary(receiver, outcome);
+    });
+
+    test("the staged summary is the summary of the committed journal when proof is weakened", () => {
+        const receiver = receiverProvenPair();
+        const outcome = outcomeOf(reset({
+            receiver,
+            source: sourceSnapshotOf(sourcePair(
+                [{ node: NODE_A, value: "unknown" }, { node: NODE_D, value: "unknown" }],
+                { reason: "migration" }
+            )),
+        }));
+        expect(authoredOf(outcome).filter(
+            (record) => record.kind === "invalidate" && record.scope.kind === "proof"
+        ).length).toBeGreaterThan(0);
+        expectStagedSummaryIsTheCommittedSummary(receiver, outcome);
+    });
+});

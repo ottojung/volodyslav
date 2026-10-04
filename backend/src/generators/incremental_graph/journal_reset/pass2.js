@@ -21,6 +21,12 @@
  * reset is authored. Weakening one certificate therefore cannot reveal an edge
  * from a previously losing certificate, so one pass over the difference is
  * complete and no iterative barrier-discovery loop exists.
+ *
+ * The union is read from the counted proof summary, not from the journal:
+ * `incremental-graph-journal-storage.md` §Change-bounded proof summary requires
+ * `eligibleProofEdgeCount` to be incrementally maintained derived state and
+ * forbids reset from folding retained certificate/invalidation history to obtain
+ * it, so this module never receives a `JournalSource`.
  */
 
 /** @typedef {import('../journal/errors').AnyJournalError} JournalError */
@@ -28,23 +34,19 @@
 /** @typedef {import('../journal/records').ValidateEvent} ValidateEvent */
 /** @typedef {import('../journal/types').JournalRecordId} JournalRecordId */
 /** @typedef {import('../journal/types').NodeKey} NodeKey */
-/** @typedef {import('../journal/oracle/invalidations').InvalidationSummary} InvalidationSummary */
-/** @typedef {import('../journal/oracle/record_source').JournalSource} JournalSource */
+/** @typedef {import('./proof_summary').ProofSummary} ProofSummary */
 /** @typedef {import('../journal/oracle/projection').Projection} Projection */
 /** @typedef {import('./pass1').ResetValueId} ResetValueId */
 /** @typedef {import('./authoring').ResetProofBarrierRequest} ResetProofBarrierRequest */
 /** @typedef {import('./authoring').ResetValidationRequest} ResetValidationRequest */
 
 const {
-    effectiveInputsOf,
-    isEligibleCertificate,
-    isValidateEvent,
+    journalRecordIdToString,
     makeJournalProjectionError,
     makeValidationBasisEntry,
-    nodeKeyToCanonicalString,
     sortValidationBasis,
-    streamWithReport,
 } = require("../journal");
+const { eligibleProofEdgeUnion } = require("./proof_summary");
 
 /**
  * The selected occurrences a certificate's inputs are compared against.
@@ -55,52 +57,41 @@ const {
 
 /**
  * The union of incoming edges any eligible retained certificate can currently
- * prove for a node's selected occurrence.
+ * prove for each target occurrence, read from the counted proof summary.
  *
- * One streaming pass keeps one set per node, bounded by the current schema's
- * arity rather than by the certificate history, and adds each eligible candidate's
- * effective inputs to it. This is the union replay's maintenance summary expresses
- * as `eligibleProofEdgeCount(K,V,D) > 0`, read here in its streaming form: a
- * losing certificate's edges count exactly as much as a winning certificate's,
- * which is the whole reason the specification asks for a count rather than a flag.
+ * `incremental-graph-journal-reset.md` §Pass 2 defines
+ * `eligibleEffectiveProofUnion_P1(K)` as the edges whose
+ * `eligibleProofEdgeCount_P1(K, resetValueId(K), D)` is positive, and
+ * `incremental-graph-journal-storage.md` §Change-bounded proof summary states that
+ * count is the incrementally maintained index representation of exactly that union.
+ * This function performs the read, so it never consults a retained record: the
+ * summary is what the caller maintained, and a losing certificate's edges are
+ * counted in it just as a winning certificate's are.
  *
  * @param {object} request
- * @param {JournalSource} request.source
- * @param {ResetOccurrences} request.occurrences
- * @param {ReadonlyMap<string, InvalidationSummary>} request.summaries
- * @param {(nodeKeyString: string) => ReadonlyArray<string>} request.currentInputKeysOfNode
- * @returns {{unions: Map<string, Set<string>>} | {error: JournalError}}
+ * @param {ProofSummary} request.summary - The proof summary at the
+ *   post-value-repair cut.
+ * @param {ReadonlyArray<ResetTargetOccurrence>} request.targetOccurrences - The
+ *   target-present occurrences Pass 1 settled on.
+ * @param {(name: string) => import('../journal/types').JournalAuthor | undefined} request.authorOf
+ * @returns {Map<string, Set<string>>}
  */
 function eligibleEffectiveProofUnion(request) {
-    const { source, occurrences, summaries, currentInputKeysOfNode } = request;
+    const { summary, targetOccurrences, authorOf } = request;
     /** @type {Map<string, Set<string>>} */
     const unions = new Map();
-    const failure = streamWithReport(source, (record) => {
-        if (!isValidateEvent(record)) {
-            return undefined;
-        }
-        const nodeKeyString = nodeKeyToCanonicalString(record.node);
-        if (occurrences.valueIdOf(nodeKeyString) === undefined) {
-            return undefined;
-        }
-        if (!isEligibleCertificate(record, summaries, occurrences, currentInputKeysOfNode)) {
-            return undefined;
-        }
-        const effective = effectiveInputsOf(record, summaries, occurrences, currentInputKeysOfNode);
-        let union = unions.get(nodeKeyString);
-        if (union === undefined) {
-            union = new Set();
-            unions.set(nodeKeyString, union);
-        }
-        for (const inputKeyString of effective) {
-            union.add(inputKeyString);
-        }
-        return undefined;
-    });
-    if (failure !== undefined) {
-        return { error: failure };
+    for (const occurrence of targetOccurrences) {
+        unions.set(
+            occurrence.nodeKeyString,
+            eligibleProofEdgeUnion({
+                summary,
+                nodeKeyString: occurrence.nodeKeyString,
+                valueId: journalRecordIdToString(occurrence.valueId),
+                authorOf,
+            })
+        );
     }
-    return { unions };
+    return unions;
 }
 
 /**

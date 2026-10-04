@@ -49,6 +49,7 @@
 /** @typedef {import('./authoring').ResetRequest} ResetRequest */
 /** @typedef {import('./pass1').ResetValueId} ResetValueId */
 /** @typedef {import('./pass2').ResetTargetOccurrence} ResetTargetOccurrence */
+/** @typedef {import('./proof_summary').ProofSummary} ProofSummary */
 /** @typedef {import('./source').ResetSource} ResetSource */
 
 const {
@@ -77,6 +78,11 @@ const {
     sameEdgeSet,
 } = require("./pass2");
 const { hasUncoveredValueInvalidationOf, planFreshnessMarkers } = require("./pass3");
+const {
+    isProofSummary,
+    selectOccurrences,
+    stageAdmittedRecords,
+} = require("./proof_summary");
 
 /**
  * The properties that this class carries are:
@@ -88,7 +94,11 @@ const { hasUncoveredValueInvalidationOf, planFreshnessMarkers } = require("./pas
  *   on, which Pass 1 preserved from the raw union or authored; and
  * - `changed` is true exactly when this reset imported a record the receiver did
  *   not already retain or authored a semantic record, which is the specification's
- *   persistent-change definition rather than a semantic-record count.
+ *   persistent-change definition rather than a semantic-record count; and
+ * - `proofSummary` is the counted proof summary of `Jreset`, which the
+ *   persistence front stages with the records and cuts over with them, because
+ *   `incremental-graph-journal-storage.md` §Change-bounded proof summary requires
+ *   imported and reset-authored records to update a staged summary before cutover.
  *
  * The proof of those properties is guaranteed by:
  * - `resetToSource(...)`: it appends each imported record without touching it,
@@ -105,6 +115,7 @@ const { hasUncoveredValueInvalidationOf, planFreshnessMarkers } = require("./pas
  * @param {Projection} projection
  * @param {Map<string, ResetValueId>} valueIds
  * @param {boolean} changed
+ * @param {ProofSummary} proofSummary
  */
 class ResetOutcomeClass {
     /**
@@ -113,13 +124,15 @@ class ResetOutcomeClass {
      * @param {Projection} projection
      * @param {Map<string, ResetValueId>} valueIds
      * @param {boolean} changed
+     * @param {ProofSummary} proofSummary
      */
-    constructor(records, publication, projection, valueIds, changed) {
+    constructor(records, publication, projection, valueIds, changed, proofSummary) {
         this.records = records;
         this.publication = publication;
         this.projection = projection;
         this.valueIds = valueIds;
         this.changed = changed;
+        this.proofSummary = proofSummary;
     }
 }
 
@@ -145,6 +158,11 @@ function isResetOutcome(value) {
  * @property {(nodeKeyString: string) => ReadonlyArray<string>} currentInputKeysOfNode
  * @property {SnapshotIdentity} receiverIdentity - The receiver's active version and
  *   graph scheme, compared against the held snapshot's own metadata.
+ * @property {ProofSummary} proofSummary - The receiver's retained counted proof
+ *   summary, which `incremental-graph-journal-storage.md` §Change-bounded proof
+ *   summary requires the activated replica to maintain and which reset updates as
+ *   it admits records. Reset refuses a missing summary rather than deriving the
+ *   union by scanning retained history.
  */
 
 /**
@@ -163,7 +181,18 @@ function resetToSource(request) {
         publicationInstant,
         currentInputKeysOfNode,
         receiverIdentity,
+        proofSummary,
     } = request;
+
+    if (!isProofSummary(proofSummary)) {
+        return {
+            error: makeJournalProjectionError(
+                "reset requires the receiver's counted proof summary and does not fall back " +
+                    "to scanning retained certificate history",
+                ""
+            ),
+        };
+    }
 
     const incompatible = assertCompatibleIdentity(receiverIdentity, source.identity());
     if (incompatible !== undefined) {
@@ -199,6 +228,10 @@ function resetToSource(request) {
 
     const target = source.projection;
     const domain = planResetDomain({ selections: rawHeads.selections, target });
+
+    // The receiver's retained summary, updated as this reset admits records.
+    const summary = proofSummary;
+    stageAdmittedRecords({ summary, records: imported });
 
     /** @type {JournalRecord[]} */
     const authored = [];
@@ -247,6 +280,7 @@ function resetToSource(request) {
     if ("error" in p1) {
         return p1;
     }
+    selectOccurrences({ summary, occurrences: selectedOccurrencesOf(p1) });
 
     /** @type {Map<string, ResetValueId>} */
     const valueIds = new Map();
@@ -310,29 +344,17 @@ function resetToSource(request) {
     };
 
     // ---- Pass 2: target validity and proof -------------------------------
-    const summariesAtP1 = summarizeInvalidations(journal, selectedOccurrencesOf(p1));
-    if ("error" in summariesAtP1) {
-        return summariesAtP1;
-    }
-    const p1Occurrences = occurrencesByKey(p1);
+    // The union is a count read, not a fold: the summary already holds the
+    // imported and Pass 1 records, and its selected occurrences are the ones Pass 1
+    // settled, so nothing below revisits retained certificate history.
     const unions = eligibleEffectiveProofUnion({
-        source: journal,
-        occurrences: {
-            valueIdOf: (nodeKeyString) => {
-                const occurrence = p1Occurrences.get(nodeKeyString);
-                return occurrence === undefined ? undefined : occurrence.valueId;
-            },
-            authorOf: authorLookupOf(journal),
-        },
-        summaries: summariesAtP1.summaries,
-        currentInputKeysOfNode,
+        summary,
+        targetOccurrences,
+        authorOf: authorLookupOf(journal),
     });
-    if ("error" in unions) {
-        return unions;
-    }
     const barriers = planProofBarriers({
         targetOccurrences,
-        unions: unions.unions,
+        unions,
         nodeKeyOf,
     });
     if ("error" in barriers) {
@@ -361,6 +383,8 @@ function resetToSource(request) {
     if ("error" in validationPublication) {
         return validationPublication;
     }
+    stageAdmittedRecords({ summary, records: barrierPublication.publication.records });
+    stageAdmittedRecords({ summary, records: validationPublication.publication.records });
     const afterValidations = project();
     if ("error" in afterValidations) {
         return afterValidations;
@@ -392,10 +416,12 @@ function resetToSource(request) {
     if ("error" in markerPublication) {
         return markerPublication;
     }
+    stageAdmittedRecords({ summary, records: markerPublication.publication.records });
     const final = project();
     if ("error" in final) {
         return final;
     }
+    selectOccurrences({ summary, occurrences: selectedOccurrencesOf(final) });
 
     const mismatch = verifyTargetEquivalence(final, targetOccurrences);
     if (mismatch !== undefined) {
@@ -408,7 +434,8 @@ function resetToSource(request) {
             new ResetPublicationClass(authored, state),
             final,
             valueIds,
-            imported.length > 0 || authored.length > 0
+            imported.length > 0 || authored.length > 0,
+            summary
         ),
     };
 }
