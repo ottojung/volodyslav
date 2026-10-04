@@ -131,6 +131,10 @@ function isProofBarriers(value) {
  * @property {string} nodeKeyString
  * @property {NodeKey} nodeKey
  * @property {ResetValueId} valueId
+ * @property {import("../database/types").NodeIdentifier} nodeIdentifier
+ * @property {import("../database/types").ComputedValue} payload
+ * @property {string} createdAt
+ * @property {string} modifiedAt
  * @property {Set<string>} validInputs
  * @property {boolean} fresh
  */
