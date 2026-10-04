@@ -27,7 +27,12 @@ const {
 const { streamEveryRecord, streamWithReport, validateContextClaim } = require("./scan");
 const { isPresent, selectSemanticHeads, selectedValueId } = require("./heads");
 const { isInvalidationSummary, summarizeInvalidations, summaryIsCovered } = require("./invalidations");
-const { isEligibleCertificate, isSelectedCertificate, selectCertificates } = require("./certificates");
+const {
+    effectiveInputsOf,
+    isEligibleCertificate,
+    isSelectedCertificate,
+    selectCertificates,
+} = require("./certificates");
 const {
     deriveFreshness,
     edgeValid,
@@ -41,6 +46,7 @@ const { projectRetainedJournal, readContextAndWatermark } = require("./project")
 
 module.exports = {
     deriveFreshness,
+    effectiveInputsOf,
     edgeValid,
     isEligibleCertificate,
     isInvalidationSummary,
