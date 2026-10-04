@@ -292,11 +292,6 @@ function resetToSource(request) {
         }
         valueIds.set(nodeKeyToCanonicalString(record.node), record.id);
     }
-    const p1 = cut();
-    if ("error" in p1) {
-        return p1;
-    }
-
     /** @type {Map<string, NodeKey>} */
     const targetNodes = new Map();
     for (const occurrence of target.occurrences) {
