@@ -1548,8 +1548,33 @@ function receiverWithRetainedRevalidations(depth) {
     return records;
 }
 
+/**
+ * The source's supported pair with one node's own materialization carrying
+ * `payload`, so a reset to it replaces that occurrence alone.
+ *
+ * @param {string} nodeKeyString
+ * @param {string} payload
+ * @param {ReadonlyArray<{node: import("../src/generators/incremental_graph/journal").NodeKey, value: string}>} bBasis
+ * @returns {ReadonlyArray<import("../src/generators/incremental_graph/journal").JournalRecord>}
+ */
+function sourcePairPayloadOf(nodeKeyString, payload, bBasis) {
+    return sourcePair(bBasis, { reason: "migration" }).map((record) => {
+        if (record.kind !== "value" || nodeKeyToCanonicalString(record.node) !== nodeKeyString) {
+            return record;
+        }
+        return materialize({
+            writer: journalAuthorToString(record.id.author),
+            sequence: journalSequenceToString(record.id.sequence),
+            node: record.node,
+            context: [],
+            authority: 12,
+            payload: payload,
+        });
+    });
+}
+
 describe("resetToSource, reading each cut as a delta over the retained state", () => {
-    test("reset reads no retained record, so retained history which changes no state changes no work", () => {
+    test("reset reads no retained record, so retained history which changes no state authors the same records", () => {
         const shallowRecords = receiverWithRetainedRevalidations(1);
         const deepRecords = receiverWithRetainedRevalidations(40);
         const shallow = countingSource(makeReplicaSource(replicaOf(shallowRecords)));
@@ -1584,8 +1609,47 @@ describe("resetToSource, reading each cut as a delta over the retained state", (
 
         expect(deepOutcome.publication.records.map((record) => record.kind))
             .toEqual(firstOutcome.publication.records.map((record) => record.kind));
-        expect(deep.reads()).toBe(shallow.reads());
-        expect(deep.reads()).toBeLessThan(deepRecords.length);
+        expect(deep.reads()).toBe(0);
+        expect(shallow.reads()).toBe(0);
+    });
+
+    test("a cut resolves only its affected closure, so an unaffected node keeps the certificate the previous cut stored", () => {
+        const first = outcomeOf(reset({
+            receiver: receiverProvenPair(),
+            source: sourceSnapshotOf(sourcePair([
+                { node: NODE_A, value: WRITER_PEER + ":1" },
+                { node: NODE_D, value: WRITER_PEER + ":3" },
+            ], { reason: "migration" })),
+        }));
+        const firstCertificates = new Map(first.retainedState.certificates);
+        expect(firstCertificates.get(KEY_A)).toBeDefined();
+        expect(firstCertificates.get(KEY_D)).toBeDefined();
+        expect(firstCertificates.get(KEY_B)).toBeDefined();
+
+        // The second target differs from the first in `D`'s own occurrence alone, so
+        // the affected closure is `D` and `B`, which reads `D`, while `A`'s
+        // occurrence, invalidations and input occurrences are what the first cut left.
+        const receiver = makeReplicaSource(
+            replicaOf([...receiverProvenPair(), ...first.records])
+        );
+        const second = outcomeOf(resetToSource({
+            receiver,
+            retainedState: first.retainedState,
+            source: sourceSnapshotOf(sourcePairPayloadOf(KEY_D, OTHER_PAYLOAD, [
+                { node: NODE_A, value: WRITER_PEER + ":1" },
+                { node: NODE_D, value: WRITER_PEER + ":3" },
+            ])),
+            localWriter: LOCAL_AUTHOR,
+            committed: first.publication.writerState,
+            observedHighWater: authorityOf(500),
+            publicationInstant: INSTANT + 1,
+            currentInputKeysOfNode: twoInputSchema,
+            receiverIdentity: new SnapshotIdentityClass("v1", "scheme"),
+        }));
+        const secondCertificates = second.retainedState.certificates;
+
+        expect(secondCertificates.get(KEY_B)).not.toBe(firstCertificates.get(KEY_B));
+        expect(secondCertificates.get(KEY_A)).toBe(firstCertificates.get(KEY_A));
     });
 
     test("the committed result equals the projection of the retained journal it will publish", () => {
