@@ -204,9 +204,6 @@ function resetToSource(request) {
     const authored = [];
     /** @type {CommittedWriterState} */
     let state = committed;
-    /** @type {number} */
-    let offered = 0;
-
     /**
      * Allocate one pass's records as the next contiguous own-writer range, extend
      * the journal with exactly that range, or report the failure which stopped it.
@@ -225,16 +222,11 @@ function resetToSource(request) {
         if ("error" in allocated) {
             return allocated;
         }
-        const extended = extendWithOwnRange(
-            journal,
-            localWriter,
-            allocated.records.length === 0 ? [] : authored.slice(offered)
-        );
+        const extended = extendWithOwnRange(journal, localWriter, allocated.records);
         if (isJournalError(extended)) {
             return { error: extended };
         }
         journal = extended;
-        offered = authored.length + allocated.records.length;
         authored.push(...allocated.records);
         state = allocated.writerState;
         return { publication: allocated };

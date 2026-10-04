@@ -191,11 +191,14 @@ function planProofBarriers(plan) {
  *   canonical-order entry per current direct input.
  *
  * The proof of those properties is guaranteed by:
- * - `planTargetValidations(...)`: it compares the post-barrier selected
- *   certificate's derived `validInputs` with the target's validity edges and, for
- *   a target-fresh node, requires that the certificate covers its occurrence's
- *   value-scoped invalidations; a node which satisfies both keeps the certificate
- *   replay already selected and is absent from the result.
+ * - `planTargetValidations(...)`: it compares the post-barrier cut's derived
+ *   `validInputs` with the target's validity edges and, for a target-fresh node,
+ *   requires a selected certificate which covers its occurrence's value-scoped
+ *   invalidations; a node which satisfies both keeps the state replay already
+ *   yields and is absent from the result. A node with no certificate at all and no
+ *   target edges already yields the target's empty edge set, so a target-stale node
+ *   of that shape is left alone rather than given a gratuitous certificate which
+ *   would make it self-proof-ready and therefore fresh against the target.
  *
  * @param {ReadonlyArray<ResetValidationRequest>} requests
  */
@@ -258,12 +261,15 @@ function planTargetValidations(plan) {
     const requests = [];
     for (const occurrence of targetOccurrences) {
         const freshness = postBarrier.freshness.get(occurrence.nodeKeyString);
-        if (
+        const yieldsTargetEdges =
             freshness !== undefined &&
-            freshness.certificate !== undefined &&
-            sameEdgeSet(freshness.validInputs, occurrence.validInputs) &&
-            (!occurrence.fresh || freshness.certificate.coversValueInvalidations)
-        ) {
+            sameEdgeSet(freshness.validInputs, occurrence.validInputs);
+        const coversTargetFreshness =
+            !occurrence.fresh ||
+            (freshness !== undefined &&
+                freshness.certificate !== undefined &&
+                freshness.certificate.coversValueInvalidations);
+        if (yieldsTargetEdges && coversTargetFreshness) {
             continue;
         }
         /** @type {ValidationBasis} */
