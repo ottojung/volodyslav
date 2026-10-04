@@ -22,6 +22,8 @@ const {
     DATABASE_SUBPATH,
 } = require('./gitstore');
 const {
+    JournalResetFrontMissingError,
+    isJournalResetFrontMissingError,
     synchronizeResetToHostname,
 } = require('./synchronize_reset_snapshot');
 const { scanFromFilesystem } = require('./render');
@@ -47,6 +49,7 @@ const {
 /** @typedef {import('../../../level_database').LevelDatabase} LevelDatabase */
 /** @typedef {import('../../../generators/interface').Interface} Interface */
 /** @typedef {import('./root_database').RootDatabase} RootDatabase */
+/** @typedef {import('../journal_publish').ResetReceiverToSnapshot} ResetReceiverToSnapshot */
 
 /**
  * @typedef {object} Capabilities
@@ -210,10 +213,17 @@ async function mergeRemoteHostBranches(capabilities, state) {
  * The caller must ensure the database is locked (not written to) for the
  * duration of this call.
  *
+ * A reset (`options.resetToHostname`) resets a receiver which retains Journal records
+ * through `options.journalReset`, which the caller supplies because that operation
+ * belongs to the Journal layer rather than to the database layer. A caller which resets a
+ * Journal receiver without it is refused rather than left holding the snapshot's rows
+ * under no records.
+ *
  * @param {Capabilities} capabilities
- * @param {{ resetToHostname?: string }} [options]
+ * @param {{ resetToHostname?: string, journalReset?: ResetReceiverToSnapshot }} [options]
  * @return {Promise<void>}
  * @throws {import('../../../gitstore/working_repository').WorkingRepositoryError} If git sync fails
+ * @throws {JournalResetFrontMissingError} If a Journal receiver is reset without a Journal reset
  * @throws {SyncMergeAggregateError} If one or more per-host graph merges fail
  */
 async function synchronizeNoLock(capabilities, options) {
@@ -229,7 +239,7 @@ async function synchronizeNoLock(capabilities, options) {
             remoteLocation,
             { ...options, mergeHostBranches: false }
         );
-        await synchronizeResetToHostname(capabilities, remoteLocation);
+        await synchronizeResetToHostname(capabilities, remoteLocation, options?.journalReset);
         capabilities.logger.logInfo(
             { remotePath, options },
             'Synchronized generators database with remote'
@@ -275,6 +285,8 @@ async function synchronizeNoLock(capabilities, options) {
 }
 
 module.exports = {
+    JournalResetFrontMissingError,
     synchronizeNoLock,
+    isJournalResetFrontMissingError,
     isSyncMergeAggregateError,
 };

@@ -56,6 +56,7 @@ const { synchronizeNoLock } = require('./database');
 const { prepareIncrementalGraphStorage } = require('./prepare_graph_storage');
 const { runCanonicalBootstrapGate } = require('./journal_bootstrap_gate');
 const { isCohortBootstrapSource, makeJournalPublicationError } = require('./journal');
+const { resetJournalReceiverToSnapshot } = require('./journal_publish');
 
 /** @typedef {import('./types').IncrementalGraphCapabilities} IncrementalGraphCapabilities */
 /** @typedef {import('./class').IncrementalGraph} IncrementalGraph */
@@ -119,5 +120,6 @@ module.exports = {
     migrationCallback,
     synchronizeNoLock,
     prepareIncrementalGraphStorage,
+    resetJournalReceiverToSnapshot,
     runCanonicalBootstrapGate,
 };
