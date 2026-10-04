@@ -26,6 +26,7 @@ const {
     makeAuthorityTime,
     makeJournalAuthor,
     makeJournalFrontierFromText,
+    makeJournalRecordId,
     makeJournalReplica,
     makeJournalSequence,
     makeReplicaSource,
@@ -35,6 +36,9 @@ const {
     makeDeleteEvent,
     nodeKeyToCanonicalString,
     projectRetainedJournal,
+    effectiveInputsOf,
+    isEligibleCertificate,
+    summarizeInvalidations,
 } = require("../src/generators/incremental_graph/journal");
 
 const { SnapshotIdentityClass } = require("../src/generators/incremental_graph/journal_sync");
@@ -840,6 +844,173 @@ describe("resetToSource, weakening proof with occurrence-scoped barriers", () =>
         expect(proofOfB === undefined ? undefined : proofOfB.basis.map(
             (entry) => entry.value === "unknown" ? entry.value : journalRecordIdToString(entry.value)
         )).toEqual([WRITER_LOCAL + ":7", "unknown"]);
+    });
+
+    /**
+     * The receiver's supported pair in which `B` has already been given a
+     * replacement occurrence: it was materialized twice by its own writer, and
+     * each occurrence carries a certificate naming it. The certificate of the
+     * replaced occurrence is therefore retained history whose node, inputs and
+     * edges are exactly the ones the certificate of the settled occurrence names,
+     * which is what makes "a barrier for one ValueId" and "a barrier for the
+     * NodeKey" observably different.
+     *
+     * @returns {ReadonlyArray<import("../src/generators/incremental_graph/journal").JournalRecord>}
+     */
+    function receiverWithReplacedOccurrence() {
+        return [
+            materialize({
+                writer: WRITER_LOCAL,
+                sequence: "1",
+                node: NODE_A,
+                context: [],
+                authority: 100,
+            }),
+            validateOwnMaterialization({
+                writer: WRITER_LOCAL,
+                valueSequence: "1",
+                node: NODE_A,
+                context: [],
+                authority: 100,
+                basis: [],
+            }),
+            materialize({
+                writer: WRITER_LOCAL,
+                sequence: "3",
+                node: NODE_D,
+                context: [],
+                authority: 102,
+            }),
+            validateOwnMaterialization({
+                writer: WRITER_LOCAL,
+                valueSequence: "3",
+                node: NODE_D,
+                context: [],
+                authority: 102,
+                basis: [],
+            }),
+            materialize({
+                writer: WRITER_LOCAL,
+                sequence: "5",
+                node: NODE_B,
+                context: [],
+                authority: 104,
+                payload: OTHER_PAYLOAD,
+            }),
+            validateOwnMaterialization({
+                writer: WRITER_LOCAL,
+                valueSequence: "5",
+                node: NODE_B,
+                context: [],
+                authority: 104,
+                basis: [
+                    { node: NODE_A, value: WRITER_LOCAL + ":1" },
+                    { node: NODE_D, value: WRITER_LOCAL + ":3" },
+                ],
+            }),
+            materialize({
+                writer: WRITER_LOCAL,
+                sequence: "7",
+                node: NODE_B,
+                context: [],
+                authority: 106,
+            }),
+            validateOwnMaterialization({
+                writer: WRITER_LOCAL,
+                valueSequence: "7",
+                node: NODE_B,
+                context: [],
+                authority: 106,
+                basis: [
+                    { node: NODE_A, value: WRITER_LOCAL + ":1" },
+                    { node: NODE_D, value: WRITER_LOCAL + ":3" },
+                ],
+            }),
+        ].sort((left, right) => sequenceOf(left) - sequenceOf(right));
+    }
+
+    test("a barrier for the settled ValueId leaves a replaced occurrence's certificate untainted", () => {
+        const receiver = receiverWithReplacedOccurrence();
+        const source = sourceSnapshotOf(sourcePair(
+            [{ node: NODE_A, value: "unknown" }, { node: NODE_D, value: "unknown" }],
+            { reason: "migration" }
+        ));
+
+        const outcome = outcomeOf(reset({ receiver, source }));
+
+        // The settled occurrence is the receiver's second materialization, so both
+        // barriers name it and neither names the occurrence it replaced.
+        const proofBarriers = authoredOf(outcome).filter(
+            (record) => record.kind === "invalidate" && record.scope.kind === "proof"
+        );
+        expect(proofBarriers).toHaveLength(2);
+        for (const barrier of proofBarriers) {
+            expect(nodeKeyToCanonicalString(barrier.node)).toBe(KEY_B);
+            expect(journalRecordIdToString(barrier.scope.value)).toBe(WRITER_LOCAL + ":7");
+        }
+
+        // Both barriers took effect against the settled occurrence.
+        const settled = outcome.projection.occurrences.find(
+            (occurrence) => occurrence.nodeKeyString === KEY_B
+        );
+        expect(settled === undefined ? undefined : [...settled.validInputs]).toEqual([]);
+
+        // The certificate of the replaced occurrence still proves both of its
+        // edges. This is the observation the acceptance list asks for: the barrier
+        // scope is one occurrence and one input, so retiring `A -> B` and
+        // `D -> B` for `WRITER_LOCAL:7` leaves the identically-shaped proof of
+        // `WRITER_LOCAL:5` intact even though both share a NodeKey. Reading those
+        // edges back requires binding the node to the occurrence the certificate
+        // names, which is what "for another ValueId" means operationally.
+        const retained = makeReplicaSource(replicaOf([...receiver, ...outcome.records]));
+        const replaced = projectRetainedJournal({
+            source: retained,
+            localWriter: LOCAL_AUTHOR,
+            currentInputKeysOfNode: twoInputSchema,
+        });
+        if (replaced instanceof Error) {
+            throw new Error("the committed journal does not project: " + replaced.message);
+        }
+        /** @type {Map<string, {node: import("../src/generators/incremental_graph/journal").NodeKey, valueId: import("../src/generators/incremental_graph/journal").JournalRecordId}>} */
+        const occurrences = new Map(
+            replaced.occurrences.map((occurrence) => [occurrence.nodeKeyString, occurrence])
+        );
+        occurrences.set(KEY_B, {
+            node: NODE_B,
+            valueId: made(makeJournalRecordId(LOCAL_AUTHOR, makeJournalSequence("5"))),
+        });
+        const summaries = summarizeInvalidations(retained, occurrences);
+        if ("error" in summaries) {
+            throw new Error("the committed journal does not summarize: " + summaries.error.message);
+        }
+        const authorOf = (name) => (name === WRITER_LOCAL ? LOCAL_AUTHOR : PEER_AUTHOR);
+        const certificateOfReplaced = [...receiver, ...outcome.records].find(
+            (record) => record.kind === "validate" &&
+                journalRecordIdToString(record.value) === WRITER_LOCAL + ":5"
+        );
+        expect(certificateOfReplaced === undefined).toBe(false);
+        const bound = {
+            valueIdOf: (nodeKeyString) => {
+                const occurrence = occurrences.get(nodeKeyString);
+                return occurrence === undefined ? undefined : occurrence.valueId;
+            },
+            authorOf,
+        };
+        // Eligibility as well as effectiveness: a barrier which reached the node's
+        // proof rather than only one of its edges would leave the edges effective
+        // while ceasing to make this certificate current proof at all.
+        expect(isEligibleCertificate(
+            certificateOfReplaced,
+            summaries.summaries,
+            bound,
+            twoInputSchema
+        )).toBe(true);
+        expect([...effectiveInputsOf(
+            certificateOfReplaced,
+            summaries.summaries,
+            bound,
+            twoInputSchema
+        )].sort()).toEqual([KEY_A, KEY_D]);
     });
 });
 
