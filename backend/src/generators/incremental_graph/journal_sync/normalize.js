@@ -105,6 +105,36 @@ function planDependencyClosureRemoval(plan) {
     }
 
     /**
+     * The reverse index: for one canonical key, the selected-present nodes which
+     * depend on it, in ascending canonical order. It is built once, in one pass
+     * over the present nodes in ascending order, so the dependents of a key are
+     * the same keys a per-closure-node scan would have found and are held once
+     * rather than recomputed for every closure node.
+     *
+     * A node's current input list names each of its inputs once, which is what the
+     * current canonical shape gives, so appending while walking the present nodes
+     * in order neither drops nor repeats a dependent.
+     */
+    /** @type {Map<string, string[]>} */
+    const dependents = new Map();
+    for (const nodeKeyString of present) {
+        const inputs = inputsOf.get(nodeKeyString);
+        if (inputs === undefined) {
+            continue;
+        }
+        for (const input of inputs) {
+            const known = dependents.get(input);
+            if (known === undefined) {
+                dependents.set(input, [nodeKeyString]);
+                continue;
+            }
+            if (known[known.length - 1] !== nodeKeyString) {
+                known.push(nodeKeyString);
+            }
+        }
+    }
+
+    /**
      * The selected-present nodes which depend on `nodeKeyString`, in ascending
      * canonical order. Only present nodes are dependents: an absent node has no
      * materialized occurrence to remove.
@@ -112,16 +142,7 @@ function planDependencyClosureRemoval(plan) {
      * @returns {ReadonlyArray<string>}
      */
     function dependentsOf(nodeKeyString) {
-        /** @type {string[]} */
-        const found = [];
-        for (const candidate of present) {
-            const inputs = inputsOf.get(candidate);
-            if (inputs === undefined || !inputs.includes(nodeKeyString)) {
-                continue;
-            }
-            found.push(candidate);
-        }
-        return found;
+        return dependents.get(nodeKeyString) ?? [];
     }
 
     /** @type {string[]} */
@@ -170,36 +191,62 @@ function planDependencyClosureRemoval(plan) {
     }
     /** @type {string[]} */
     const ordered = [];
-    /** @type {string[]} */
-    const remaining = closure.slice();
-    while (remaining.length > 0) {
-        /** @type {string[]} */
-        const ready = [];
-        for (const nodeKeyString of remaining) {
-            if (unsatisfied.get(nodeKeyString) === 0) {
-                ready.push(nodeKeyString);
+    /** @type {Set<string>} */
+    const emitted = new Set();
+    /**
+     * The closure nodes whose in-closure inputs are all emitted, in ascending
+     * canonical order. A node becomes ready exactly once, because its unsatisfied
+     * count reaches zero once, so the ready set is maintained by insertion rather
+     * than by rescanning the closure for the nodes which are ready.
+     * @type {string[]}
+     */
+    const ready = [];
+    /**
+     * @param {string} nodeKeyString
+     */
+    const admitReady = (nodeKeyString) => {
+        let low = 0;
+        let high = ready.length;
+        while (low < high) {
+            const middle = Math.floor((low + high) / 2);
+            const probe = ready[middle];
+            if (probe !== undefined && probe < nodeKeyString) {
+                low = middle + 1;
+                continue;
             }
+            high = middle;
         }
-        if (ready.length === 0) {
-            break;
+        ready.splice(low, 0, nodeKeyString);
+    };
+    for (const nodeKeyString of closure) {
+        if (unsatisfied.get(nodeKeyString) === 0) {
+            admitReady(nodeKeyString);
         }
-        ready.sort();
-        for (const nodeKeyString of ready) {
-            remaining.splice(remaining.indexOf(nodeKeyString), 1);
+    }
+    while (ready.length > 0) {
+        const batch = ready.splice(0, ready.length);
+        for (const nodeKeyString of batch) {
+            emitted.add(nodeKeyString);
             ordered.push(nodeKeyString);
         }
-        for (const nodeKeyString of ready) {
+        for (const nodeKeyString of batch) {
             for (const dependent of dependentsOf(nodeKeyString)) {
-                if (!inClosure.has(dependent) || ordered.includes(dependent)) {
+                if (!inClosure.has(dependent) || emitted.has(dependent)) {
                     continue;
                 }
                 const count = unsatisfied.get(dependent);
-                unsatisfied.set(dependent, (count === undefined ? 0 : count) - 1);
+                const left = (count === undefined ? 0 : count) - 1;
+                unsatisfied.set(dependent, left);
+                if (left === 0) {
+                    admitReady(dependent);
+                }
             }
         }
     }
-    for (const nodeKeyString of remaining) {
-        ordered.push(nodeKeyString);
+    for (const nodeKeyString of closure) {
+        if (!emitted.has(nodeKeyString)) {
+            ordered.push(nodeKeyString);
+        }
     }
 
     /** @type {Array<NodeKey>} */
