@@ -1616,7 +1616,7 @@ describe("resetToSource, reading each cut as a delta over the retained state", (
         const receiver = makeReplicaSource(replicaOf(receiverProvenPair()));
         const result = resetToSource({
             receiver,
-            proofSummary: retainedReplayState(receiver, twoInputSchema).proofs,
+            retainedState: undefined,
             source: sourceSnapshotOf(sourcePair([
                 { node: NODE_A, value: "unknown" },
                 { node: NODE_D, value: "unknown" },
