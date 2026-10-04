@@ -27,8 +27,10 @@
  *    instead of being resolved by preferring one of the two.
  *
  * Nothing is written to disk: the module source is read, rewritten in memory, and
- * compiled through `Module` under the *original* filename, so its relative
- * requires resolve exactly as they do at run time.
+ * compiled through `Module` under a sibling filename of its own, so the module's
+ * directory — and therefore every relative require and every `__dirname`-derived
+ * path inside it — is the one it has at run time, while every position the
+ * instrument reads belongs to the source it read.
  *
  * Usage:
  *   node backend/tests/interleaving_space_closed_spine_basis_check.js
@@ -51,6 +53,36 @@ const path = require("path");
 const Module = require("module");
 
 const MODULE_PATH = path.join(__dirname, "interleaving_space.js");
+
+/**
+ * The filename the instrumented copy is compiled under.
+ *
+ * It must not be the committed filename. Line and column numbers reported for a
+ * stack frame are resolved against whatever compilation of a *path* the host
+ * process has already registered, so a host which has compiled `interleaving_space.js`
+ * from its own transformed source makes every frame of the instrumented copy
+ * resolve against that transformed source and report positions that belong to a
+ * different file. The attribution below maps those positions onto the source this
+ * instrument read, so the numbers it consumes would then be silently wrong. A
+ * filename of its own keeps the positions this instrument sees its own.
+ *
+ * The name is a sibling of the committed file and is never written to disk, so
+ * the module's directory — and therefore every relative require and every
+ * `__dirname`-derived path inside it — is the one it has at run time.
+ */
+const INSTRUMENTED_NAME = "interleaving_space.instrumented.js";
+
+/** The path the instrumented copy is compiled under; never written to disk. */
+const INSTRUMENTED_PATH = path.join(path.dirname(MODULE_PATH), INSTRUMENTED_NAME);
+
+/**
+ * A stack frame belonging to the instrumented copy, matched on its own filename so
+ * a frame of the committed copy is not mistaken for one of the instrumented copy.
+ * @type {RegExp}
+ */
+const INSTRUMENTED_FRAME = new RegExp(
+    `\\((?:.*[/\\\\])${INSTRUMENTED_NAME.replace(/\./g, "\\.")}:(\\d+):(\\d+)\\)`
+);
 
 /** Builders defined by the fixture section, matched by the module's own naming. */
 const BUILDER_NAME = /^function ([A-Za-z0-9_]*Fixtures?)\(/;
@@ -163,10 +195,10 @@ function loadInstrumented(source) {
         CLOSED_SPINE_ANCHOR,
         " globalThis.__trace.spine.push(new Error().stack);"
     );
-    const loaded = new Module(MODULE_PATH, null);
-    loaded.filename = MODULE_PATH;
+    const loaded = new Module(INSTRUMENTED_PATH, null);
+    loaded.filename = INSTRUMENTED_PATH;
     loaded.paths = Module._nodeModulePaths(path.dirname(MODULE_PATH));
-    loaded._compile(`${rewritten}\n${CAPTURE_GLOBAL}`, MODULE_PATH);
+    loaded._compile(`${rewritten}\n${CAPTURE_GLOBAL}`, INSTRUMENTED_PATH);
     const traceHost = loaded.exports.__instrumentGlobal;
     traceHost.__trace = { builders: [], spine: [] };
     return { exports: loaded.exports, traceHost };
@@ -181,13 +213,13 @@ function builderOfStack(stack) {
     const frames = stack
         .split("\n")
         .slice(1)
-        .map((candidate) => /\((.*interleaving_space\.js):(\d+):(\d+)\)/.exec(candidate))
+        .map((candidate) => INSTRUMENTED_FRAME.exec(candidate))
         .filter((match) => match !== null);
-    const caller = frames.find((match) => match[2] !== String(closedSpineLine));
+    const caller = frames.find((match) => match[1] !== String(closedSpineLine));
     if (caller === undefined) {
         return undefined;
     }
-    return builderAtLine.get(caller[2]);
+    return builderAtLine.get(caller[1]);
 }
 
 /**
