@@ -11,9 +11,16 @@
  * worker count is a guess is not a worker count. Leading zeros are accepted,
  * because Jest computes 8 from "08" and this gate must not refuse a value the
  * configuration would honour.
+ *
+ * The grammar has two ends, and both are refusals. A value that is not a whole
+ * number of workers is refused, and a value larger than the host's available
+ * parallelism is refused as well, because that count is the oversubscription the
+ * variable exists to control: Jest's own default of one worker per core minus
+ * one is measured from the machine, and a count above what the machine offers
+ * schedules every worker at once and turns wall-clock budgets into timeouts.
  */
 
-const { realpathSync } = require("node:fs");
+const { availableParallelism } = require("node:os");
 
 /** @typedef {{ status: "unset" }} WorkerCountUnset */
 
@@ -27,12 +34,29 @@ const { realpathSync } = require("node:fs");
  * @typedef {object} WorkerCountRejected
  * @property {"rejected"} status
  * @property {string} reason - why the value is not a worker count.
+ * @property {number} ceiling - the most workers one process may use on this host.
  */
 
 /** @typedef {WorkerCountUnset | WorkerCountAccepted | WorkerCountRejected} WorkerCount */
 
 /** The worker count used when JEST_MAX_WORKERS is unset. */
 const DEFAULT_WORKERS = 1;
+
+/**
+ * The most workers a single Jest process may use on this host.
+ *
+ * The properties that this function carries are:
+ * - the returned value is at least one.
+ *
+ * The proof of those properties is guaranteed by:
+ * - `availableParallelism()` from node:os: returns a whole number of parallel
+ *   units of execution, which is at least one on every host Node runs on, and
+ *   returns undefined only on Node versions without the call, which this
+ *   repository's engine requirement excludes.
+ */
+function workerCeiling() {
+    return availableParallelism();
+}
 
 /**
  * @param {string} value
@@ -46,10 +70,11 @@ function describe(value) {
  * Decide what a caller-provided worker count means.
  *
  * The properties that this function carries are:
- * - an "accepted" result means the value is one or more decimal digits and
- *   `workers` is the whole number they denote, at least one.
- * - a "rejected" result means the value is not such a number and `reason` names
- *   the offending value.
+ * - an "accepted" result means the value is one or more decimal digits, the
+ *   `workers` is the whole number they denote, at least one, and at most
+ *   `ceiling`.
+ * - a "rejected" result means the value is not such a number, `reason` names the
+ *   offending value, and `ceiling` is the largest accepted count on this host.
  * - an "unset" result means the caller supplied nothing and the count this
  *   repository asks for applies.
  *
@@ -58,13 +83,16 @@ function describe(value) {
  *   WorkerCount, and it reaches "accepted" only for a value matching /^[0-9]+$/
  *   whose text contains at least one non-zero digit, which is exactly one or more
  *   decimal digits of at least one; it converts with Number() from that same text
- *   so `workers` is the number the digits denote.
+ *   so `workers` is the number the digits denote, and it reaches "accepted" for
+ *   that value only when `workers` is at most `ceiling`, which every caller
+ *   supplies from `workerCeiling()`.
  *
  * @param {string | undefined} value - the raw environment value, or undefined
  *   when the variable is not set at all.
+ * @param {number} ceiling - the most workers one process may use on this host.
  * @returns {WorkerCount}
  */
-function readWorkerCount(value) {
+function readWorkerCount(value, ceiling) {
     if (value === undefined) {
         return { status: "unset" };
     }
@@ -73,14 +101,22 @@ function readWorkerCount(value) {
     const hasAWorker = /[1-9]/.test(value);
 
     if (isDecimalDigits && hasAWorker) {
-        return { status: "accepted", workers: Number(value) };
+        const workers = Number(value);
+        if (workers <= ceiling) {
+            return { status: "accepted", workers };
+        }
+        return {
+            status: "rejected",
+            reason: `${describe(value)} asks for more workers than this host has available to one process`,
+            ceiling,
+        };
     }
 
     const reason = value === "" || !isDecimalDigits
         ? `${describe(value)} is not a whole number written in decimal digits`
         : `${describe(value)} counts no workers`;
 
-    return { status: "rejected", reason };
+    return { status: "rejected", reason, ceiling };
 }
 
 /**
@@ -90,9 +126,11 @@ function readWorkerCount(value) {
  * @returns {string}
  */
 function rejectionMessage(rejection) {
-    return `ERROR: JEST_MAX_WORKERS must be a whole number of 1 or more, but ${rejection.reason}.\n\n`
+    return `ERROR: JEST_MAX_WORKERS must be a whole number of workers between 1 and the `
+        + `${rejection.ceiling} this host has available to one process, but ${rejection.reason}.\n\n`
         + "Unset it to run the suite at one worker, or set it to a positive\n"
-        + "count of workers written in decimal digits.\n";
+        + "count of workers written in decimal digits, no greater than the\n"
+        + "parallelism this host reports to one process.\n";
 }
 
 /**
@@ -114,7 +152,8 @@ function workerCountOrDefault(workerCount) {
  *
  * The properties that this class carries are:
  * - the run was refused, so no Jest process starts with the offending count.
- * - `message` names JEST_MAX_WORKERS and the rejected value.
+ * - `message` names JEST_MAX_WORKERS, the rejected value and the count this host
+ *   would have accepted.
  *
  * The proof of those properties is guaranteed by:
  * - `workerCountOrDefault(...)`: satisfies the first property because it throws
@@ -122,8 +161,8 @@ function workerCountOrDefault(workerCount) {
  *   repository reaches its `maxWorkers` through this function, so the refusal
  *   happens before Jest reads any worker count.
  * - `workerCountOrDefault(...)`: satisfies the second property because the
- *   message is built by `rejectionMessage(...)`, which embeds `reason`, and
- *   `reason` embeds the offending value's text.
+ *   message is built by `rejectionMessage(...)`, which embeds `reason` and
+ *   `ceiling`, and `reason` embeds the offending value's text.
  */
 class RejectedWorkerCountError extends Error {
     /**
@@ -133,6 +172,7 @@ class RejectedWorkerCountError extends Error {
         super(rejectionMessage(rejection));
         this.name = "RejectedWorkerCountError";
         this.reason = rejection.reason;
+        this.ceiling = rejection.ceiling;
     }
 }
 
@@ -148,36 +188,16 @@ function isRejectedWorkerCountError(object) {
  * Resolve the worker count for a Jest configuration file, refusing a value that
  * is not a worker count by throwing rather than by returning a number.
  *
+ * Every Jest configuration calls this on every path it is read on, including
+ * the path where it will not state the count, so that a refused value is refused
+ * however Jest was started.
+ *
  * @param {NodeJS.ProcessEnv | undefined} environment
  * @returns {number}
  */
 function maxWorkersForConfiguration(environment) {
     const rawValue = environment === undefined ? undefined : environment["JEST_MAX_WORKERS"];
-    return workerCountOrDefault(readWorkerCount(rawValue));
-}
-
-/**
- * Whether a Jest configuration file located in `configurationDirectory` is the
- * root configuration of the current run rather than one project among several.
- *
- * Jest resolves and validates every entry of a `projects` list as an individual
- * project configuration, and it reports `maxWorkers` there as an option that
- * "is not supported in an individual project configuration". The worker count is
- * a global option, so it belongs to whichever configuration supplies the global
- * config, and that is the one Jest was pointed at by starting Jest in this
- * directory. When a workspace configuration is read as a project of the root
- * run, the root configuration has already resolved and refused the same value,
- * so there is nothing left for it to say.
- *
- * Both sides are compared as real paths because Jest compares its working
- * directory the same way, and a symbolic link in the path would otherwise make
- * this answer false for a run started in the intended directory.
- *
- * @param {string} configurationDirectory
- * @returns {boolean}
- */
-function isRootConfigurationOfThisRun(configurationDirectory) {
-    return realpathSync(process.cwd()) === realpathSync(configurationDirectory);
+    return workerCountOrDefault(readWorkerCount(rawValue, workerCeiling()));
 }
 
 /**
@@ -195,7 +215,7 @@ function refuse(rejection) {
  * @returns {void}
  */
 function checkFromCommandLine() {
-    const workerCount = readWorkerCount(process.env["JEST_MAX_WORKERS"]);
+    const workerCount = readWorkerCount(process.env["JEST_MAX_WORKERS"], workerCeiling());
 
     if (workerCount.status === "rejected") {
         refuse(workerCount);
@@ -207,10 +227,11 @@ if (require.main === module) {
 }
 
 module.exports = {
+    DEFAULT_WORKERS,
     RejectedWorkerCountError,
     isRejectedWorkerCountError,
-    isRootConfigurationOfThisRun,
     maxWorkersForConfiguration,
     readWorkerCount,
     workerCountOrDefault,
+    workerCeiling,
 };
