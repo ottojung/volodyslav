@@ -26,6 +26,7 @@
 
 const {
     journalAuthorToString,
+    journalRecordIdToString,
     makeAuthorityTime,
     makeJournalAuthor,
     makeJournalFrontierFromText,
@@ -52,9 +53,11 @@ const NODE_B = { head: "event", args: [{ id: 2 }] };
 const NODE_D = { head: "event", args: [{ id: 4 }] };
 const KEY_A = nodeKeyToCanonicalString(NODE_A);
 const KEY_B = nodeKeyToCanonicalString(NODE_B);
+const KEY_D = nodeKeyToCanonicalString(NODE_D);
 const NOW = "2020-01-01T00:00:00.000Z";
 const LATER = "2020-01-02T00:00:00.000Z";
 const WRITER_LOCAL = "aaaaaaaaa";
+const WRITER_PEER = "bbbbbbbbb";
 const PAYLOAD = { type: "entry_description", description: "x" };
 const INSTANT = 1700000000000;
 
@@ -246,6 +249,47 @@ function receiverChain() {
     ];
 }
 
+/**
+ * Every readable field of a retained replay state, as one comparable value. A change
+ * to any of them is a change to the state a caller holds.
+ *
+ * @param {import("../src/generators/incremental_graph/journal_retained").RetainedReplayState} state
+ */
+function stateSnapshot(state) {
+    /**
+     * @param {ReadonlyMap<string, unknown>} entries
+     * @returns {ReadonlyArray<[string, string]>}
+     */
+    const text = (entries) => [...entries]
+        .map(([key, value]) => [key, String(value)])
+        .sort((left, right) => (left[0] < right[0] ? -1 : (left[0] > right[0] ? 1 : 0)));
+    return {
+        heads: [...state.heads.entries()]
+            .map(([nodeKeyString, selection]) => [
+                nodeKeyString,
+                selection.winner === undefined
+                    ? "absent"
+                    : journalRecordIdToString(selection.winner.id),
+            ])
+            .sort((left, right) => (left[0] < right[0] ? -1 : (left[0] > right[0] ? 1 : 0))),
+        summarySelected: text(state.proofs.selected),
+        summaryCertificates: text(state.proofs.certificates),
+        nodeScoped: text(state.proofs.nodeScoped),
+        valueScoped: text(state.proofs.valueScoped),
+        proofScoped: text(state.proofs.proofScoped),
+        resolved: text(state.certificates),
+        selected: text(state.selected),
+        touched: [...state.touched].sort(),
+        writers: [...state.writers.keys()].sort(),
+        admittedLengths: state.admittedLengths === undefined
+            ? []
+            : [...state.admittedLengths.entries()]
+                .map(([name, sequence]) => [name, String(sequence)])
+                .sort((left, right) => (left[0] < right[0] ? -1 : (left[0] > right[0] ? 1 : 0))),
+        lastNodeIndex: state.lastNodeIndex,
+    };
+}
+
 describe("synchronizeRetainedJournal, a retained replay state which is not the receiver's", () => {
     test("a state built from a strict prefix of the receiver is refused", () => {
         const receiver = receiverChain();
@@ -318,5 +362,102 @@ describe("synchronizeRetainedJournal, a retained replay state which is not the r
         }
         expect(result.outcome.projection.occurrences.map((occurrence) => occurrence.nodeKeyString))
             .toEqual([KEY_A, KEY_B]);
+    });
+});
+
+describe("synchronizeRetainedJournal, a failed operation's effect on the caller's state", () => {
+    test("a state is unchanged when the operation fails while projecting", () => {
+        // The peer materializes the unrelated leaf `D` under the physical identifier
+        // the receiver's own `A` already holds, so the cut fails on
+        // `validateNodeIdentifierDistinctness` after the import has been staged.
+        const receiver = receiverChain();
+        const conflicting = materialize({
+            writer: WRITER_PEER,
+            sequence: "1",
+            node: NODE_D,
+            context: [[WRITER_LOCAL, "4"]],
+            basis: [],
+            identifier: identifierOf(KEY_A),
+        });
+        const state = rebuiltStateOf(receiver);
+        const before = stateSnapshot(state);
+
+        const result = synchronize({
+            receiver,
+            source: conflicting,
+            authorityPhysical: 700,
+            retainedState: state,
+        });
+
+        expect("outcome" in result).toBe(false);
+        if ("outcome" in result) {
+            return;
+        }
+        expect(result.error.message).toContain("same physical node identifier");
+        expect(stateSnapshot(state)).toEqual(before);
+    });
+
+    test("the state a failed operation left behind still describes the receiver", () => {
+        const receiver = receiverChain();
+        const conflicting = materialize({
+            writer: WRITER_PEER,
+            sequence: "1",
+            node: NODE_D,
+            context: [[WRITER_LOCAL, "4"]],
+            basis: [],
+            identifier: identifierOf(KEY_A),
+        });
+        const state = rebuiltStateOf(receiver);
+
+        synchronize({
+            receiver,
+            source: conflicting,
+            authorityPhysical: 700,
+            retainedState: state,
+        });
+
+        // The same state, handed to a synchronization which has nothing to do, still
+        // projects the receiver's own journal rather than the failed operation's
+        // partially staged one.
+        const after = synchronize({
+            receiver,
+            source: [],
+            authorityPhysical: 700,
+            retainedState: state,
+        });
+
+        expect("outcome" in after).toBe(true);
+        if (!("outcome" in after)) {
+            return;
+        }
+        expect(after.outcome.projection.occurrences.map((occurrence) => occurrence.nodeKeyString))
+            .toEqual([KEY_A, KEY_B]);
+    });
+
+    test("a successful operation does reach the caller's own state", () => {
+        const receiver = receiverChain();
+        const peerAddsD = materialize({
+            writer: WRITER_PEER,
+            sequence: "1",
+            node: NODE_D,
+            context: [[WRITER_LOCAL, "4"]],
+            basis: [],
+        });
+        const state = rebuiltStateOf(receiver);
+
+        const result = synchronize({
+            receiver,
+            source: peerAddsD,
+            authorityPhysical: 700,
+            retainedState: state,
+        });
+
+        expect("outcome" in result).toBe(true);
+        if (!("outcome" in result)) {
+            return;
+        }
+        expect(result.outcome.retainedState).toBe(state);
+        expect(stateSnapshot(state).heads.map(([nodeKeyString]) => nodeKeyString))
+            .toEqual([KEY_A, KEY_B, KEY_D]);
     });
 });

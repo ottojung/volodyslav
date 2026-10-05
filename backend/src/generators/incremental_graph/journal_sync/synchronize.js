@@ -67,6 +67,8 @@ const {
     makeJournalPublicationError,
 } = require("../journal");
 const {
+    commitRetainedReplayState,
+    forkRetainedReplayState,
     isRetainedReplayState,
     projectRetainedReplay,
     refuseStaleRetainedState,
@@ -203,6 +205,12 @@ function synchronizeRetainedJournal(request) {
         return stale;
     }
 
+    // Every record this operation admits is staged into a fork, and the fork's
+    // contents reach the caller's state only once the operation has succeeded, so a
+    // failure at any later step leaves the caller's state exactly as it was found
+    // (`incremental-graph-journal-sync.md` §Atomic publication).
+    const staged = forkRetainedReplayState(retainedState);
+
     const incompatible = assertCompatibleIdentity(receiverIdentity, sourceIdentity);
     if (incompatible !== undefined) {
         return { error: incompatible };
@@ -229,9 +237,9 @@ function synchronizeRetainedJournal(request) {
     // dependency-closed, and Phase 1 is what repairs that. The head view is the
     // retained one with the imported records folded in, so no retained Value/Delete
     // record is visited again.
-    stageRetainedRecords(retainedState, imported);
+    stageRetainedRecords(staged, imported);
     /** @type {Map<string, HeadSelection>} */
-    const rawHeads = selectedHeadsOf(retainedState);
+    const rawHeads = selectedHeadsOf(staged);
     const closure = planDependencyClosureRemoval({
         selections: rawHeads,
         currentInputKeysOfNode,
@@ -261,7 +269,7 @@ function synchronizeRetainedJournal(request) {
         if ("error" in allocated) {
             return allocated;
         }
-        stageRetainedRecords(retainedState, allocated.records);
+        stageRetainedRecords(staged, allocated.records);
         authored.push(...allocated.records);
         return { writerState: allocated.writerState };
     };
@@ -271,7 +279,7 @@ function synchronizeRetainedJournal(request) {
      * closure.
      * @returns {Projection | {error: JournalError}}
      */
-    const cut = () => projectRetainedReplay(retainedState);
+    const cut = () => projectRetainedReplay(staged);
 
     // Phase 1 is allocated first, because its records are what makes the union
     // projectable: a raw union whose selected heads are not dependency-closed has
@@ -334,6 +342,7 @@ function synchronizeRetainedJournal(request) {
 
     /** @type {JournalRecord[]} */
     const records = [...imported, ...authored];
+    commitRetainedReplayState(retainedState, staged);
     return {
         outcome: new SyncOutcomeClass(
             records,

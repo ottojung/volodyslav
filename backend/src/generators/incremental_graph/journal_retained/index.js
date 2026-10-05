@@ -44,6 +44,7 @@ const {
 } = require("./retained");
 const { buildRetainedReplayState } = require("./retained_maintenance");
 const { refuseStaleRetainedState } = require("./correspondence");
+const { commitRetainedReplayState, forkRetainedReplayState } = require("./transaction");
 
 module.exports = {
     ProofSummaryClass,
@@ -53,6 +54,8 @@ module.exports = {
     buildProofSummary,
     buildRetainedReplayState,
     refuseStaleRetainedState,
+    commitRetainedReplayState,
+    forkRetainedReplayState,
     countEligibleProofEdges,
     eligibleProofEdgeUnion,
     invalidationSummaryOf,
