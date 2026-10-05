@@ -540,13 +540,13 @@ The client (frontend) is assumed to be **non-adversarial** — it is the same de
 
 Volodyslav has exactly one supported live persisted database format at a time: the format of the current default branch. See `$id-6029400544354023`.
 
-Treating a historical persisted database format as a valid ordinary-runtime input is a **serious correctness bug**. Do not add compatibility shims, historical decoder ladders, unions of old storage formats, alternate historical identifier forms, or fallbacks which let normal runtime code operate on dead database representations.
+Treating a historical persisted database format as a valid ordinary-runtime input is a **serious correctness bug**. Do not add compatibility shims, historical decoder ladders, unions of old storage formats, alternate historical representations, or fallbacks which let ordinary runtime code operate on dead database formats.
 
-A persisted-format change may require an explicitly scoped **one-way migration**. That migration is allowed to understand the immediately preceding deployed format only so it can convert that state into the single current format before ordinary runtime begins. Historical representations must stay inside the migration boundary; current-domain types, validators, synchronization, journal replay, and ordinary database code must see only the current representation.
+A persisted-format change may require an explicitly scoped **one-way migration**. That migration is allowed to understand the immediately preceding deployed format only so it can convert that state into the single current format before ordinary runtime begins.
 
-Migration is not backwards compatibility. Once a coordinated transition no longer needs its source-side migration/bootstrap/cutover machinery, remove that machinery instead of preserving it as permanent support.
+Historical representations must stay inside the migration boundary. Current-domain types, validators, APIs, persisted outputs, and ordinary runtime code must see only the current representation.
 
-For Journal 3 specifically, initialization targets the current master database format only; it must not grow support for pre-master persisted formats. See `$id-0838075076046245`.
+Migration is not backwards compatibility. Once a coordinated transition no longer needs its source-side migration machinery, remove that machinery instead of preserving it as permanent support.
 
 ## Don't speak of the dead
 
