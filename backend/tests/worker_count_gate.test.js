@@ -194,16 +194,34 @@ function withoutComments(source) {
 }
 
 /**
- * The source of a file with its string literals replaced by empty ones.
+ * The source of a file with its comments and its double-quoted spans removed.
+ *
+ * Comments go first, and only the span between the first and the last double
+ * quote of a line goes second, because a regular expression may contain a
+ * backtick or an apostrophe and a scanner that pairs quotes across the whole file
+ * pairs them wrongly. The price is that a single-quoted string is not removed,
+ * which is why every name this file looks for is written in double quotes here.
  *
  * @param {string} source
  * @returns {string}
  */
-function withoutStringLiterals(source) {
+function outsideQuotedSpans(source) {
     return withoutComments(source)
-        .replace(/"(?:[^"\\]|\\.)*"/g, '""')
-        .replace(/'(?:[^'\\]|\\.)*'/g, "''")
-        .replace(/`(?:[^`\\]|\\.)*`/g, "``");
+        .split("\n")
+        .map((line) => {
+            const first = line.indexOf('"');
+            const last = line.lastIndexOf('"');
+            return first < 0 || last <= first ? line : line.slice(0, first) + line.slice(last + 1);
+        })
+        .join("\n");
+}
+
+/**
+ * @param {string} text
+ * @returns {string}
+ */
+function escape(text) {
+    return text.replace(/[.*+?^${}()|[\]\\-]/g, "\\$&");
 }
 
 /**
@@ -932,7 +950,7 @@ describe("every way of starting the suite", () => {
     });
 
     it("finds a Jest invocation and the arguments it was given", () => {
-        const invocations = jestInvocations('run: TZ=UTC npx jest --maxWorkers=31 && echo done');
+        const invocations = jestInvocations("run: TZ=UTC npx jest --maxWorkers=31 && echo done");
         expect(invocations).toHaveLength(1);
         expect(invocations[0].program).toBe("jest");
         expect(invocations[0].arguments).toEqual(["--maxWorkers=31"]);
@@ -1075,12 +1093,19 @@ describe("every way of starting the suite", () => {
         expect(declaring).toEqual([]);
     });
 
-    it("states no worker count, no configuration and no project list outside a string literal of itself", () => {
-        const outside = withoutStringLiterals(fs.readFileSync(__filename, "utf8"));
-        const tokens = tokenize(outside);
+    it("names no worker count, no configuration and no project list outside a string literal of itself", () => {
+        const outside = outsideQuotedSpans(fs.readFileSync(__filename, "utf8"));
+        const forbiddenName = new RegExp(`(?:${FORBIDDEN_JEST_ARGUMENTS.map(escape).join("|")})`);
 
-        expect(tokens.filter((token) => FORBIDDEN_JEST_ARGUMENTS.includes(token))).toEqual([]);
-        expect(tokens.filter((token) => namesJestProgram(token))).toEqual([]);
-        expect(tokens.filter((token) => WORKER_COUNT_DECLARATION.test(token))).toEqual([]);
+        const findings = outside.split("\n").flatMap((line, index) => {
+            const at = { line: index + 1 };
+            return [
+                ...(forbiddenName.test(line) ? [{ ...at, kind: "argument" }] : []),
+                ...(WORKER_COUNT_DECLARATION.test(line) ? [{ ...at, kind: "declared count" }] : []),
+                ...jestInvocations(line).map((invocation) => ({ ...at, kind: `starts ${invocation.program}` })),
+            ];
+        });
+
+        expect(findings).toEqual([]);
     });
 });
