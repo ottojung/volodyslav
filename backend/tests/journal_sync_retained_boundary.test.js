@@ -27,14 +27,18 @@
 const {
     journalAuthorToString,
     journalRecordIdToString,
+    journalSequenceToString,
     makeAuthorityTime,
     makeJournalAuthor,
     makeJournalFrontierFromText,
     makeJournalReplica,
+    isJournalSequence,
     makeJournalSequence,
+    makeInvalidateEvent,
     makeValidateEvent,
     makeValidationBasisEntry,
     makeValueEvent,
+    makeValueScope,
     nodeKeyToCanonicalString,
     makeReplicaSource,
 } = require("../src/generators/incremental_graph/journal");
@@ -253,15 +257,37 @@ function receiverChain() {
  * Every readable field of a retained replay state, as one comparable value. A change
  * to any of them is a change to the state a caller holds.
  *
+ * The counted summary's scope maps nest a coordinate maximum inside the scope they
+ * belong to, and `String` of a `Map` is `"[object Map]"` for every entry of it, so the
+ * scopes are read all the way down: a snapshot which stopped at the scope key would
+ * report the same value for every state whose outermost scopes are identical, which is
+ * exactly where an invalidation's coordinate maximum is written.
+ *
  * @param {import("../src/generators/incremental_graph/journal_retained").RetainedReplayState} state
  */
 function stateSnapshot(state) {
     /**
+     * @param {unknown} value
+     * @returns {unknown}
+     */
+    const deep = (value) => {
+        if (value instanceof Map) {
+            return [...value.entries()].map(([key, inner]) => [key, deep(inner)]);
+        }
+        if (value instanceof Set) {
+            return [...value].map((inner) => deep(inner)).sort();
+        }
+        if (isJournalSequence(value)) {
+            return journalSequenceToString(value);
+        }
+        return String(value);
+    };
+    /**
      * @param {ReadonlyMap<string, unknown>} entries
-     * @returns {ReadonlyArray<[string, string]>}
+     * @returns {ReadonlyArray<[string, unknown]>}
      */
     const text = (entries) => [...entries]
-        .map(([key, value]) => [key, String(value)])
+        .map(([key, value]) => [String(key), deep(value)])
         .sort((left, right) => (left[0] < right[0] ? -1 : (left[0] > right[0] ? 1 : 0)));
     return {
         heads: [...state.heads.entries()]
@@ -365,7 +391,89 @@ describe("synchronizeRetainedJournal, a retained replay state which is not the r
     });
 });
 
+/**
+ * A value-scoped invalidation of one occurrence, as the writer which emitted it
+ * retained it.
+ *
+ * @param {object} occurrence
+ * @param {string} occurrence.writer
+ * @param {string} occurrence.sequence
+ * @param {import("../src/generators/incremental_graph/journal").NodeKey} occurrence.node
+ * @param {ReadonlyArray<string>} occurrence.context
+ * @param {string} occurrence.value - The occurrence being invalidated.
+ */
+function invalidateOccurrence(occurrence) {
+    return made(makeInvalidateEvent(
+        {
+            id: occurrence.writer + ":" + occurrence.sequence,
+            context: contextOf([...occurrence.context]),
+            authorityTime: authorityOf(Number(occurrence.sequence)),
+            node: occurrence.node,
+        },
+        makeValueScope(occurrence.value),
+        "propagated"
+    ));
+}
+
 describe("synchronizeRetainedJournal, a failed operation's effect on the caller's state", () => {
+    test("a value-scoped barrier of the caller's state is unchanged when the operation fails", () => {
+        // The receiver already holds a value-scoped invalidation of its own `A`
+        // occurrence, so its counted summary has the whole `node -> valueId ->
+        // coordinate maximum` chain an imported invalidation is admitted into. The
+        // peer invalidates that same occurrence under its own writer, which is
+        // therefore admitted into the fork's value-scoped maximum for the caller's
+        // own scope. If the fork shared that maximum with the caller, the failed
+        // operation would leave the caller's barrier naming a record of the peer,
+        // which `retained.js` documents as a coordinate maximum of the admitted
+        // invalidations.
+        const receiver = [
+            ...receiverChain(),
+            invalidateOccurrence({
+                writer: WRITER_LOCAL,
+                sequence: "5",
+                node: NODE_A,
+                context: [],
+                value: WRITER_LOCAL + ":1",
+            }),
+        ];
+        const conflicting = [
+            ...materialize({
+                writer: WRITER_PEER,
+                sequence: "1",
+                node: NODE_D,
+                context: [[WRITER_LOCAL, "4"]],
+                basis: [],
+                identifier: identifierOf(KEY_A),
+            }),
+            invalidateOccurrence({
+                writer: WRITER_PEER,
+                sequence: "3",
+                node: NODE_A,
+                context: [[WRITER_PEER, "2"], [WRITER_LOCAL, "4"]],
+                value: WRITER_LOCAL + ":1",
+            }),
+        ];
+        const state = rebuiltStateOf(receiver);
+        const before = stateSnapshot(state);
+        expect(before.valueScoped).toEqual([
+            [KEY_A, [[WRITER_LOCAL + ":1", [[WRITER_LOCAL, "5"]]]]],
+        ]);
+
+        const result = synchronize({
+            receiver,
+            source: conflicting,
+            authorityPhysical: 700,
+            retainedState: state,
+        });
+
+        expect("outcome" in result).toBe(false);
+        if ("outcome" in result) {
+            return;
+        }
+        expect(result.error.message).toContain("same physical node identifier");
+        expect(stateSnapshot(state)).toEqual(before);
+    });
+
     test("a state is unchanged when the operation fails while projecting", () => {
         // The peer materializes the unrelated leaf `D` under the physical identifier
         // the receiver's own `A` already holds, so the cut fails on
