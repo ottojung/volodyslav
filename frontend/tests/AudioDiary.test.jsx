@@ -348,6 +348,10 @@ describe("AudioDiary page", () => {
             fireEvent.click(screen.getByTestId("discard-button"));
         });
 
+        act(() => {
+            fireEvent.click(screen.getByTestId("discard-confirm-button"));
+        });
+
         await waitFor(() => {
             expect(screen.getByTestId("start-button")).toBeInTheDocument();
         });
@@ -376,6 +380,10 @@ describe("AudioDiary page", () => {
 
         act(() => {
             fireEvent.click(screen.getByTestId("discard-button"));
+        });
+
+        act(() => {
+            fireEvent.click(screen.getByTestId("discard-confirm-button"));
         });
 
         await waitFor(() => {

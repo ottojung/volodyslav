@@ -16,6 +16,7 @@ import { keyframes } from "@emotion/react";
 import { useAudioRecorder } from "./useAudioRecorder.js";
 import { formatTime } from "./audio_helpers.js";
 import AudioVisualization from "./AudioVisualization.jsx";
+import DiscardControl from "./DiscardControl.jsx";
 import { MicrophoneIcon, PauseIcon, StopIcon } from "./icons.jsx";
 import RestoredSessionBanner from "./RestoredSessionBanner.jsx";
 import RecorderStatusBadge from "./RecorderStatusBadge.jsx";
@@ -245,16 +246,11 @@ export default function AudioDiary() {
                     )}
 
                     {(isRecording || isPaused) && (
-                        <Button
-                            colorPalette="red"
-                            variant="outline"
-                            size="sm"
-                            w="full"
-                            onClick={handleDiscard}
-                            data-testid="discard-button"
-                        >
-                            Discard
-                        </Button>
+                        <DiscardControl
+                            onDiscard={handleDiscard}
+                            subject={recorderState}
+                            layout="full"
+                        />
                     )}
 
                     {isStopped && audioBlob && (
@@ -286,15 +282,11 @@ export default function AudioDiary() {
                             </Field.Root>
 
                             <HStack w="full" gap={3}>
-                                <Button
-                                    colorPalette="red"
-                                    variant="outline"
-                                    flex={1}
-                                    onClick={handleDiscard}
-                                    data-testid="discard-button"
-                                >
-                                    Discard
-                                </Button>
+                                <DiscardControl
+                                    onDiscard={handleDiscard}
+                                    subject={audioUrl}
+                                    layout="flex"
+                                />
                                 <Button
                                     colorPalette="green"
                                     flex={1}
