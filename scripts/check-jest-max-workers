@@ -3,46 +3,19 @@
 # Validates JEST_MAX_WORKERS and exits 1 with a message naming the variable when
 # it is not a value a worker count may be set to.
 #
-# JEST_MAX_WORKERS is read by jest.config.js as Number(...). A value that is not
-# a positive whole number becomes NaN or 0 there, Jest treats both as unset, and
-# the run silently returns to one worker per core minus one - the oversubscription
-# the value exists to control. Reject the value here instead, where the message
-# can say what was wrong with it.
+# The grammar is stated once, in scripts/jest-max-workers, which the jest.config.js
+# files call as well. This script exists because a configuration file cannot
+# report a rejected value in a way the caller can act on before the run starts:
+# the failure mode of the unsound arithmetic that used to live in
+# jest.config.js - Number() turning a guess into NaN, which Jest reads as unset
+# and answers with one worker per core minus one - is silence.
 #
-# Accepted grammar, stated once, and deliberately narrower than Number():
-#
-#   unset                     - run at the default this repository asks for.
-#   one or more decimal digits - a whole number of at least one worker.
-#
-# Leading zeros are accepted, because jest.config.js computes 8 from "08" and the
-# gate must not refuse a value the configuration would honour. Everything else is
-# refused: the empty value, a sign, a decimal point, an exponent, surrounding
-# spaces, and every non-digit character. " 4", "+4", "4.0" and "1e2" are all
-# numbers to Number() and all refused here, which is the fail-closed direction:
-# a value whose worker count is a guess is not a worker count.
+# Prefer routing a start-of-suite script through this file. Any caller that
+# instead reaches Jest through a jest.config.js is refused too, because those
+# files resolve the same grammar and throw on the same values.
 
 set -eu
 
-if test "${JEST_MAX_WORKERS+set}" = "set"; then
-    case "$JEST_MAX_WORKERS" in
-        "" | *[!0-9]*)
-            printf 'ERROR: JEST_MAX_WORKERS must be a whole number of 1 or more,\n' >&2
-            printf 'but it is "%s".\n\n' "$JEST_MAX_WORKERS" >&2
-            printf 'Unset it to run the suite at one worker, or set it to a\n' >&2
-            printf 'positive count of workers written in decimal digits.\n' >&2
-            exit 1
-            ;;
-    esac
+script_directory=$(CDPATH='' cd -P "$(dirname "$0")" && pwd)
 
-    case "$JEST_MAX_WORKERS" in
-        *[!0]*)
-            ;;
-        *)
-            printf 'ERROR: JEST_MAX_WORKERS must be 1 or more,\n' >&2
-            printf 'but it is "%s".\n\n' "$JEST_MAX_WORKERS" >&2
-            printf 'Unset it to run the suite at one worker, or set it to a\n' >&2
-            printf 'positive count of workers written in decimal digits.\n' >&2
-            exit 1
-            ;;
-    esac
-fi
+exec node "$script_directory/jest-max-workers.js"

@@ -2,6 +2,8 @@
  * Jest Configuration
  * Runs tests in both backend and frontend workspaces.
  */
+
+const { maxWorkersForConfiguration } = require("./scripts");
 module.exports = {
   projects: [
     '<rootDir>/backend',
@@ -34,9 +36,14 @@ module.exports = {
    *
    *     JEST_MAX_WORKERS=8 npm test
    *
+   * A value that is not a worker count is refused here, by throwing out of the
+   * configuration, so that `npx jest` and `bun jest` refuse it too rather than
+   * reaching a run at Jest's own default. The grammar is stated once, in
+   * scripts/jest-max-workers.
+   *
    * @see the `testTimeout` note below for why the timeout is not adjusted instead.
    */
-  maxWorkers: Number(process.env.JEST_MAX_WORKERS ?? 1),
+  maxWorkers: maxWorkersForConfiguration(process.env),
   /**
    * NOTE: `testTimeout` is inert in this file.
    *
