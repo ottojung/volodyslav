@@ -8,4 +8,7 @@
 
 "use strict";
 
-module.exports = require("./jest-max-workers");
+module.exports = {
+    ...require("./jest-configuration-scope"),
+    ...require("./jest-max-workers"),
+};
