@@ -39,6 +39,7 @@ const {
     makeValidationBasisEntry,
     makeValueEvent,
     makeValueScope,
+    makeWriterStateRecord,
     nodeKeyToCanonicalString,
     makeReplicaSource,
 } = require("../src/generators/incremental_graph/journal");
@@ -180,12 +181,14 @@ function replicaOf(records) {
  * traversal, which is what a state which describes that journal looks like.
  *
  * @param {ReadonlyArray<import("../src/generators/incremental_graph/journal").JournalRecord>} records
+ * @param {string} [localWriter] - The local writer the state is built for, which
+ *   defaults to the receiver's own.
  * @returns {import("../src/generators/incremental_graph/journal_retained").RetainedReplayState}
  */
-function rebuiltStateOf(records) {
+function rebuiltStateOf(records, localWriter = WRITER_LOCAL) {
     const built = buildRetainedReplayState({
         source: makeReplicaSource(replicaOf(records)),
-        localWriter: makeJournalAuthor(WRITER_LOCAL),
+        localWriter: makeJournalAuthor(localWriter),
         currentInputKeysOfNode: chainInputs,
     });
     if ("error" in built) {
@@ -369,6 +372,55 @@ describe("synchronizeRetainedJournal, a retained replay state which is not the r
         });
 
         expect("outcome" in result).toBe(false);
+    });
+
+    test("a state built for another local writer is refused", () => {
+        // The same journal, rebuilt for the peer as its local writer. Its admitted
+        // lengths are therefore identical to the receiver's own and every length
+        // agrees, but `incremental-graph-journal-replay.md` §Host-local allocation
+        // watermark derives the watermark from the local writer's own writer-state
+        // records, so the state carries no receiver watermark at all and would
+        // publish the peer's.
+        const receiver = [
+            ...receiverChain(),
+            made(makeWriterStateRecord(WRITER_LOCAL + ":5", 42)),
+        ];
+        const foreign = rebuiltStateOf(receiver, WRITER_PEER);
+
+        const result = synchronize({
+            receiver,
+            source: [],
+            authorityPhysical: 700,
+            retainedState: foreign,
+        });
+
+        expect("outcome" in result).toBe(false);
+        if ("outcome" in result) {
+            return;
+        }
+        expect(result.error.message).toContain("does not describe the receiver's retained journal");
+        expect(result.error.message).toContain(WRITER_PEER);
+    });
+
+    test("the receiver's own allocator watermark is the one the outcome reports", () => {
+        const receiver = [
+            ...receiverChain(),
+            made(makeWriterStateRecord(WRITER_LOCAL + ":5", 42)),
+        ];
+        const own = rebuiltStateOf(receiver);
+
+        const result = synchronize({
+            receiver,
+            source: [],
+            authorityPhysical: 700,
+            retainedState: own,
+        });
+
+        expect("outcome" in result).toBe(true);
+        if (!("outcome" in result)) {
+            return;
+        }
+        expect(result.outcome.projection.lastNodeIndex).toBe(42);
     });
 
     test("success means the retained state is the receiver's own, so no node is omitted", () => {

@@ -197,10 +197,15 @@ function synchronizeRetainedJournal(request) {
     // derived state. `incremental-graph-journal-storage.md` §Change-bounded proof
     // summary requires a stale summary to be rebuilt or maintained rather than
     // consumed, so it is refused here: projecting it would report success over a
-    // projection of a journal the receiver does not retain. The comparison is one
-    // `writers()` call and one `retainedLengthOf` call per writer, so detecting it
-    // costs nothing §Phase 2 forbids.
-    const stale = refuseStaleRetainedState(retainedState, receiver);
+    // projection of a journal the receiver does not retain. The receiver's own local
+    // writer is part of that correspondence and not only the per-writer lengths,
+    // because `incremental-graph-journal-replay.md` §Host-local allocation watermark
+    // derives the allocator watermark from the local writer's own writer-state
+    // records alone, so a state built for another local writer admits exactly the same
+    // lengths and still carries no watermark of this receiver's. The comparison costs
+    // `W + 1` `writers()` calls and `W` `retainedLengthOf` calls for `W` writers, so
+    // detecting it costs nothing §Phase 2 forbids.
+    const stale = refuseStaleRetainedState(retainedState, receiver, localWriter);
     if (stale !== undefined) {
         return stale;
     }

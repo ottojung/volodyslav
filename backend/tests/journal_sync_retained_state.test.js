@@ -58,6 +58,7 @@ const {
     forkRetainedReplayState,
     isRetainedReplayState,
     projectRetainedReplay,
+    refuseStaleRetainedState,
     selectedOccurrencesOf,
 } = require("../src/generators/incremental_graph/journal_retained");
 
@@ -236,14 +237,24 @@ function replicaOf(records) {
  * operation traverses observable.
  *
  * @param {import("../src/generators/incremental_graph/journal/oracle/record_source").JournalSource} source
- * @returns {import("../src/generators/incremental_graph/journal/oracle/record_source").JournalSource & {reads: () => number}}
+ * @returns {import("../src/generators/incremental_graph/journal/oracle/record_source").JournalSource & {reads: () => number, writersCalls: () => number, retainedLengthCalls: () => number}}
  */
 function countingSource(source) {
     let reads = 0;
+    let writersCalls = 0;
+    let retainedLengthCalls = 0;
     return {
         reads: () => reads,
-        writers: () => source.writers(),
-        retainedLengthOf: (author) => source.retainedLengthOf(author),
+        writersCalls: () => writersCalls,
+        retainedLengthCalls: () => retainedLengthCalls,
+        writers: () => {
+            writersCalls += 1;
+            return source.writers();
+        },
+        retainedLengthOf: (author) => {
+            retainedLengthCalls += 1;
+            return source.retainedLengthOf(author);
+        },
         prefixReaderOf: (author) => {
             const reader = source.prefixReaderOf(author);
             return {
@@ -663,7 +674,13 @@ describe("synchronizeRetainedJournal, the retained history it does not re-read",
             sourceIdentity: identity,
             retainedState: rebuiltStateOf(options.receiver),
         });
-        return { result, receiverReads: receiver.reads(), sourceReads: source.reads() };
+        return {
+            result,
+            receiverReads: receiver.reads(),
+            sourceReads: source.reads(),
+            receiverWritersCalls: receiver.writersCalls(),
+            receiverRetainedLengthCalls: receiver.retainedLengthCalls(),
+        };
     }
 
     test("an import reads no retained receiver record at all", () => {
@@ -726,6 +743,41 @@ describe("synchronizeRetainedJournal, the retained history it does not re-read",
         // of the prefix. What the count may not do is grow with the receiver's
         // history, which is what the sibling case above holds.
         expect(countedResult.sourceReads).toBe(source.length + 1);
+    });
+
+    test("the stale-state correspondence costs one enumeration per writer, not one", () => {
+        // The state names `W` admitted writers and the receiver reports `W` of its
+        // own, and the check resolves an admitted writer name against the receiver's
+        // writer set once per admitted writer plus once for the writers the state has
+        // never admitted. The count is therefore `W + 1` enumerations and `W`
+        // retained-length reads, which stays bounded by the number of writers and
+        // never by the retained history.
+        const receiver = [
+            ...receiverChain(),
+            ...localLeafHistory(5, 3),
+            ...materialize({
+                writer: WRITER_PEER,
+                sequence: "1",
+                node: NODE_C,
+                context: [[WRITER_LOCAL, "4"]],
+                basis: [{ node: NODE_B, value: WRITER_LOCAL + ":3" }],
+            }),
+        ];
+        const countedReceiver = countingSource(makeReplicaSource(replicaOf(receiver)));
+        const admittedWriters = new Set(
+            receiver.map((record) => journalAuthorToString(record.id.author))
+        ).size;
+        expect(admittedWriters).toBeGreaterThan(1);
+
+        const refused = refuseStaleRetainedState(
+            rebuiltStateOf(receiver),
+            countedReceiver,
+            makeJournalAuthor(WRITER_LOCAL)
+        );
+
+        expect(refused).toBeUndefined();
+        expect(countedReceiver.writersCalls()).toBe(admittedWriters + 1);
+        expect(countedReceiver.retainedLengthCalls()).toBe(admittedWriters);
     });
 });
 describe("forkRetainedReplayState, the containers it hands the fold", () => {
