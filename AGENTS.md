@@ -528,11 +528,6 @@ Must follow this workflow when making changes to the source code:
 5. **Validate**: Run full test suite with `npm test`. Don't need to run `npm test` if not changing any javascript code.
 6. **Build**: Run `npm run build` if need to ensure the project builds successfully
 
-## Backwards compatibility
-
-- When an AI agent finds issues with legacy code or has a clearly better suggestion for any programming interface, it SHOULD prioritize correctness and improvement and SHOULD disregard backwards compatibility.
-- Exception: If a change affects data or formats that live outside this repository (for example database schemas, on-disk file formats, or other persisted storage), backwards compatibility SHOULD be preserved. Changes that would break external storage or require coordinated migrations need explicit consideration and coordination.
-
 ## Non-Adversarial Client Policy
 
 The client (frontend) is assumed to be **non-adversarial** — it is the same developer who runs the server. This has important implications:
@@ -540,6 +535,18 @@ The client (frontend) is assumed to be **non-adversarial** — it is the same de
 - **No DoS protection**: Rate limits, upload-size caps, fragment-count caps, concurrency limits, and any other latency or resource-consumption limits are **banned**. They introduce large complexity for zero benefit in this context.
 - **No authorization**: Session IDs will not be forged. Authentication and authorization checks on API endpoints are unnecessary.
 - **Shape validation is still required**: Even with a trusted client, client and server may drift (e.g., during development or after a schema change). All incoming data **must** be validated against the expected shape (correct types, expected field names, valid enum values) and rejected with a clear error if it does not match. This is about correctness, not security.
+
+## Persisted formats: migrate, do not support the dead
+
+Volodyslav has exactly one supported live persisted database format at a time: the format of the current default branch. See `$id-6029400544354023`.
+
+Treating a historical persisted database format as a valid ordinary-runtime input is a **serious correctness bug**. Do not add compatibility shims, historical decoder ladders, unions of old storage formats, alternate historical identifier forms, or fallbacks which let normal runtime code operate on dead database representations.
+
+A persisted-format change may require an explicitly scoped **one-way migration**. That migration is allowed to understand the immediately preceding deployed format only so it can convert that state into the single current format before ordinary runtime begins. Historical representations must stay inside the migration boundary; current-domain types, validators, synchronization, journal replay, and ordinary database code must see only the current representation.
+
+Migration is not backwards compatibility. Once a coordinated transition no longer needs its source-side migration/bootstrap/cutover machinery, remove that machinery instead of preserving it as permanent support.
+
+For Journal 3 specifically, initialization targets the current master database format only; it must not grow support for pre-master persisted formats. See `$id-0838075076046245`.
 
 ## Don't speak of the dead
 
@@ -601,12 +608,12 @@ The rule is:
 
 > Replace history with invariants. Replace process narration with current design. Replace comparison against dead code with explanation of living code.
 
-Historical context is allowed only when the history is itself part of the live external contract: migrations, persisted file formats, compatibility boundaries, or public APIs.
+Historical context is allowed only where history is itself required by a live boundary, most importantly inside an explicitly scoped one-way migration which must read its source format in order to convert it. That does not make the source format supported by ordinary runtime code.
 
 Good:
 
 ```js
-// Version 1 records do not contain `createdAt`, so the migration derives it from file metadata.
+// The migration source record has no `createdAt`, so conversion derives it from file metadata before constructing the current representation.
 ```
 
 Bad:
