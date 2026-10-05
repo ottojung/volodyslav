@@ -7,6 +7,11 @@
  * not merged down into the projects named here, so the root `testTimeout` is the
  * only placement that changes the effective budget. `jest_global_setup.js`
  * asserts that the root value and every project value all match the request.
+ *
+ * `JEST_TEST_TIMEOUT` is this repository's own channel for the budget; Jest
+ * itself knows nothing about it, which is why the value is resolved here and
+ * written into the configs. A `--testTimeout=N` flag on the command line
+ * overrides this declaration, as it overrides every Jest config option.
  */
 const { PROJECT_CONFIG_PATHS } = require("./jest_projects");
 const { resolveTestTimeout } = require("./jest_test_timeout");
