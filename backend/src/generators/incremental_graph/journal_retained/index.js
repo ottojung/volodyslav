@@ -43,6 +43,7 @@ const {
     stageRetainedRecords,
 } = require("./retained");
 const { buildRetainedReplayState } = require("./retained_maintenance");
+const { refuseStaleRetainedState } = require("./correspondence");
 
 module.exports = {
     ProofSummaryClass,
@@ -51,6 +52,7 @@ module.exports = {
     authorLookupOf,
     buildProofSummary,
     buildRetainedReplayState,
+    refuseStaleRetainedState,
     countEligibleProofEdges,
     eligibleProofEdgeUnion,
     invalidationSummaryOf,

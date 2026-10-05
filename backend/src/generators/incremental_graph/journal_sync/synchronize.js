@@ -28,7 +28,19 @@
  * `incremental-graph-journal-storage.md` §Change-bounded proof summary names
  * synchronization as one of the operations which must not fall back to scanning
  * unrelated retained history. Synchronization therefore refuses a receiver which
- * does not supply that state, exactly as reset refuses a missing one.
+ * does not supply that state, exactly as reset refuses a missing one, and it refuses
+ * a state which does not describe the receiver's own retained journal, because that
+ * §Change-bounded proof summary reserves a stale summary for explicit
+ * rebuild/maintenance rather than for consumption.
+ *
+ * Two boundaries follow from the state being the receiver's active derived state
+ * rather than a local scratch value. The operation stages into a fork of the supplied
+ * state and reaches the caller's state only when it succeeds, so a failure at any step
+ * leaves the caller's state as it was found, which is what `sync.md` §Atomic
+ * publication means by failure before cutover leaving the previous active supported
+ * state selected. And a successful outcome carries the caller's own state object, now
+ * describing `Jfinal`, so a caller which staged it and cut over with the records it
+ * retains holds the state those records project to.
  *
  * Nothing here is a whole-journal materialisation. Import reads one missing
  * suffix at a time and admits a record at a time; the retained state is extended
@@ -57,6 +69,7 @@ const {
 const {
     isRetainedReplayState,
     projectRetainedReplay,
+    refuseStaleRetainedState,
     selectedHeadsOf,
     stageRetainedRecords,
 } = require("../journal_retained");
@@ -84,7 +97,9 @@ const { planDependencyClosureRemoval, planStalePropagation } = require("./normal
  *   touching it, stages only what `finalizeSyncRecords` allocated, takes
  *   `projection` from the retained state extended by exactly those records, and
  *   takes `stateAdvancing` from the two counts directly, which is the predicate
- *   of `sync.md` §Host-count bounded settling schedule.
+ *   of `sync.md` §Host-count bounded settling schedule. `retainedState` is the
+ *   caller's own state, into which the operation's fork has been committed, so it
+ *   describes exactly `Jfinal`.
  *
  * @param {ReadonlyArray<JournalRecord>} records
  * @param {SyncPublication} publication
@@ -139,7 +154,11 @@ function isSyncOutcome(value) {
  *   derived over the affected dependency closure from retained projection/index
  *   state and
  *   `incremental-graph-journal-storage.md` §Change-bounded proof summary forbids
- *   synchronization from falling back to scanning unrelated retained history.
+ *   synchronization from falling back to scanning unrelated retained history. It
+ *   also refuses a state which does not describe this `receiver`, which is the
+ *   stale-summary case the same section reserves for explicit rebuild/maintenance.
+ *   The state is read, not extended: a failed synchronization leaves it as it was
+ *   found, and a successful one leaves it describing `Jfinal`.
  */
 
 /**
@@ -170,6 +189,18 @@ function synchronizeRetainedJournal(request) {
                 ""
             ),
         };
+    }
+
+    // A state which does not describe the receiver's own retained journal is stale
+    // derived state. `incremental-graph-journal-storage.md` §Change-bounded proof
+    // summary requires a stale summary to be rebuilt or maintained rather than
+    // consumed, so it is refused here: projecting it would report success over a
+    // projection of a journal the receiver does not retain. The comparison is one
+    // `writers()` call and one `retainedLengthOf` call per writer, so detecting it
+    // costs nothing §Phase 2 forbids.
+    const stale = refuseStaleRetainedState(retainedState, receiver);
+    if (stale !== undefined) {
+        return stale;
     }
 
     const incompatible = assertCompatibleIdentity(receiverIdentity, sourceIdentity);

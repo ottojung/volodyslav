@@ -15,6 +15,7 @@
 /** @typedef {import('../journal/errors').AnyJournalError} JournalError */
 /** @typedef {import('../journal/records').JournalRecord} JournalRecord */
 /** @typedef {import('../journal/types').JournalAuthor} JournalAuthor */
+/** @typedef {import('../journal/types').JournalSequence} JournalSequence */
 /** @typedef {import('../journal/oracle/heads').HeadSelection} HeadSelection */
 /** @typedef {import('../journal/oracle/record_source').JournalSource} JournalSource */
 /** @typedef {import('./proof_summary').CurrentInputKeysOfNode} CurrentInputKeysOfNode */
@@ -27,7 +28,12 @@ const {
 } = require("../journal");
 const { buildProofSummary } = require("./proof_summary");
 
-const { RetainedReplayStateClass, admitRetainedHead, projectRetainedReplay } = require("./retained");
+const {
+    RetainedReplayStateClass,
+    admitRetainedHead,
+    projectRetainedReplay,
+    raiseAdmittedLength,
+} = require("./retained");
 
 /**
  * Build the retained replay state of a retained journal.
@@ -49,10 +55,14 @@ function buildRetainedReplayState(request) {
     const heads = new Map();
     /** @type {Map<string, JournalAuthor>} */
     const writers = new Map();
+    /** @type {Map<string, JournalSequence>} */
+    const admittedLengths = new Map();
     const localName = journalAuthorToString(localWriter);
     let lastNodeIndex = 0;
     const failure = streamWithReport(source, (record) => {
-        writers.set(journalAuthorToString(record.id.author), record.id.author);
+        const name = journalAuthorToString(record.id.author);
+        writers.set(name, record.id.author);
+        raiseAdmittedLength(admittedLengths, name, record.id.sequence);
         if (isWriterStateRecord(record)) {
             if (journalAuthorToString(record.id.author) === localName) {
                 lastNodeIndex = record.lastNodeIndex;
@@ -80,6 +90,7 @@ function buildRetainedReplayState(request) {
         new Map(),
         new Set(),
         writers,
+        admittedLengths,
         lastNodeIndex,
         localWriter,
         currentInputKeysOfNode
