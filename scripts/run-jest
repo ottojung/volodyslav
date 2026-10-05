@@ -1,0 +1,36 @@
+#! /bin/sh
+
+set -eu
+
+cd -- "${0%/*}"/..
+
+# JEST_MAX_WORKERS is read by jest.config.js as Number(...). A value that is not
+# a positive whole number becomes NaN or 0 there, Jest treats both as unset, and
+# the run silently returns to one worker per core minus one - the oversubscription
+# the value exists to control. Reject it here instead, where the message can name
+# the variable and the accepted values.
+if test "${JEST_MAX_WORKERS+set}" = "set"; then
+    case "$JEST_MAX_WORKERS" in
+        *[!0-9]*)
+            printf 'ERROR: JEST_MAX_WORKERS must be a whole number of 1 or more,\n' >&2
+            printf 'but it is "%s".\n\n' "$JEST_MAX_WORKERS" >&2
+            printf 'Unset it to run the suite at one worker, or set it to a\n' >&2
+            printf 'positive count of workers.\n' >&2
+            exit 1
+            ;;
+    esac
+
+    case "$JEST_MAX_WORKERS" in
+        *[!0]*)
+            ;;
+        *)
+            printf 'ERROR: JEST_MAX_WORKERS must be 1 or more,\n' >&2
+            printf 'but it is "%s".\n\n' "$JEST_MAX_WORKERS" >&2
+            printf 'Unset it to run the suite at one worker, or set it to a\n' >&2
+            printf 'positive count of workers.\n' >&2
+            exit 1
+            ;;
+    esac
+fi
+
+npx jest "$@"
