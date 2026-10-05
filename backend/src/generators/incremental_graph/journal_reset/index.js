@@ -22,11 +22,11 @@
 /** @typedef {import('./reset').ResetRequestBody} ResetRequestBody */
 /** @typedef {import('./authoring').ResetRequest} ResetRequest */
 /** @typedef {import('./pass1').ResetDomainEntry} ResetDomainEntry */
-/** @typedef {import('./retained').RetainedReplayState} RetainedReplayState */
+/** @typedef {import('../journal_retained').RetainedReplayState} RetainedReplayState */
 /** @typedef {import('./pass2').ProofBarriers} ProofBarriers */
 /** @typedef {import('./pass2').TargetValidations} TargetValidations */
 /** @typedef {import('./pass3').FreshnessMarkers} FreshnessMarkers */
-/** @typedef {import('./proof_summary').ProofSummary} ProofSummary */
+/** @typedef {import('../journal_retained').ProofSummary} ProofSummary */
 
 const { ResetSourceClass, isResetSource, makeResetSource } = require("./source");
 const { ResetPublicationClass, isResetPublication } = require("./authoring");
@@ -35,20 +35,19 @@ const { ProofBarriersClass, TargetValidationsClass } = require("./pass2");
 const { FreshnessMarkersClass } = require("./pass3");
 const {
     ProofSummaryClass,
+    RetainedReplayStateClass,
     buildProofSummary,
+    buildRetainedReplayState,
     countEligibleProofEdges,
     eligibleProofEdgeUnion,
     isProofSummary,
-    selectOccurrences,
-    stageAdmittedRecords,
-} = require("./proof_summary");
-const {
-    RetainedReplayStateClass,
     isRetainedReplayState,
     projectRetainedReplay,
+    selectOccurrences,
+    stageAdmittedRecords,
     stageRetainedRecords,
-} = require("./retained");
-const { buildRetainedReplayState } = require("./retained_maintenance");
+} = require("../journal_retained");
+
 const { ResetOutcomeClass, isResetOutcome, resetToSource } = require("./reset");
 
 module.exports = {

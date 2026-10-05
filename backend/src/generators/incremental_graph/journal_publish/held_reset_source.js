@@ -61,7 +61,7 @@ const {
 /** @typedef {import('../database/root_database').SchemaStorage} SchemaStorage */
 /** @typedef {import('../journal_reset').ResetSource} ResetSource */
 /** @typedef {Set<string>} NodeInputKeys */
-/** @typedef {import('../journal_reset/proof_summary').CurrentInputKeysOfNode} CurrentInputKeysOfNode */
+/** @typedef {import('../journal_retained/proof_summary').CurrentInputKeysOfNode} CurrentInputKeysOfNode */
 
 const {
     makeJournalAuthor,

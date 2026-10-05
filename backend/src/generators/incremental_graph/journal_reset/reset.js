@@ -50,7 +50,7 @@
 /** @typedef {import('./authoring').ResetRequest} ResetRequest */
 /** @typedef {import('./pass1').ResetValueId} ResetValueId */
 /** @typedef {import('./pass2').ResetTargetOccurrence} ResetTargetOccurrence */
-/** @typedef {import('./retained').RetainedReplayState} RetainedReplayState */
+/** @typedef {import('../journal_retained').RetainedReplayState} RetainedReplayState */
 /** @typedef {import('./source').ResetSource} ResetSource */
 
 const {
@@ -76,7 +76,7 @@ const {
     selectedHeadsOf,
     selectedOccurrencesOf,
     stageRetainedRecords,
-} = require("./retained");
+} = require("../journal_retained");
 
 /**
  * The properties that this class carries are:

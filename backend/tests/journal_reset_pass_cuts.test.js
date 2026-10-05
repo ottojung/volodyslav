@@ -11,7 +11,7 @@
  */
 
 const RETAINED_MODULE =
-    "../src/generators/incremental_graph/journal_reset/retained";
+    "../src/generators/incremental_graph/journal_retained/retained";
 
 let mockProjectionCount = 0;
 
