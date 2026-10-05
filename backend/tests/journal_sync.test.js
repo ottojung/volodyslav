@@ -38,6 +38,11 @@ const {
     synchronizeRetainedJournal,
 } = require("../src/generators/incremental_graph/journal_sync");
 
+const {
+    buildRetainedReplayState,
+    isRetainedReplayState,
+} = require("../src/generators/incremental_graph/journal_retained");
+
 const NODE_A = { head: "event", args: [{ id: 1 }] };
 const NODE_B = { head: "event", args: [{ id: 2 }] };
 const NODE_C = { head: "event", args: [{ id: 3 }] };
@@ -268,6 +273,27 @@ function committedAfter(records, authorityPhysical) {
 }
 
 /**
+ * The activated replica's retained replay state for a receiver's retained journal,
+ * which is what `sync.md` §Phase 2 requires the `P1` cut to be derived from.
+ *
+ * @param {ReadonlyArray<import("../src/generators/incremental_graph/journal").JournalRecord>} receiver
+ * @param {(nodeKeyString: string) => ReadonlyArray<string>} currentInputKeysOfNode
+ * @returns {import("../src/generators/incremental_graph/journal_retained").RetainedReplayState}
+ */
+function retainedStateOf(receiver, currentInputKeysOfNode) {
+    const built = buildRetainedReplayState({
+        source: makeReplicaSource(replicaOf(receiver)),
+        localWriter: makeJournalAuthor(WRITER_LOCAL),
+        currentInputKeysOfNode,
+    });
+    if ("error" in built) {
+        throw new Error("the receiver's retained state could not be built: " + built.error.message);
+    }
+    expect(isRetainedReplayState(built.state)).toBe(true);
+    return built.state;
+}
+
+/**
  * @param {object} options
  * @param {ReadonlyArray<import("../src/generators/incremental_graph/journal").JournalRecord>} options.receiver
  * @param {ReadonlyArray<import("../src/generators/incremental_graph/journal").JournalRecord>} options.source
@@ -279,6 +305,9 @@ function committedAfter(records, authorityPhysical) {
  */
 function synchronize(options) {
     const identity = new SnapshotIdentityClass("v1", "scheme");
+    const currentInputKeysOfNode = options.currentInputKeysOfNode === undefined
+        ? chainInputs
+        : options.currentInputKeysOfNode;
     return synchronizeRetainedJournal({
         receiver: makeReplicaSource(replicaOf(options.receiver)),
         source: makeReplicaSource(replicaOf(options.source)),
@@ -288,11 +317,10 @@ function synchronize(options) {
         publicationInstant: options.publicationInstant === undefined
             ? INSTANT
             : options.publicationInstant,
-        currentInputKeysOfNode: options.currentInputKeysOfNode === undefined
-            ? chainInputs
-            : options.currentInputKeysOfNode,
+        currentInputKeysOfNode,
         receiverIdentity: options.receiverIdentity === undefined ? identity : options.receiverIdentity,
         sourceIdentity: options.sourceIdentity === undefined ? identity : options.sourceIdentity,
+        retainedState: retainedStateOf(options.receiver, currentInputKeysOfNode),
     });
 }
 
@@ -370,8 +398,9 @@ describe("synchronizeRetainedJournal, acquiring foreign-writer suffixes", () => 
         expect(first.outcome.stateAdvancing).toBe(true);
 
         const identity = new SnapshotIdentityClass("v1", "scheme");
+        const secondRecords = [...receiver, ...first.outcome.records];
         const second = synchronizeRetainedJournal({
-            receiver: makeReplicaSource(replicaOf([...receiver, ...first.outcome.records])),
+            receiver: makeReplicaSource(replicaOf(secondRecords)),
             source: makeReplicaSource(replicaOf(peerMaterialization)),
             localWriter: makeJournalAuthor(WRITER_LOCAL),
             committed: first.outcome.publication.writerState,
@@ -380,6 +409,7 @@ describe("synchronizeRetainedJournal, acquiring foreign-writer suffixes", () => 
             currentInputKeysOfNode: chainInputs,
             receiverIdentity: identity,
             sourceIdentity: identity,
+            retainedState: retainedStateOf(secondRecords, chainInputs),
         });
 
         const repeated = outcomeOf(second);

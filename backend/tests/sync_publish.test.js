@@ -35,6 +35,10 @@ const {
 } = require('../src/generators/incremental_graph/journal_sync');
 
 const {
+    buildRetainedReplayState,
+} = require('../src/generators/incremental_graph/journal_retained');
+
+const {
     getRootDatabase,
     IDENTIFIERS_KEY,
     LAST_NODE_INDEX_KEY,
@@ -285,6 +289,11 @@ function synchronize(options) {
         currentInputKeysOfNode: chainInputs,
         receiverIdentity: identity,
         sourceIdentity: identity,
+        retainedState: made(buildRetainedReplayState({
+            source: makeReplicaSource(replicaOf(options.receiver)),
+            localWriter: made(makeJournalAuthor(WRITER_LOCAL)),
+            currentInputKeysOfNode: chainInputs,
+        })).state,
     });
 }
 

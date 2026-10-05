@@ -13,15 +13,27 @@
  * ```
  *
  * The publication step is the persistence front's half: this module returns the
- * records to retain, the records it authored, and the projection to lower, and it
- * commits nothing. That separation is what makes the algorithm testable against a
- * supported graph plus Journal pair without a database, and it is what lets the
- * persistence front publish `Jfinal` and `project(Jfinal)` in one atomic write.
+ * records to retain, the records it authored, the projection to lower and the
+ * retained replay state which describes `Jfinal`, and it commits nothing. That
+ * separation is what makes the algorithm testable against a supported graph plus
+ * Journal pair without a database, and it is what lets the persistence front
+ * publish `Jfinal`, `project(Jfinal)` and the derived state both of them imply in
+ * one atomic write.
+ *
+ * Every cut this operation reads is read from the receiver's retained replay state
+ * extended by the records synchronization admits or authors. That is not an
+ * implementation convenience: `sync.md` §Phase 2 requires the `P1` state to be
+ * "derived ... incrementally over the affected dependency closure using retained
+ * projection/index state", and
+ * `incremental-graph-journal-storage.md` §Change-bounded proof summary names
+ * synchronization as one of the operations which must not fall back to scanning
+ * unrelated retained history. Synchronization therefore refuses a receiver which
+ * does not supply that state, exactly as reset refuses a missing one.
  *
  * Nothing here is a whole-journal materialisation. Import reads one missing
- * suffix at a time and admits a record at a time; the replay passes and the
- * closure walk read the union source; the closure and stale-marker worklists are
- * graph-sized sets, which `sync.md` §Streamability permits for graph-sized work.
+ * suffix at a time and admits a record at a time; the retained state is extended
+ * record by record; the closure and stale-marker worklists are graph-sized sets,
+ * which `sync.md` §Streamability permits for graph-sized work.
  */
 
 /** @typedef {import('../journal/errors').AnyJournalError} JournalError */
@@ -29,32 +41,28 @@
 /** @typedef {import('../journal/records').JournalRecord} JournalRecord */
 /** @typedef {import('../journal/types').AuthorityTime} AuthorityTime */
 /** @typedef {import('../journal/types').JournalAuthor} JournalAuthor */
-/** @typedef {import('../journal/types').JournalFrontier} JournalFrontier */
-/** @typedef {import('../journal/oracle/record_source').JournalSource} JournalSource */
+/** @typedef {import('../journal/oracle/heads').HeadSelection} HeadSelection */
 /** @typedef {import('../journal/oracle/projection').Projection} Projection */
+/** @typedef {import('../journal/oracle/record_source').JournalSource} JournalSource */
+/** @typedef {import('../journal_retained').RetainedReplayState} RetainedReplayState */
 /** @typedef {import('./authoring').SyncDeleteRequest} SyncDeleteRequest */
 /** @typedef {import('./authoring').SyncInvalidateRequest} SyncInvalidateRequest */
 /** @typedef {import('./authoring').SyncPublication} SyncPublication */
 /** @typedef {import('./compatibility').SnapshotIdentity} SnapshotIdentity */
 
 const {
-    isJournalError,
-    isProjection,
-    journalAuthorToString,
-    makeJournalFrontier,
+    makeJournalProjectionError,
     makeJournalPublicationError,
-    makeUnionSource,
-    projectRetainedJournal,
-    selectSemanticHeads,
 } = require("../journal");
+const {
+    isRetainedReplayState,
+    projectRetainedReplay,
+    selectedHeadsOf,
+    stageRetainedRecords,
+} = require("../journal_retained");
 const { assertCompatibleIdentity } = require("./compatibility");
 const { finalizeSyncRecords, SyncPublicationClass } = require("./authoring");
-const {
-    importedSourceOf,
-    planForeignSuffixImport,
-    ImportedSuffixClass,
-    ImportPlanClass,
-} = require("./import_plan");
+const { planForeignSuffixImport } = require("./import_plan");
 const { planDependencyClosureRemoval, planStalePropagation } = require("./normalize");
 
 /**
@@ -62,22 +70,27 @@ const { planDependencyClosureRemoval, planStalePropagation } = require("./normal
  * - `records` is the receiver's retained journal growth of this operation: every
  *   imported record unchanged, followed by the authored normalization records;
  * - `projection` is exactly `project(Jfinal)`, so its occurrences, freshness and
- *   validity edges are the graph state the receiver must commit; and
+ *   validity edges are the graph state the receiver must commit;
  * - `stateAdvancing` is true exactly when this operation imported a record the
- *   receiver did not already retain, or authored a normalization record.
+ *   receiver did not already retain, or authored a normalization record; and
+ * - `retainedState` is the retained replay state of `Jfinal`, which the
+ *   persistence front stages with the records and cuts over with them, because
+ *   `incremental-graph-journal-storage.md` §Change-bounded proof summary requires
+ *   imported and sync-authored records to update a staged summary before cutover
+ *   and §Derived indexes requires the same of a maintained candidate index.
  *
  * The proof of those properties is guaranteed by:
- * - `synchronizeRetainedJournal(...)`: it writes each imported record into
- *   `records` in ascending writer-local order without touching it, appends only
- *   the records `finalizeSyncRecords` allocated, and takes `projection` from a
- *   `projectRetainedJournal` over exactly those records; and
- * - `stateAdvancing` is computed from those two facts directly, which is the
- *   predicate of `sync.md` §Host-count bounded settling schedule.
+ * - `synchronizeRetainedJournal(...)`: it stages each imported record without
+ *   touching it, stages only what `finalizeSyncRecords` allocated, takes
+ *   `projection` from the retained state extended by exactly those records, and
+ *   takes `stateAdvancing` from the two counts directly, which is the predicate
+ *   of `sync.md` §Host-count bounded settling schedule.
  *
  * @param {ReadonlyArray<JournalRecord>} records
  * @param {SyncPublication} publication
  * @param {Projection} projection
  * @param {boolean} stateAdvancing
+ * @param {RetainedReplayState} retainedState
  */
 class SyncOutcomeClass {
     /**
@@ -85,12 +98,14 @@ class SyncOutcomeClass {
      * @param {SyncPublication} publication
      * @param {Projection} projection
      * @param {boolean} stateAdvancing
+     * @param {RetainedReplayState} retainedState
      */
-    constructor(records, publication, projection, stateAdvancing) {
+    constructor(records, publication, projection, stateAdvancing, retainedState) {
         this.records = records;
         this.publication = publication;
         this.projection = projection;
         this.stateAdvancing = stateAdvancing;
+        this.retainedState = retainedState;
     }
 }
 
@@ -116,84 +131,16 @@ function isSyncOutcome(value) {
  *   The current schema's direct inputs per node.
  * @property {SnapshotIdentity} receiverIdentity - The receiver's active version and graph scheme.
  * @property {SnapshotIdentity} sourceIdentity - The held source snapshot's version and graph scheme.
+ * @property {RetainedReplayState} retainedState - The activated replica's retained
+ *   per-node replay state, which carries its counted proof summary and the
+ *   resolution of its last projected cut. Synchronization refuses a missing state
+ *   instead of deriving its cuts by scanning retained history, because
+ *   `incremental-graph-journal-sync.md` §Phase 2 requires the `P1` state to be
+ *   derived over the affected dependency closure from retained projection/index
+ *   state and
+ *   `incremental-graph-journal-storage.md` §Change-bounded proof summary forbids
+ *   synchronization from falling back to scanning unrelated retained history.
  */
-
-/**
- * The retained-journal read surface of one contiguous own-writer range the
- * receiver does not yet retain.
- *
- * The range starts at the receiver's writer head successor, so its reader is
- * offered from that coordinate rather than from the canonical first one. Unioning
- * it with the receiver's own retained prefix therefore yields one contiguous
- * stream per writer, and the union's own no-holes check covers the join.
- *
- * @param {JournalAuthor} localWriter
- * @param {ReadonlyArray<JournalRecord>} records
- * @returns {JournalSource | JournalError}
- */
-function sourceOfAuthoredRange(localWriter, records) {
-    const name = journalAuthorToString(localWriter);
-    /** @type {JournalRecord[]} */
-    const ofLocalWriter = [];
-    for (const record of records) {
-        if (journalAuthorToString(record.id.author) !== name) {
-            return makeJournalPublicationError(
-                "a synchronization publication allocated a record under another writer"
-            );
-        }
-        ofLocalWriter.push(record);
-    }
-    const first = ofLocalWriter[0];
-    if (first === undefined) {
-        return makeJournalPublicationError("a synchronization publication allocated no record");
-    }
-    const seed = makeJournalFrontier([[localWriter, first.id.sequence]]);
-    if (isJournalError(seed)) {
-        return seed;
-    }
-    return importedSourceOf(
-        new ImportPlanClass(
-            [new ImportedSuffixClass(localWriter, first.id.sequence, ofLocalWriter)],
-            seed
-        )
-    );
-}
-
-/**
- * Project the union of a base journal and a contiguous range the receiver does
- * not yet retain.
- *
- * @param {object} step
- * @param {JournalSource} step.base
- * @param {ReadonlyArray<JournalRecord>} step.records
- * @param {JournalAuthor} step.localWriter
- * @param {(nodeKeyString: string) => ReadonlyArray<string>} step.currentInputKeysOfNode
- * @returns {Projection | {error: JournalError}}
- */
-function projectWithRecords(step) {
-    const { base, records, localWriter, currentInputKeysOfNode } = step;
-    /** @type {JournalSource} */
-    let source = base;
-    if (records.length > 0) {
-        const authored = sourceOfAuthoredRange(localWriter, records);
-        if (isJournalError(authored)) {
-            return { error: authored };
-        }
-        source = makeUnionSource([base, authored]);
-    }
-    const projection = projectRetainedJournal({
-        source,
-        localWriter,
-        currentInputKeysOfNode,
-    });
-    if (isJournalError(projection)) {
-        return { error: projection };
-    }
-    if (!isProjection(projection)) {
-        return { error: makeJournalPublicationError("replay did not produce a projection") };
-    }
-    return projection;
-}
 
 /**
  * Perform one pairwise synchronization of a retained journal.
@@ -212,7 +159,18 @@ function synchronizeRetainedJournal(request) {
         currentInputKeysOfNode,
         receiverIdentity,
         sourceIdentity,
+        retainedState,
     } = request;
+
+    if (!isRetainedReplayState(retainedState)) {
+        return {
+            error: makeJournalProjectionError(
+                "synchronization requires the receiver's retained replay state and does not " +
+                    "fall back to replaying retained history",
+                ""
+            ),
+        };
+    }
 
     const incompatible = assertCompatibleIdentity(receiverIdentity, sourceIdentity);
     if (incompatible !== undefined) {
@@ -234,32 +192,31 @@ function synchronizeRetainedJournal(request) {
     for (const suffix of plan.suffixes) {
         imported.push(...suffix.records);
     }
-    const unionAfterImport = imported.length === 0
-        ? receiver
-        : makeUnionSource([receiver, importedSourceOf(plan)]);
 
-    const rawHeads = selectSemanticHeads(unionAfterImport);
-    if ("error" in rawHeads) {
-        return rawHeads;
-    }
+    // The raw maintenance view of `J0`. `project(J0)` is deliberately not taken: a
+    // union of two valid replicas can have cross-authority winners which are not
+    // dependency-closed, and Phase 1 is what repairs that. The head view is the
+    // retained one with the imported records folded in, so no retained Value/Delete
+    // record is visited again.
+    stageRetainedRecords(retainedState, imported);
+    /** @type {Map<string, HeadSelection>} */
+    const rawHeads = selectedHeadsOf(retainedState);
     const closure = planDependencyClosureRemoval({
-        selections: rawHeads.selections,
+        selections: rawHeads,
         currentInputKeysOfNode,
     });
 
-    /** @type {SyncPublication[]} */
-    const publications = [];
     /** @type {JournalRecord[]} */
     const authored = [];
 
     /**
-     * Allocate one normalization range and fold it into the accumulated
-     * publications, or report the failure.
+     * Allocate one normalization range, stage it into the retained state and fold
+     * it into the accumulated authored records, or report the failure.
      *
      * @param {CommittedWriterState} from
      * @param {ReadonlyArray<SyncDeleteRequest>} deletes
      * @param {ReadonlyArray<SyncInvalidateRequest>} invalidations
-     * @returns {{publication: SyncPublication} | {error: JournalError}}
+     * @returns {{writerState: CommittedWriterState} | {error: JournalError}}
      */
     const allocateInto = (from, deletes, invalidations) => {
         const allocated = finalizeSyncRecords({
@@ -273,21 +230,17 @@ function synchronizeRetainedJournal(request) {
         if ("error" in allocated) {
             return allocated;
         }
-        publications.push(allocated);
+        stageRetainedRecords(retainedState, allocated.records);
         authored.push(...allocated.records);
-        return { publication: allocated };
+        return { writerState: allocated.writerState };
     };
 
     /**
-     * @param {ReadonlyArray<JournalRecord>} records
+     * The cut synchronization has reached, read as a delta over the affected
+     * closure.
      * @returns {Projection | {error: JournalError}}
      */
-    const projectAfter = (records) => projectWithRecords({
-        base: unionAfterImport,
-        records,
-        localWriter,
-        currentInputKeysOfNode,
-    });
+    const cut = () => projectRetainedReplay(retainedState);
 
     // Phase 1 is allocated first, because its records are what makes the union
     // projectable: a raw union whose selected heads are not dependency-closed has
@@ -297,8 +250,8 @@ function synchronizeRetainedJournal(request) {
         return phaseOne;
     }
     /** @type {CommittedWriterState} */
-    let state = phaseOne.publication.writerState;
-    const projectedOnce = projectAfter(authored);
+    let state = phaseOne.writerState;
+    const projectedOnce = cut();
     if ("error" in projectedOnce) {
         return projectedOnce;
     }
@@ -323,8 +276,8 @@ function synchronizeRetainedJournal(request) {
         if ("error" in marked) {
             return marked;
         }
-        state = marked.publication.writerState;
-        const next = projectAfter(authored);
+        state = marked.writerState;
+        const next = cut();
         if ("error" in next) {
             return next;
         }
@@ -355,7 +308,8 @@ function synchronizeRetainedJournal(request) {
             records,
             new SyncPublicationClass(authored, state),
             afterPhaseOne,
-            records.length > 0
+            records.length > 0,
+            retainedState
         ),
     };
 }
@@ -363,6 +317,5 @@ function synchronizeRetainedJournal(request) {
 module.exports = {
     SyncOutcomeClass,
     isSyncOutcome,
-    projectWithRecords,
     synchronizeRetainedJournal,
 };
