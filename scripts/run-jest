@@ -1,36 +1,17 @@
 #! /bin/sh
+#
+# The one entry point for running the test suite.
+#
+# JEST_MAX_WORKERS is validated here rather than in jest.config.js because a
+# configuration file cannot report a rejected value to whoever typed it: the
+# failure mode of the unsound arithmetic in that file is silence. See
+# scripts/check-jest-max-workers for the accepted grammar.
 
 set -eu
 
-cd -- "${0%/*}"/..
+script_directory=$(CDPATH='' cd -P "$(dirname "$0")" && pwd)
+cd "$script_directory/.."
 
-# JEST_MAX_WORKERS is read by jest.config.js as Number(...). A value that is not
-# a positive whole number becomes NaN or 0 there, Jest treats both as unset, and
-# the run silently returns to one worker per core minus one - the oversubscription
-# the value exists to control. Reject it here instead, where the message can name
-# the variable and the accepted values.
-if test "${JEST_MAX_WORKERS+set}" = "set"; then
-    case "$JEST_MAX_WORKERS" in
-        *[!0-9]*)
-            printf 'ERROR: JEST_MAX_WORKERS must be a whole number of 1 or more,\n' >&2
-            printf 'but it is "%s".\n\n' "$JEST_MAX_WORKERS" >&2
-            printf 'Unset it to run the suite at one worker, or set it to a\n' >&2
-            printf 'positive count of workers.\n' >&2
-            exit 1
-            ;;
-    esac
-
-    case "$JEST_MAX_WORKERS" in
-        *[!0]*)
-            ;;
-        *)
-            printf 'ERROR: JEST_MAX_WORKERS must be 1 or more,\n' >&2
-            printf 'but it is "%s".\n\n' "$JEST_MAX_WORKERS" >&2
-            printf 'Unset it to run the suite at one worker, or set it to a\n' >&2
-            printf 'positive count of workers.\n' >&2
-            exit 1
-            ;;
-    esac
-fi
+sh "$script_directory/check-jest-max-workers"
 
 npx jest "$@"
