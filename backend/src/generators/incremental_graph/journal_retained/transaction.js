@@ -72,7 +72,38 @@ function copyTwoLevelsDown(original) {
 }
 
 /**
+ * @template V
+ * @param {ReadonlyMap<string, ReadonlyMap<string, ReadonlyMap<string, ReadonlyMap<string, V>>>>} original
+ * @returns {Map<string, Map<string, Map<string, Map<string, V>>>>}
+ */
+function copyThreeLevelsDown(original) {
+    /** @type {Map<string, Map<string, Map<string, Map<string, V>>>>} */
+    const copied = new Map();
+    for (const [outer, middle] of original) {
+        /** @type {Map<string, Map<string, Map<string, V>>>} */
+        const copiedMiddle = new Map();
+        for (const [inner, deeper] of middle) {
+            /** @type {Map<string, Map<string, V>>} */
+            const copiedDeeper = new Map();
+            for (const [deepest, maximum] of deeper) {
+                copiedDeeper.set(deepest, new Map(maximum));
+            }
+            copiedMiddle.set(inner, copiedDeeper);
+        }
+        copied.set(outer, copiedMiddle);
+    }
+    return copied;
+}
+
+/**
  * The counted summary of a fork, with every container it writes into copied.
+ *
+ * Each scope map is copied to the full depth `ProofSummaryClass` declares for it,
+ * because an admitted invalidation is written into the innermost coordinate maximum
+ * with `raiseCoordinate`, which mutates that maximum in place. Copying a scope map
+ * one level short of its declared depth would therefore leave the fork holding the
+ * caller's own coordinate maximum, and a failure later in the operation would leave
+ * that maximum naming a record the receiver never admitted.
  *
  * @param {ProofSummary} summary
  * @returns {ProofSummary}
@@ -83,8 +114,8 @@ function forkProofSummary(summary) {
         summary.currentInputKeysOfNode,
         copyOneLevelDown(summary.certificates),
         copyOneLevelDown(summary.nodeScoped),
-        copyOneLevelDown(summary.valueScoped),
-        copyTwoLevelsDown(summary.proofScoped)
+        copyTwoLevelsDown(summary.valueScoped),
+        copyThreeLevelsDown(summary.proofScoped)
     );
 }
 

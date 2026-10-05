@@ -31,13 +31,17 @@ const {
     journalRecordIdToString,
     makeAuthorityTime,
     makeDeleteEvent,
+    makeInvalidateEvent,
     makeJournalAuthor,
     makeJournalFrontierFromText,
     makeJournalReplica,
     makeJournalSequence,
+    makeNodeScope,
+    makeProofScope,
     makeValidateEvent,
     makeValidationBasisEntry,
     makeValueEvent,
+    makeValueScope,
     makeWriterStateRecord,
     nodeKeyToCanonicalString,
     makeReplicaSource,
@@ -51,6 +55,7 @@ const {
 const {
     buildRetainedReplayState,
     eligibleProofEdgeUnion,
+    forkRetainedReplayState,
     isRetainedReplayState,
     projectRetainedReplay,
     selectedOccurrencesOf,
@@ -721,5 +726,92 @@ describe("synchronizeRetainedJournal, the retained history it does not re-read",
         // of the prefix. What the count may not do is grow with the receiver's
         // history, which is what the sibling case above holds.
         expect(countedResult.sourceReads).toBe(source.length + 1);
+    });
+});
+describe("forkRetainedReplayState, the containers it hands the fold", () => {
+    /**
+     * Every `Map` and `Set` reachable from a value, as one comparable list.
+     *
+     * @param {unknown} value
+     * @returns {ReadonlyArray<string>}
+     */
+    function containersOf(value) {
+        if (value instanceof Map) {
+            return [value, ...[...value.values()].flatMap((inner) => containersOf(inner))];
+        }
+        if (value instanceof Set) {
+            return [value, ...[...value].flatMap((inner) => containersOf(inner))];
+        }
+        return [];
+    }
+
+    /**
+     * @param {import("../src/generators/incremental_graph/journal_retained").RetainedReplayState} state
+     * @returns {ReadonlyArray<unknown>}
+     */
+    function reachableContainers(state) {
+        return [
+            state.heads,
+            state.proofs.selected,
+            state.proofs.certificates,
+            state.proofs.nodeScoped,
+            state.proofs.valueScoped,
+            state.proofs.proofScoped,
+            state.certificates,
+            state.selected,
+            state.touched,
+            state.writers,
+            state.admittedLengths,
+        ].flatMap((value) => containersOf(value));
+    }
+
+    test("the fork holds no container of the state it was taken from", () => {
+        // Every scope map of the counted summary is filled by invalidations of all
+        // three scope kinds, so the fork has to copy the node-scoped, value-scoped
+        // and proof-scoped coordinate maxima themselves rather than only the scopes
+        // which hold them: an admitted invalidation is raised by mutating the
+        // innermost maximum in place.
+        const receiver = [
+            ...receiverChain(),
+            made(makeInvalidateEvent(
+                {
+                    id: WRITER_LOCAL + ":5",
+                    context: contextOf([]),
+                    authorityTime: authorityOf(5),
+                    node: NODE_A,
+                },
+                makeNodeScope(),
+                "explicit"
+            )),
+            made(makeInvalidateEvent(
+                {
+                    id: WRITER_LOCAL + ":6",
+                    context: contextOf([]),
+                    authorityTime: authorityOf(6),
+                    node: NODE_A,
+                },
+                makeValueScope(WRITER_LOCAL + ":1"),
+                "propagated"
+            )),
+            made(makeInvalidateEvent(
+                {
+                    id: WRITER_LOCAL + ":7",
+                    context: contextOf([]),
+                    authorityTime: authorityOf(7),
+                    node: NODE_A,
+                },
+                makeProofScope(WRITER_LOCAL + ":1", NODE_A),
+                "reset"
+            )),
+        ];
+        const state = rebuiltStateOf(receiver);
+        expect(state.proofs.proofScoped.size).toBeGreaterThan(0);
+        expect(state.proofs.valueScoped.size).toBeGreaterThan(0);
+
+        const fork = forkRetainedReplayState(state);
+        const shared = reachableContainers(fork)
+            .filter((container) => reachableContainers(state).includes(container));
+
+        expect(shared).toEqual([]);
     });
 });
