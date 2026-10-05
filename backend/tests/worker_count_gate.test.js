@@ -57,9 +57,11 @@ const COMMAND_SEPARATORS = new Set(["|", "&", "&&", "||", ";", ">", ">>"]);
 const SHELL_FENCE_LANGUAGES = ["", "console", "sh", "shell", "bash", "zsh", "fish"];
 
 /**
- * Directories that hold no file of this repository, and are never descended into
- * while looking for one: they contain other people's installed code or this
- * repository's own output.
+ * Names that hold no file of this repository and are never walked: they contain
+ * other people's installed code or this repository's own output. The name is
+ * matched rather than the kind of the entry, because a directory reached through
+ * a symbolic link is not reported as a directory and would otherwise be read as
+ * a file.
  *
  * @param {string} directory
  * @returns {boolean}
@@ -93,7 +95,7 @@ function everyRepositoryFilePath() {
      */
     function walk(directory) {
         for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-            if (entry.isDirectory() && isUninterestingDirectory(entry.name)) {
+            if (isUninterestingDirectory(entry.name)) {
                 continue;
             }
             const entryPath = path.join(directory, entry.name);
