@@ -11,7 +11,15 @@
  * publication write: it acquires the missing foreign-writer suffixes, validates
  * what it admits, computes the normalization the union still owes, allocates the
  * receiver-authored records, and returns `project(Jfinal)` together with the
- * records to retain. Nothing here touches storage.
+ * records to retain and the retained replay state of `Jfinal`. Nothing here
+ * touches storage.
+ *
+ * A caller supplies that state, because `incremental-graph-journal-storage.md`
+ * §Change-bounded proof summary forbids synchronization from scanning retained
+ * history to obtain it, and §Derived indexes requires a maintained index to be
+ * updated in durable staging before the state it describes becomes active. Both
+ * live in `../journal_retained`, which synchronization reaches only through its
+ * own index.
  */
 
 /** @typedef {import('./authoring').SyncDeleteRequest} SyncDeleteRequest */
@@ -48,7 +56,6 @@ const {
 } = require("./normalize");
 const {
     isSyncOutcome,
-    projectWithRecords,
     synchronizeRetainedJournal,
     SyncOutcomeClass,
 } = require("./synchronize");
@@ -71,6 +78,5 @@ module.exports = {
     planDependencyClosureRemoval,
     planForeignSuffixImport,
     planStalePropagation,
-    projectWithRecords,
     synchronizeRetainedJournal,
 };

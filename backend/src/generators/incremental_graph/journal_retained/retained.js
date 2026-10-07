@@ -46,6 +46,7 @@
 /** @typedef {import('../journal/records').ValueEvent} ValueEvent */
 /** @typedef {import('../journal/types').JournalAuthor} JournalAuthor */
 /** @typedef {import('../journal/types').JournalRecordId} JournalRecordId */
+/** @typedef {import('../journal/types').JournalSequence} JournalSequence */
 /** @typedef {import('../journal/types').NodeKey} NodeKey */
 /** @typedef {import('../journal/oracle/certificates').SelectedCertificate} SelectedCertificate */
 /** @typedef {import('../journal/oracle/heads').HeadSelection} HeadSelection */
@@ -60,6 +61,7 @@
 const {
     authorityCompare,
     compareCertificates,
+    compareJournalSequence,
     coversValueInvalidations,
     deriveFreshness,
     effectiveInputsOf,
@@ -107,6 +109,9 @@ function authorOf(state) {
  *   actually changed;
  * - `writers` names every writer the admitted state retains, which is what the
  *   causal-coverage comparisons resolve frontier coordinates against;
+ * - `admittedLengths` names, per writer, the greatest coordinate the admitted state
+ *   has seen, which is what says how much of that writer's stream the state has
+ *   admitted and therefore which journal the state describes;
  * - `lastNodeIndex` is the local writer's allocator watermark over the admitted
  *   state; and
  * - `touched` names the nodes the records staged since the last projection name,
@@ -118,14 +123,22 @@ function authorOf(state) {
  *   is greater under `authorityCompare`, which makes each stored candidate the
  *   maximum of the set `incremental-graph-journal-replay.md` §Semantic value/
  *   absence head defines, and it admits every retained validation and invalidation
- *   into the counted proof summary by the same traversal; and
+ *   into the counted proof summary by the same traversal, recording each record's
+ *   own coordinate in `admittedLengths`; and
  * - `projectRetainedReplay(state)`: it resolves every node of the affected closure
  *   from those stored candidates and maxima, then stores the resolution as
  *   `certificates` and `selected`, so the two describe one and the same cut; and
  * - `stageRetainedRecords(state, records)`: each staged record either enters the
  *   head candidates, the proof summary and `touched`, or is an own-writer
  *   `WriterStateRecord` which raises `lastNodeIndex`, and every record's author
- *   enters `writers`, so the statements hold over the extended admitted state.
+ *   enters `writers` and its coordinate raises `admittedLengths` for that author,
+ *   so the statements hold over the extended admitted state.
+ *
+ * `incremental-graph-journal-storage.md` §Change-bounded proof summary requires a
+ * missing or stale summary to be rebuilt or maintained rather than consumed, so the
+ * state is only usable for a journal whose per-writer retained lengths are the ones
+ * `admittedLengths` names. `correspondence.js` decides that comparison, and it is
+ * what refuses a state which does not describe the journal it is asked about.
  *
  * @param {Map<string, HeadSelection>} heads
  * @param {ProofSummary} proofs
@@ -133,6 +146,7 @@ function authorOf(state) {
  * @param {Map<string, JournalRecordId>} selected
  * @param {Set<string>} touched
  * @param {Map<string, JournalAuthor>} writers
+ * @param {Map<string, JournalSequence>} admittedLengths
  * @param {number} lastNodeIndex
  * @param {JournalAuthor} localWriter
  * @param {CurrentInputKeysOfNode} currentInputKeysOfNode
@@ -145,6 +159,7 @@ class RetainedReplayStateClass {
      * @param {Map<string, JournalRecordId>} selected
      * @param {Set<string>} touched
      * @param {Map<string, JournalAuthor>} writers
+     * @param {Map<string, JournalSequence>} admittedLengths
      * @param {number} lastNodeIndex
      * @param {JournalAuthor} localWriter
      * @param {CurrentInputKeysOfNode} currentInputKeysOfNode
@@ -156,6 +171,7 @@ class RetainedReplayStateClass {
         selected,
         touched,
         writers,
+        admittedLengths,
         lastNodeIndex,
         localWriter,
         currentInputKeysOfNode
@@ -166,6 +182,7 @@ class RetainedReplayStateClass {
         this.selected = selected;
         this.touched = touched;
         this.writers = writers;
+        this.admittedLengths = admittedLengths;
         this.lastNodeIndex = lastNodeIndex;
         this.localWriter = localWriter;
         this.currentInputKeysOfNode = currentInputKeysOfNode;
@@ -278,6 +295,24 @@ function admitRetainedHead(heads, record) {
 }
 
 /**
+ * Record that the admitted state has seen a record of one writer at one coordinate.
+ *
+ * The admitted length of a writer is the greatest coordinate the state admits, which
+ * is the same value the receiver's own retained length of that writer names once the
+ * records are published. `correspondence.js` compares the two.
+ *
+ * @param {Map<string, JournalSequence>} admittedLengths - The state field to raise.
+ * @param {string} name
+ * @param {JournalSequence} sequence
+ */
+function raiseAdmittedLength(admittedLengths, name, sequence) {
+    const existing = admittedLengths.get(name);
+    if (existing === undefined || compareJournalSequence(sequence, existing) > 0) {
+        admittedLengths.set(name, sequence);
+    }
+}
+
+/**
  * Admit records into the retained replay state, as import or reset authorship does.
  *
  * @param {RetainedReplayState} state - The staged state to extend in place.
@@ -286,7 +321,9 @@ function admitRetainedHead(heads, record) {
 function stageRetainedRecords(state, records) {
     const localName = journalAuthorToString(state.localWriter);
     for (const record of records) {
-        state.writers.set(journalAuthorToString(record.id.author), record.id.author);
+        const name = journalAuthorToString(record.id.author);
+        state.writers.set(name, record.id.author);
+        raiseAdmittedLength(state.admittedLengths, name, record.id.sequence);
         if (isWriterStateRecord(record)) {
             if (journalAuthorToString(record.id.author) === localName) {
                 state.lastNodeIndex = record.lastNodeIndex;
@@ -501,6 +538,7 @@ function projectRetainedReplay(state) {
 module.exports = {
     RetainedReplayStateClass,
     admitRetainedHead,
+    raiseAdmittedLength,
     authorLookupOf,
     invalidationSummaryOf,
     isRetainedReplayState,

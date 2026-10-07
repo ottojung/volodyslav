@@ -34,7 +34,7 @@
 /** @typedef {import('../journal/records').ValidateEvent} ValidateEvent */
 /** @typedef {import('../journal/types').JournalRecordId} JournalRecordId */
 /** @typedef {import('../journal/types').NodeKey} NodeKey */
-/** @typedef {import('./proof_summary').ProofSummary} ProofSummary */
+/** @typedef {import('../journal_retained').ProofSummary} ProofSummary */
 /** @typedef {import('../journal/oracle/projection').Projection} Projection */
 /** @typedef {import('./pass1').ResetValueId} ResetValueId */
 /** @typedef {import('./authoring').ResetProofBarrierRequest} ResetProofBarrierRequest */
@@ -46,7 +46,7 @@ const {
     makeValidationBasisEntry,
     sortValidationBasis,
 } = require("../journal");
-const { eligibleProofEdgeUnion } = require("./proof_summary");
+const { eligibleProofEdgeUnion } = require("../journal_retained");
 
 /**
  * The selected occurrences a certificate's inputs are compared against.

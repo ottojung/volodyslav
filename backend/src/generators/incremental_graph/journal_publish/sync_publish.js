@@ -62,10 +62,10 @@ const {
  * `SyncOutcome` and `ResetOutcome` differ in what they carry beyond the three fields
  * this lowering reads — a synchronization reports whether it advanced the receiver's
  * state, a reset reports the same fact plus the settled `ValueId` of each target-present
- * node and its retained replay state — and agree on `records`, `projection` and
- * `publication.writerState`, which are the whole of what a lowering consumes. Both are
- * therefore lowered by one rule rather than by two rules about what a projection
- * persists.
+ * node, and both report the retained replay state their records project to — and agree
+ * on `records`, `projection` and `publication.writerState`, which are the whole of what
+ * a lowering consumes. Both are therefore lowered by one rule rather than by two rules
+ * about what a projection persists.
  *
  * The proof of those properties is guaranteed by:
  * - `synchronizeRetainedJournal(...)`: it returns `records`, `projection` and
@@ -74,6 +74,15 @@ const {
  * - `resetToSource(...)`: it returns `[...imported, ...authored]` as `records`, the
  *   final cut as `projection`, and `ResetPublicationClass(authored, state)`, whose
  *   `writerState` is the committed state after those records.
+ *
+ * `retainedState` is not lowered here: it is the cutover's own input, because
+ * `incremental-graph-journal-sync.md` §Atomic publication publishes the derived
+ * indexes the implementation keeps together with `Jfinal` and `project(Jfinal)`, and
+ * `incremental-graph-journal-storage.md` §Derived indexes requires a maintained index
+ * to be updated in durable staging before the state it describes becomes active. The
+ * namespace this lowering writes records and occurrences into is the staging one the
+ * front already owns; a front which persists the retained state writes it in the same
+ * cutover.
  *
  * @typedef {SyncOutcome | ResetOutcome} PublishableOutcome
  */
