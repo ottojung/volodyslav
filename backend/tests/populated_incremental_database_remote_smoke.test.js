@@ -12,6 +12,20 @@ const {
     stubDatetime,
     ensureLiveDatabaseDirectory,
 } = require("./stubs");
+const {
+    fixtureAbsentCohortSource,
+    fixtureInputKeys,
+    readFixtureReplica,
+} = require("./journal_startup_fixture");
+const { makeJournalAuthor } = require("../src/generators/incremental_graph/journal");
+const { resolveCanonicalBootstrapForStartup } = require("../src/generators/incremental_graph/journal_bootstrap_startup");
+
+const POPULATED_FIXTURE = path.join(
+    __dirname,
+    "mock-incremental-database-remote-populated",
+    "rendered",
+    "r"
+);
 
 const ANCHOR_IDS = {
     earliest: "fx-anchor-earliest",
@@ -90,8 +104,8 @@ describe("populated incremental-database remote smoke", () => {
 
         const config = await iface.getConfig();
         expect(config.help).toBe("Event logging help text");
-        expect(config.shortcuts.some(([k]) => k === "gym")).toBe(true);
-        expect(config.shortcuts.some(([k]) => k === "shipx")).toBe(true);
+        expect(config.shortcuts.some((shortcut) => shortcut.pattern === "gym")).toBe(true);
+        expect(config.shortcuts.some((shortcut) => shortcut.pattern === "shipx")).toBe(true);
 
         const focusA = await iface.getEvent(ANCHOR_IDS.focusA);
         expect(focusA).toBeTruthy();
@@ -172,5 +186,46 @@ describe("populated incremental-database remote smoke", () => {
         expect(await iface.getEventsCount()).toBe(28);
         expect((await iface.getConfig()).help).toBe("Event logging help text");
         expect(await iface.getEvent("fx-smoke-new-1")).toBeTruthy();
+    });
+});
+
+describe("populated fixture in the Journal 3 startup lifecycle", () => {
+    /**
+     * @returns {object}
+     */
+    function replica() {
+        return readFixtureReplica(POPULATED_FIXTURE);
+    }
+
+    test("the populated fixture is a Journal replica, so startup does not bootstrap it again", () => {
+        const fixture = replica();
+        expect(fixture.version).toBe("0.0.0-dev");
+        expect(fixture.journalRecordCount).toBeGreaterThan(0);
+        expect(fixture.legacyState.nodes.length).toBeGreaterThan(0);
+    });
+
+    test("the fixture's persisted graph is one the canonical-bootstrap creator can stage and resume", async () => {
+        const fixture = replica();
+        const calls = { queries: 0, publications: 0, published: [] };
+        const resolution = await resolveCanonicalBootstrapForStartup({
+            legacyState: fixture.legacyState,
+            localWriter: makeJournalAuthor(fixture.fingerprint),
+            target: { databaseVersion: fixture.version, graphSchemeString: fixture.graphSchemeString },
+            source: fixtureAbsentCohortSource(calls),
+            currentInputKeysOfNode: fixtureInputKeys(fixture.graphSchemeString),
+        });
+        expect(resolution).not.toBeInstanceOf(Error);
+        expect(resolution.operation).toBe("resume-canonical-creator");
+        // Every occurrence the fixture persists is reproduced by the canonical cut, with
+        // the identifier the fixture already stored rather than a freshly minted one.
+        const staged = new Map(
+            resolution.projection.occurrences.map((occurrence) => [occurrence.nodeKeyString, occurrence])
+        );
+        for (const node of fixture.legacyState.nodes) {
+            const occurrence = staged.get(node.nodeKeyString);
+            expect(occurrence).toBeDefined();
+            expect(occurrence.nodeIdentifier).toBe(node.nodeIdentifier);
+        }
+        expect(resolution.projection.lastNodeIndex).toBe(fixture.lastNodeIndex);
     });
 });

@@ -50,16 +50,23 @@ const {
     isMissingDependencyMetadata,
     makeCreateExistingNodeError,
     isCreateExistingNode,
+    makeUnsupportedPersistedIdentifierError,
+    isUnsupportedPersistedIdentifierError,
 } = require('./migration_errors');
 const { migrationCallback } = require('./migration');
 const { synchronizeNoLock } = require('./database');
 const { prepareIncrementalGraphStorage } = require('./prepare_graph_storage');
+const { runCanonicalBootstrapGate } = require('./journal_bootstrap_gate');
+const { isCohortBootstrapSource, makeJournalPublicationError } = require('./journal');
+const { resetJournalReceiverToSnapshot } = require('./journal_publish');
 
 /** @typedef {import('./types').IncrementalGraphCapabilities} IncrementalGraphCapabilities */
 /** @typedef {import('./class').IncrementalGraph} IncrementalGraph */
 /** @typedef {import('./unchanged').Unchanged} Unchanged */
 
 module.exports = {
+    isCohortBootstrapSource,
+    makeJournalPublicationError,
     makeRootDatabase,
     getRootDatabase,
     LIVE_DATABASE_WORKING_PATH,
@@ -111,8 +118,12 @@ module.exports = {
     isMissingDependencyMetadata,
     makeCreateExistingNodeError,
     isCreateExistingNode,
+    makeUnsupportedPersistedIdentifierError,
+    isUnsupportedPersistedIdentifierError,
     holidayActivity,
     migrationCallback,
     synchronizeNoLock,
     prepareIncrementalGraphStorage,
+    resetJournalReceiverToSnapshot,
+    runCanonicalBootstrapGate,
 };

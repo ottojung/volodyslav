@@ -36,7 +36,7 @@ Retained immutable Journal history is authority; the current IncrementalGraph da
 Each semantic rule has one normative owner. Other Journal documents may summarize consequences, expose API/error behavior, state proof obligations, or define tests, but they do not redefine the owned rule. If wording drifts, the owner below wins.
 
 - core Journal-authority/projection model and global conceptual invariants: `incremental-graph-journal.md`;
-- record shapes, identity primitives, causal/authority data: `incremental-graph-journal-types.md`;
+- record shapes, identity primitives, causal/authority data: `incremental-graph-journal-types.md`, with the persisted-form/identity consequence of transporting a pre-Journal identifier across a lifecycle transition owned by that file's §Persisted identifier form across the bootstrap and migration boundary;
 - well-formedness, context/reference legality, and record/basis validity: `incremental-graph-journal-well-formedness.md`;
 - replay, certificate eligibility and selection, effective proof, freshness/validity projection: `incremental-graph-journal-replay.md`;
 - ordinary-operation Journal emission: `incremental-graph-journal-emission.md`;
@@ -45,7 +45,7 @@ Each semantic rule has one normative owner. Other Journal documents may summariz
 - pairwise synchronization import, normalization, convergence, and the host-count settling construction: `incremental-graph-journal-sync.md`;
 - lifecycle fault model, established-writer rollback boundary, and absent-installation restoration: `incremental-graph-journal-lifecycle.md`;
 - shipped/pre-Journal migration API semantics: `migration.md`;
-- pre-Journal bootstrap, including canonical-source decision and publication arbitration: `incremental-graph-journal-migrations.md` Part I (§§1–8), with §4 owning the arbitration procedure;
+- pre-Journal bootstrap, including canonical-source decision and publication arbitration: `incremental-graph-journal-migrations.md` Part I (§§1–8), with §4 owning the arbitration procedure and §1 owning the supported pre-Journal source boundary, including which persisted identifiers a supported source may hold;
 - Journal-aware migration procedure: `incremental-graph-journal-migrations.md` Part II (§§9–22);
 - Journal format codec: `incremental-graph-journal-migrations.md` §9a;
 - reset procedure: `incremental-graph-journal-reset.md`;

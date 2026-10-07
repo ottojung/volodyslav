@@ -41,6 +41,10 @@
  * @property {AITranscription} aiTranscription - AI transcription capability.
  * @property {NonDeterministicSeed} seed - A random number generator instance.
  * @property {import('../../generators').Interface} interface - The incremental graph interface capability.
+ * @property {import('../incremental_graph/journal').CohortBootstrapSource} [cohortBootstrapSource] -
+ *   The configured transport-neutral canonical bootstrap source, which is deployment
+ *   configuration rather than persisted database state. Absent means the deployment
+ *   configures none, which is fail-closed for a supported pre-Journal replica.
  */
 
 module.exports = {};

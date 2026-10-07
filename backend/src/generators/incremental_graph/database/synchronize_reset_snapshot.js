@@ -15,6 +15,9 @@ const { assertValidReplicaMaterializationState } = require('./sync_merge_validat
 
 /** @typedef {import('./synchronize').Capabilities} Capabilities */
 /** @typedef {import('./root_database').RootDatabase} RootDatabase */
+/** @typedef {import('../journal_publish').ResetReceiverToSnapshot} ResetReceiverToSnapshot */
+/** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
+/** @typedef {import('./root_database').ReplicaName} ReplicaName */
 
 
 /**
@@ -40,13 +43,53 @@ async function hasGraphRecords(storage) {
 }
 
 /**
+ * Thrown when a receiver which retains Journal records is reset by a caller which
+ * supplied no Journal reset.
+ *
+ * `incremental-graph-journal-reset.md` §Atomicity requires the receiver to end up
+ * holding `Jreset + project(Jreset)` in one write. A reset of a Journal receiver without
+ * the Journal reset operation cannot produce that pair, and adopting the snapshot's rows
+ * directly would be the pre-Journal row adoption §Reset is not pre-Journal bootstrap
+ * merge forbids. The reset therefore stops instead of exposing an unsupported state.
+ *
+ * The properties this class carries are:
+ * - nothing beyond the refusal itself, which is reported against the operation the
+ *   caller owes rather than against a snapshot or a replica.
+ *
+ * The proof of those properties is guaranteed by:
+ * - `importResetSnapshotIntoDatabase`: it raises this only when the activated replica
+ *   retains at least one Journal record and no Journal reset was supplied.
+ */
+class JournalResetFrontMissingError extends Error {
+    /**
+     */
+    constructor() {
+        super(
+            'a reset of a receiver which retains Journal records was requested without a Journal ' +
+                'reset, so the receiver cannot be exposed holding Jreset + project(Jreset)'
+        );
+        this.name = 'JournalResetFrontMissingError';
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is JournalResetFrontMissingError}
+ */
+function isJournalResetFrontMissingError(object) {
+    return object instanceof JournalResetFrontMissingError;
+}
+
+/**
  * @param {Capabilities} capabilities
  * @param {RootDatabase} database
  * @param {string} workTree
  * @param {boolean} isExistingDb - Whether the live database already existed before this import.
+ * @param {ResetReceiverToSnapshot | undefined} journalReset - The Journal reset the
+ *   lifecycle performs when the receiver retains records.
  * @returns {Promise<boolean>}
  */
-async function importResetSnapshotIntoDatabase(capabilities, database, workTree, isExistingDb) {
+async function importResetSnapshotIntoDatabase(capabilities, database, workTree, isExistingDb, journalReset) {
     const snapshotRoot = path.join(workTree, DATABASE_SUBPATH);
     const rDir = path.join(snapshotRoot, 'r');
     const nextReplica = database.otherReplicaName();
@@ -77,6 +120,27 @@ async function importResetSnapshotIntoDatabase(capabilities, database, workTree,
         );
     }
 
+    const receiverReplica = database.currentReplicaName();
+
+    // A receiver which retains Journal records is reset through the Journal: it adopts
+    // the snapshot's state by retaining its own history, importing the snapshot's and
+    // authoring the repairs which make its projection equal the snapshot's, and it
+    // exposes the result in one write over the inactive replica. A receiver which
+    // retains no Journal record has no retained history to retain and is a pre-Journal
+    // installation, whose snapshot restoration is not a Journal 3 reset.
+    const receiverStorage = database.schemaStorageForReplica(receiverReplica);
+    if (await hasAnyKey(receiverStorage.journal)) {
+        if (journalReset === undefined) {
+            throw new JournalResetFrontMissingError();
+        }
+        return await journalReset({
+            database,
+            capabilities,
+            receiver: receiverReplica,
+            source: nextReplica,
+        });
+    }
+
     const targetStorage = database.schemaStorageForReplica(nextReplica);
     const hasGlobalRecords = await hasAnyKey(targetGlobal);
     const rawVersion = await targetGlobal.get('version');
@@ -104,6 +168,18 @@ async function importResetSnapshotIntoDatabase(capabilities, database, workTree,
         requireValidFingerprint(rawFingerprint, 'reset snapshot fingerprint');
         const lookup = parseIdentifierLookup(rawLookup, 'reset snapshot');
         await assertValidReplicaMaterializationState(targetStorage, lookup, 'reset snapshot');
+        // The snapshot carries the source replica's DatabaseFingerprint. When
+        // the live database already existed, the activated replica's fingerprint
+        // is rewritten to the pre-import receiver fingerprint: a reset receiver
+        // keeps its own writer identity and authors every record it writes
+        // afterwards under that writer, per
+        // docs/specs/incremental-graph-journal-reset.md §Writer identity.
+        // Adoption of the source writer happens if and only if the receiver is
+        // completely absent, in which case `isExistingDb` is false and this
+        // write-back does not run. Do not remove these writes as redundant: the
+        // imported fingerprint is otherwise silently adopted and the receiver
+        // authors under a foreign writer, which
+        // incremental-graph-journal-theorems.md Law 8 forbids.
         if (isExistingDb) {
             await targetGlobal.put(
                 'fingerprint',
@@ -120,9 +196,10 @@ async function importResetSnapshotIntoDatabase(capabilities, database, workTree,
 /**
  * @param {Capabilities} capabilities
  * @param {string} workTree
+ * @param {ResetReceiverToSnapshot | undefined} journalReset
  * @returns {Promise<void>}
  */
-async function replaceLiveDatabaseWithResetSnapshot(capabilities, workTree) {
+async function replaceLiveDatabaseWithResetSnapshot(capabilities, workTree, journalReset) {
     const workingDirectory = capabilities.environment.workingDirectory();
     const liveDatabasePath = path.join(
         workingDirectory,
@@ -141,7 +218,8 @@ async function replaceLiveDatabaseWithResetSnapshot(capabilities, workTree) {
             capabilities,
             database,
             workTree,
-            liveDbExisted
+            liveDbExisted,
+            journalReset
         );
         if (switchedReplica) {
             await database.close();
@@ -155,9 +233,10 @@ async function replaceLiveDatabaseWithResetSnapshot(capabilities, workTree) {
 /**
  * @param {Capabilities} capabilities
  * @param {{ url: string }} remoteLocation
+ * @param {ResetReceiverToSnapshot | undefined} journalReset
  * @returns {Promise<void>}
  */
-async function synchronizeResetToHostname(capabilities, remoteLocation) {
+async function synchronizeResetToHostname(capabilities, remoteLocation, journalReset) {
     await transaction(
         capabilities,
         CHECKPOINT_WORKING_PATH,
@@ -166,12 +245,15 @@ async function synchronizeResetToHostname(capabilities, remoteLocation) {
             const workTree = await store.getWorkTree();
             await replaceLiveDatabaseWithResetSnapshot(
                 capabilities,
-                workTree
+                workTree,
+                journalReset
             );
         }
     );
 }
 
 module.exports = {
+    JournalResetFrontMissingError,
+    isJournalResetFrontMissingError,
     synchronizeResetToHostname,
 };

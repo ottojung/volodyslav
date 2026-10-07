@@ -5,7 +5,11 @@
 
 const { makeInterface, isInterface } = require('./interface');
 const { event: individualEvent } = require('./individual');
-const { isMissingTimestamp } = require('./incremental_graph');
+const {
+    isMissingTimestamp,
+    isCohortBootstrapSource,
+    makeJournalPublicationError,
+} = require('./incremental_graph');
 
 /** @typedef {import('./interface').Interface} Interface */
 
@@ -14,4 +18,6 @@ module.exports = {
     isInterface,
     isEventNotFoundError: individualEvent.isEventNotFoundError,
     isMissingTimestamp,
+    isCohortBootstrapSource,
+    makeJournalPublicationError,
 };

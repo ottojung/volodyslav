@@ -5,7 +5,7 @@
     "dev": "vite",
     "build": "vite build",
     "serve": "vite preview",
-    "test": "tsc --noEmit && eslint . && jest"
+    "test": "tsc --noEmit && eslint . && sh ../scripts/check-jest-max-workers && jest"
   },
   "dependencies": {
     "@chakra-ui/react": "^3.36.1",
