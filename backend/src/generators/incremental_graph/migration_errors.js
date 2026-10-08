@@ -45,43 +45,6 @@ function isDecisionConflict(object) {
 }
 
 /**
- * Thrown when override() is called more than once on the same node.
- *
- * Each node may receive at most one semantic-preserving representation rewrite
- * during migration. Duplicate override calls are ambiguous about which rewrite
- * should be applied, so they are rejected. Use keep() instead for nodes that
- * need no further change after the first override.
- */
-class OverrideConflict extends Error {
-    /**
-     * @param {NodeIdentifier} nodeKey
-     */
-    constructor(nodeKey) {
-        super(
-            `Override conflict for node ${nodeKey}: override() called more than once`
-        );
-        this.name = "OverrideConflictError";
-        this.nodeKey = nodeKey;
-    }
-}
-
-/**
- * @param {NodeIdentifier} nodeKey
- * @returns {OverrideConflict}
- */
-function makeOverrideConflictError(nodeKey) {
-    return new OverrideConflict(nodeKey);
-}
-
-/**
- * @param {unknown} object
- * @returns {object is OverrideConflict}
- */
-function isOverrideConflict(object) {
-    return object instanceof OverrideConflict;
-}
-
-/**
  * Thrown when some nodes in S have no decision after the migration callback.
  */
 class UndecidedNodes extends Error {
@@ -115,7 +78,7 @@ function isUndecidedNodes(object) {
 }
 
 /**
- * Thrown when keep/override/invalidate is called on a node incompatible with the new schema.
+ * Thrown when keep/replace/invalidate is called on a node incompatible with the new schema.
  */
 class SchemaCompatibility extends Error {
     /**
@@ -222,7 +185,7 @@ class CreateExistingNode extends Error {
     constructor(nodeKey) {
         super(
             `Cannot create node ${nodeKey}: it already exists in the previous version. ` +
-                `Use override() to change its value instead.`
+                `Use replace() to change its semantic value instead.`
         );
         this.name = "CreateExistingNodeError";
         this.nodeKey = nodeKey;
@@ -334,8 +297,6 @@ module.exports = {
     makeInvalidMigrationDecisionError,
     isInvalidMigrationDecision,
     isDecisionConflict,
-    makeOverrideConflictError,
-    isOverrideConflict,
     makeCreateExistingNodeError,
     isCreateExistingNode,
     makeUndecidedNodesError,

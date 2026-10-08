@@ -38,8 +38,6 @@ const { holidayActivity } = require('./lock');
 const {
     makeDecisionConflictError,
     isDecisionConflict,
-    makeOverrideConflictError,
-    isOverrideConflict,
     makeUndecidedNodesError,
     isUndecidedNodes,
     makeSchemaCompatibilityError,
@@ -106,8 +104,6 @@ module.exports = {
     runMigrationUnsafe,
     makeDecisionConflictError,
     isDecisionConflict,
-    makeOverrideConflictError,
-    isOverrideConflict,
     makeUndecidedNodesError,
     isUndecidedNodes,
     makeSchemaCompatibilityError,

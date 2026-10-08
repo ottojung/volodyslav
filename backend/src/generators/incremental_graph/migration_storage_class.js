@@ -10,7 +10,6 @@ const {
 } = require("./database");
 const {
     makeDecisionConflictError,
-    makeOverrideConflictError,
     makeGetMissingNodeError,
     makeUndecidedNodesError,
     makeCreateExistingNodeError,
@@ -34,7 +33,7 @@ const {
 /** @typedef {import('./migration_storage').ReadableMigrationStorage} ReadableMigrationStorage */
 
 /** @typedef {import('./migration_decisions').KeepDecision} KeepDecision */
-/** @typedef {import('./migration_decisions').OverrideDecision} OverrideDecision */
+/** @typedef {import('./migration_decisions').ReplaceDecision} ReplaceDecision */
 /** @typedef {import('./migration_decisions').InvalidateDecision} InvalidateDecision */
 /** @typedef {import('./migration_decisions').DeleteDecision} DeleteDecision */
 /** @typedef {import('./migration_decisions').CreatedFreshness} CreatedFreshness */
@@ -167,28 +166,26 @@ class MigrationStorageClass {
     }
 
     /**
-     * Assign an OVERRIDE decision to a node that rewrites its stored
-     * representation while preserving the semantic value.
+     * Assign a REPLACE decision to a node, stating that its stored semantic value
+     * is being replaced at the migration cut.
      *
-     * `override()` is a **semantic-preserving representation rewrite**:
-     * - It may change the on-disk storage shape (e.g. after a database version
-     *   change that alters the serialization format).
-     * - It MUST preserve the semantic value as seen by dependents — the
-     *   represented value is meaningfully the same as before.
-     * - Because the value is semantically unchanged, override() does NOT
-     *   propagate invalidation. Dependents that were valid against the old
-     *   representation remain valid against the new one.
+     * `incremental-graph-journal-migrations.md` §11 makes this the explicit
+     * decision for a genuine semantic value replacement of an already-materialized
+     * source node: it preserves the materialization's `NodeIdentifier` and its
+     * `createdAt`, assigns the migration publication time as the new occurrence's
+     * `modifiedAt`, and authors a new `ValueEvent(reason="migration")`. A
+     * representation-only change of the same semantic value is not this decision;
+     * that is the canonical whole-history format codec plus `keep`.
      *
-     * If the migration changes the meaning or value of a node (not just its
-     * storage representation), the migration must use `invalidate()` instead
-     * of `override()`. This triggers downstream recomputation so dependents
-     * observe the changed value.
+     * A second replacement of the same node is ambiguous about which value the
+     * new occurrence should carry, so §11a.1 rejects it exactly as it rejects a
+     * different decision family for the same node.
      *
      * @param {NodeIdentifier} nodeKey
      * @param {(nodeKey: NodeIdentifier) => Promise<ComputedValue>} value
      * @returns {Promise<void>}
      */
-    async override(nodeKey, value) {
+    async replace(nodeKey, value) {
         if (!this.materializedNodes.has(nodeKey)) {
             throw makeGetMissingNodeError(nodeKey);
         }
@@ -197,12 +194,9 @@ class MigrationStorageClass {
         await assertKeepInputPositionsCompatible(nodeKey, identifiersKeysIndex, this.oldGraphScheme, this.newGraphScheme);
         const existing = this.decisions.get(nodeKey);
         if (existing !== undefined) {
-            if (existing.kind === "override") {
-                throw makeOverrideConflictError(nodeKey);
-            }
-            throw makeDecisionConflictError(nodeKey, existing.kind, "override");
+            throw makeDecisionConflictError(nodeKey, existing.kind, "replace");
         }
-        this.decisions.set(nodeKey, { kind: "override", value });
+        this.decisions.set(nodeKey, { kind: "replace", value });
     }
 
     /**
@@ -273,7 +267,7 @@ class MigrationStorageClass {
 
     /**
      * Create a new node in the new schema version with an initial value.
-     * The node must NOT exist in the previous version (use override() instead).
+     * The node must NOT exist in the previous version (use replace() instead).
      * The node must exist in the new schema.
      * The identifier is auto-generated deterministically using the database
      * fingerprint and a monotonic index.

@@ -68,7 +68,7 @@ async function buildProducedOccurrences(decisions, prevStorage, oldLookup, publi
         if (decision.kind === "delete") {
             continue;
         }
-        if (decision.kind !== "create" && decision.kind !== "override") {
+        if (decision.kind !== "create" && decision.kind !== "replace") {
             const transported = await readTransportedOccurrence(
                 identifier,
                 prevStorage,

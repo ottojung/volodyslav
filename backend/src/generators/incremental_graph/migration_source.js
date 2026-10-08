@@ -12,6 +12,10 @@
  * authors — produced at the cut or transported from the source replica's storage —
  * are passed in rather than re-derived here, so the graph state and the M1 records
  * name the same occurrence with the same timestamps.
+ *
+ * The freshness flags are `buildTargetFreshness`'s, also passed in: §11a.4 derives
+ * a replacement's flag from the freshness of the inputs it selected, so the flag
+ * cannot be read back from the source replica for a node the migration replaced.
  */
 
 const { compareNodeIdentifier, GRAPH_SCHEME_KEY, IDENTIFIERS_KEY, LAST_NODE_INDEX_KEY } = require("./database");
@@ -21,6 +25,7 @@ const { buildDecisionsMap } = require("./migration_validity");
 /** @typedef {import('./database').ReadableSchemaStorage} ReadableSchemaStorage */
 /** @typedef {import('./database/types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./database/types').ComputedValue} ComputedValue */
+/** @typedef {import('./database/types').Freshness} Freshness */
 /** @typedef {import('./database/types').Version} Version */
 /** @typedef {import('./migration_storage').Decision} Decision */
 /** @typedef {import('./migration_storage').ReadableMigrationStorage} ReadableMigrationStorage */
@@ -42,6 +47,8 @@ const { buildDecisionsMap } = require("./migration_validity");
  * @param {import('./database/identifier_lookup').IdentifierLookup} oldLookup
  * @param {Map<NodeIdentifier, Decision>} decisions
  * @param {Map<NodeIdentifier, NodeIdentifier[]>} desiredValid
+ * @param {ReadonlyMap<NodeIdentifier, Freshness>} targetFreshness - The §11a.4
+ *   freshness flag of every target-present node.
  * @param {import('./database/types').Version} newVersion
  * @param {number} maxAllocatedIndex - The max allocated local index during this migration.
  * @param {number} sourceLastNodeIndex - The validated durable last_node_index from the source replica.
@@ -53,14 +60,14 @@ const { buildDecisionsMap } = require("./migration_validity");
  *   graph state and the journal describe one value.
  * @returns {ReadableSchemaStorage}
  */
-function makeLazyMigrationSource(prevStorage, oldLookup, decisions, desiredValid, newVersion, maxAllocatedIndex, sourceLastNodeIndex, fingerprint, graphSchemeString, producedOccurrences) {
+function makeLazyMigrationSource(prevStorage, oldLookup, decisions, desiredValid, targetFreshness, newVersion, maxAllocatedIndex, sourceLastNodeIndex, fingerprint, graphSchemeString, producedOccurrences) {
     /**
      * @param {NodeIdentifier} key
      * @param {Decision} decision
      * @returns {Promise<ComputedValue | undefined>}
      */
     async function readFinalValue(key, decision) {
-        if (decision.kind === "create" || decision.kind === "override") {
+        if (decision.kind === "create" || decision.kind === "replace") {
             const occurrence = producedOccurrences.get(key);
             if (occurrence !== undefined) {
                 return occurrence.value;
@@ -103,6 +110,8 @@ function makeLazyMigrationSource(prevStorage, oldLookup, decisions, desiredValid
                 if (!decision || decision.kind === "delete") return undefined;
                 if (decision.kind === "create") return decision.freshness;
                 if (decision.kind === "invalidate") return "potentially-outdated";
+                const settled = targetFreshness.get(key);
+                if (settled !== undefined) return settled;
                 return await prevStorage.freshness.get(key);
             },
         },

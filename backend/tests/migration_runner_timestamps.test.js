@@ -2,7 +2,7 @@
  * Tests that verify materialized-node timestamps during database migration.
  *
  * Migration produces total timestamp records over the materialized identifier
- * registry. Identity-preserving decisions (keep, override, invalidate) preserve both `createdAt`
+ * registry. Identity-preserving decisions (keep, replace, invalidate) preserve both `createdAt`
  * and `modifiedAt`; only decisions that create new entries (create) mint new timestamps.
  */
 
@@ -505,7 +505,7 @@ describe("replacement decision: §11a.3 occurrence timestamps", () => {
 
         await seedGraphScheme(xStorage, makeNodeDefs(["A"]));
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A"]), async (storage) => {
-            await storage.override(nodeKey, async () => ({ type: "all_events", events: [] }));
+            await storage.replace(nodeKey, async () => ({ type: "all_events", events: [] }));
         });
 
         const result = await yGet(yStorage.timestamps, yStorage, nodeKey);
@@ -526,7 +526,7 @@ describe("replacement decision: §11a.3 occurrence timestamps", () => {
 
         await seedGraphScheme(xStorage, makeNodeDefs(["A"]));
         await expect(runMigration(capabilities, rootDatabase, makeNodeDefs(["A"]), async (storage) => {
-            await storage.override(nodeKey, async () => ({ type: "all_events", events: [] }));
+            await storage.replace(nodeKey, async () => ({ type: "all_events", events: [] }));
         })).rejects.toThrow("has no timestamps entry");
     });
 
@@ -544,7 +544,7 @@ describe("replacement decision: §11a.3 occurrence timestamps", () => {
 
         await seedGraphScheme(xStorage, makeNodeDefs(["A"]));
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A"]), async (storage) => {
-            await storage.override(nodeKey, async () => ({ type: "all_events", events: [] }));
+            await storage.replace(nodeKey, async () => ({ type: "all_events", events: [] }));
         });
 
         const result = await yGet(yStorage.timestamps, yStorage, nodeKey);
@@ -818,7 +818,7 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
         await expect(yGet(yStorage.timestamps, yStorage, nkB)).resolves.toEqual(NEW_TIMESTAMP);
     });
 
-    test("keep A, override B: A keeps both stamps, B takes the publication time", async () => {
+    test("keep A, replace B: A keeps both stamps, B takes the publication time", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
@@ -828,7 +828,7 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
         await seedGraphScheme(xStorage, makeNodeDefs(["A", "B"]));
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A", "B"]), async (storage) => {
             await storage.keep(nkA);
-            await storage.override(nkB, async () => ({ type: "all_events", events: [] }));
+            await storage.replace(nkB, async () => ({ type: "all_events", events: [] }));
         });
 
         await expect(yGet(yStorage.timestamps, yStorage, nkA)).resolves.toEqual(OLD_TIMESTAMP);
@@ -838,7 +838,7 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
         });
     });
 
-    test("override A requires an explicit decision for B", async () => {
+    test("replace A requires an explicit decision for B", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
@@ -847,7 +847,7 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
 
         await seedGraphScheme(xStorage, makeNodeDefs(["A", "B"]));
         await expect(runMigration(capabilities, rootDatabase, makeNodeDefs(["A", "B"]), async (storage) => {
-            await storage.override(nkA, async () => ({ type: "all_events", events: [] }));
+            await storage.replace(nkA, async () => ({ type: "all_events", events: [] }));
         })).rejects.toThrow("have no decision");
     });
 

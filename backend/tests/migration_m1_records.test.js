@@ -233,7 +233,7 @@ describe("migration Pass M1 records", () => {
 
             db = await getRootDatabase(caps);
             await runMigration(caps, db, nodeDefs, async (storage) => {
-                await storage.override(
+                await storage.replace(
                     replacedIdentifier,
                     async () => numberComputedValue(20)
                 );

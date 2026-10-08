@@ -11,7 +11,7 @@ This document describes the **migration system** for upgrading incremental-graph
 When the application version changes, any computed values stored in the previous version's namespace may become stale or structurally incompatible with the new schema.  The migration system provides a strict, fail-fast API—`MigrationStorage`—that lets migration authors:
 
 * **read** old values,
-* **decide** what happens to each previously-materialized node (keep, override, invalidate, or delete),
+* **decide** what happens to each previously-materialized node (keep, replace, invalidate, or delete),
 * **traverse** the previous version's dependency graph.
 
 A failed migration never activates the target replica.  Failures before unification leave the target replica untouched.  Failures after unification may leave the inactive replica written, but the active replica remains unchanged.
@@ -47,7 +47,7 @@ All methods are `async`.
 |--------|-------------|
 | `get(nodeIdentifier)` | Return the previous-version value. |
 | `keep(nodeIdentifier)` | Preserve node as-is in the new version. |
-| `override(nodeIdentifier, value)` | Rewrite an existing cached value with the result of `value(nodeIdentifier)` (a `NodeIdentifier => Promise<ComputedValue>`), while preserving its cache-state proof envelope. |
+| `replace(nodeIdentifier, value)` | Replace an existing materialized node's semantic value with the result of `value(nodeIdentifier)` (a `NodeIdentifier => Promise<ComputedValue>`). Preserves the node's `NodeIdentifier` and `createdAt`, and authors a new `ValueEvent` so the new occurrence has its own `ValueId`. |
 | `invalidate(nodeIdentifier)` | Mark the node for recomputation. |
 | `delete(nodeIdentifier)` | Remove the node from the new version entirely. |
 | `create(nodeKeyString, value, freshness)` | Create a new cached node (not in the previous version) in the new schema with the result of `value(nodeIdentifier)` (a `NodeIdentifier => Promise<ComputedValue>`) as its initial value. `freshness` must be `"up-to-date"` or `"potentially-outdated"`. `nodeKeyString` is a `NodeKeyString` — the semantic key by which the node will be identified in the new schema. A fresh `NodeIdentifier` is allocated automatically. |
@@ -68,32 +68,30 @@ All methods are `async`.
 
 ### Idempotency
 
-Calling the same decision twice (except for `override` and `create`) is allowed and has no effect.
+Calling the same decision twice (except for `replace` and `create`) is allowed and has no effect.
 
 ### Conflict detection
 
 * Calling **different** decisions on the same node throws `DecisionConflictError`.
-* Calling `override()` more than once on the same node throws `OverrideConflictError`.
+* Calling `replace()` more than once on the same node throws `DecisionConflictError`.
 * Calling `create()` twice on the same node throws `DecisionConflictError`.
 * Calling `create()` on a node that exists in the previous version throws `CreateExistingNodeError`.
 
 ### Schema compatibility
 
-`keep`, `override`, `invalidate`, and `create` check that the node's functor and arity exist in the new schema.  Incompatible nodes must be explicitly `delete`d.  Violation throws `SchemaCompatibilityError`.
+`keep`, `replace`, `invalidate`, and `create` check that the node's functor and arity exist in the new schema.  Incompatible nodes must be explicitly `delete`d.  Violation throws `SchemaCompatibilityError`.
 
 ### Operation semantics
 
 `keep` preserves the value, freshness, timestamps, and — for up-to-date nodes — compatible incoming validity. A stale node carried through `keep` loses its incoming proofs: persisted storage does not encode whether its staleness was explicit or propagated, so it is conservatively treated as a direct invalidation root.
 
-Within a **preexisting stale `keep`/`override` region**, every stale node loses incoming proofs, so validity edges inside the region may disappear. A stale B whose dependent C is also stale loses both `A⇝B` and `B⇝C` during migration, and both nodes must recompute.
+Within a **preexisting stale `keep` region**, every stale node loses incoming proofs, so validity edges inside the region may disappear. A stale B whose dependent C is also stale loses both `A⇝B` and `B⇝C` during migration, and both nodes must recompute.
 
 **Migration-time propagated invalidation** is different: the migration callback explicitly calls `invalidate()` on a node, and the propagation runs in memory with full provenance. In that case outgoing proofs survive and freshness-only propagation preserves validity edges.
 
-`override` is a **semantic-preserving representation rewrite**. It changes the stored representation (e.g. on-disk format) while preserving the semantic value as seen by dependents. Because the value is semantically unchanged, `override()` does not propagate invalidation — it inherits freshness, timestamps, and validity from the old record. The same stale-node rule applies: a stale node carried through `override` loses its incoming proofs.
+`replace` is a **genuine semantic value replacement** of an already-materialized node. It does not propagate invalidation — a replaced node's dependents keep their own decisions and their freshness is derived from the replaced occurrence through replay — but it authors a new occurrence, so an incoming proof edge which named the replaced occurrence is not carried forward. This follows `docs/specs/incremental-graph-journal-migrations.md` §11a.4: a preserved dependent whose required input occurrence changed is hard stale unless the dependent is itself explicitly created or replaced. A representation-only change of the same semantic value is not `replace`; it is the canonical whole-history format codec plus `keep`.
 
-`override()` MUST NOT be used when the migration changes the meaning or value of a node. If the value itself changes, use `invalidate()` instead, which triggers downstream recomputation so that dependents observe the new value.
-
-The intended use case is format migration: the database version changes the serialization format but the represented value is still meaningfully the same value. In that scenario missing invalidation in `override()` is correct by design — not a bug.
+A replaced node takes the migration publication time as its `modifiedAt`, keeps its existing `createdAt`, and is itself up-to-date exactly when every direct target input it selected is up-to-date.
 
 `invalidate` preserves the cached value if it exists, marks nodes as `"potentially-outdated"`, and preserves `modifiedAt`.
 
@@ -108,13 +106,13 @@ The intended use case is format migration: the database version changes the seri
 
 #### INVALIDATE → propagate INVALIDATE downstream
 
-When a node is invalidated, all its dependents are automatically marked `INVALIDATE` (recursively), unless they are already `DELETE`d.  If a dependent already has a `KEEP` or `OVERRIDE` decision, `DecisionConflictError` is thrown immediately.
+When a node is invalidated, all its dependents are automatically marked `INVALIDATE` (recursively), unless they are already `DELETE`d.  If a dependent already has a `KEEP` or `REPLACE` decision, `DecisionConflictError` is thrown immediately.
 
 #### DELETE → propagate DELETE downstream (deferred, dependency-closed)
 
 DELETE propagation runs at finalization (after the callback returns), via a BFS over dependents. One deleted input is sufficient to delete an undecided dependent, and that deletion propagates through every transitive materialized dependent.
 
-This preserves the materialization invariant that every materialized node has all of its concrete inputs materialized. If a dependent already has an explicit `KEEP`, `OVERRIDE`, or `INVALIDATE` decision, `DecisionConflictError` is thrown.
+This preserves the materialization invariant that every materialized node has all of its concrete inputs materialized. If a dependent already has an explicit `KEEP`, `REPLACE`, or `INVALIDATE` decision, `DecisionConflictError` is thrown.
 
 ---
 
@@ -123,11 +121,10 @@ This preserves the materialization invariant that every materialized node has al
 | Error class | When thrown |
 |-------------|------------|
 | `DecisionConflictError` | Two different decisions assigned to the same node. |
-| `OverrideConflictError` | `override()` called more than once on the same node. |
 | `CreateExistingNodeError` | `create()` called for a node that already exists in the previous version. |
 | `UndecidedNodesError` | Some nodes in `S` have no decision after the callback. |
-| `SchemaCompatibilityError` | `keep`/`override`/`invalidate`/`create` on a node absent from the new schema. |
-| `InvalidMigrationDecisionError` | `override` or `create` called without the cache-state proof required by its API. |
+| `SchemaCompatibilityError` | `keep`/`replace`/`invalidate`/`create` on a node absent from the new schema. |
+| `InvalidMigrationDecisionError` | A decision which asserts proof or freshness the migration cannot establish, or a decision whose produced state cannot be derived. |
 | `GetMissingNodeError` | `get()`/traversal called for a node not in `S`. |
 | `MissingDependencyMetadataError` | A materialized node has missing or corrupted dependency metadata. |
 

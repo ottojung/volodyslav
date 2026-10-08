@@ -23,7 +23,7 @@ const {
 } = require("./database");
 const { holidayActivity } = require("./lock");
 const { makeMigrationStorage } = require("./migration_storage");
-const { buildDecisionsMap, buildDesiredValid, loadMaterializedNodes } = require("./migration_validity");
+const { buildDecisionsMap, buildDesiredValid, buildTargetFreshness, loadMaterializedNodes } = require("./migration_validity");
 const { tryUnsupportedPersistedIdentifier } = require("./migration_source_domain");
 const { buildMigrationM1Intents } = require("./migration_m1");
 const { buildProducedOccurrences } = require("./migration_occurrences");
@@ -94,7 +94,7 @@ const { fromISOString } = require("../../datetime");
  * Run a database migration.
  *
  * The callback receives a MigrationStorage instance and must assign exactly one
- * decision (keep / override / invalidate / delete) to every node materialized in
+ * decision (keep / replace / invalidate / delete) to every node materialized in
  * the previous application version.  Propagation rules and completeness are
  * enforced automatically; any violation throws before the new version is written.
  *
@@ -317,6 +317,16 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
                 finalLookup
             );
 
+            // §11a.4 computes the target's freshness flags after target presence
+            // and `TargetValid` are fixed, in dependency-topological order, because
+            // a decision's flag names the freshness of the inputs it selected.
+            const targetFreshness = await buildTargetFreshness(
+                prevStorage,
+                decisions,
+                newGraphScheme,
+                finalLookup
+            );
+
             // Create a lazy source that computes desired values on demand.
             // Combined with makeDbToDbAdapter + unifyStores this keeps peak
             // memory at O(|max value| + |keys|), matching the sync path.
@@ -336,6 +346,7 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
                 oldLookup,
                 decisions,
                 desiredValid,
+                targetFreshness,
                 currentVersion,
                 migrationStorage.getMaxAllocatedIndex(),
                 sourceLastNodeIndex,

@@ -44,7 +44,7 @@ describe("migration integration", () => {
         );
     });
 
-    test("stale keep/override region A→B→C loses both proofs, both recompute with oldValue", async () => {
+    test("stale keep/replace region A→B→C loses both proofs, both recompute with oldValue", async () => {
         const caps = getTestCapabilities();
         let db;
         try {

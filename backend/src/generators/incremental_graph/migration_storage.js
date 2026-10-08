@@ -11,7 +11,7 @@ const { MigrationStorageClass } = require("./migration_storage_class");
 /** @typedef {import('./database/types').NodeIdentifier} NodeIdentifier */
 
 /** @typedef {import('./migration_decisions').KeepDecision} KeepDecision */
-/** @typedef {import('./migration_decisions').OverrideDecision} OverrideDecision */
+/** @typedef {import('./migration_decisions').ReplaceDecision} ReplaceDecision */
 /** @typedef {import('./migration_decisions').InvalidateDecision} InvalidateDecision */
 /** @typedef {import('./migration_decisions').DeleteDecision} DeleteDecision */
 /** @typedef {import('./migration_decisions').CreatedFreshness} CreatedFreshness */

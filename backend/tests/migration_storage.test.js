@@ -7,7 +7,6 @@ const { compileNodeDef } = require("../src/generators/incremental_graph/compiled
 const { IDENTIFIERS_KEY } = require("../src/generators/incremental_graph/database");
 const {
     isDecisionConflict,
-    isOverrideConflict,
     isUndecidedNodes,
     isSchemaCompatibility,
     isGetMissingNode,
@@ -247,7 +246,7 @@ describe("MigrationStorage", () => {
             await expect(ms.delete(A)).resolves.toBeUndefined();
         });
 
-        test("override(A) twice fails with OverrideConflictError (non-idempotent)", async () => {
+        test("replace(A) twice fails with DecisionConflictError (non-idempotent)", async () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
@@ -258,12 +257,12 @@ describe("MigrationStorage", () => {
             const lookup = makeLookupFromKeys([A]);
             const ms = makeMigrationStorage(storage, headIndex, [A], "testfingerprint", 0, scheme, scheme, lookup);
 
-            await ms.override(A, () => Promise.resolve(DUMMY_VALUE));
-            const err = await ms.override(A, () => Promise.resolve(DUMMY_VALUE)).catch((e) => e);
-            expect(isOverrideConflict(err)).toBe(true);
+            await ms.replace(A, () => Promise.resolve(DUMMY_VALUE));
+            const err = await ms.replace(A, () => Promise.resolve(DUMMY_VALUE)).catch((e) => e);
+            expect(isDecisionConflict(err)).toBe(true);
         });
 
-        test("override(A) twice throws OverrideConflictError regardless of value identity", async () => {
+        test("replace(A) twice throws DecisionConflictError regardless of value identity", async () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
@@ -274,9 +273,9 @@ describe("MigrationStorage", () => {
             const lookup = makeLookupFromKeys([A]);
             const ms = makeMigrationStorage(storage, headIndex, [A], "testfingerprint", 0, scheme, scheme, lookup);
 
-            await ms.override(A, () => Promise.resolve(DUMMY_VALUE));
-            const err = await ms.override(A, () => Promise.resolve(DUMMY_VALUE_2)).catch((e) => e);
-            expect(isOverrideConflict(err)).toBe(true);
+            await ms.replace(A, () => Promise.resolve(DUMMY_VALUE));
+            const err = await ms.replace(A, () => Promise.resolve(DUMMY_VALUE_2)).catch((e) => e);
+            expect(isDecisionConflict(err)).toBe(true);
         });
 
         test("keep(A) then invalidate(A) throws DecisionConflictError", async () => {
@@ -310,19 +309,19 @@ describe("MigrationStorage", () => {
             expect(isDecisionConflict(err)).toBe(true);
         });
 
-        // override() is a semantic-preserving representation rewrite: it changes
-        // the stored shape but must preserve the semantic value as seen by
-        // dependents. Because the value is unchanged, override does not propagate
-        // invalidation. If a migration changes the meaning/value of a node, it
-        // must use invalidate() instead. Missing invalidation in override() is
-        // correct by design, not a bug.
-        test("keep(D) then override(A) does not propagate invalidation", async () => {
+        // replace() authors a new occurrence for the node it names, so it does not
+        // assign a decision to that node's dependents: §11a.2 leaves their
+        // freshness to replay through the replaced input occurrence, and their own
+        // decision families stay independent. That a replaced input removes the
+        // dependent's carried proof edge is §11a.4's provenance rule, which is
+        // covered in migration_target_validity.test.js.
+        test("keep(D) then replace(A) does not propagate invalidation", async () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A", "B", "C", "D"]);
             const ms = await setupStandardGraph(storage, headIndex);
 
             await ms.keep(nk("D"));
-            await expect(ms.override(nk("A"), () => Promise.resolve(DUMMY_VALUE))).resolves.toBeUndefined();
+            await expect(ms.replace(nk("A"), () => Promise.resolve(DUMMY_VALUE))).resolves.toBeUndefined();
         });
     });
 
@@ -369,7 +368,7 @@ describe("MigrationStorage", () => {
             expect(result).toEqual(DUMMY_VALUE);
         });
 
-        test("get() returns old value even after override()", async () => {
+        test("get() returns old value even after replace()", async () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
@@ -380,7 +379,7 @@ describe("MigrationStorage", () => {
             const lookup = makeLookupFromKeys([A]);
             const ms = makeMigrationStorage(storage, headIndex, [A], "testfingerprint", 0, scheme, scheme, lookup);
 
-            await ms.override(A, () => Promise.resolve(DUMMY_VALUE_2));
+            await ms.replace(A, () => Promise.resolve(DUMMY_VALUE_2));
             const result = await ms.get(A);
             expect(result).toEqual(DUMMY_VALUE); // still old value
         });
@@ -421,15 +420,15 @@ describe("MigrationStorage", () => {
     });
 
     // -----------------------------------------------------------------------
-    // Section 4: OVERRIDE preserves graph state
+    // Section 4: REPLACE preserves graph state
     // -----------------------------------------------------------------------
-    describe("Section 4: OVERRIDE preserves graph state", () => {
-        test("override(A) does not invalidate B and D", async () => {
+    describe("Section 4: REPLACE preserves graph state", () => {
+        test("replace(A) does not invalidate B and D", async () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A", "B", "C", "D"]);
             const ms = await setupStandardGraph(storage, headIndex);
 
-            await ms.override(nk("A"), () => Promise.resolve(DUMMY_VALUE_2));
+            await ms.replace(nk("A"), () => Promise.resolve(DUMMY_VALUE_2));
             await ms.keep(nk("B"));
             await ms.keep(nk("C"));
             await ms.keep(nk("D"));
@@ -439,13 +438,13 @@ describe("MigrationStorage", () => {
             expect(decisions.get(nk("D"))?.kind).toBe("keep");
         });
 
-        test("keep(D) then override(A) is allowed because override does not propagate", async () => {
+        test("keep(D) then replace(A) is allowed because replace does not propagate", async () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A", "B", "C", "D"]);
             const ms = await setupStandardGraph(storage, headIndex);
 
             await ms.keep(nk("D"));
-            await expect(ms.override(nk("A"), () => Promise.resolve(DUMMY_VALUE_2))).resolves.toBeUndefined();
+            await expect(ms.replace(nk("A"), () => Promise.resolve(DUMMY_VALUE_2))).resolves.toBeUndefined();
         });
     });
 
@@ -897,12 +896,12 @@ describe("MigrationStorage", () => {
             expect(isSchemaCompatibility(err)).toBe(true);
         });
 
-        test("override() on incompatible node throws SchemaCompatibilityError", async () => {
+        test("replace() on incompatible node throws SchemaCompatibilityError", async () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["B", "C", "D"]);
             const ms = await setupStandardGraph(storage, headIndex);
 
-            const err = await ms.override(nk("A"), () => Promise.resolve(DUMMY_VALUE)).catch((e) => e);
+            const err = await ms.replace(nk("A"), () => Promise.resolve(DUMMY_VALUE)).catch((e) => e);
             expect(isSchemaCompatibility(err)).toBe(true);
         });
 
@@ -1252,10 +1251,10 @@ describe("MigrationStorage", () => {
     });
 
     // -----------------------------------------------------------------------
-    // Section 10: override() accepts function
+    // Section 10: replace() accepts function
     // -----------------------------------------------------------------------
-    describe("Section 10: override() accepts function", () => {
-        test("override() accepts a function returning a pending promise (value is not awaited during planning)", async () => {
+    describe("Section 10: replace() accepts function", () => {
+        test("replace() accepts a function returning a pending promise (value is not awaited during planning)", async () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
@@ -1266,12 +1265,12 @@ describe("MigrationStorage", () => {
             const lookup = makeLookupFromKeys([A]);
             const ms = makeMigrationStorage(storage, headIndex, [A], "testfingerprint", 0, scheme, scheme, lookup);
 
-            // Pass a function that returns a promise that never resolves; override() should return immediately
+            // Pass a function that returns a promise that never resolves; replace() should return immediately
             const neverResolves = () => new Promise(() => {});
-            await expect(ms.override(A, neverResolves)).resolves.toBeUndefined();
+            await expect(ms.replace(A, neverResolves)).resolves.toBeUndefined();
         });
 
-        test("override() passes the nodeKey to the value function", async () => {
+        test("replace() passes the nodeKey to the value function", async () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
@@ -1284,18 +1283,18 @@ describe("MigrationStorage", () => {
 
             /** @type {string | undefined} */
             let receivedKey;
-            await ms.override(A, (key) => {
+            await ms.replace(A, (key) => {
                 receivedKey = key;
                 return Promise.resolve(DUMMY_VALUE_2);
             });
             const decisions = await ms.finalize();
 
-            const overrideDecision = decisions.get(A);
-            expect(overrideDecision?.kind).toBe("override");
-            // The function is not called during override() or finalize() — only during the runner's apply phase
+            const replaceDecision = decisions.get(A);
+            expect(replaceDecision?.kind).toBe("replace");
+            // The function is not called during replace() or finalize() — only during the runner's apply phase
             expect(receivedKey).toBeUndefined();
             // Calling the function directly simulates what the runner does, verifying the key is passed correctly
-            await overrideDecision?.value(A);
+            await replaceDecision?.value(A);
             expect(receivedKey).toBe(A);
         });
     });

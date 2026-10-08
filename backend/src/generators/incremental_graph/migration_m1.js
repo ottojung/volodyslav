@@ -117,7 +117,7 @@ function buildMigrationM1Intents(decisions, sourceLookup, producedOccurrences, t
         }
         const occurrence = producedOccurrences.get(identifier);
         if (occurrence === undefined) {
-            if (decision.kind === "create" || decision.kind === "override") {
+            if (decision.kind === "create" || decision.kind === "replace") {
                 throw makeInvalidMigrationDecisionError(
                     "migration decision " + decision.kind + " for " + nodeIdentifierToString(identifier) +
                         " produced no target value occurrence"

@@ -1,9 +1,11 @@
 const {
     compareNodeIdentifier,
     nodeIdentifierToString,
+    nodeKeyStringToString,
     stringToNodeIdentifier,
     stringToNodeKeyString,
     deriveInputEdges,
+    deriveInputPositions,
 } = require("./database");
 const { makeInvalidMigrationDecisionError } = require("./migration_errors");
 
@@ -88,6 +90,104 @@ function materializedDecisionStrings(decisions) {
 }
 
 /**
+ * The persisted freshness flag every target-present node carries.
+ *
+ * `docs/specs/incremental-graph-journal-migrations.md` §11a.4 derives each
+ * decision family's target freshness, and computes it in deterministic
+ * dependency-topological order after target presence and `TargetValid` are fixed:
+ *
+ * - an explicit `invalidate` is stale, and a `"potentially-outdated"` create is
+ *   stale, because each of them asserts that the occurrence it authors is not
+ *   known to reflect its inputs;
+ * - a replacement establishes full positive proof against every selected direct
+ *   target input, so its own flag is up-to-date exactly when every one of those
+ *   inputs is target-fresh, and is a stale flag otherwise. §11a.4 states that a
+ *   replacement whose input is stale "retains full own proof but is target-stale
+ *   through that input";
+ * - an occurrence-preserving decision transports the source occurrence and the
+ *   direct stale state the source persisted for it, so its flag is the source
+ *   replica's. A target-stale *input* of such a node is not written into its own
+ *   flag: replay derives that node's staleness from the input, and a proof edge
+ *   whose basis no longer names the selected input occurrence makes it hard
+ *   stale, which `buildDesiredValid` already encodes by not carrying that edge.
+ *
+ * @param {ReadableMigrationStorage} prevStorage
+ * @param {Map<NodeIdentifier, Decision>} decisions
+ * @param {import('./database/graph_scheme').GraphScheme} newGraphScheme
+ * @param {import('./database/identifier_lookup').IdentifierLookup} finalLookup
+ * @returns {Promise<Map<NodeIdentifier, import('./database/types').Freshness>>}
+ */
+async function buildTargetFreshness(prevStorage, decisions, newGraphScheme, finalLookup) {
+    /** @type {Map<NodeIdentifier, import('./database/types').Freshness>} */
+    const targetFreshness = new Map();
+
+    /**
+     * @param {NodeIdentifier} nodeIdentifier
+     * @returns {Promise<import('./database/types').Freshness>}
+     */
+    async function freshnessOf(nodeIdentifier) {
+        const settled = targetFreshness.get(nodeIdentifier);
+        if (settled !== undefined) {
+            return settled;
+        }
+        const decision = decisions.get(nodeIdentifier);
+        if (decision === undefined || decision.kind === "delete") {
+            throw makeInvalidMigrationDecisionError(
+                `Migration target freshness asks about ${nodeIdentifierToString(nodeIdentifier)}, which the target does not materialize`
+            );
+        }
+        if (decision.kind === "invalidate") {
+            targetFreshness.set(nodeIdentifier, "potentially-outdated");
+            return "potentially-outdated";
+        }
+        if (decision.kind === "create") {
+            targetFreshness.set(nodeIdentifier, decision.freshness);
+            return decision.freshness;
+        }
+        const nodeKeyString = finalLookup.idToKey.get(nodeIdentifierToString(nodeIdentifier));
+        if (nodeKeyString === undefined) {
+            throw makeInvalidMigrationDecisionError(
+                `Migration target freshness asks about ${nodeIdentifierToString(nodeIdentifier)}, which the target lookup does not name`
+            );
+        }
+        if (decision.kind !== "replace") {
+            const transported = await prevStorage.freshness.get(nodeIdentifier);
+            if (transported === undefined) {
+                throw makeInvalidMigrationDecisionError(
+                    `Migration transports ${nodeIdentifierToString(nodeIdentifier)}, whose source replica has no freshness`
+                );
+            }
+            targetFreshness.set(nodeIdentifier, transported);
+            return transported;
+        }
+        let fresh = true;
+        for (const inputKey of deriveInputPositions(newGraphScheme, nodeKeyString)) {
+            const input = finalLookup.keyToId.get(nodeKeyStringToString(inputKey));
+            if (input === undefined) {
+                throw makeInvalidMigrationDecisionError(
+                    `Migration replaced ${nodeIdentifierToString(nodeIdentifier)} against input ` +
+                    `${nodeKeyStringToString(inputKey)}, which the target does not materialize`
+                );
+            }
+            if (await freshnessOf(input) !== "up-to-date") {
+                fresh = false;
+            }
+        }
+        const freshness = fresh ? "up-to-date" : "potentially-outdated";
+        targetFreshness.set(nodeIdentifier, freshness);
+        return freshness;
+    }
+
+    for (const [identifier, decision] of decisions) {
+        if (decision.kind === "delete") {
+            continue;
+        }
+        await freshnessOf(identifier);
+    }
+    return targetFreshness;
+}
+
+/**
  * @param {ReadableMigrationStorage} _prevStorage
  * @param {Map<NodeIdentifier, Decision>} decisions
  * @param {NodeIdentifier} nodeIdentifier
@@ -154,21 +254,20 @@ async function buildDesiredValid(prevStorage, decisions, oldScheme, newScheme, o
         }
 
         // Preserve old outgoing proofs when the input's stored semantic value
-        // survives — this applies to keep, override, and propagated
-        // invalidations (invalidation changes freshness, not value).
-        // Delete nodes have no surviving value; create nodes have no old proof.
-        // Explicit invalidation is excluded above.
+        // survives — this applies to keep and to propagated invalidations
+        // (invalidation changes freshness, not value). Delete nodes have no
+        // surviving value; create and replace nodes author a new occurrence, so
+        // an old proof naming the replaced occurrence is not carried forward.
         //
-        // A preexisting stale node carried through keep or override loses its
-        // incoming proofs: persisted storage does not encode whether its
-        // staleness was explicit or propagated, so we conservatively treat it
-        // as a direct invalidation root.
+        // A preexisting stale node carried through keep loses its incoming
+        // proofs: persisted storage does not encode whether its staleness was
+        // explicit or propagated, so we conservatively treat it as a direct
+        // invalidation root.
         const nodeFreshness = await finalFreshness(prevStorage, decisions, nodeIdentifier);
-        const isKeepOrOverride = decision.kind === "keep" || decision.kind === "override";
-        if (isKeepOrOverride && nodeFreshness === "potentially-outdated") continue;
+        if (decision.kind === "keep" && nodeFreshness === "potentially-outdated") continue;
 
         /** @param {import('./migration_storage').Decision | undefined} d @returns {boolean} */
-        const preservesValue = (d) => d !== undefined && d.kind !== "delete" && d.kind !== "create";
+        const preservesValue = (d) => d !== undefined && d.kind !== "delete" && d.kind !== "create" && d.kind !== "replace";
         const oldEdges = deriveInputEdges(oldScheme, oldLookup, nodeIdentifier);
         for (const input of finalEdges) {
             const inputDecision = decisions.get(input);
@@ -194,5 +293,6 @@ async function buildDesiredValid(prevStorage, decisions, oldScheme, newScheme, o
 module.exports = {
     buildDecisionsMap,
     buildDesiredValid,
+    buildTargetFreshness,
     loadMaterializedNodes,
 };
