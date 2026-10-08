@@ -32,7 +32,9 @@ const {
     mergeHostIntoReplica,
     SyncMergeAggregateError,
     isSyncMergeAggregateError,
+    carriesJournalState,
 } = require('./sync_merge');
+const { makeDbToDbAdapter, unifyStores } = require('./unification');
 
 /** @typedef {import('../../../filesystem/checker').FileChecker} FileChecker */
 /** @typedef {import('../../../filesystem/mover').FileMover} FileMover */
@@ -72,7 +74,7 @@ const {
 
 /**
  * @param {Capabilities} capabilities
- * @param {{ rootDatabase: RootDatabase }} state
+ * @param {{ rootDatabase: RootDatabase, journalSync?: import('../journal_publish').SyncReceiverToSource }} state
  * @returns {Promise<void>}
  */
 async function mergeRemoteHostBranches(capabilities, state) {
@@ -129,17 +131,45 @@ async function mergeRemoteHostBranches(capabilities, state) {
 
 
             const remoteRDir = path.join(tmpDir, DATABASE_SUBPATH, 'r');
+            const inactiveReplica = state.rootDatabase.otherReplicaName();
             await scanFromFilesystem(
                 capabilities,
                 state.rootDatabase,
                 remoteRDir,
-                'sync_staging'
+                inactiveReplica
             );
-            const switchedReplica = await mergeHostIntoReplica(
-                capabilities.logger,
-                state.rootDatabase,
-                hostname
+
+            const localSourceStorage = state.rootDatabase.schemaStorageForReplica(
+                state.rootDatabase.currentReplicaName()
             );
+            const inactiveStorage = state.rootDatabase.schemaStorageForReplica(inactiveReplica);
+            const localHasJournal = await carriesJournalState(localSourceStorage);
+            const inactiveHasJournal = await carriesJournalState(inactiveStorage);
+
+            /** @type {boolean} */
+            let switchedReplica;
+            if (localHasJournal || inactiveHasJournal) {
+                if (state.journalSync === undefined) {
+                    throw new Error(
+                        `Cannot synchronize host '${hostname}': a merge source carries Journal state, ` +
+                        'and no Journal synchronization was supplied'
+                    );
+                }
+                switchedReplica = await state.journalSync({
+                    database: state.rootDatabase,
+                    capabilities,
+                    receiver: state.rootDatabase.currentReplicaName(),
+                    source: inactiveReplica,
+                });
+            } else {
+                const stagingStorage = state.rootDatabase.syncStagingStorage();
+                await unifyStores(makeDbToDbAdapter(inactiveStorage, stagingStorage));
+                switchedReplica = await mergeHostIntoReplica(
+                    capabilities.logger,
+                    state.rootDatabase,
+                    hostname
+                );
+            }
             if (switchedReplica) {
                 await state.rootDatabase.close();
                 state.rootDatabase = await getRootDatabase(capabilities);
@@ -220,7 +250,7 @@ async function mergeRemoteHostBranches(capabilities, state) {
  * under no records.
  *
  * @param {Capabilities} capabilities
- * @param {{ resetToHostname?: string, journalReset?: ResetReceiverToSnapshot }} [options]
+ * @param {{ resetToHostname?: string, journalReset?: ResetReceiverToSnapshot, journalSync?: import('../journal_publish').SyncReceiverToSource }} [options]
  * @return {Promise<void>}
  * @throws {import('../../../gitstore/working_repository').WorkingRepositoryError} If git sync fails
  * @throws {JournalResetFrontMissingError} If a Journal receiver is reset without a Journal reset
@@ -266,7 +296,7 @@ async function synchronizeNoLock(capabilities, options) {
             { ...options, mergeHostBranches: false }
         );
 
-        const state = { rootDatabase };
+        const state = { rootDatabase, journalSync: options?.journalSync };
         try {
             await mergeRemoteHostBranches(capabilities, state);
         } finally {

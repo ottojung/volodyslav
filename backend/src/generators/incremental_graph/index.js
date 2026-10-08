@@ -56,7 +56,7 @@ const { synchronizeNoLock } = require('./database');
 const { prepareIncrementalGraphStorage } = require('./prepare_graph_storage');
 const { runCanonicalBootstrapGate } = require('./journal_bootstrap_gate');
 const { isCohortBootstrapSource, makeJournalPublicationError } = require('./journal');
-const { resetJournalReceiverToSnapshot } = require('./journal_publish');
+const { resetJournalReceiverToSnapshot, syncJournalReceiverToSource } = require('./journal_publish');
 const {
     makeCanonicalMigrationChain,
     canonicalNextJournalVersion,
@@ -126,6 +126,7 @@ module.exports = {
     synchronizeNoLock,
     prepareIncrementalGraphStorage,
     resetJournalReceiverToSnapshot,
+    syncJournalReceiverToSource,
     runCanonicalBootstrapGate,
     makeCanonicalMigrationChain,
     canonicalNextJournalVersion,

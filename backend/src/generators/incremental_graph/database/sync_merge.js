@@ -552,6 +552,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
 
 module.exports = {
     mergeHostIntoReplica,
+    carriesJournalState,
     HostVersionMismatchError,
     isHostVersionMismatchError,
     JournalBackedFieldwiseMergeError,

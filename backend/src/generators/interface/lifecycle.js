@@ -29,6 +29,7 @@ const {
     LIVE_DATABASE_WORKING_PATH,
     CHECKPOINT_WORKING_PATH,
     resetJournalReceiverToSnapshot,
+    syncJournalReceiverToSource,
     runCanonicalBootstrapGate,
 } = require("../incremental_graph");
 const { defaultBranch, workingRepository } = require("../../gitstore");
@@ -44,13 +45,30 @@ const { allEvents, config, diarySummary, ontology } = require("../individual");
  * synchronization which is not a reset is returned unchanged.
  *
  * @param {{ resetToHostname?: string } | undefined} options
- * @returns {{ resetToHostname?: string, journalReset?: import('../incremental_graph/journal_publish').ResetReceiverToSnapshot } | undefined}
+ * @returns {{ resetToHostname?: string, journalReset?: import('../incremental_graph/journal_publish').ResetReceiverToSnapshot, journalSync?: import('../incremental_graph/journal_publish').SyncReceiverToSource } | undefined}
  */
 function withJournalReset(options) {
     if (options?.resetToHostname === undefined) {
         return options;
     }
     return { ...options, journalReset: resetJournalReceiverToSnapshot };
+}
+
+/**
+ * The synchronization options a normal synchronization is performed with.
+ *
+ * A synchronization of a receiver which retains Journal records is performed by the Journal
+ * synchronization rather than by a fieldwise merge, so the operation is given that
+ * synchronization. A synchronization which is a reset is returned unchanged.
+ *
+ * @param {{ resetToHostname?: string } | undefined} options
+ * @returns {{ resetToHostname?: string, journalSync?: import('../incremental_graph/journal_publish').SyncReceiverToSource } | undefined}
+ */
+function withJournalSync(options) {
+    if (options?.resetToHostname !== undefined) {
+        return options;
+    }
+    return { ...options, journalSync: syncJournalReceiverToSource };
 }
 
 /** @param {InterfaceLifecycleAccess} interfaceInstance */
@@ -341,7 +359,7 @@ async function internalSynchronizeDatabaseNoLock(interfaceInstance, options) {
     const ontologyBox = interfaceInstance._ontologyBox;
     if (database === null) {
         capabilities.logger.logDebug({ options }, 'Synchronize: interface database is not open; synchronizing directly');
-        await synchronizeNoLock(capabilities, withJournalReset(options));
+        await synchronizeNoLock(capabilities, withJournalSync(options));
         return;
     }
 
@@ -369,7 +387,7 @@ async function internalSynchronizeDatabaseNoLock(interfaceInstance, options) {
 
     try {
         capabilities.logger.logDebug({ options }, 'Synchronize: running synchronizeNoLock');
-        await synchronizeNoLock(capabilities, withJournalReset(options));
+        await synchronizeNoLock(capabilities, withJournalSync(options));
     } catch (error) {
         synchronizeFailure = error;
     }
