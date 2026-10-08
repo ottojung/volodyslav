@@ -513,6 +513,7 @@ module.exports = {
     isDeleteEvent,
     isInvalidateEvent,
     isJournalRecord,
+    isPlainRecord,
     isSemanticEvent,
     isValidateEvent,
     isValueEvent,

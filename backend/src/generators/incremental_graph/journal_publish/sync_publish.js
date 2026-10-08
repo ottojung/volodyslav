@@ -87,6 +87,19 @@ const {
  * @typedef {SyncOutcome | ResetOutcome} PublishableOutcome
  */
 /** @typedef {import('../journal/oracle/projection').Projection} Projection */
+/**
+ * The fields any publishable outcome carries which the lowering reads.
+ *
+ * Both `SyncOutcome` and `ResetOutcome` are assignable to this shape, and a caller
+ * which holds only these three fields — such as the absent-state restore, which
+ * lowers a held snapshot rather than a computed synchronization — lowers by the same
+ * rule.
+ *
+ * @typedef {object} LowerableOutcome
+ * @property {ReadonlyArray<JournalRecord>} records
+ * @property {Projection} projection
+ * @property {{ writerState: import('../journal/emission').CommittedWriterState }} publication
+ */
 /** @typedef {import('../journal/oracle/projection').ProjectedOccurrence} ProjectedOccurrence */
 /** @typedef {import('../database/types').ComputedValue} ComputedValue */
 /** @typedef {import('../database/types').Freshness} Freshness */
@@ -310,7 +323,7 @@ async function unprojectedIdentifiers(values, freshness, timestamps, presentIden
  * @typedef {object} SyncPublishRequest
  * @property {SchemaStorage} target - The namespace to lower into: an inactive
  *   replica, or the staging sublevel of an operation which has not cut over.
- * @property {PublishableOutcome} outcome - What `synchronizeRetainedJournal` or
+ * @property {LowerableOutcome} outcome - What `synchronizeRetainedJournal` or
  *   `resetToSource` computed: the records to retain, the receiver-authored publication
  *   and exactly the projection those records project to.
  */

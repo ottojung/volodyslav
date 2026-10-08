@@ -62,6 +62,17 @@ const {
     canonicalNextJournalVersion,
     resolveCanonicalMigrationChain,
 } = require('./journal_migration_chain');
+const {
+    isContinuationSafeSnapshot,
+    isInstallationRecoverySource,
+    isRecoveryDefinitelyAbsent,
+    isRecoveryExists,
+    isRecoveryIndeterminate,
+    makeContinuationSafeSnapshot,
+    makeInstallationRecoverySource,
+    queryInstallationRecovery,
+    restoreAbsentFrom,
+} = require('./journal_recovery_source');
 
 /** @typedef {import('./types').IncrementalGraphCapabilities} IncrementalGraphCapabilities */
 /** @typedef {import('./class').IncrementalGraph} IncrementalGraph */
@@ -131,4 +142,13 @@ module.exports = {
     makeCanonicalMigrationChain,
     canonicalNextJournalVersion,
     resolveCanonicalMigrationChain,
+    isContinuationSafeSnapshot,
+    isInstallationRecoverySource,
+    isRecoveryDefinitelyAbsent,
+    isRecoveryExists,
+    isRecoveryIndeterminate,
+    makeContinuationSafeSnapshot,
+    makeInstallationRecoverySource,
+    queryInstallationRecovery,
+    restoreAbsentFrom,
 };

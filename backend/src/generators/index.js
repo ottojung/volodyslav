@@ -9,6 +9,7 @@ const {
     isMissingTimestamp,
     isCohortBootstrapSource,
     makeJournalPublicationError,
+    isInstallationRecoverySource,
 } = require('./incremental_graph');
 
 /** @typedef {import('./interface').Interface} Interface */
@@ -20,4 +21,5 @@ module.exports = {
     isMissingTimestamp,
     isCohortBootstrapSource,
     makeJournalPublicationError,
+    isInstallationRecoverySource,
 };
