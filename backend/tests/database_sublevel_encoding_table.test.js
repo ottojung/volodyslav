@@ -137,12 +137,12 @@ describe('declaring a sublevel whose encoding the table does not list', () => {
         }
     });
 
-    test('the hostname namespace parent records the same encoding the fixed-name parents do', () => {
-        // A staging namespace's name embeds the hostname, so it cannot be a key
-        // of the table. Its recorded encoding still has to be the one the table
-        // gives the fixed-name parents, or the two namespace kinds would disagree
+    test('the staging namespace parent records the same encoding the fixed-name parents do', () => {
+        // The staging namespace's name is fixed, so it is a key of the table.
+        // Its recorded encoding still has to be the one the table gives the
+        // fixed-name replica parents, or the two namespace kinds would disagree
         // about how the same key range is stored.
-        for (const parent of ['x', 'y']) {
+        for (const parent of ['x', 'y', 'sync_staging']) {
             expect(SUBLEVEL_VALUE_ENCODINGS[parent]).toBe(NAMESPACE_PARENT_VALUE_ENCODING);
         }
     });
@@ -214,25 +214,25 @@ describe('the encoding each live sublevel declaration actually stored', () => {
         // so that the declaration and the table entry cannot drift together and
         // leave a text-encoded object stored as `"[object Object]"` with this file
         // green.
-        const staging = db.hostnameSchemaStorage('alpha');
+        const staging = db.syncStagingStorage();
         await staging.freshness.put('head', { fresh: true });
-        expect(await readStoredText(db, '!_h_alpha!!freshness!head')).toBe(
+        expect(await readStoredText(db, '!sync_staging!!freshness!head')).toBe(
             '{"fresh":true}'
         );
     });
 
     test('a staging valid entry is stored as JSON text, which the table records for valid', async () => {
-        const staging = db.hostnameSchemaStorage('alpha');
+        const staging = db.syncStagingStorage();
         await staging.valid.put('head', ['node|1']);
-        expect(await readStoredText(db, '!_h_alpha!!valid!head')).toBe(
+        expect(await readStoredText(db, '!sync_staging!!valid!head')).toBe(
             '["node|1"]'
         );
     });
 
     test('a staging timestamps entry is stored as JSON text, which the table records for timestamps', async () => {
-        const staging = db.hostnameSchemaStorage('alpha');
+        const staging = db.syncStagingStorage();
         await staging.timestamps.put('head', { inserted: 7 });
-        expect(await readStoredText(db, '!_h_alpha!!timestamps!head')).toBe(
+        expect(await readStoredText(db, '!sync_staging!!timestamps!head')).toBe(
             '{"inserted":7}'
         );
     });
@@ -240,17 +240,17 @@ describe('the encoding each live sublevel declaration actually stored', () => {
     test('a staging Journal record is stored as bare text, which the table records for journal', async () => {
         // A JSON-declared journal would have wrapped this in quotes and escaped
         // it, which is the corruption this table exists to prevent.
-        const staging = db.hostnameSchemaStorage('alpha');
+        const staging = db.syncStagingStorage();
         await staging.journal.put('state', '{"localWriter":"qai1"}');
-        expect(await readStoredText(db, '!_h_alpha!!journal!state')).toBe(
+        expect(await readStoredText(db, '!sync_staging!!journal!state')).toBe(
             '{"localWriter":"qai1"}'
         );
     });
 
     test('a hostname staging entry is stored with the encoding the table records for its sublevel', async () => {
-        const staging = db.hostnameSchemaStorage('alpha');
+        const staging = db.syncStagingStorage();
         await staging.global.put('version', '3');
-        expect(await readStoredText(db, '!_h_alpha!!global!version')).toBe(
+        expect(await readStoredText(db, '!sync_staging!!global!version')).toBe(
             storedTextFor(SUBLEVEL_VALUE_ENCODINGS.global, '3')
         );
     });
@@ -260,9 +260,9 @@ describe('the encoding each live sublevel declaration actually stored', () => {
         // the table has to mean one encoding in both. If a staging declaration
         // ever stopped consulting the table, these two would disagree.
         await db.getSchemaStorage().values.put('head', { n: 1 });
-        await db.hostnameSchemaStorage('alpha').values.put('head', { n: 1 });
+        await db.syncStagingStorage().values.put('head', { n: 1 });
         expect(await readStoredText(db, '!x!!values!head')).toBe(
-            await readStoredText(db, '!_h_alpha!!values!head')
+            await readStoredText(db, '!sync_staging!!values!head')
         );
     });
 });

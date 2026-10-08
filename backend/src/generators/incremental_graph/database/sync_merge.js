@@ -65,7 +65,7 @@
  */
 
 const { isTopologicalSortCycleError } = require('./topo_sort');
-const { versionToString } = require('./types');
+const { stringToVersion, versionToString } = require('./types');
 const {
     IDENTIFIERS_KEY,
     makeEmptyIdentifierLookup,
@@ -277,16 +277,28 @@ function formatVersionForError(version) {
 }
 
 /**
+ * Read the schema version one staging storage persists.
+ *
+ * @param {SchemaStorage} storage
+ * @returns {Promise<Version | undefined>}
+ */
+async function stagedVersionOf(storage) {
+    const raw = await storage.global.get('version');
+    return typeof raw === 'string' ? stringToVersion(raw) : undefined;
+}
+
+/**
  * Verify that the staged host graph and local graph use the same schema version.
  *
  * @param {RootDatabase} rootDatabase
+ * @param {SchemaStorage} hostStorage
  * @param {string} hostname
  * @returns {Promise<void>}
  * @throws {HostVersionMismatchError}
  */
-async function assertHostVersionMatches(rootDatabase, hostname) {
+async function assertHostVersionMatches(rootDatabase, hostStorage, hostname) {
     const localVersion = formatOptionalVersion(await rootDatabase.getGlobalVersion());
-    const remoteVersion = formatOptionalVersion(await rootDatabase.getHostnameGlobalVersion(hostname));
+    const remoteVersion = formatOptionalVersion(await stagedVersionOf(hostStorage));
 
     if (localVersion !== remoteVersion) {
         throw new HostVersionMismatchError(
@@ -377,11 +389,11 @@ async function commitChangedMerge(
 
 
 /**
- * Run the graph-aware merge algorithm for one staged remote hostname.
+ * Run the graph-aware merge algorithm for one staged remote host snapshot.
  *
  * Pre-conditions:
- * - The hostname's remote snapshot has already been scanned into hostname
- *   staging storage.
+ * - The remote snapshot has already been scanned into the synchronization
+ *   staging storage (`sync_staging`).
  * - The live database is locked for the duration of this call.
  *
  * Post-conditions on success:
@@ -392,21 +404,23 @@ async function commitChangedMerge(
  *   replica pointer is unchanged. The inactive replica may still have been
  *   refreshed as a copy of the active replica, but callers must continue
  *   reading from the active pointer.
- * - Hostname staging storage is not cleared here; the caller owns cleanup.
+ * - Staging storage is not cleared here; the caller owns cleanup.
  *
  * @param {Logger} logger
  * @param {RootDatabase} rootDatabase
- * @param {string} hostname
+ * @param {string} hostname - The remote host label, used for logging and error
+ *   reporting only; the staged snapshot is read from the synchronization staging
+ *   storage, whose name carries no transport locator.
  * @returns {Promise<boolean>} Whether the active replica pointer changed.
  * @throws {HostVersionMismatchError} If the remote schema version differs from local.
  * @throws {JournalBackedFieldwiseMergeError} If either merge source replica carries Journal state.
  * @throws {import('./topo_sort').TopologicalSortCycleError} If the merged graph has a cycle.
  */
 async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
-    await assertHostVersionMatches(rootDatabase, hostname);
+    const hostStorage = rootDatabase.syncStagingStorage();
+    await assertHostVersionMatches(rootDatabase, hostStorage, hostname);
 
     // Fail-fast: validate host metadata before expensive copy.
-    const hostStorage = rootDatabase.hostnameSchemaStorage(hostname);
     await assertNoJournalState(hostname, hostStorage, 'staged host snapshot');
     const hostLookup = parseIdentifierLookup(
         await hostStorage.global.get(IDENTIFIERS_KEY),

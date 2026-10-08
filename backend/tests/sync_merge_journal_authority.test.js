@@ -129,7 +129,7 @@ async function stageMergeFixture(capabilities, options) {
     const db = await getRootDatabase(capabilities);
     const logger = makeLogger();
     await db.setGlobalVersion(db.version);
-    await db.setHostnameGlobal(HOSTNAME, 'version', db.version);
+    await db.syncStagingStorage().global.put('version', db.version);
 
     const local = db.schemaStorageForReplica('x');
     await local.global.put(GRAPH_SCHEME_KEY, JSON.stringify(SCHEME));
@@ -139,7 +139,7 @@ async function stageMergeFixture(capabilities, options) {
     ));
     await writeNode(local, LOCAL_NODE, LOCAL_TS);
 
-    const host = db.hostnameSchemaStorage(HOSTNAME);
+    const host = db.syncStagingStorage();
     await host.global.put(GRAPH_SCHEME_KEY, JSON.stringify(SCHEME));
     await host.global.put('fingerprint', 'aaaaaaaaa');
     await host.global.put(IDENTIFIERS_KEY, serializeIdentifierLookup(

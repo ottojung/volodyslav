@@ -33,12 +33,9 @@ const { makeNodeIdentifier, nodeIdentifierFromString, nodeIdentifierToString } =
 const { requireValidFingerprint } = require('./fingerprint');
 
 const {
-    hostnameSchemaStorage: hostnameSchemaStorageHelper,
-    clearHostnameStorage: clearHostnameStorageHelper,
-    getHostnameGlobalVersion: getHostnameGlobalVersionHelper,
-    setHostnameGlobal: setHostnameGlobalHelper,
-    rawPutAllToHostname: rawPutAllToHostnameHelper,
-} = require('./hostname_storage');
+    clearSyncStaging: clearSyncStagingHelper,
+    syncStagingStorage: syncStagingStorageHelper,
+} = require('./sync_staging');
 const {
     InvalidReplicaPointerError,
     isInvalidReplicaPointerError,
@@ -889,57 +886,29 @@ class RootDatabaseClass {
     }
 
     /**
-     * Returns a bare SchemaStorage for a hostname staging namespace.
-     * @param {string} hostname - The hostname key (must be non-empty and must not
-     *   contain `/`, `\`, or `!`).
+     * The staging storage one synchronization builds into before cutover.
+     *
+     * The staged target mirrors a replica's own sublevel names, so the same
+     * lowering writes both the active replica and the staged one. The name is a
+     * constant which names a role rather than a peer, so no persisted sublevel
+     * name or key carries a transport locator.
+     *
      * @returns {SchemaStorage}
-     * @throws {import('./hostname_storage').InvalidHostnameError} If the hostname is invalid.
      */
-    hostnameSchemaStorage(hostname) {
-        return hostnameSchemaStorageHelper(this.db, hostname);
+    syncStagingStorage() {
+        return syncStagingStorageHelper(this.db);
     }
 
     /**
-     * Clear all data stored under the `_h_<hostname>` staging namespace.
-     * @param {string} hostname - The hostname key (must be non-empty and must not
-     *   contain `/`, `\`, or `!`).
-     * @returns {Promise<void>}
-     * @throws {import('./hostname_storage').InvalidHostnameError} If the hostname is invalid.
-     */
-    async clearHostnameStorage(hostname) {
-        return clearHostnameStorageHelper(this.db, hostname);
-    }
-
-    /**
-     * Reads the app version stored in a hostname's staging global sublevel.
-     * Returns `undefined` when the hostname storage contains no version entry.
-     * @param {string} hostname
-     * @returns {Promise<Version | undefined>}
-     */
-    async getHostnameGlobalVersion(hostname) {
-        return getHostnameGlobalVersionHelper(this.db, hostname);
-    }
-
-    /**
-     * Write a key/value pair into a hostname's staging global sublevel.
-     * @param {string} hostname
-     * @param {string} key - The key to write (e.g. 'version').
-     * @param {DatabaseStoredValue} value - The value to store.
+     * Discard a staged synchronization target.
+     *
+     * A staging sublevel holds only inactive state, so clearing it is a supported
+     * way to abandon a staging attempt.
+     *
      * @returns {Promise<void>}
      */
-    async setHostnameGlobal(hostname, key, value) {
-        return setHostnameGlobalHelper(this.db, hostname, key, value);
-    }
-
-    /**
-     * Write raw `{ sublevelName, subkey, value }` entries into a hostname's
-     * staging namespace without going through the typed schema layer.
-     * @param {string} hostname
-     * @param {Array<{ sublevelName: string, subkey: string, value: * }>} entries
-     * @returns {Promise<void>}
-     */
-    async _rawPutAllToHostname(hostname, entries) {
-        return rawPutAllToHostnameHelper(this.db, hostname, entries);
+    async clearSyncStaging() {
+        return clearSyncStagingHelper(this.db);
     }
 
     /**

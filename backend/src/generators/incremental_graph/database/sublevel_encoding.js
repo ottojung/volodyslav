@@ -69,16 +69,12 @@ const SYNC_STAGING_SUBLEVEL_NAME = 'sync_staging';
 /**
  * The declared encoding of every sublevel whose name is fixed in this tree.
  *
- * Every replica namespace and every hostname staging namespace has the same
- * shape, so the table is keyed by the sublevel name alone. It covers the
+ * Every replica namespace and the synchronization staging namespace have the
+ * same shape, so the table is keyed by the sublevel name alone. It covers the
  * namespace parents as well as the leaves: a namespace parent's own key range
  * is not empty of values for every input — a snapshot can carry a key whose
  * only sublevel name is the parent — and the encoding of that range has to be
  * decided by a recorded entry rather than by a default.
- *
- * The hostname staging namespaces are absent because their names are computed
- * from a hostname and therefore cannot be keys of a static table;
- * `NAMESPACE_PARENT_VALUE_ENCODING` records what they declare.
  *
  * @type {Readonly<Record<string, SublevelValueEncoding>>}
  */
@@ -96,11 +92,10 @@ const SUBLEVEL_VALUE_ENCODINGS = Object.freeze({
 });
 
 /**
- * The encoding a hostname staging namespace parent declares.
+ * The encoding a namespace parent declares.
  *
- * A staging namespace's name embeds the hostname, so it cannot be a key of
- * `SUBLEVEL_VALUE_ENCODINGS`. Its encoding is the root's, which is the same
- * answer the table records for the fixed-name parents `x` and `y`.
+ * A namespace parent's encoding is the root's, which is the same answer the
+ * table records for the fixed-name parents `x` and `y`.
  *
  * @type {SublevelValueEncoding}
  */

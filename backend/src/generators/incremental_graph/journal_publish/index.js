@@ -26,6 +26,9 @@
 /** @typedef {import('./reset_receiver').ResetReceiverToSnapshot} ResetReceiverToSnapshot */
 /** @typedef {import('./reset_publication').ResetPublicationError} ResetPublicationError */
 /** @typedef {import('./sync_publish').PublishableOutcome} PublishableOutcome */
+/** @typedef {import('./sync_receiver').JournalSyncRequest} JournalSyncRequest */
+/** @typedef {import('./sync_receiver').SyncReceiverToSource} SyncReceiverToSource */
+/** @typedef {import('./sync_publication').SyncPublicationRequest} SyncPublicationRequest */
 
 const {
     planSyncPublication,
@@ -38,10 +41,19 @@ const {
     resetJournalReceiverToSnapshot,
 } = require("./reset_receiver");
 
+const {
+    SyncSourceIsNotAJournalSnapshotError,
+    isSyncSourceIsNotAJournalSnapshotError,
+    syncJournalReceiverToSource,
+} = require("./sync_receiver");
+
 module.exports = {
     ResetSourceIsNotAJournalSnapshotError,
+    SyncSourceIsNotAJournalSnapshotError,
     isResetSourceIsNotAJournalSnapshotError,
+    isSyncSourceIsNotAJournalSnapshotError,
     planSyncPublication,
     publishSyncOutcome,
     resetJournalReceiverToSnapshot,
+    syncJournalReceiverToSource,
 };

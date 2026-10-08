@@ -133,7 +133,7 @@ async function mergeRemoteHostBranches(capabilities, state) {
                 capabilities,
                 state.rootDatabase,
                 remoteRDir,
-                '_h_' + hostname
+                'sync_staging'
             );
             const switchedReplica = await mergeHostIntoReplica(
                 capabilities.logger,
@@ -186,7 +186,7 @@ async function mergeRemoteHostBranches(capabilities, state) {
             }
 
             try {
-                await state.rootDatabase.clearHostnameStorage(hostname);
+                await state.rootDatabase.clearSyncStaging();
             } catch (cleanupErr) {
                 recordHostFailure(
                     hostname,
