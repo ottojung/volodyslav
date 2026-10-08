@@ -388,3 +388,14 @@ The implementation now covers the full checklist:
 ### Remaining work
 
 No code gaps remain. The implementation satisfies the completion condition: `persistedGraph == project(retainedJournal)` across ordinary operations, startup/absent restore, bootstrap/migration, synchronization, reset, restart/open, and rebuild.
+
+### Independent verification (2026-10-08, workspace `volodyslav-92-accept3` at `4eb3a43d`)
+
+Re-verified the completion claims against the tree at `land/92-gate-repair-onto-release` (`4eb3a43d`), independently of the implementation's own report:
+
+- **Gates**: `npm run static-analysis` (tsc + eslint) clean; full Jest suite 286 suites / 3669 tests pass; `npm run build` succeeds.
+- **Blocker 1**: `isComputedValue` (`journal/record_fields.js:85-87`) delegates to `computedValueViolation` (`database/computed_value.js:310`), which validates every union member's declared members and types. Pinned by `journal_blocker1_2_regressions.test.js` (18 canonical payloads, both drift directions, 14 malformed-payload cases).
+- **Blocker 2**: `validateCurrentShapeBasis` (`journal/reference_rules.js:218-233`) applies the same rule as `isEligibleCertificate` — no baseline-reason exemption, removed node family maps to empty current-input set. Pinned by a cross-product agreement test over 3 schemas x 2 subjects x 4 bases x 6 reasons.
+- **Blocker 3**: tag-set/union correspondence pinned in both directions (`journal_blocker1_2_regressions.test.js:289-297`).
+- **Checklist spot-checks**: §9 hostname-keyed staging deleted (`hostname_storage.js` gone, `sync_staging` sublevel in place); §12 legacy `override` surface deleted (no `OverrideDecision`/`OverrideConflictError` in `backend/src`); §13 routine-open O(1+G) bound pinned by `journal_routine_open_history_independence.test.js`; §16a documentation cutover complete (`database-lifecycle.md` folded into specs, `incremental-graph-synchronization.md` removed, `release-safety.md` forward-only, `database-boot-sequence.md` and `migration_testing.md` follow the Journal 3 lifecycle gate); review item 6 addressed (`journal_well_formedness.test.js:722`, 150-record single-writer stream).
+- **Blockers**: none found.
