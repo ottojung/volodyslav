@@ -4,6 +4,7 @@ const path = require("path");
 const { fromISOString, isDateTime } = require("../src/datetime");
 const { SORTED_EVENTS_CACHE_SIZE } = require("../src/generators/interface/constants");
 const { LIVE_DATABASE_WORKING_PATH } = require("../src/generators/incremental_graph");
+const { LAST_NODE_INDEX_KEY } = require("../src/generators/incremental_graph/database");
 const { stubPopulatedIncrementalDatabaseRemote } = require("./stub_incremental_database_remote");
 const { getMockedRootCapabilities } = require("./spies");
 const {
@@ -15,6 +16,7 @@ const {
 const {
     fixtureAbsentCohortSource,
     fixtureInputKeys,
+    fixtureRecoverySourceHolding,
     readFixtureReplica,
 } = require("./journal_startup_fixture");
 const { makeJournalAuthor } = require("../src/generators/incremental_graph/journal");
@@ -26,6 +28,8 @@ const POPULATED_FIXTURE = path.join(
     "rendered",
     "r"
 );
+
+const FIXTURE_ALLOCATOR_WATERMARK = 4;
 
 const ANCHOR_IDS = {
     earliest: "fx-anchor-earliest",
@@ -48,6 +52,14 @@ async function getTestCapabilities() {
         LIVE_DATABASE_WORKING_PATH
     );
     await capabilities.deleter.deleteDirectory(liveDbPath);
+    // The deleted local database is completely absent, so the §4 absent-state
+    // decision runs: the deployment's recovery source holds the populated
+    // fixture's continuation-safe snapshot, which startup restores.
+    const recoverySource = fixtureRecoverySourceHolding(POPULATED_FIXTURE);
+    if (recoverySource instanceof Error) {
+        throw recoverySource;
+    }
+    capabilities.installationRecoverySource = recoverySource;
     return capabilities;
 }
 
@@ -78,6 +90,14 @@ describe("populated incremental-database remote smoke", () => {
         await iface.ensureInitialized();
 
         expect(iface._incrementalGraph).toBeTruthy();
+        // The absent-state restore is receiver-less, so the snapshot's committed
+        // writer state supplies the continuing identity, the retained history and
+        // the allocator watermark: `global/last_node_index` is the watermark the
+        // destroyed database held, not the watermark a fresh projection of the
+        // retained records reconstructs.
+        await expect(
+            iface._database.getSchemaStorage().global.get(LAST_NODE_INDEX_KEY)
+        ).resolves.toBe(FIXTURE_ALLOCATOR_WATERMARK);
         await expect(iface.synchronizeDatabase()).resolves.toBeUndefined();
         expect(iface._incrementalGraph).toBeTruthy();
     });

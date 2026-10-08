@@ -10,6 +10,7 @@ const {
     fixtureAbsentCohortSource,
     fixtureIndeterminateCohortSource,
     fixtureInputKeys,
+    fixtureRecoverySourceHolding,
     readFixtureReplica,
 } = require("./journal_startup_fixture");
 const { makeJournalAuthor } = require("../src/generators/incremental_graph/journal");
@@ -63,6 +64,15 @@ async function getMigratingCapabilities() {
             fixtureName: "populated-lastversion",
         },
     ]);
+    // The live database is completely absent, so the §4 absent-state decision
+    // runs: the deployment's recovery source holds the lastversion fixture's
+    // continuation-safe snapshot, which startup restores before the ordinary
+    // migration gate upgrades it to the forced current version.
+    const recoverySource = fixtureRecoverySourceHolding(LASTVERSION_FIXTURE);
+    if (recoverySource instanceof Error) {
+        throw recoverySource;
+    }
+    capabilities.installationRecoverySource = recoverySource;
     return capabilities;
 }
 

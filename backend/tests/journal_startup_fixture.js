@@ -24,8 +24,18 @@ const {
 const {
     makeCanonicalBootstrapSnapshot,
     makeCohortBootstrapSource,
+    makeJournalAuthor,
+    makeJournalReplica,
+    makeReplicaSource,
+    projectRetainedJournal,
     readLegacyBootstrapState,
+    tryDecodeJournalRecord,
 } = require("../src/generators/incremental_graph/journal");
+const { deserializeWriterState } = require("../src/generators/incremental_graph/journal_store");
+const {
+    makeContinuationSafeSnapshot,
+    makeInstallationRecoverySource,
+} = require("../src/generators/incremental_graph/journal_recovery_source");
 
 /**
  * @param {string} directory - The sublevel directory.
@@ -181,9 +191,115 @@ function fixtureIndeterminateCohortSource(answer) {
     return configured;
 }
 
+/**
+ * Read one rendered fixture replica into the continuation-safe snapshot the
+ * §4 absent-state restore materializes, so a fixture representing an
+ * installation's synchronized state can be held by that installation's
+ * configured recovery source.
+ *
+ * The fixture is read exactly as a live replica is read for the same snapshot:
+ * every retained record, the committed writer state through the production
+ * writer-state reader, and the projection those records lower to under the
+ * fixture's own graph scheme.
+ *
+ * @param {string} replicaPath - The fixture's replica directory.
+ * @returns {object | Error}
+ */
+function fixtureContinuationSafeSnapshot(replicaPath) {
+    const journalDirectory = path.join(replicaPath, "journal");
+    /** @type {Map<string, {author: object, records: Array<object>}>} */
+    const byAuthor = new Map();
+    for (const name of fs.readdirSync(journalDirectory).sort()) {
+        if (!name.startsWith("record|")) {
+            continue;
+        }
+        const separator = name.indexOf("|", "record|".length);
+        if (separator < 0) {
+            return new Error("the fixture journal holds a malformed record key " + name);
+        }
+        const authorText = name.slice("record|".length, separator);
+        const record = tryDecodeJournalRecord(
+            fs.readFileSync(path.join(journalDirectory, name), "utf8")
+        );
+        if (record instanceof Error) {
+            return record;
+        }
+        const author = makeJournalAuthor(authorText);
+        if (author instanceof Error) {
+            return author;
+        }
+        const stream = byAuthor.get(authorText);
+        if (stream === undefined) {
+            byAuthor.set(authorText, { author, records: [record] });
+            continue;
+        }
+        stream.records.push(record);
+    }
+    /** @type {Array<[object, Array<object>]>} */
+    const streams = [];
+    for (const authorText of [...byAuthor.keys()].sort()) {
+        const stream = byAuthor.get(authorText);
+        if (stream !== undefined) {
+            streams.push([stream.author, stream.records]);
+        }
+    }
+    const replica = makeJournalReplica(streams);
+    if (replica instanceof Error) {
+        return replica;
+    }
+    const fingerprint = readJson(path.join(replicaPath, "global", "fingerprint"));
+    const writerState = deserializeWriterState(
+        readJson(path.join(journalDirectory, "state")),
+        fingerprint
+    );
+    if (writerState instanceof Error) {
+        return writerState;
+    }
+    const graphSchemeString = readJson(path.join(replicaPath, "global", "graph_scheme"));
+    const projection = projectRetainedJournal({
+        source: makeReplicaSource(replica),
+        localWriter: writerState.localWriter,
+        currentInputKeysOfNode: fixtureInputKeys(graphSchemeString),
+    });
+    if (projection instanceof Error) {
+        return projection;
+    }
+    return makeContinuationSafeSnapshot({
+        localWriter: writerState.localWriter,
+        records: [...replica.values()].flat(),
+        projection,
+        writerState,
+        databaseVersion: readJson(path.join(replicaPath, "global", "version")),
+        graphSchemeString,
+    });
+}
+
+/**
+ * A transport-neutral installation recovery source which holds one fixture
+ * replica's continuation-safe snapshot, the source an installation whose
+ * synchronized state is that fixture configures for the §4 absent-state
+ * decision.
+ *
+ * @param {string} replicaPath - The fixture's replica directory.
+ * @returns {object | Error}
+ */
+function fixtureRecoverySourceHolding(replicaPath) {
+    const snapshot = fixtureContinuationSafeSnapshot(replicaPath);
+    if (snapshot instanceof Error) {
+        return snapshot;
+    }
+    return makeInstallationRecoverySource({
+        async queryInstallationRecovery() {
+            return snapshot;
+        },
+    });
+}
+
 module.exports = {
     fixtureAbsentCohortSource,
+    fixtureContinuationSafeSnapshot,
     fixtureIndeterminateCohortSource,
     fixtureInputKeys,
+    fixtureRecoverySourceHolding,
     readFixtureReplica,
 };
