@@ -1,7 +1,7 @@
 /**
  * Installing a resolved canonical bootstrap, the durable half of the §8.2 cutover.
  *
- * `incremental-graph-journal-lifecycle.md` §8.2 makes the cutover the only moment a
+ * `database-lifecycle.md` §8.2 makes the cutover the only moment a
  * supported pre-Journal database stops being the active persisted state, and
  * `incremental-graph-journal-storage.md` requires the selected pair to be published
  * atomically. Both requirements are the same requirement here: the canonical cut, the

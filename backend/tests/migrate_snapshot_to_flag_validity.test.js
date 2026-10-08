@@ -54,7 +54,7 @@ function makeSnapshot({ parentFreshness = "up-to-date", counter = 1, includeCoun
  * Open the migrated snapshot as a real database replica and complete the lifecycle
  * transition a supported pre-Journal installation must go through.
  *
- * `incremental-graph-journal-lifecycle.md` §8.2 makes a pre-Journal materialized
+ * `database-lifecycle.md` §8.2 makes a pre-Journal materialized
  * replica a canonical-bootstrap source, so a fixture which opens one and then publishes
  * graph semantics has to install the resolved canonical cut first. Without that cut the
  * replica persists materialized values with no Journal value occurrence, and the

@@ -161,6 +161,42 @@ This preserves the materialization invariant that every materialized node has al
 
 ---
 
+## Canonical Journal migration chain
+
+Per-edge codec determinism is not enough when a replica can reach the same
+target version through different version paths. Immutable retained records
+keep their `JournalRecordId`, so every supported upgrade from one Journal
+version to another MUST have one canonical transition sequence.
+
+For every supported non-current Journal version `v`, the release lineage
+defines at most one:
+
+```text
+canonicalNextJournalVersion(v)
+```
+
+A supported migration from stored version `v0` to running version `vn`
+follows exactly:
+
+```text
+v0 -> v1 -> ... -> vn
+where vi+1 = canonicalNextJournalVersion(vi)
+```
+
+until `vn` is reached. If the complete chain is not available, that source
+version is unsupported and startup fails `JournalVersionCompatibilityError`.
+
+A machine may skip application releases, but it does **not** skip canonical
+Journal migration transitions. Each chain step is a complete Journal-aware
+migration: whole-history codec rewrite, semantic repair, replay validation,
+and version cut to that intermediate version.
+
+Once a canonical successor edge has been used for supported Journal history,
+later releases which still claim support for that source version preserve
+**both the edge and its migration semantics**.
+
+---
+
 ## Error types
 
 | Error class | When thrown |
@@ -172,7 +208,7 @@ This preserves the materialization invariant that every materialized node has al
 | `InvalidMigrationDecisionError` | A decision which asserts proof or freshness the migration cannot establish, or a decision whose produced state cannot be derived. |
 | `GetMissingNodeError` | `get()`/traversal called for a node not in `S`. |
 | `MissingDependencyMetadataError` | A materialized node has missing or corrupted dependency metadata. |
-| `JournalVersionCompatibilityError` | The transition's format codec is not a valid codec definition, is not total over the retained history, or is observed to map two distinct source node keys onto one target key. |
+| `JournalVersionCompatibilityError` | The transition's format codec is not a valid codec definition, is not total over the retained history, or is observed to map two distinct source node keys onto one target key; or a stored Journal version has no complete canonical migration chain to the running version. |
 
 ---
 

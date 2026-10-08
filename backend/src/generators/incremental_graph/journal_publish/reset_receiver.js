@@ -65,7 +65,7 @@ async function hasAnyKey(sublevel) {
  * record, so there is no `S` for reset to target, and adopting the rows would be the
  * pre-Journal canonical-bootstrap join which §Reset is not pre-Journal bootstrap merge
  * forbids reset from being. Restoring such an installation is the absent-state
- * restoration lifecycle of `incremental-graph-journal-lifecycle.md`, not a reset.
+ * restoration lifecycle of `database-lifecycle.md`, not a reset.
  */
 class ResetSourceIsNotAJournalSnapshotError extends Error {
     /**

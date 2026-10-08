@@ -1,7 +1,7 @@
 /**
  * The startup side of the Journal 3 pre-Journal boundary.
  *
- * `incremental-graph-journal-lifecycle.md` §8.1 sends supported pre-Journal state to
+ * `database-lifecycle.md` §8.1 sends supported pre-Journal state to
  * the canonical-bootstrap-source decision and §8.2 makes that decision's consequences
  * binding on startup: no local cutover before a durable canonical artifact has been
  * selected, and an unresolved publication outcome leaves the supported pre-Journal

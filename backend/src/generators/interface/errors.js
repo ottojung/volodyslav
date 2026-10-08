@@ -2,7 +2,7 @@
 /**
  * The Journal 3 canonical bootstrap did not resolve during startup.
  *
- * `incremental-graph-journal-lifecycle.md` §8.2 makes an unresolved publication outcome
+ * `database-lifecycle.md` §8.2 makes an unresolved publication outcome
  * a startup failure which leaves the supported pre-Journal database selected, so this
  * error is how that outcome reaches the caller: no graph API has been exposed and no
  * local cutover has happened.

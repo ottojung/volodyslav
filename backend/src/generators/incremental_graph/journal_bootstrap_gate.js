@@ -1,7 +1,7 @@
 /**
  * The §8 gate: where startup takes the canonical-bootstrap decision.
  *
- * `incremental-graph-journal-lifecycle.md` §8.1 makes the migration/bootstrap gate part
+ * `database-lifecycle.md` §8.1 makes the migration/bootstrap gate part
  * of startup, and §8.2 makes its consequences binding: no local cutover before a
  * durable canonical artifact has been selected, and an unresolved publication outcome
  * leaves the supported pre-Journal database selected while startup fails before graph

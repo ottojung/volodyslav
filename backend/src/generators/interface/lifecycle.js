@@ -306,7 +306,7 @@ async function internalEnsureInitializedWithMigration(
 /**
  * Run the Journal 3 canonical-bootstrap gate before any graph API is exposed.
  *
- * `incremental-graph-journal-lifecycle.md` §8.2 requires startup to resolve a canonical
+ * `database-lifecycle.md` §8.2 requires startup to resolve a canonical
  * bootstrap for a supported pre-Journal replica before graph construction, and requires
  * an unresolved publication outcome to fail startup while leaving the pre-Journal
  * database selected. The gate reports that outcome rather than retrying it, because §6

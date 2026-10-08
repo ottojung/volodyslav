@@ -1,7 +1,7 @@
 /**
  * The Journal 3 startup lifecycle: the §8 gate resolving a canonical bootstrap.
  *
- * `incremental-graph-journal-lifecycle.md` §8.1 sends a supported pre-Journal replica to
+ * `database-lifecycle.md` §8.1 sends a supported pre-Journal replica to
  * the canonical-bootstrap-source decision, and §8.2 makes the consequences binding: no
  * local cutover before a durable canonical artifact is selected, and an unresolved
  * publication outcome leaves the pre-Journal database selected while startup fails.

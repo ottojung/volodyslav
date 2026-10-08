@@ -62,7 +62,7 @@ async function hasAnyKey(sublevel) {
  * record, so there is no source journal for synchronization to import from, and adopting the
  * rows would be the pre-Journal canonical-bootstrap join which synchronization is not.
  * Restoring such an installation is the absent-state restoration lifecycle of
- * `incremental-graph-journal-lifecycle.md`, not a synchronization.
+ * `database-lifecycle.md`, not a synchronization.
  */
 class SyncSourceIsNotAJournalSnapshotError extends Error {
     /**
