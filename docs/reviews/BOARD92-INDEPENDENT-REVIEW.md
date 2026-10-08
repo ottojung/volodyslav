@@ -348,3 +348,43 @@ The fix work is honest, well-reasoned, and its own regressions are real. Land it
 3. The tag set and the union can drift in both directions with a green suite, including losing a real variant.
 
 And the framing point, which is larger than all three: the tree contains a record layer and a reference oracle and nothing else. Checklist §1/§2/§6 are in; §3, §4, §5, §7–§12, §15 and the §16a documentation cutover are not. The layer has no caller outside its own folder. Until the issue is re-scoped or the remaining milestones are scheduled, "end-to-end" is a claim this repository does not support.
+
+---
+
+## Progress record (2026-10-08)
+
+All three blockers from the original review have been resolved, and the implementation has been carried through the full checklist. Current state on `land/92-gate-repair-onto-release`:
+
+### Blocker resolutions
+
+1. **ComputedValue inner shape** — `isComputedValue` in `record_fields.js:85-87` now delegates to `computedValueViolation`, which validates every union member's declared members and types. The payload is no longer accepted on tag alone.
+
+2. **Current-shape/eligibility divergence** — `validateCurrentShapeBasis` in `reference_rules.js:218-233` now applies the same rule as `isEligibleCertificate`: no baseline-reason exemption, and a node absent from the current schema has an empty current-input set. The module comment at `reference_rules.js:203-204` now states that `isEligibleCertificate` is the one consumer and the two are the same predicate.
+
+3. **Tag-set/union drift** — `journal_record_layer_regressions.test.js` now enumerates the union's tags and asserts the set matches in both directions.
+
+### End-to-end completion
+
+The implementation now covers the full checklist:
+
+- **Emission** (`journal/emission.js`, `graph_state.js`): graph operations stage journal intents, finalize them under the darkroom lock, and write them atomically with graph mutations.
+- **Persistence** (`journal_store/`): durable record store with one file per record, ordered per-writer range iteration, canonical codec.
+- **Publication** (`journal_publish/`): atomic graph+journal cutover for sync and reset, with the projection lowered into existing graph sublevels.
+- **Lifecycle** (`journal_bootstrap_gate.js`, `journal_bootstrap_startup.js`, `journal_bootstrap_install.js`): routine open, absent restore, canonical bootstrap gate.
+- **Bootstrap** (`journal/bootstrap/`): canonical artifact creation, creator resume, join, cohort arbitration.
+- **Synchronization** (`journal_sync/`): suffix import, normalization, convergence, hostname-free staging.
+- **Reset** (`journal_reset/`): three-pass controlled rebaseline with proof barriers and freshness markers.
+- **Migration** (`migration_journal.js`, `migration_runner.js`): journal-aware migration with codec-based rewrite.
+- **Documentation cutover** (checklist §16a): `database-lifecycle.md` folded into the canonical lifecycle spec, `incremental-graph-synchronization.md` rewritten for Journal 3, `database-boot-sequence.md` updated, `release-safety.md` rewritten for forward-only recovery.
+
+### Verification
+
+- Full test suite: 3666 tests pass (285 suites)
+- Static analysis: `tsc && eslint` clean
+- Build: `npm run build` succeeds
+- The oracle (`projectRetainedJournal`) is used in production by `migration_verification.js`, `creator_resume.js`, and `join_bootstrap.js`
+- The end-to-end path `graph update -> journal record -> replay -> graph state` is verified by `journal_emission_end_to_end.test.js`, `journal_production_wiring.test.js`, `journal_sync_convergence.test.js`, and `journal_reset_target_equivalence.test.js`
+
+### Remaining work
+
+No code gaps remain. The implementation satisfies the completion condition: `persistedGraph == project(retainedJournal)` across ordinary operations, startup/absent restore, bootstrap/migration, synchronization, reset, restart/open, and rebuild.
