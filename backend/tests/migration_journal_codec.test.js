@@ -585,15 +585,146 @@ describe("journal-aware migration format codec", () => {
                 .toBe(sourceValueIdByKey.get('{"head":"B","args":[]}'));
 
             // A representation change is not a semantic occurrence replacement, so
-            // no migration ValueEvent and no DeleteEvent were authored for it.
-            for (const event of semanticEventsOfReplica(retained)) {
-                if (event.kind === "value") {
-                    expect(event.reason).not.toBe("migration");
+            // the migration authored no value record and no absence record for it.
+            /** @param {string} kind */
+            const reasonsOf = (kind) => semanticEventsOfReplica(retained)
+                .filter((event) => event.kind === kind)
+                .map((event) => event.reason);
+            expect(reasonsOf("value")).not.toContain("migration");
+            expect(reasonsOf("delete")).not.toContain("migration");
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test("a produced occurrence under a codec keeps the target representation in both halves", async () => {
+        const caps = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(caps);
+            const graph = await createIncrementalGraph(caps, db, SOURCE_NODE_DEFS.slice(0, 1));
+            await graph.pull("A");
+            await db.getSchemaStorage().global.put("version", "1");
+            await db.close();
+
+            const targetNodeDefs = [
+                {
+                    output: "Arenamed", inputs: [],
+                    computor: async () => numberComputedValue(1),
+                    isDeterministic: true, hasSideEffects: false,
+                },
+                {
+                    output: "Brenamed", inputs: ["Arenamed"],
+                    computor: async (inputs) => numberComputedValue(Number(inputs[0].value) * 2),
+                    isDeterministic: true, hasSideEffects: false,
+                },
+            ];
+
+            db = await getRootDatabase(caps);
+            await runMigration(caps, db, targetNodeDefs, async (storage) => {
+                for await (const identifier of storage.listMaterializedNodes()) {
+                    await storage.replace(
+                        identifier,
+                        async () => numberComputedValue(50)
+                    );
                 }
-                if (event.kind === "delete") {
-                    expect(event.reason).not.toBe("migration");
+                await storage.create(
+                    '{"head":"Brenamed","args":[]}',
+                    async () => numberComputedValue(60),
+                    "up-to-date"
+                );
+            }, renamingCodec("renamed"));
+
+            const retained = await readRetainedJournal(db.getSchemaStorage().journal);
+            expect(retained instanceof Error).toBe(false);
+            if (retained instanceof Error) {
+                return;
+            }
+            /** @type {Map<string, {payload: unknown, reason: string}>} */
+            const produced = new Map();
+            for (const event of semanticEventsOfReplica(retained)) {
+                if (event.kind === "value" && event.reason === "migration") {
+                    produced.set(nodeKeyToCanonicalString(event.node), {
+                        payload: event.payload,
+                        reason: event.reason,
+                    });
                 }
             }
+            expect([...produced.keys()].sort()).toEqual([
+                '{"head":"Arenamed","args":[]}',
+                '{"head":"Brenamed","args":[]}',
+            ]);
+            // The migration's own payload is target-representation callback output,
+            // so the codec does not rewrite it.
+            expect(produced.get('{"head":"Arenamed","args":[]}').payload)
+                .toEqual({ type: "calories", value: 50 });
+            expect(produced.get('{"head":"Brenamed","args":[]}').payload)
+                .toEqual({ type: "calories", value: 60 });
+
+            // Both occurrences the target graph materializes carry the same payload
+            // the record naming them carries, which the cutover itself verifies
+            // before it selects the target.
+            const graph2 = await createIncrementalGraph(caps, db, targetNodeDefs);
+            expect(await graph2.getValue("Arenamed")).toEqual({ type: "calories", value: 50 });
+            expect(await graph2.getValue("Brenamed")).toEqual({ type: "calories", value: 60 });
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test("an invalidated occurrence under a codec keeps its transported ValueId and authors a node-scoped invalidation", async () => {
+        const caps = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(caps);
+            const graph = await createIncrementalGraph(caps, db, SOURCE_NODE_DEFS.slice(0, 1));
+            await graph.pull("A");
+            await db.getSchemaStorage().global.put("version", "1");
+
+            const sourceRetained = await readRetainedJournal(db.getSchemaStorage().journal);
+            expect(sourceRetained instanceof Error).toBe(false);
+            if (sourceRetained instanceof Error) {
+                return;
+            }
+            const sourceValueId = semanticEventsOfReplica(sourceRetained)
+                .filter((event) => event.kind === "value")
+                .map((event) => String(event.id))[0];
+            await db.close();
+
+            const targetNodeDefs = [
+                {
+                    output: "Arenamed", inputs: [],
+                    computor: async () => numberComputedValue(1),
+                    isDeterministic: true, hasSideEffects: false,
+                },
+            ];
+
+            db = await getRootDatabase(caps);
+            await runMigration(caps, db, targetNodeDefs, async (storage) => {
+                for await (const identifier of storage.listMaterializedNodes()) {
+                    await storage.invalidate(identifier);
+                }
+            }, renamingCodec("renamed"));
+
+            const retained = await readRetainedJournal(db.getSchemaStorage().journal);
+            expect(retained instanceof Error).toBe(false);
+            if (retained instanceof Error) {
+                return;
+            }
+            const events = semanticEventsOfReplica(retained);
+            const valueIds = events
+                .filter((event) => event.kind === "value")
+                .map((event) => String(event.id));
+            expect(valueIds).toEqual([sourceValueId]);
+            const invalidations = events.filter((event) => event.kind === "invalidate");
+            expect(invalidations).toHaveLength(1);
+            expect(nodeKeyToCanonicalString(invalidations[0].node))
+                .toBe('{"head":"Arenamed","args":[]}');
+            if (invalidations[0].kind !== "invalidate") {
+                return;
+            }
+            expect(invalidations[0].scope).toEqual({ kind: "node" });
+            expect(invalidations[0].reason).toBe("migration");
         } finally {
             if (db) await db.close();
         }

@@ -41,9 +41,14 @@
 /** @typedef {import('./emission').FinalizedPublication} FinalizedPublication */
 
 const { makeJournalPublicationError } = require("./errors");
-const { nodeKeyToCanonicalString } = require("./basis");
+const { makeNodeScope, nodeKeyToCanonicalString } = require("./basis");
 const { predecessorJournalSequence, requireSuccessorJournalSequence } = require("./coordinates");
-const { makeDeleteEvent, makeValueEvent, makeWriterStateRecord } = require("./records");
+const {
+    makeDeleteEvent,
+    makeInvalidateEvent,
+    makeValueEvent,
+    makeWriterStateRecord,
+} = require("./records");
 const { allocateAuthority, contextOf, epochMillisecondsOf } = require("./emission");
 const {
     frontierJoin,
@@ -130,7 +135,34 @@ const {
  */
 
 /**
- * @typedef {MigrationValueIntent | MigrationDeleteIntent} MigrationIntent
+ * One key which the migration explicitly invalidated at the cut, and which therefore
+ * authors one `InvalidateEvent(scope=node, reason="migration")`
+ * (`incremental-graph-journal-migrations.md` §16.1).
+ *
+ * The properties that this typedef carries are:
+ * - `node` names an occurrence the migration explicitly invalidated.
+ *
+ * The proof of those properties is guaranteed by:
+ * - this class cannot enforce the properties by construction;
+ * - therefore every function that constructs a `MigrationInvalidateIntent` is part of
+ *   the proof. The current construction site is:
+ *   - `buildMigrationM1Intents(...)`: satisfies the property because it emits one
+ *     intent per decision of kind `invalidate` whose provenance is `explicit`,
+ *     resolving that decision's node from the transported target key view and
+ *     rejecting a decision whose key the codec could not transport rather than
+ *     emitting an intent for it.
+ *
+ * A propagated invalidation authors no record here: §11a.2 keeps propagated freshness
+ * separate from a semantic migration decision, so replay derives it through the
+ * invalidated input and no stored marker is needed for it.
+ *
+ * @typedef {object} MigrationInvalidateIntent
+ * @property {"migrate-invalidate"} kind
+ * @property {NodeKey} node - The target-representation node key.
+ */
+
+/**
+ * @typedef {MigrationValueIntent | MigrationDeleteIntent | MigrationInvalidateIntent} MigrationIntent
  */
 
 /**
@@ -163,22 +195,41 @@ function compareMigrationIntents(left, right) {
 }
 
 /**
- * Reject a publication which would author two records at one node key, which would
- * make the target occurrence of that key ambiguous.
+ * Reject a publication which would author two records whose target occurrence is
+ * ambiguous.
+ *
+ * At most one `ValueEvent` and at most one `DeleteEvent` may name one node key: a
+ * second one would make the target occurrence or the target absence of that key
+ * undetermined. A node-scoped invalidation is not in that set, because it retires the
+ * certificates which named the occurrence rather than naming a second occurrence, so
+ * it may accompany the value record of the same key.
  *
  * @param {ReadonlyArray<MigrationIntent>} ordered
  * @returns {JournalError | undefined}
  */
 function rejectDuplicateNodes(ordered) {
-    for (let index = 1; index < ordered.length; index += 1) {
-        const previous = ordered[index - 1];
-        const current = ordered[index];
-        if (previous === undefined || current === undefined) {
-            continue;
+    /** @type {Map<string, Set<string>>} */
+    const kindsByNode = new Map();
+    for (const intent of ordered) {
+        const nodeText = nodeKeyToCanonicalString(intent.node);
+        const occurrenceKinds = kindsByNode.get(nodeText) ?? new Set();
+        if (intent.kind === "migrate-value") {
+            occurrenceKinds.add("value");
+        } else if (intent.kind === "migrate-delete") {
+            occurrenceKinds.add("delete");
         }
-        if (nodeKeyToCanonicalString(previous.node) === nodeKeyToCanonicalString(current.node)) {
+        kindsByNode.set(nodeText, occurrenceKinds);
+    }
+    for (const [nodeText, occurrenceKinds] of kindsByNode) {
+        if (occurrenceKinds.has("value") && occurrenceKinds.has("delete")) {
             return makeJournalPublicationError(
-                "the migration target names the node " + nodeKeyToCanonicalString(current.node) +
+                "the migration target names the node " + nodeText +
+                    " both present and absent, so its target occurrence is ambiguous"
+            );
+        }
+        if (occurrenceKinds.size > 1) {
+            return makeJournalPublicationError(
+                "the migration target names the occurrence of the node " + nodeText +
                     " more than once, so its target occurrence is ambiguous"
             );
         }
@@ -276,6 +327,8 @@ function finalizeMigrationEmission(request) {
                 intent.modifiedAt,
                 intent.reason
             );
+        } else if (intent.kind === "migrate-invalidate") {
+            record = makeInvalidateEvent(base, makeNodeScope(), "migration");
         } else {
             record = makeDeleteEvent(base, "migration");
         }

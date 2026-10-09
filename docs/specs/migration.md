@@ -140,9 +140,9 @@ A replaced node takes the migration publication time as its `modifiedAt`, keeps 
 
 `invalidate` preserves the cached value if it exists, marks nodes as `"potentially-outdated"`, and preserves `modifiedAt`.
 
-**Explicit invalidation** removes only the explicitly named node's incoming validity proofs. Its outgoing proofs remain intact because its stored semantic value has not changed.
+**Explicit invalidation** removes only the explicitly named node's incoming validity proofs. Its outgoing proofs remain intact because its stored semantic value has not changed. Because the migrated graph persists the node as `"potentially-outdated"` while the retained certificates which named its occurrence are now ineligible, the cutover also authors one `InvalidateEvent` with `scope={kind:"node"}` and `reason="migration"` at the node's target key, so replay derives the same staleness the graph persists.
 
-**Propagated invalidation** (automatic recursive propagation) preserves all validity proofs — both incoming and outgoing. It is freshness-only: downstream nodes are marked stale but retain their complete proof sets.
+**Propagated invalidation** (automatic recursive propagation) preserves all validity proofs — both incoming and outgoing. It is freshness-only: downstream nodes are marked stale but retain their complete proof sets. Replay derives a propagated invalidation through the invalidated input, so it authors no record of its own.
 
 `create(..., "up-to-date")` is a clean-cache assertion. The migration validates this assertion before writing the migrated state.
 `create(..., "potentially-outdated")` seeds a cached value without claiming it is clean.

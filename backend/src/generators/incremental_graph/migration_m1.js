@@ -123,9 +123,27 @@ function buildMigrationM1Intents(decisions, targetKeyView, producedOccurrences, 
                         " produced no target value occurrence"
                 );
             }
+            if (decision.kind === "invalidate" && decision.provenance === "explicit") {
+                // §16.1: an explicit invalidation is a semantic node invalidation, so
+                // the target's retained history states it rather than leaving replay
+                // to derive a freshness the graph persists without any record behind
+                // it.
+                const invalidatedKey = targetKeyView.keyForIdentifier(identifier);
+                if (invalidatedKey instanceof Error) {
+                    throw makeInvalidMigrationDecisionError(
+                        "migration invalidated " + nodeIdentifierToString(identifier) +
+                            ", whose target node key the source->target codec could not produce"
+                    );
+                }
+                intents.push({
+                    kind: "migrate-invalidate",
+                    node: toNodeKey(invalidatedKey),
+                });
+                continue;
+            }
             // The converted history names this occurrence, so §15 requires no
-            // ValueEvent for it: `keep` and `invalidate` preserve the `ValueId`
-            // already retained. Proof (M2) and persistent staleness (M3) are
+            // ValueEvent for it: `keep` and a propagated invalidation preserve the
+            // `ValueId` already retained. Proof (M2) and persistent staleness (M3) are
             // separate passes and author nothing here.
             continue;
         }
