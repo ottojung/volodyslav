@@ -10,22 +10,10 @@ const {
     isMissingGraphSchemeError,
     isMissingIdentifierLookupError,
     isMalformedIdentifierLookupError,
-    nodeIdentifierFromString,
-    deserializeNodeKey,
 } = require("../src/generators/incremental_graph/database");
-const {
-    finalizeEmission,
-    makeJournalAuthor,
-} = require("../src/generators/incremental_graph/journal");
-const {
-    appendJournalPublicationOps,
-    makeInitialCommittedWriterState,
-} = require("../src/generators/incremental_graph/journal_store");
-const { fromISOString } = require("../src/datetime");
 const {
     isUndecidedNodes,
     isDecisionConflict,
-    isUnsupportedPersistedIdentifierError,
 } = require("../src/generators/incremental_graph");
 const { toJsonKey } = require("./test_json_key_helper");
 const { getMockedRootCapabilities } = require("./spies");
@@ -35,50 +23,6 @@ jest.mock('../src/generators/incremental_graph/database', () => ({
     checkpointMigration: jest.fn(),
 }));
 const { checkpointMigration: mockCheckpointMigration } = require('../src/generators/incremental_graph/database');
-
-/** The writer name every fixture replica publishes its own occurrences as. */
-const FIXTURE_FINGERPRINT = "testmigrfinprt";
-
-/**
- * A replica addresses its graph sublevels by `NodeIdentifier`, and the identifier
- * lookup maps that identifier to the semantic `NodeKeyString` the node denotes.
- * These fixtures need both, and the two are not interchangeable, so each head gets
- * one fixture identifier and one node key and the tests name whichever they mean.
- * @type {Map<string, import('../src/generators/incremental_graph/database').NodeIdentifier>}
- */
-const fixtureIdentifiersByHead = new Map();
-
-/**
- * The fixture materialization of a node head.
- * @param {string} name
- * @returns {import('../src/generators/incremental_graph/database').NodeIdentifier}
- */
-function fixtureNode(name) {
-    const existing = fixtureIdentifiersByHead.get(name);
-    if (existing !== undefined) {
-        return existing;
-    }
-    const identifier = nodeIdentifierFromString(
-        `${fixtureIdentifiersByHead.size + 1}-${FIXTURE_FINGERPRINT}`
-    );
-    fixtureIdentifiersByHead.set(name, identifier);
-    return identifier;
-}
-
-/**
- * The semantic node key a fixture materialization denotes.
- * @param {import('../src/generators/incremental_graph/database').NodeIdentifier} identifier
- * @returns {string}
- */
-function nodeKeyOf(identifier) {
-    const identifierString = nodeIdentifierToString(identifier);
-    for (const [name, candidate] of fixtureIdentifiersByHead) {
-        if (nodeIdentifierToString(candidate) === identifierString) {
-            return toJsonKey(name);
-        }
-    }
-    throw new Error(`no fixture head is registered for ${identifierString}`);
-}
 
 const validationActual = jest.requireActual('../src/generators/incremental_graph/database/sync_merge_validation');
 jest.mock('../src/generators/incremental_graph/database/sync_merge_validation', () => ({
@@ -98,19 +42,16 @@ const {
 } = require("../src/generators/incremental_graph/database");
 
 /**
- * Get the migrated identifier for a given node materialization from the storage's
- * global IDENTIFIERS_KEY. A decision which allocates a new materialization changes
- * the identifier the node is addressed by, so an assertion about the migrated
- * graph has to ask the lookup which identifier the node now has.
+ * Get the migrated identifier for a given node key from the storage's global IDENTIFIERS_KEY.
  * @param {import('../src/generators/incremental_graph/database').SchemaStorage} storage
- * @param {string} nodeIdentifier
+ * @param {string} nodeKey
  * @returns {Promise<string>}
  */
-async function getMigratedKey(storage, nodeIdentifier) {
+async function getMigratedKey(storage, nodeKey) {
     const entries = await storage.global.get(IDENTIFIERS_KEY);
-    if (!entries) return nodeIdentifier;
-    const entry = entries.find(([identifier]) => nodeIdentifierToString(identifier) === nodeIdentifier);
-    return entry ? nodeIdentifierToString(entry[0]) : nodeIdentifier;
+    if (!entries) return nodeKey;
+    const entry = entries.find(([, key]) => String(key) === nodeKey);
+    return entry ? nodeIdentifierToString(entry[0]) : nodeKey;
 }
 
 function makeInMemoryDb(table) {
@@ -144,17 +85,8 @@ function makeSchemaStorage() {
     const global = makeInMemoryDb("global");
     const valid = makeInMemoryDb("valid");
     const timestamps = makeInMemoryDb("timestamps");
-    // A replica's journal is one of its sublevels: the migration cutover builds the
-    // target's journal alongside the target's graph state, so the double carries one.
-    const journal = makeInMemoryDb("journal");
     return {
-        values, freshness, global, valid, timestamps, journal,
-        /**
-         * The writer state the fixture's own publications reached, so a replica
-         * double threads its own Journal the way a replica does.
-         * @type {import('../src/generators/incremental_graph/journal/emission').CommittedWriterState | undefined}
-         */
-        fixtureWriterState: undefined,
+        values, freshness, global, valid, timestamps,
         async batch(operations) {
             for (const op of operations) {
                 values.apply(op);
@@ -162,7 +94,6 @@ function makeSchemaStorage() {
                 global.apply(op);
                 valid.apply(op);
                 timestamps.apply(op);
-                journal.apply(op);
             }
         },
     };
@@ -170,81 +101,13 @@ function makeSchemaStorage() {
 
 /**
  * Seed a node into storage with value, freshness, and timestamps.
- *
- * The occurrence a replica's graph is a projection of is published alongside the
- * graph state, because the migration cutover verifies that the target replica's two
- * representations agree, and a replica which wrote a value without the record
- * explaining it cannot.
- *
  * @param {import('../src/generators/incremental_graph/database').SchemaStorage} storage
- * @param {import('../src/generators/incremental_graph/database').NodeIdentifier} nodeIdentifier
+ * @param {string} key
  */
-async function seedNode(storage, nodeIdentifier) {
-    const key = nodeIdentifier;
+async function seedNode(storage, key) {
     await storage.values.put(key, { type: "all_events", events: [] });
     await storage.freshness.put(key, "up-to-date");
-    const timestamps = { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" };
-    await storage.timestamps.put(key, timestamps);
-    await publishFixtureOccurrence(storage, nodeIdentifier, timestamps, { type: "all_events", events: [] });
-}
-
-/**
- * The local writer every fixture replica publishes as.
- * @returns {import('../src/generators/incremental_graph/journal/types').JournalAuthor}
- */
-function fixtureLocalWriter() {
-    const localWriter = makeJournalAuthor(FIXTURE_FINGERPRINT);
-    if (localWriter instanceof Error) {
-        throw new Error("the fixture fingerprint is not a valid writer name: " + localWriter.message);
-    }
-    return localWriter;
-}
-
-/**
- * Publish the ordinary occurrence a seeded node's graph state is a projection of.
- *
- * The occurrence is published without a certificate. These fixtures exercise which
- * validity edges the migration constructs, and a target validity edge is M2's
- * record to author, so seeding one here would assert a repair the migration has
- * not made.
- *
- * @param {import('../src/generators/incremental_graph/database').SchemaStorage & {fixtureWriterState?: import('../src/generators/incremental_graph/journal/emission').CommittedWriterState}} storage
- * @param {import('../src/generators/incremental_graph/database').NodeIdentifier} nodeIdentifier
- * @param {{createdAt: string, modifiedAt: string}} timestamps
- * @param {object} payload - The computed value the occurrence carries.
- * @returns {Promise<void>}
- */
-async function publishFixtureOccurrence(storage, nodeIdentifier, timestamps, payload) {
-    const initial = makeInitialCommittedWriterState(fixtureLocalWriter());
-    if (initial instanceof Error) {
-        throw new Error("the fixture writer state is malformed: " + initial.message);
-    }
-    const state = storage.fixtureWriterState === undefined ? initial : storage.fixtureWriterState;
-    const publication = finalizeEmission({
-        state,
-        intents: [{
-            kind: "materialize",
-            node: deserializeNodeKey(nodeKeyOf(nodeIdentifier)),
-            nodeIdentifier,
-            payload,
-            createdAt: timestamps.createdAt,
-            modifiedAt: timestamps.modifiedAt,
-            inputs: [],
-        }],
-        publicationInstant: fromISOString(timestamps.modifiedAt).toMillis(),
-        allocatorWatermark: 1,
-    });
-    if (publication instanceof Error) {
-        throw new Error("the fixture occurrence was rejected: " + publication.message);
-    }
-    /** @type {Array<import('../src/generators/incremental_graph/database/root_database').DatabaseBatchOperation>} */
-    const operations = [];
-    const rejected = appendJournalPublicationOps(storage.journal, operations, publication);
-    if (rejected !== undefined) {
-        throw new Error("the fixture occurrence could not be appended: " + rejected.message);
-    }
-    await storage.batch(operations);
-    storage.fixtureWriterState = publication.writerState;
+    await storage.timestamps.put(key, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" });
 }
 
 /**
@@ -348,7 +211,7 @@ async function seedGraphSchemeOnly(storage, nodeDefs) {
  */
 async function seedGraphScheme(storage, nodeDefs) {
     await seedGraphSchemeOnly(storage, nodeDefs);
-    const identifiers = nodeDefs.map(def => [fixtureNode(def.output), toJsonKey(def.output)]);
+    const identifiers = nodeDefs.map(def => [toJsonKey(def.output), toJsonKey(def.output)]);
     await seedIdentifiers(storage, identifiers);
 }
 
@@ -373,7 +236,7 @@ async function seedSingleAGraphScheme(storage) {
 async function makeSimpleMigrationSetup({ prevVersion = "1.0.0", currentVersion = "2.0.0" } = {}) {
     const xStorage = makeSchemaStorage();
     const yStorage = makeSchemaStorage();
-    const nodeKey = fixtureNode("A");
+    const nodeKey = toJsonKey("A");
     const nodeDefs = [{
         output: "A",
         inputs: [],
@@ -408,13 +271,13 @@ describe("runMigration", () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
-        const nodeKey = fixtureNode("A");
+        const nodeKey = toJsonKey("A");
         const value = { type: "all_events", events: [] };
 
         await xStorage.values.put(nodeKey, value);
         await xStorage.freshness.put(nodeKey, "up-to-date");
         await xStorage.global.put("version", "1.0.0");
-        await xStorage.global.put(IDENTIFIERS_KEY, [[nodeKey, nodeKeyOf(nodeKey)]]);
+        await xStorage.global.put(IDENTIFIERS_KEY, [[nodeKey, nodeKey]]);
 
         const mock = makeRootDatabaseMock({
             prevVersion: "1.0.0",
@@ -451,15 +314,15 @@ describe("runMigration", () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
-        const aKey = fixtureNode("A");
-        const bKey = fixtureNode("B");
+        const aKey = toJsonKey("A");
+        const bKey = toJsonKey("B");
 
         await xStorage.values.put(aKey, { type: "all_events", events: [] });
         await xStorage.values.put(bKey, { type: "all_events", events: [] });
         await xStorage.freshness.put(aKey, "up-to-date");
         await xStorage.freshness.put(bKey, "up-to-date");
         await xStorage.global.put("version", "1.0.0");
-        await xStorage.global.put(IDENTIFIERS_KEY, [[aKey, nodeKeyOf(aKey)], [bKey, nodeKeyOf(bKey)]]);
+        await xStorage.global.put(IDENTIFIERS_KEY, [[aKey, aKey], [bKey, bKey]]);
 
         // seed a valid old graph scheme for the source replica
         const validDefs = [
@@ -502,7 +365,7 @@ describe("runMigration", () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
-        const nodeKey = fixtureNode("A");
+        const nodeKey = toJsonKey("A");
 
         await seedNode(xStorage, nodeKey);
 
@@ -529,7 +392,7 @@ describe("runMigration", () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
-        const nodeKey = fixtureNode("A");
+        const nodeKey = toJsonKey("A");
 
         await seedNode(xStorage, nodeKey);
 
@@ -548,41 +411,6 @@ describe("runMigration", () => {
         expect(caught).toBeDefined();
         expect(isMalformedIdentifierLookupError(caught)).toBe(true);
         expect(mock.setCurrentReplicaPointerCalled).toBe(false);
-    });
-
-    test("rejects source whose persisted identifier is outside the supported domain, before writing a target", async () => {
-        const capabilities = await getTestCapabilities();
-        const xStorage = makeSchemaStorage();
-        const yStorage = makeSchemaStorage();
-
-        // The shape a pre-identifier-fingerprint source replica persisted: a
-        // bare nine-letter text with no base36 index and no separator.
-        const legacyIdentifier = "gafdmopql";
-        fixtureNode("A");
-        await xStorage.global.put("version", "1.0.0");
-        await seedIdentifiers(
-            xStorage,
-            [[nodeIdentifierFromString(legacyIdentifier), toJsonKey("A")]],
-            0
-        );
-
-        const mock = makeRootDatabaseMock({ prevVersion: "1.0.0", currentVersion: "2.0.0", xStorage, yStorage });
-        const nodeDefs = [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }];
-        await seedGraphSchemeOnly(xStorage, nodeDefs);
-
-        let caught;
-        try {
-            await runMigration(capabilities, mock.rootDatabase, nodeDefs, async () => { throw new Error("callback should not execute"); });
-        } catch (e) { caught = e; }
-
-        expect(isUnsupportedPersistedIdentifierError(caught)).toBe(true);
-        expect(caught.identifier).toBe(legacyIdentifier);
-        expect(String(caught.message)).toMatch(/outside the supported NodeIdentifier domain/);
-        expect(mock.setCurrentReplicaPointerCalled).toBe(false);
-        // The defect this boundary closes: the target would otherwise persist the
-        // identifier it transported, leaving a replica whose materialized nodes no
-        // Journal record can name.
-        expect(await yStorage.global.get(IDENTIFIERS_KEY)).toBeUndefined();
     });
 
     test("rejects source with missing LAST_NODE_INDEX_KEY", async () => {
@@ -717,7 +545,7 @@ describe("runMigration", () => {
         const capabilities = await getTestCapabilities();
         const previousStorage = makeSchemaStorage();
         const currentStorage = makeSchemaStorage();
-        const nodeKey = fixtureNode("A");
+        const nodeKey = toJsonKey("A");
 
         await seedNode(previousStorage, nodeKey);
 
@@ -869,7 +697,7 @@ describe("runMigration", () => {
         test("y namespace is populated with migrated data after successful migration", async () => {
             const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
-            const nodeKey = fixtureNode("A");
+            const nodeKey = toJsonKey("A");
             await seedNode(xStorage, nodeKey);
             const yStorage = makeSchemaStorage();
             const mock = makeRootDatabaseMock({
@@ -901,8 +729,8 @@ describe("runMigration", () => {
         test("migration does not transfer valid flags from old graph state", async () => {
             const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
-            const nodeKey = fixtureNode("A");
-            const depKey = fixtureNode("B");
+            const nodeKey = toJsonKey("A");
+            const depKey = toJsonKey("B");
 
             // Set up xStorage with a node that has valid flags
             await seedNode(xStorage, nodeKey);
@@ -942,9 +770,9 @@ describe("runMigration", () => {
         test("kept node with potentially-outdated freshness does not gain valid flags after migration", async () => {
             const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
-            const depKey = fixtureNode("A");
-            const staleDepKey = fixtureNode("X");
-            const keptKey = fixtureNode("B");
+            const depKey = toJsonKey("A");
+            const staleDepKey = toJsonKey("X");
+            const keptKey = toJsonKey("B");
 
             // Set up a graph in xStorage: A (up-to-date, inputs=[]) and X (up-to-date).
             // B depends on both A and X, but B is stale (potentially-outdated).
@@ -1000,18 +828,17 @@ describe("runMigration", () => {
             expect(allValidKeys).toEqual([]);
         });
 
-        test("stale kept node preserves its unaffected incoming proof", async () => {
+        test("stale kept node loses incoming proofs after migration", async () => {
             // A → B
             // B is potentially-outdated, valid[A] contains B
             // migration keeps A and B
-            // after migration valid[A] still contains B: §11 says a stale kept
-            // occurrence does not lose otherwise-valid proof merely because it is
-            // stale. Only the freshness flag records the staleness; the target
-            // input occurrence A is unchanged, so the carried proof edge survives.
+            // after migration valid[A] no longer contains B because
+            // a preexisting stale node carried through keep is conservatively
+            // treated as a direct invalidation root.
             const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
-            const aKey = fixtureNode("A");
-            const bKey = fixtureNode("B");
+            const aKey = toJsonKey("A");
+            const bKey = toJsonKey("B");
 
             await seedNode(xStorage, aKey);
             await seedNode(xStorage, bKey);
@@ -1042,8 +869,10 @@ describe("runMigration", () => {
 
             const validA = await yStorage.valid.get(aMigratedKey) ?? [];
             const bIdStr = String(bMigratedKey);
-            expect(validA.some(id => String(id) === bIdStr)).toBe(true);
-            expect(await yStorage.freshness.get(bMigratedKey)).toBe("potentially-outdated");
+            // B was stale before migration and kept: incoming proof removed
+            expect(validA.some(id => String(id) === bIdStr)).toBe(false);
+            // B's outgoing proof to C does not exist here, but the principle
+            // is that outgoing proofs of a stale kept node survive.
         });
 
         test("does not invent valid flags for stale kept nodes when valid was absent before migration", async () => {
@@ -1053,8 +882,8 @@ describe("runMigration", () => {
             // after migration valid[A] still does not contain B
             const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
-            const aKey = fixtureNode("A");
-            const bKey = fixtureNode("B");
+            const aKey = toJsonKey("A");
+            const bKey = toJsonKey("B");
 
             await seedNode(xStorage, aKey);
             await seedNode(xStorage, bKey);
@@ -1089,18 +918,17 @@ describe("runMigration", () => {
             expect(validA.some(id => String(id) === bIdStr)).toBe(false);
         });
 
-        test("stale kept node with multiple inputs preserves its incoming proofs", async () => {
+        test("stale kept node with multiple inputs loses all incoming proofs", async () => {
             // D ─┐
             //    ├→ N  (N is stale, kept)
             // E ─┘
             // Both D→N and E→N were valid before migration.
-            // N is stale and kept: §11 keeps both unaffected incoming proofs and
-            // records the staleness only in N's freshness flag.
+            // N is stale and kept: both incoming proofs must be removed.
             const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
-            const dKey = fixtureNode("D");
-            const eKey = fixtureNode("E");
-            const nKey = fixtureNode("N");
+            const dKey = toJsonKey("D");
+            const eKey = toJsonKey("E");
+            const nKey = toJsonKey("N");
 
             await seedNode(xStorage, dKey);
             await seedNode(xStorage, eKey);
@@ -1136,15 +964,15 @@ describe("runMigration", () => {
 
             const validD = await yStorage.valid.get(dMigrated) ?? [];
             const validE = await yStorage.valid.get(eMigrated) ?? [];
-            expect(validD.some(id => String(id) === String(nMigrated))).toBe(true);
-            expect(validE.some(id => String(id) === String(nMigrated))).toBe(true);
+            expect(validD.some(id => String(id) === String(nMigrated))).toBe(false);
+            expect(validE.some(id => String(id) === String(nMigrated))).toBe(false);
             expect(await yStorage.freshness.get(nMigrated)).toBe("potentially-outdated");
         });
 
         test("writes version to y/global/version before calling setCurrentReplicaPointer", async () => {
             const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
-            const nodeKey = fixtureNode("A");
+            const nodeKey = toJsonKey("A");
             await seedNode(xStorage, nodeKey);
             const callOrder = [];
             let setCurrentReplicaPointerCalled = false;
@@ -1206,7 +1034,7 @@ describe("runMigration", () => {
         test("calls setCurrentReplicaPointer with 'y' on successful migration", async () => {
             const capabilities = await getTestCapabilities();
             const previousStorage = makeSchemaStorage();
-            const nodeKey = fixtureNode("A");
+            const nodeKey = toJsonKey("A");
             await seedNode(previousStorage, nodeKey);
 
 
@@ -1294,7 +1122,7 @@ describe("runMigration", () => {
             });
 
             const xStorage = makeSchemaStorage();
-            const nodeKey = fixtureNode("A");
+            const nodeKey = toJsonKey("A");
             await seedNode(xStorage, nodeKey);
             const yStorage = makeSchemaStorage();
             const rootDatabase = {
@@ -1343,7 +1171,7 @@ describe("runMigration", () => {
             });
 
             const xStorage = makeSchemaStorage();
-            const nodeKey = fixtureNode("A");
+            const nodeKey = toJsonKey("A");
             await seedNode(xStorage, nodeKey);
             const yStorage = makeSchemaStorage();
             const rootDatabase = {
@@ -1386,7 +1214,7 @@ describe("runMigration", () => {
         test("callback throws: setCurrentReplicaPointer is NOT called and error propagates", async () => {
             const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
-            const nodeKey = fixtureNode("A");
+            const nodeKey = toJsonKey("A");
             await seedNode(xStorage, nodeKey);
             const yStorage = makeSchemaStorage();
             const mock = makeRootDatabaseMock({
@@ -1418,7 +1246,7 @@ describe("runMigration", () => {
         test("finalize throws UndecidedNodesError when a node has no decision: setCurrentReplicaPointer is NOT called", async () => {
             const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
-            const nodeKey = fixtureNode("A");
+            const nodeKey = toJsonKey("A");
             await seedNode(xStorage, nodeKey);
             const yStorage = makeSchemaStorage();
             const mock = makeRootDatabaseMock({
@@ -1454,7 +1282,7 @@ describe("runMigration", () => {
         test("callback throws: unification is not attempted and error propagates", async () => {
             const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
-            const nodeKey = fixtureNode("A");
+            const nodeKey = toJsonKey("A");
             await seedNode(xStorage, nodeKey);
             const yStorage = makeSchemaStorage();
             const mock = makeRootDatabaseMock({
@@ -1558,16 +1386,15 @@ async function captureStorageSnapshot(storage) {
     return snapshot;
 }
 
-/** Populate a fixture replica with realistic data for one node. */
-async function populateNode(storage, nodeIdentifier, {
+/** Populate xStorage with realistic data for node "A". */
+async function populateNode(storage, nodeKey, {
     value = { type: "all_events", events: [] },
     freshness = "up-to-date",
     timestamps = { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" },
 } = {}) {
-    await storage.values.put(nodeIdentifier, value);
-    await storage.freshness.put(nodeIdentifier, freshness);
-    await storage.timestamps.put(nodeIdentifier, timestamps);
-    await publishFixtureOccurrence(storage, nodeIdentifier, timestamps, value);
+    await storage.values.put(nodeKey, value);
+    await storage.freshness.put(nodeKey, freshness);
+    await storage.timestamps.put(nodeKey, timestamps);
 }
 
 /** Build a two-node graph where B depends on A (A → B). */
@@ -1616,7 +1443,7 @@ describe("x-namespace state preserved on migration failure", () => {
     test("callback throws synchronously: every x-sublevel entry is identical to before", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
-        const nodeKey = fixtureNode("A");
+        const nodeKey = toJsonKey("A");
         await populateNode(xStorage, nodeKey, { freshness: "up-to-date" });
         await seedSingleAGraphScheme(xStorage);
 
@@ -1635,7 +1462,7 @@ describe("x-namespace state preserved on migration failure", () => {
     test("callback returns rejected promise: every x-sublevel entry is identical to before", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
-        const nodeKey = fixtureNode("A");
+        const nodeKey = toJsonKey("A");
         await populateNode(xStorage, nodeKey);
         await seedSingleAGraphScheme(xStorage);
 
@@ -1655,8 +1482,8 @@ describe("x-namespace state preserved on migration failure", () => {
     test("UndecidedNodesError from finalize: x-namespace data unchanged", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
-        const nkA = fixtureNode("A");
-        const nkB = fixtureNode("B");
+        const nkA = toJsonKey("A");
+        const nkB = toJsonKey("B");
         await populateNode(xStorage, nkA);
         await populateNode(xStorage, nkB, { freshness: "potentially-outdated" });
         await seedGraphScheme(xStorage, makeTwoNodeDefs());
@@ -1682,7 +1509,7 @@ describe("x-namespace state preserved on migration failure", () => {
     test("fan-in deletion from finalize migrates successfully", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
-        const [nkA, nkB, nkC] = [fixtureNode("A"), fixtureNode("B"), fixtureNode("C")];
+        const [nkA, nkB, nkC] = [toJsonKey("A"), toJsonKey("B"), toJsonKey("C")];
         await buildFanInGraph(xStorage, nkA, nkB, nkC);
 
         const yStorage = makeSchemaStorage();
@@ -1701,7 +1528,7 @@ describe("x-namespace state preserved on migration failure", () => {
     test("DecisionConflictError from callback: x-namespace data unchanged", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
-        const nodeKey = fixtureNode("A");
+        const nodeKey = toJsonKey("A");
         await populateNode(xStorage, nodeKey);
         await seedSingleAGraphScheme(xStorage);
 
@@ -1726,7 +1553,7 @@ describe("x-namespace state preserved on migration failure", () => {
     test("noFlushPut() throws during unification into y: x-namespace data unchanged, setCurrentReplicaPointer not called", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
-        const nodeKey = fixtureNode("A");
+        const nodeKey = toJsonKey("A");
         await populateNode(xStorage, nodeKey);
         await seedSingleAGraphScheme(xStorage);
         const snapshotBefore = await captureStorageSnapshot(xStorage);
@@ -1753,7 +1580,7 @@ describe("x-namespace state preserved on migration failure", () => {
     test("global.noFlushPut throws during version write: x-namespace data unchanged, setCurrentReplicaPointer not called", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
-        const nodeKey = fixtureNode("A");
+        const nodeKey = toJsonKey("A");
         await populateNode(xStorage, nodeKey);
         await seedSingleAGraphScheme(xStorage);
         const snapshotBefore = await captureStorageSnapshot(xStorage);
@@ -1782,7 +1609,7 @@ describe("x-namespace state preserved on migration failure", () => {
     test("setCurrentReplicaPointer throws: error propagates and x had not been modified before the throw", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
-        const nodeKey = fixtureNode("A");
+        const nodeKey = toJsonKey("A");
         await populateNode(xStorage, nodeKey);
         await seedSingleAGraphScheme(xStorage);
         const snapshotBefore = await captureStorageSnapshot(xStorage);
@@ -1820,8 +1647,8 @@ describe("x-namespace state preserved on migration failure", () => {
     test("multi-node graph: all x-values intact after UndecidedNodesError", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
-        const nkA = fixtureNode("A");
-        const nkB = fixtureNode("B");
+        const nkA = toJsonKey("A");
+        const nkB = toJsonKey("B");
         await buildTwoNodeGraph(xStorage, nkA, nkB);
 
         const yStorage = makeSchemaStorage();
@@ -1844,8 +1671,8 @@ describe("x-namespace state preserved on migration failure", () => {
     test("multi-node graph: freshness and values preserved after callback error", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
-        const nkA = fixtureNode("A");
-        const nkB = fixtureNode("B");
+        const nkA = toJsonKey("A");
+        const nkB = toJsonKey("B");
         await buildTwoNodeGraph(xStorage, nkA, nkB);
 
         const yStorage = makeSchemaStorage();
@@ -1867,7 +1694,7 @@ describe("x-namespace state preserved on migration failure", () => {
     test("three-node fan-in deletion removes dependent during migration", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
-        const [nkA, nkB, nkC] = [fixtureNode("A"), fixtureNode("B"), fixtureNode("C")];
+        const [nkA, nkB, nkC] = [toJsonKey("A"), toJsonKey("B"), toJsonKey("C")];
         await buildFanInGraph(xStorage, nkA, nkB, nkC);
         const yStorage = makeSchemaStorage();
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "v1", currentVersion: "v2", xStorage, yStorage });
@@ -1905,12 +1732,12 @@ describe("migration validation", () => {
                 { head: "B", arity: 0, inputTemplates: [{ head: "A", args: [] }] },
             ],
         }));
-        const aKey = fixtureNode("A");
-        const bKey = fixtureNode("B");
+        const aKey = toJsonKey("A");
+        const bKey = toJsonKey("B");
 
         await seedNode(storage, aKey);
         await seedNode(storage, bKey);
-        await storage.global.put(IDENTIFIERS_KEY, [[aKey, nodeKeyOf(aKey)], [bKey, nodeKeyOf(bKey)]]);
+        await storage.global.put(IDENTIFIERS_KEY, [[aKey, aKey], [bKey, bKey]]);
         // valid[A] intentionally missing B
 
         const identifiers = await storage.global.get(IDENTIFIERS_KEY);
@@ -1930,11 +1757,11 @@ describe("migration validation", () => {
                 { head: "B", arity: 0, inputTemplates: [{ head: "A", args: [] }] },
             ],
         }));
-        const aKey = fixtureNode("A");
-        const bKey = fixtureNode("B");
+        const aKey = toJsonKey("A");
+        const bKey = toJsonKey("B");
 
         await seedNode(storage, aKey);
-        await storage.global.put(IDENTIFIERS_KEY, [[aKey, nodeKeyOf(aKey)]]);
+        await storage.global.put(IDENTIFIERS_KEY, [[aKey, aKey]]);
         // valid references B which is not materialized
         await storage.valid.put(aKey, [bKey]);
 
@@ -1955,12 +1782,12 @@ describe("migration validation", () => {
                 { head: "B", arity: 0, inputTemplates: [{ head: "A", args: [] }] },
             ],
         }));
-        const aKey = fixtureNode("A");
-        const bKey = fixtureNode("B");
+        const aKey = toJsonKey("A");
+        const bKey = toJsonKey("B");
 
         await seedNode(storage, aKey);
         await seedNode(storage, bKey);
-        await storage.global.put(IDENTIFIERS_KEY, [[aKey, nodeKeyOf(aKey)], [bKey, nodeKeyOf(bKey)]]);
+        await storage.global.put(IDENTIFIERS_KEY, [[aKey, aKey], [bKey, bKey]]);
         await storage.valid.put(aKey, [bKey]);
 
         const identifiers = await storage.global.get(IDENTIFIERS_KEY);
@@ -1979,10 +1806,10 @@ describe("migration validation", () => {
                 { head: "A", arity: 0, inputTemplates: [] },
             ],
         }));
-        const aKey = fixtureNode("A");
+        const aKey = toJsonKey("A");
 
         await seedNode(storage, aKey);
-        await seedIdentifiers(storage, [[aKey, nodeKeyOf(aKey)]]);
+        await seedIdentifiers(storage, [[aKey, aKey]]);
         // Remove auto-added timestamp to test missing timestamp rejection
         await storage.timestamps.del(aKey);
 
@@ -2000,8 +1827,8 @@ describe("migration validation", () => {
         // assertValidFinalMergeState will pass, and setCurrentReplicaPointer is called.
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
-        const aKey = fixtureNode("A");
-        const bKey = fixtureNode("B");
+        const aKey = toJsonKey("A");
+        const bKey = toJsonKey("B");
 
         await seedNode(xStorage, aKey);
         await seedNode(xStorage, bKey);
@@ -2039,7 +1866,7 @@ describe("migration validation", () => {
 
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
-        const nodeKey = fixtureNode("A");
+        const nodeKey = toJsonKey("A");
         await seedNode(xStorage, nodeKey);
         const yStorage = makeSchemaStorage();
         const mock = makeRootDatabaseMock({
@@ -2081,7 +1908,7 @@ describe("x.setGlobalVersion not called on migration failure", () => {
     test("callback throws: x.setGlobalVersion never called", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
-        const nodeKey = fixtureNode("A");
+        const nodeKey = toJsonKey("A");
         await xStorage.values.put(nodeKey, { type: "all_events", events: [] });
         await seedSingleAGraphScheme(xStorage);
 
@@ -2099,7 +1926,7 @@ describe("x.setGlobalVersion not called on migration failure", () => {
     test("UndecidedNodesError: x.setGlobalVersion never called", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
-        const nodeKey = fixtureNode("A");
+        const nodeKey = toJsonKey("A");
         await seedNode(xStorage, nodeKey);
         await seedSingleAGraphScheme(xStorage);
 
@@ -2119,7 +1946,7 @@ describe("x.setGlobalVersion not called on migration failure", () => {
     test("successful fan-in deletion does not use failure-version path", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
-        const [nkA, nkB, nkC] = [fixtureNode("A"), fixtureNode("B"), fixtureNode("C")];
+        const [nkA, nkB, nkC] = [toJsonKey("A"), toJsonKey("B"), toJsonKey("C")];
         await buildFanInGraph(xStorage, nkA, nkB, nkC);
 
         const yStorage = makeSchemaStorage();
@@ -2183,8 +2010,8 @@ describe("error identity: exact thrown object propagates", () => {
     test("UndecidedNodesError from finalize carries the undecided node keys", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
-        const nkA = fixtureNode("A");
-        const nkB = fixtureNode("B");
+        const nkA = toJsonKey("A");
+        const nkB = toJsonKey("B");
         await populateNode(xStorage, nkA);
         await populateNode(xStorage, nkB, { freshness: "potentially-outdated" });
 
@@ -2211,7 +2038,7 @@ describe("error identity: exact thrown object propagates", () => {
     test("fan-in deletion finalizes without partial fan-in error", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
-        const [nkA, nkB, nkC] = [fixtureNode("A"), fixtureNode("B"), fixtureNode("C")];
+        const [nkA, nkB, nkC] = [toJsonKey("A"), toJsonKey("B"), toJsonKey("C")];
         await buildFanInGraph(xStorage, nkA, nkB, nkC);
 
         const yStorage = makeSchemaStorage();
@@ -2227,7 +2054,7 @@ describe("error identity: exact thrown object propagates", () => {
     test("DecisionConflictError from callback carries correct node key", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
-        const nodeKey = fixtureNode("A");
+        const nodeKey = toJsonKey("A");
         await populateNode(xStorage, nodeKey);
         await seedSingleAGraphScheme(xStorage);
 
@@ -2294,7 +2121,7 @@ describe("infrastructure failures", () => {
     test("unification noFlushPut throws: error propagates, callback was run, setCurrentReplicaPointer not called", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
-        const nodeKey = fixtureNode("A");
+        const nodeKey = toJsonKey("A");
         await seedNode(xStorage, nodeKey);
         const unificationError = new Error("unification write failure");
         const yStorage = makeSchemaStorage();
@@ -2361,7 +2188,7 @@ describe("infrastructure failures", () => {
         capabilities.checkpointMigration.mockRejectedValueOnce(checkpointError);
 
         const xStorage = makeSchemaStorage();
-        const nodeKey = fixtureNode("A");
+        const nodeKey = toJsonKey("A");
         await populateNode(xStorage, nodeKey);
         await seedSingleAGraphScheme(xStorage);
         const snapshotBefore = await captureStorageSnapshot(xStorage);
@@ -2417,7 +2244,7 @@ describe("retry after failure", () => {
     test("failed migration followed by correct migration: second call applies migration and calls setCurrentReplicaPointer", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
-        const nodeKey = fixtureNode("A");
+        const nodeKey = toJsonKey("A");
         await seedNode(xStorage, nodeKey);
         await seedSingleAGraphScheme(xStorage);
 
@@ -2442,7 +2269,7 @@ describe("retry after failure", () => {
     test("failed migration followed by correct migration: two pre/post checkpoint pairs are recorded", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
-        const nodeKey = fixtureNode("A");
+        const nodeKey = toJsonKey("A");
         await seedNode(xStorage, nodeKey);
         const yStorage = makeSchemaStorage();
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
@@ -2470,8 +2297,8 @@ describe("retry after failure", () => {
     test("UndecidedNodes failure then correct callback: x-values reflect successful migration in y", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
-        const nkA = fixtureNode("A");
-        const nkB = fixtureNode("B");
+        const nkA = toJsonKey("A");
+        const nkB = toJsonKey("B");
         await buildTwoNodeGraph(xStorage, nkA, nkB);
 
         const yStorage = makeSchemaStorage();
@@ -2505,15 +2332,18 @@ describe("retry after failure", () => {
     test('explicit invalidation preserves outgoing proofs through chain', async () => {
         // A → B → C. Explicitly invalidate A (zero-input root).
         // A has no incoming proofs to remove. valid[A].has(B) is outgoing
-        // from A and is preserved (A's value unchanged). B and C are kept and
-        // become stale through their stale input during replay.
+        // from A and is preserved (A's value unchanged).
+        // B is propagated, preserving valid[B].has(C).
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
-        const nkA = fixtureNode("A"), nkB = fixtureNode("B"), nkC = fixtureNode("C");
-        await populateNode(xStorage, nkA);
-        await populateNode(xStorage, nkB);
-        await populateNode(xStorage, nkC);
+        const nkA = toJsonKey("A"), nkB = toJsonKey("B"), nkC = toJsonKey("C");
+        await seedNode(xStorage, nkA);
+        await seedNode(xStorage, nkB);
+        await seedNode(xStorage, nkC);
+        await xStorage.values.put(nkA, { v: 1 });
+        await xStorage.values.put(nkB, { v: 2 });
+        await xStorage.values.put(nkC, { v: 3 });
         await xStorage.valid.put(nkA, [nkB]);
         await xStorage.valid.put(nkB, [nkC]);
 
@@ -2526,8 +2356,6 @@ describe("retry after failure", () => {
         await seedGraphScheme(xStorage, nodeDefs);
         await runMigration(capabilities, mock.rootDatabase, nodeDefs, async (storage) => {
             await storage.invalidate(nkA);
-            await storage.keep(nkB);
-            await storage.keep(nkC);
         });
         const resultStorage = mock.rootDatabase.schemaStorageForReplica('y');
         const validA = await resultStorage.valid.get(nkA) ?? [];
@@ -2536,19 +2364,21 @@ describe("retry after failure", () => {
         expect(validB.some(id => String(id) === String(nkC))).toBe(true);
     });
 
-    test('non-source explicit root B loses incoming proofs, preserves outgoing proofs, C stale through B', async () => {
+    test('non-source explicit root B loses incoming proofs, preserves outgoing proofs, C propagated stale', async () => {
         // A → B → C. Explicitly invalidate B (non-zero-input root).
         // valid[A].has(B) must be removed (incoming proof of the root).
         // valid[B].has(C) must survive (outgoing proof, value unchanged).
-        // A remains up-to-date (no invalidation reached it). C is kept and is
-        // stale through its stale input B, not through a propagated decision.
+        // A remains up-to-date (no invalidation reached it).
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
-        const nkA = fixtureNode("A"), nkB = fixtureNode("B"), nkC = fixtureNode("C");
-        await populateNode(xStorage, nkA);
-        await populateNode(xStorage, nkB);
-        await populateNode(xStorage, nkC);
+        const nkA = toJsonKey("A"), nkB = toJsonKey("B"), nkC = toJsonKey("C");
+        await seedNode(xStorage, nkA);
+        await seedNode(xStorage, nkB);
+        await seedNode(xStorage, nkC);
+        await xStorage.values.put(nkA, { v: 1 });
+        await xStorage.values.put(nkB, { v: 2 });
+        await xStorage.values.put(nkC, { v: 3 });
         await xStorage.valid.put(nkA, [nkB]);
         await xStorage.valid.put(nkB, [nkC]);
 
@@ -2562,7 +2392,7 @@ describe("retry after failure", () => {
         await runMigration(capabilities, mock.rootDatabase, nodeDefs, async (storage) => {
             await storage.keep(nkA);
             await storage.invalidate(nkB);
-            await storage.keep(nkC);
+            // C is left undecided — finalize will auto-propagate invalidation from B
         });
         const resultStorage = mock.rootDatabase.schemaStorageForReplica('y');
         const validA = await resultStorage.valid.get(nkA) ?? [];

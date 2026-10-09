@@ -88,7 +88,7 @@ Acceptance:
 - partial deletion, rollback to an older local state, mixed snapshots, partial restoration, or direct external mutation are corrupted/unsupported rather than new recovery cases (`$id-6158827469032147`);
 - a crash/interruption of a supported transition exposes only a state permitted by that transition's atomicity/crash rules;
 - installation recovery source is queried only for an absent local database and before fresh fingerprint generation;
-- source exists -> restore/adopt `localWriter` only when the held snapshot establishes a **continuation-safe head** as defined by `database-lifecycle.md` §4.1;
+- source exists -> restore/adopt `localWriter` only when the held snapshot establishes a **continuation-safe head** as defined by `incremental-graph-journal-lifecycle.md` §4.1;
 - JournalRecordId uniqueness follows `$id-2567281946348705` and NodeIdentifier uniqueness follows `$id-4173361406347342`; absent-restoration coordinate/index reuse and discarded-suffix handling follow the lifecycle-owned continuation-safety rule rather than a checklist-local criterion;
 - source definitely absent -> fresh creation allowed;
 - source read/query failure -> fail, no fresh fallback;
@@ -116,9 +116,7 @@ Acceptance:
 ### Bootstrap semantic-identity target
 
 - bootstrap journals the persisted legacy graph directly;
-- materialized NodeKeys, NodeIdentifiers, payloads, timestamps, freshness, validity, allocator watermark, and graph interpretation are preserved exactly at the cut, where preserving a NodeIdentifier means transporting the source replica's persisted identifier text unchanged and never re-minting it;
-- a supported pre-Journal source's persisted identifiers lie in the supported NodeIdentifier domain of `incremental-graph-journal-types.md` §Persisted identifier form across the bootstrap and migration boundary; a source holding an identifier outside that domain fails `JournalVersionCompatibilityError` before Pass C1 authors history, and is never repaired by substituting a freshly allocated identifier for that node;
-- Pass C1's `legacyNodeIdentifier(K)` is the source replica's persisted identifier for K; a per-identifier substitution or normalization during bootstrap is a defect;
+- materialized NodeKeys, NodeIdentifiers, payloads, timestamps, freshness, validity, allocator watermark, and graph interpretation are preserved exactly at the cut;
 - no ordinary legacy migration callback runs before canonical bootstrap;
 - a path needing semantic `create`/`invalidate`/`delete`, schema-semantic transformation, wall clock, randomness, or allocator-dependent new graph identity is rejected as incompatible before bootstrap history;
 - actual graph/schema migration happens after bootstrap via Journal-aware migration.
@@ -162,7 +160,7 @@ Acceptance:
 - compatibility from held source snapshot;
 - every missing **foreign-writer** suffix imported;
 - compatible supported inputs satisfy fork-free/prefix-comparable writer histories by `incremental-graph-journal-theorems.md` Laws 8/8a; ordinary sync does not rescan historical overlap;
-- own-writer-ahead handling matches `database-lifecycle.md` §5 and `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is unsupported state;
+- own-writer-ahead handling matches `incremental-graph-journal-lifecycle.md` §5 and `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is unsupported state;
 - same-ID disagreement actually encountered during bounded validation is rejected as unsupported corruption;
 - transfer/replay processing satisfies `$id-4924739474925738`; missing suffixes are incrementally iterable and never require the complete suffix/history in RAM;
 - imported records unchanged;
@@ -189,7 +187,7 @@ Acceptance:
 - source target/compatibility from one held snapshot;
 - compatible supported receiver/source writer histories are prefix-comparable and fork-free by `incremental-graph-journal-theorems.md` Laws 8/8a; reset does not rescan historical overlap;
 - target PS is read from the same-cut committed `JournalSnapshot.projection`; reset does not replay source history to derive PS;
-- own-writer-ahead reset behavior matches `incremental-graph-journal-reset.md` §Preconditions and `database-lifecycle.md` §5;
+- own-writer-ahead reset behavior matches `incremental-graph-journal-reset.md` §Preconditions and `incremental-graph-journal-lifecycle.md` §5;
 - raw receiver/source union is inspected through `selectedHeads(J0)`; reset does not require `project(J0)` before Pass 1 structural repair;
 - ResetDomain is `selectedPresent(H0) ∪ present(PS)`; historical keys absent in both are not rediscovered by scanning Value/Delete history;
 - Pass 1 makes selected presence/immutable occurrence state equal the valid source target before the first affected-closure projection state observationally equal to `project(J1)`; unrelated retained history is not replayed/revalidated;
@@ -207,7 +205,7 @@ Acceptance:
 - deterministic target absence delete;
 - `changed == false` only when the source frontier is already covered and Passes 1–3 author nothing; projection-neutral import still returns `changed == true`;
 - repeat satisfied reset may no-op after the source frontier is covered;
-- receiver allocator remains local, and the receiver retains its own `DatabaseFingerprint` per `incremental-graph-journal-reset.md` §Writer identity; reset adopts the source writer identity if and only if the receiver is completely absent, and imported records keep their own `JournalAuthor`;
+- receiver allocator remains local;
 - replay equals target semantic graph;
 - reset causal-later semantics never reused for bootstrap conflicts.
 
@@ -295,8 +293,8 @@ The temporary shipped-vs-target documentation split exists only while Journal 3 
 
 - replace or rewrite `incremental-graph-synchronization.md` so the canonical synchronization spec describes shipped Journal 3 behavior;
 - replace or rewrite `database-lifecycle.md` so the canonical lifecycle spec describes the shipped Journal 3 lifecycle;
-- fold `database-lifecycle.md` into the canonical lifecycle documentation, then remove the temporary target-design lifecycle file;
-- rewrite `docs/database-boot-sequence.md` so startup describes the shipped Journal 3 lifecycle: §7.1 (missing live DB) follows `database-lifecycle.md` §4 (`InstallationRecoverySource` query; restore only `Exists(ContinuationSafeSnapshot)`; fresh fingerprint only on `DefinitelyAbsent`; fail on indeterminate/error), deleting the `resetToHostname` attempt and the fallback to normal sync from an empty local database; §7.3 and the startup flow diagram follow the migration/bootstrap gate in `database-lifecycle.md` §8;
+- fold `incremental-graph-journal-lifecycle.md` into the canonical lifecycle documentation, then remove the temporary target-design lifecycle file;
+- rewrite `docs/database-boot-sequence.md` so startup describes the shipped Journal 3 lifecycle: §7.1 (missing live DB) follows `incremental-graph-journal-lifecycle.md` §4 (`InstallationRecoverySource` query; restore only `Exists(ContinuationSafeSnapshot)`; fresh fingerprint only on `DefinitelyAbsent`; fail on indeterminate/error), deleting the `resetToHostname` attempt and the fallback to normal sync from an empty local database; §7.3 and the startup flow diagram follow the migration/bootstrap gate in `incremental-graph-journal-lifecycle.md` §8;
 - update `migration.md` together with the runtime migration implementation, deleting the legacy `override` API/error/decision documentation when the code path is deleted;
 - update `incremental-graph.md` REQ-IFACE-06..08 together with the runtime timestamp behavior so the canonical timestamp contract describes shipped Journal 3 semantics;
 - update superseded pre-Journal/current-code sections of `docs/database.md`, `keys-design.md`, `incremental-graph-fingerprint.md`, `incremental-graph-last-node-index.md`, `incremental-graph-volatile-consistency.md`, and `incremental-graph-flag-based-inverse-validity.md` so they describe the implemented Journal 3 state rather than the pre-implementation system;

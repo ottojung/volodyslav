@@ -21,42 +21,6 @@ async function copyDirectoryRecursively(source, destination) {
     }
 }
 
-/**
- * Brings the migration source fixture into the form the migration expects, so
- * running this script is idempotent in the fixtures' favour:
- *
- * - the stored version must differ from the forced current version, otherwise
- *   the migration leaves through its equal-version early exit and the script
- *   would copy an unmigrated database over the populated fixture;
- * - the sublevels the current schema does not declare are removed, because the
- *   migration target carries only values, freshness, valid, timestamps, global
- *   and the journal, so leaving them in the source makes the source differ from
- *   its own migration output;
- * - the writer state records the replica's own allocation watermark, because a
- *   watermark below the durable last_node_index makes the migration append a
- *   writer-state record for an allocation that did not advance.
- *
- * @param {string} lastVersionFixture
- * @returns {Promise<void>}
- */
-async function normalizeMigrationSourceFixture(lastVersionFixture) {
-    const rendered = path.join(lastVersionFixture, "r");
-
-    for (const sublevel of ["counters", "inputs", "revdeps"]) {
-        await fs.rm(path.join(rendered, sublevel), { recursive: true, force: true });
-    }
-
-    const lastNodeIndex = JSON.parse(
-        await fs.readFile(path.join(rendered, "global", "last_node_index"), "utf8")
-    );
-    const statePath = path.join(rendered, "journal", "state");
-    const state = JSON.parse(await fs.readFile(statePath, "utf8"));
-    if (state.allocatorWatermark !== lastNodeIndex) {
-        state.allocatorWatermark = lastNodeIndex;
-        await fs.writeFile(statePath, JSON.stringify(state));
-    }
-}
-
 async function main() {
     const repoRoot = path.join(__dirname, "..");
     const tmpRoot = path.join(repoRoot, ".tmp", "migration-fixture-update");
@@ -78,7 +42,6 @@ async function main() {
     const lastVersionFixture = path.join(repoRoot, "backend/tests/mock-incremental-database-remote-populated-lastversion");
 
     await fs.writeFile(path.join(lastVersionFixture, DATABASE_SUBPATH, "r/global/version"), JSON.stringify("0.0.0-dev-previous"));
-    await normalizeMigrationSourceFixture(path.join(lastVersionFixture, DATABASE_SUBPATH));
 
     const capabilities = makeRootCapabilities();
     let seedCounter = 0;

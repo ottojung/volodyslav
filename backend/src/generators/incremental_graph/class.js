@@ -98,7 +98,7 @@ class IncrementalGraphClass {
     constructor(capabilities, rootDatabase, prepared) {
         this.graphScheme = prepared.graphScheme;
         this.headIndex = prepared.headIndex;
-        this.storage = makeGraphStorage(rootDatabase, capabilities.sleeper, capabilities.datetime);
+        this.storage = makeGraphStorage(rootDatabase, capabilities.sleeper);
         this.rootDatabase = rootDatabase;
         this.dbVersion = rootDatabase.getVersion();
         this.concreteInstantiations = makeConcreteNodeCache();

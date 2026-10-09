@@ -1,7 +1,3 @@
-const { tryValidateEvent } = require("../event");
-
-/** @typedef {import("../event/errors").TryDeserializeError} TryDeserializeError */
-
 /** @typedef {import("../event/id").EventId} EventId */
 /** @typedef {import("../event").Event} Event */
 /** @typedef {import("../event").Asset} Asset */
@@ -58,23 +54,10 @@ class EventLogStorageClass {
     }
 
     /**
-     * Queue an event and its assets for the graph update this transaction ends with.
-     *
-     * The entry is validated here, at the boundary where a producer's event enters
-     * the log, rather than at the Journal record layer which later serializes it:
-     * an event missing `original` or `input` is not an event, and persisting it
-     * would make the graph's `all_events` value a payload no current-version
-     * computed value can represent.
-     *
      * @param {Event} entry
      * @param {Array<Asset>} assets
-     * @throws {IncompleteEventError} If the entry is not a complete event.
      */
     addEntry(entry, assets) {
-        const problem = tryValidateEvent(entry);
-        if (problem !== undefined) {
-            throw new IncompleteEventError(problem);
-        }
         this.newEntries.push(entry);
         this.newAssets.push(...assets);
     }
@@ -149,31 +132,6 @@ class EventLogStorageClass {
     }
 }
 
-/**
- * Thrown when a producer queues an entry which is not a complete event.
- *
- * The offending field is carried as the cause's own `field`, so the caller reports
- * which part of the event was missing rather than that some event was.
- */
-class IncompleteEventError extends Error {
-    /**
-     * @param {TryDeserializeError} cause
-     */
-    constructor(cause) {
-        super(`Event log entry is not a complete event: ${cause.message}`);
-        this.name = "IncompleteEventError";
-        this.cause = cause;
-    }
-}
-
-/**
- * @param {unknown} object
- * @returns {object is IncompleteEventError}
- */
-function isIncompleteEventError(object) {
-    return object instanceof IncompleteEventError;
-}
-
 /** @typedef {InstanceType<typeof EventLogStorageClass>} EventLogStorage */
 
 /**
@@ -195,6 +153,4 @@ function isEventLogStorage(object) {
 module.exports = {
     make,
     isEventLogStorage,
-    IncompleteEventError,
-    isIncompleteEventError,
 };

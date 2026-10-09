@@ -8,9 +8,7 @@
  * - `_computed` is the injection of the durable database into memory (replica-
  *   derived runtime state). It holds `schemaStorage`, `identifierLookup`, etc.
  * - `_pendingAllocations` is ephemeral in-process state that lives outside
- *   `_computed` so it survives replica cutover. It is multi-owner: a live
- *   operation which needs a key another live operation already reserved joins
- *   that reservation and shares its identifier. See root_database.js.
+ *   `_computed` so it survives replica cutover. See root_database.js.
  * - A Transaction groups: batch (LevelDB batch accumulator with read-your-writes)
  *   + identifierLookup (working copy)
  * - createTransaction() reads _computed.identifierLookup and creates a fresh batch
@@ -26,29 +24,19 @@ const {
     IDENTIFIERS_KEY,
     LAST_NODE_INDEX_KEY,
     compareNodeIdentifier,
+    nodeIdentifierFromString,
     nodeIdentifierToString,
     makeTransactionIdentifierLookup,
     txAllocateNodeIdentifier,
+    txNodeIdToKey,
     txNodeKeyToId,
     serializeTransactionLookup,
     commitTransactionLookup,
-    requireTxNodeKey,
     ReplicaStateInvariantError,
 } = require('./database');
 const {
     darkroomActivity,
 } = require('./lock');
-const {
-    appendJournalPublicationOps,
-    readCommittedWriterState,
-} = require('./journal_store');
-const { finalizeEmission, makeJournalPublicationError } = require('./journal');
-const { makeTransactionJournal } = require('./journal_staging');
-const { appendValidMutationOps, applyValidMutations } = require('./validity_mutations');
-const { propagatePotentiallyOutdated } = require('./propagation');
-const { stageValueInvalidations } = require('./emit');
-
-/** @typedef {import('./validity_mutations').WithdrawnProof} WithdrawnProof */
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
@@ -56,19 +44,13 @@ const { stageValueInvalidations } = require('./emit');
 /** @typedef {import('./database/root_database').FreshnessDatabase} FreshnessDatabase */
 /** @typedef {import('./database/root_database').ValidDatabase} ValidDatabase */
 /** @typedef {import('./database/root_database').TimestampsDatabase} TimestampsDatabase */
-/** @typedef {import('./database/root_database').JournalDatabase} JournalDatabase */
 /** @typedef {import('./database/types').ComputedValue} ComputedValue */
 /** @typedef {import('./database/types').Freshness} Freshness */
 /** @typedef {import('./database/types').TimestampRecord} TimestampRecord */
 /** @typedef {import('./database/types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./database/types').NodeKeyString} NodeKeyString */
-/** @typedef {import('./database/node_key').NodeKey} NodeKey */
 /** @typedef {import('./database/identifier_lookup').TransactionIdentifierLookup} TransactionIdentifierLookup */
-/** @typedef {import('./journal/emission').EmissionIntent} EmissionIntent */
-/** @typedef {import('./journal/emission').MaterializeInput} MaterializeInput */
-/** @typedef {import('./journal/types').JournalRecordId} JournalRecordId */
 /** @typedef {import('../../sleeper').SleepCapability} SleepCapability */
-/** @typedef {import('../../datetime').Datetime} Datetime */
 
 /**
  * A validity mutation recorded by a graph transaction.
@@ -82,6 +64,45 @@ const { stageValueInvalidations } = require('./emit');
  * @typedef {object} ValidClearMutation
  * @property {"clear"} kind
  */
+
+/**
+ * Apply recorded validity mutations to the latest committed state and push
+ * the resulting put/del operations into the shared operations array.
+ * Used by both withTransaction() and withBatch().
+ *
+ * @param {SchemaStorage} activeSchemaStorage
+ * @param {Array<*>} operations
+ * @param {Map<string, Array<ValidMutation | ValidClearMutation>>} validMutations
+ * @returns {Promise<void>}
+ */
+async function appendValidMutationOps(activeSchemaStorage, operations, validMutations) {
+    if (validMutations.size === 0) {
+        return;
+    }
+    for (const [depIdStr, mutations] of validMutations.entries()) {
+        const depId = nodeIdentifierFromString(depIdStr);
+        let validSet = await activeSchemaStorage.valid.get(depId) ?? [];
+        for (const m of mutations) {
+            if (m.kind === "clear") {
+                validSet = [];
+            } else if (m.kind === "add") {
+                const depStr = nodeIdentifierToString(m.dependent);
+                if (!validSet.some(id => nodeIdentifierToString(id) === depStr)) {
+                    validSet.push(m.dependent);
+                }
+            } else if (m.kind === "remove") {
+                const depStr = nodeIdentifierToString(m.dependent);
+                validSet = validSet.filter(id => nodeIdentifierToString(id) !== depStr);
+            }
+        }
+        validSet.sort(compareNodeIdentifier);
+        if (validSet.length === 0) {
+            operations.push(activeSchemaStorage.valid.delOp(depId));
+        } else {
+            operations.push(activeSchemaStorage.valid.putOp(depId, validSet));
+        }
+    }
+}
 
 /**
  * @template TValue
@@ -110,25 +131,9 @@ const { stageValueInvalidations } = require('./emit');
  */
 
 /**
- * The Journal's half of one graph transaction: the semantic intents the settled
- * transition staged, and the value occurrences those intents validate against.
- *
- * Staging is what makes a publication's records members of the same atomic write as
- * the graph mutations they describe. Nothing here writes: `stage` only records an
- * intent, and the commit seam turns the staged intents into Journal operations of
- * the batch it is already about to issue.
- *
- * @typedef {object} TransactionJournal
- * @property {(intent: EmissionIntent) => void} stage - Record one settled semantic intent of the transition.
- * @property {(node: NodeKey) => Promise<MaterializeInput>} inputOccurrence - The occurrence a certificate of a node names for one of its current direct inputs.
- * @property {(node: NodeKey) => Promise<JournalRecordId>} requireCommittedOccurrence - The committed occurrence of a node, which a value-scoped record of this transition must name.
- * @property {() => ReadonlyArray<EmissionIntent>} staged - The intents recorded so far, in no particular order.
- */
-
-/**
- * A Transaction groups reads and writes for one user-visible graph operation.
- * It is deliberately minimal — one user operation owns exactly one Transaction.
- * Reserved identifiers and other per-operation state are managed
+ * A Transaction groups reads and writes for one graph operation.
+ * It is deliberately minimal — each pull call creates its own Transaction.
+ * Reserved identifiers and other per-pull state are managed
  * by the caller (pullNode / invalidate), not by the Transaction.
  *
  * - batch: LevelDB batch accumulator with read-your-writes overlay.
@@ -136,33 +141,10 @@ const { stageValueInvalidations } = require('./emit');
  *   read-only reference to the committed `_computed.identifierLookup`.
  *   At commit time the overlay is applied to the base in-place after a
  *   successful disk flush (disk-first invariant).
- * - journal: the semantic intents whose Journal records the same commit publishes.
  *
  * @typedef {object} Transaction
  * @property {BatchBuilder} batch - LevelDB batch accumulator with read-your-writes.
  * @property {TransactionIdentifierLookup} identifierLookup - Overlay-based identifier lookup.
- * @property {TransactionJournal} journal - The staged Journal half of the transaction.
- */
-
-/**
- * One user-visible graph operation, together with the single Transaction whose
- * commit publishes both the graph mutations and their Journal records.
- *
- * The properties that this class carries are:
- * - Every graph write the operation performs is an operation of `transaction`'s
- *   batch, and every semantic effect of those writes is a staged intent of
- *   `transaction`'s journal, so one commit publishes both sides together.
- *
- * The proof of those properties is guaranteed by:
- * - This class can only be introduced through these functions:
- *   - `withUserOperation(fn)`: satisfies the property because it creates the one
- *     transaction the operation uses, hands that transaction to `fn`, and commits
- *     it exactly once when `fn` returns.
- *   - `withTransaction(fn)`: satisfies the property because it is `withUserOperation`
- *     with the transaction's own value as the operation's value.
- *
- * @typedef {object} UserOperation
- * @property {Transaction} transaction - The one transaction the operation publishes through.
  */
 
 /**
@@ -173,7 +155,6 @@ const { stageValueInvalidations } = require('./emit');
  * @property {TimestampsDatabase} timestamps - Identifier-keyed timestamps.
  * @property {<T>(fn: (batch: BatchBuilder) => Promise<T>) => Promise<T>} withBatch - Run atomically against all graph sublevels (no identifier tracking).
  * @property {<T>(fn: (tx: Transaction) => Promise<{value: T}>) => Promise<T>} withTransaction - Run atomically with read-your-writes batching and commit publication.
- * @property {<T>(fn: (operation: UserOperation) => Promise<T>) => Promise<T>} withUserOperation - Run one user-visible operation whose whole graph transition and Journal publication commit as one atomic write.
  * @property {(node: NodeIdentifier, batch: BatchBuilder) => Promise<NodeIdentifier[]>} getValid - Read a node's valid set inside the current batch.
  * @property {() => Promise<NodeIdentifier[]>} listMaterializedNodes - List materialized node identifiers from value storage.
  * @property {<T>(procedure: () => Promise<T>) => Promise<T>} withCommitSnapshot - Run a read while darkroom publication is paused.
@@ -229,10 +210,6 @@ function makeSublevelBatch(db, operations) {
  * against the latest committed state under the darkroom lock at commit time
  * to prevent lost updates from concurrent graph transactions.
  *
- * A clear withdraws every committed dependent of the set it clears, so
- * `put` and `del` record a clear and then the `add` for each element they mean
- * to establish.
- *
  * @param {{ get: (key: NodeIdentifier) => Promise<NodeIdentifier[] | undefined>, putOp: (key: NodeIdentifier, value: NodeIdentifier[]) => object, delOp: (key: NodeIdentifier) => object }} db
  * @param {Map<string, Array<ValidMutation | ValidClearMutation>>} validMutations
  * @returns {ValidBatchOps}
@@ -258,11 +235,30 @@ function makeValidBatchOps(db, validMutations) {
             muts.push({ kind: "remove", dependent: dependentId });
         },
         clear(depId) {
-            validMutations.set(nodeIdentifierToString(depId), [{ kind: "clear" }]);
+            const k = nodeIdentifierToString(depId);
+            validMutations.set(k, [{ kind: "clear" }]);
         },
         async get(depId) {
             const k = nodeIdentifierToString(depId);
-            return applyValidMutations(await db.get(depId) ?? [], validMutations.get(k) ?? []);
+            const muts = validMutations.get(k);
+            let result = await db.get(depId) ?? [];
+            if (muts) {
+                for (const m of muts) {
+                    if (m.kind === "clear") {
+                        result = [];
+                    } else if (m.kind === "add") {
+                        const depStr = nodeIdentifierToString(m.dependent);
+                        if (!result.some(id => nodeIdentifierToString(id) === depStr)) {
+                            result.push(m.dependent);
+                        }
+                    } else if (m.kind === "remove") {
+                        const depStr = nodeIdentifierToString(m.dependent);
+                        result = result.filter(id => nodeIdentifierToString(id) !== depStr);
+                    }
+                }
+                result.sort(compareNodeIdentifier);
+            }
+            return result;
         },
         put(depId, value) {
             this.clear(depId);
@@ -302,85 +298,12 @@ function createBatch(schemaStorage) {
 }
 
 /**
- * Publish the staleness of every committed proof the transaction's clears withdrew.
- *
- * A withdrawal recorded by `recompute.js` is not complete when the validity edge is
- * gone: a dependent which published a value is `up-to-date`, and the pull fast path
- * serves an `up-to-date` node its stored value without consulting any validity state.
- * A dependent left without a proof and left `up-to-date` therefore keeps answering
- * with the value it computed against the superseded occurrence.
- *
- * The withdrawal is resolved here, at the commit seam, against the latest committed
- * state, so this is the one place which knows both which committed dependents the
- * clear withdrew and which occurrence the publication supersedes. The staleness is
- * written to the same batch as the withdrawal, so a withdrawn proof is never durable
- * while its dependent still claims to be up to date, and it is staged as an
- * `invalidate-value` intent of the same transaction, so the record that explains the
- * staleness publishes with it.
- *
- * Propagation is over the withdrawn dependents and their dependents, and mutates no
- * validity edge: it states which occurrences became stale, nothing about which
- * proofs hold.
- *
- * @param {GraphStorage} storage
- * @param {BatchBuilder} batch
- * @param {Array<WithdrawnProof>} withdrawn
- * @param {Transaction} [tx] - The transaction whose Journal records the staleness. Absent for a bare batch, which stages no records.
- * @returns {Promise<Array<WithdrawnProof>>} The withdrawn proofs which were up-to-date.
- */
-async function publishWithdrawnProofs(storage, batch, withdrawn, tx) {
-    if (withdrawn.length === 0) {
-        return [];
-    }
-    const seeds = withdrawn.map(proof => proof.dependent);
-    const transitioned = await propagatePotentiallyOutdated(storage, batch, seeds);
-    /** @type {Set<string>} */
-    const transitionedStrings = new Set(transitioned.map(id => nodeIdentifierToString(id)));
-    /** @type {Array<WithdrawnProof>} */
-    const becameStale = withdrawn.filter(
-        proof => transitionedStrings.has(nodeIdentifierToString(proof.dependent))
-    );
-    if (tx !== undefined && becameStale.length > 0) {
-        for (const cause of groupByDependency(becameStale)) {
-            await stageValueInvalidations(
-                tx,
-                requireTxNodeKey(tx.identifierLookup, cause.dependency),
-                cause.dependents
-            );
-        }
-    }
-    return becameStale;
-}
-
-/**
- * Group withdrawn proofs by the dependency whose value occurrence their publication
- * superseded, preserving canonical order within each group.
- * @param {Array<WithdrawnProof>} withdrawn
- * @returns {Array<{dependency: NodeIdentifier, dependents: Array<NodeIdentifier>}>}
- */
-function groupByDependency(withdrawn) {
-    /** @type {Map<string, {dependency: NodeIdentifier, dependents: Array<NodeIdentifier>}>} */
-    const groups = new Map();
-    for (const proof of withdrawn) {
-        const key = nodeIdentifierToString(proof.dependency);
-        const existing = groups.get(key);
-        if (existing === undefined) {
-            groups.set(key, { dependency: proof.dependency, dependents: [proof.dependent] });
-        } else {
-            existing.dependents.push(proof.dependent);
-        }
-    }
-    return [...groups.values()].sort((a, b) => compareNodeIdentifier(a.dependency, b.dependency));
-}
-
-/**
  * Create the identifier-native graph storage facade for one schema namespace.
  * @param {RootDatabase} rootDatabase
  * @param {SleepCapability} sleeper
- * @param {Datetime} datetime
  * @returns {GraphStorage}
  */
-function makeGraphStorage(rootDatabase, sleeper, datetime) {
+function makeGraphStorage(rootDatabase, sleeper) {
     /**
      * @returns {Promise<NodeIdentifier[]>}
      */
@@ -412,8 +335,7 @@ function makeGraphStorage(rootDatabase, sleeper, datetime) {
             const result = await fn(batch);
 
             await darkroomActivity(sleeper, rootDatabase.currentReplicaName(), async () => {
-                const withdrawn = await appendValidMutationOps(activeSchemaStorage, operations, validMutations);
-                await publishWithdrawnProofs(this, batch, withdrawn);
+                await appendValidMutationOps(activeSchemaStorage, operations, validMutations);
                 if (operations.length > 0) {
                     await activeSchemaStorage.batch(operations);
                 }
@@ -463,55 +385,34 @@ function makeGraphStorage(rootDatabase, sleeper, datetime) {
          * awaits inside the transaction body.  The commit finalisation
          * acquires the per-replica darkroom lock internally.
          *
-         * A user operation is the unit of atomic publication: one transaction, one
-         * batch, and therefore one atomic write carrying the graph mutations, the
-         * identifier table, the allocation watermark, the Journal records and the
-         * Journal committed-pair metadata together. A graph transition which staged no
-         * Journal intent is refused rather than published without the records that
-         * describe it.
-         *
          * @template T
-         * @param {(operation: UserOperation) => Promise<T>} fn
+         * @param {(tx: Transaction) => Promise<{value: T}>} fn
          * @returns {Promise<T>}
          */
-        async withUserOperation(fn) {
+        async withTransaction(fn) {
             const activeSchemaStorage = rootDatabase.getSchemaStorage();
             const txLookup = makeTransactionIdentifierLookup(rootDatabase.getActiveIdentifierLookup());
             const { batch, operations, validMutations } = createBatch(activeSchemaStorage);
-            const journal = makeTransactionJournal(activeSchemaStorage.journal);
 
             /** @type {Transaction} */
-            const tx = { batch, identifierLookup: txLookup, journal };
+            const tx = { batch, identifierLookup: txLookup };
 
             try {
-                /** @type {UserOperation} */
-                const operation = { transaction: tx };
-                const value = await fn(operation);
+                const result = await fn(tx);
+                const value = result.value;
 
                 await darkroomActivity(sleeper, rootDatabase.currentReplicaName(), async () => {
-                    const withdrawn = await appendValidMutationOps(activeSchemaStorage, operations, validMutations);
-                    await publishWithdrawnProofs(this, batch, withdrawn, tx);
+                    await appendValidMutationOps(activeSchemaStorage, operations, validMutations);
 
                     const hasPendingOperations = operations.length > 0;
                     const hasPendingAllocations = tx.identifierLookup.keyToId.size > 0;
-                    const stagedIntents = journal.staged();
 
-                    if (!hasPendingOperations && !hasPendingAllocations && stagedIntents.length === 0) {
+                    if (!hasPendingOperations && !hasPendingAllocations) {
                         return;
                     }
 
-                    if (hasPendingOperations && stagedIntents.length === 0) {
-                        throw makeJournalPublicationError(
-                            "the graph transition wrote " + operations.length +
-                                " operation(s) but staged no journal intent, so it would be " +
-                                "durable without the journal records that describe it"
-                        );
-                    }
-
-                    /** @type {number | undefined} */
-                    let commitLastNodeIndex;
                     if (hasPendingAllocations) {
-                        commitLastNodeIndex = rootDatabase.getCurrentAllocationWatermark();
+                        const commitLastNodeIndex = rootDatabase.getCurrentAllocationWatermark();
                         operations.push(
                             activeSchemaStorage.global.putOp(
                                 IDENTIFIERS_KEY,
@@ -524,66 +425,24 @@ function makeGraphStorage(rootDatabase, sleeper, datetime) {
                                 commitLastNodeIndex
                             )
                         );
-                    }
 
-                    if (stagedIntents.length > 0) {
-                        const committed = await readCommittedWriterState(
-                            activeSchemaStorage.journal,
-                            rootDatabase.getFingerprint()
-                        );
-                        if (committed instanceof Error) {
-                            throw committed;
-                        }
-                        const publication = finalizeEmission({
-                            state: committed,
-                            intents: stagedIntents,
-                            publicationInstant: datetime.now().toMillis(),
-                            allocatorWatermark: commitLastNodeIndex ?? committed.allocatorWatermark,
-                        });
-                        if (publication instanceof Error) {
-                            throw publication;
-                        }
-                        const rejected = appendJournalPublicationOps(
-                            activeSchemaStorage.journal,
-                            operations,
-                            publication
-                        );
-                        if (rejected !== undefined) {
-                            throw rejected;
-                        }
-                    }
+                        await activeSchemaStorage.batch(operations);
 
-                    await activeSchemaStorage.batch(operations);
-
-                    if (hasPendingAllocations && commitLastNodeIndex !== undefined) {
                         commitTransactionLookup(tx.identifierLookup);
                         rootDatabase.advanceLastNodeIndex(commitLastNodeIndex);
+                    } else {
+                        await activeSchemaStorage.batch(operations);
                     }
                 });
 
                 return value;
             } finally {
-                // Give up this operation's hold on every identifier reservation it
-                // took, whether it minted the identifier or joined another live
-                // operation's reservation for the same key. After a successful
-                // commit the identifiers are in the base lookup; after a failure
-                // the holds must be given up so the map does not leak. A reservation
-                // whose last holder gives it up here disappears, and one which
-                // another operation still holds survives for that operation.
+                // Release identifier reservations owned by this transaction.
+                // After a successful commit the identifiers are in the base
+                // lookup; after a failure they must be released so the map
+                // does not leak.
                 rootDatabase.releaseIdentifierReservations(txLookup.ownedKeys);
             }
-        },
-        /**
-         * One user operation whose whole transition is one transaction.
-         * @template T
-         * @param {(tx: Transaction) => Promise<{value: T}>} fn
-         * @returns {Promise<T>}
-         */
-        async withTransaction(fn) {
-            return this.withUserOperation(async (operation) => {
-                const result = await fn(operation.transaction);
-                return result.value;
-            });
         },
         /**
          * @param {NodeIdentifier} node
@@ -612,14 +471,13 @@ function lookupNodeIdentifier(tx, nodeKey) {
 }
 
 /**
- * Look up an existing identifier or reserve one for a node key.
- * New reservations are recorded only in the transaction's overlay, not in the
+ * Look up an existing identifier or allocate a new one for a node key.
+ * New allocations are recorded only in the transaction's overlay, not in the
  * committed base lookup. They become part of the base only after a successful
  * disk flush via `commitTransactionLookup`.
  *
- * Reservation is delegated to `rootDatabase._allocateKeyIdentifier`, which
- * claims a key→identifier mapping in `_pendingAllocations` or joins a live one
- * another operation already holds for the same key.
+ * Allocation is delegated to `rootDatabase._allocateKeyIdentifier` which
+ * claims a key→identifier mapping in `_pendingAllocations`.
  *
  * @param {Transaction} tx
  * @param {RootDatabase} rootDatabase
@@ -648,7 +506,11 @@ function getOrAllocateNodeIdentifier(tx, rootDatabase, nodeKey) {
  * @returns {NodeKeyString}
  */
 function requireNodeKey(tx, nodeIdentifier) {
-    return requireTxNodeKey(tx.identifierLookup, nodeIdentifier);
+    const nodeKey = txNodeIdToKey(tx.identifierLookup, nodeIdentifier);
+    if (nodeKey === undefined) {
+        throw new Error(`Missing semantic node key for identifier ${nodeIdentifierToString(nodeIdentifier)}`);
+    }
+    return nodeKey;
 }
 
 module.exports = {

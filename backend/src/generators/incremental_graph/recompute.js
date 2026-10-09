@@ -39,7 +39,6 @@ const { lookupNodeIdentifier } = require("./graph_state");
 const { normalizeInputEdges } = require("./database");
 const { propagatePotentiallyOutdated } = require("./propagation");
 const { removeIncomingValidity } = require("./validity");
-const { stageMaterialization, stageRevalidation, stageValueInvalidations } = require("./emit");
 
 /**
  * Return true when every dependency in inputEdges has a validity flag for N.
@@ -77,16 +76,15 @@ function addIncomingValidity(batch, nId, inputEdges) {
 
 /**
  * Handle Unchanged computor result: add validity flags and preserve valid[N].
- * @param {ResolvedConcreteNode} nodeDefinition
+ * @param {IncrementalGraphRecomputeAccess} _incrementalGraph
  * @param {NodeIdentifier} nodeIdentifier
  * @param {NodeIdentifier[]} inputEdges
- * @param {Transaction} tx
+ * @param {BatchBuilder} batch
  * @returns {Promise<void>}
  */
-async function handleUnchanged(nodeDefinition, nodeIdentifier, inputEdges, tx) {
-    addIncomingValidity(tx.batch, nodeIdentifier, inputEdges);
-    tx.batch.freshness.put(nodeIdentifier, "up-to-date");
-    await stageRevalidation(tx, nodeDefinition.outputKey, inputEdges);
+async function handleUnchanged(_incrementalGraph, nodeIdentifier, inputEdges, batch) {
+    addIncomingValidity(batch, nodeIdentifier, inputEdges);
+    batch.freshness.put(nodeIdentifier, "up-to-date");
 }
 
 /**
@@ -96,39 +94,19 @@ async function handleUnchanged(nodeDefinition, nodeIdentifier, inputEdges, tx) {
  * against the latest committed state at commit time to prevent lost
  * updates when concurrent transactions modify overlapping validity sets.
  *
- * `downstream` is this transaction's view of the outgoing set, which includes
- * the adds it already recorded for this node, so it may name a dependent the
- * committed set does not hold. The clear is not scoped to it: a clear empties
- * the set, so it withdraws strictly more than the propagation walked. The
- * extra withdrawal is the conservative direction — a dependent left without a
- * proof recomputes rather than revalidating a cache.
- *
- * The propagation is scoped to what this transaction read, and that is the
- * limit of what a staleness notification from here can reach: a dependent which
- * another transaction commits against the value occurrence this transaction is
- * about to supersede is not in `downstream` and is not marked stale here. That
- * dependent is not lost. The clear withdraws its proof regardless, and the
- * commit seam resolves the clear against the latest committed state under the
- * publication lock, so it marks every dependent the clear withdrew potentially
- * outdated in the same atomic write (`publishWithdrawnProofs` in
- * `graph_state.js`). Marking it here would not be correct: at this point the
- * transaction does not yet know which committed dependents its clear withdraws.
- *
  * @param {IncrementalGraphRecomputeAccess} incrementalGraph
- * @param {ResolvedConcreteNode} nodeDefinition
  * @param {NodeIdentifier} nodeIdentifier
  * @param {NodeIdentifier[]} inputEdges
  * @param {ComputedValue} newValue
  * @param {boolean} alreadyMaterialized
- * @param {Transaction} tx
+ * @param {BatchBuilder} batch
  * @returns {Promise<void>}
  */
-async function handleChanged(incrementalGraph, nodeDefinition, nodeIdentifier, inputEdges, newValue, alreadyMaterialized, tx) {
-    const batch = tx.batch;
+async function handleChanged(incrementalGraph, nodeIdentifier, inputEdges, newValue, alreadyMaterialized, batch) {
     removeIncomingValidity(batch, nodeIdentifier, inputEdges);
     const downstream = await batch.valid.get(nodeIdentifier);
     batch.valid.clear(nodeIdentifier);
-    const becameStale = await propagatePotentiallyOutdated(incrementalGraph.storage, batch, downstream);
+    await propagatePotentiallyOutdated(incrementalGraph.storage, batch, downstream);
     const datetime = incrementalGraph.datetime;
     const nowIso = datetime.now().toISOString();
     batch.values.put(nodeIdentifier, newValue);
@@ -152,20 +130,6 @@ async function handleChanged(incrementalGraph, nodeDefinition, nodeIdentifier, i
 
     addIncomingValidity(batch, nodeIdentifier, inputEdges);
     batch.freshness.put(nodeIdentifier, "up-to-date");
-    const timestamps = await batch.timestamps.get(nodeIdentifier);
-    if (timestamps === undefined) {
-        throw new ReplicaStateInvariantError("pull", "has no timestamps entry", nodeIdentifierToString(nodeIdentifier));
-    }
-    await stageMaterialization(
-        tx,
-        nodeDefinition.outputKey,
-        nodeIdentifier,
-        inputEdges,
-        newValue,
-        timestamps.createdAt,
-        timestamps.modifiedAt
-    );
-    await stageValueInvalidations(tx, nodeDefinition.outputKey, becameStale);
 }
 
 /**
@@ -221,14 +185,7 @@ async function internalMaybeRecalculate(
     if (oldValue !== undefined && inputEdges.length > 0) {
         const allPresent = await allIncomingValidityPresent(batch, nodeIdentifier, inputEdges);
         if (allPresent) {
-            const previousFreshness = await batch.freshness.get(nodeIdentifier);
             batch.freshness.put(nodeIdentifier, "up-to-date");
-            if (previousFreshness !== "up-to-date") {
-                // A cache read which changes no persisted state authors no record; a read
-                // which restores a stale node to fresh is a semantic change, so it is
-                // explained by a certificate for the occurrence it kept.
-                await stageRevalidation(tx, nodeDefinition.outputKey, inputEdges);
-            }
             return { value: oldValue, status: "cached" };
         }
     }
@@ -250,7 +207,7 @@ async function internalMaybeRecalculate(
     // establish up-to-date freshness and timestamps.
 
     if (isUnchanged(computedValue)) {
-        await handleUnchanged(nodeDefinition, nodeIdentifier, inputEdges, tx);
+        await handleUnchanged(incrementalGraph, nodeIdentifier, inputEdges, batch);
 
         const result = await batch.values.get(nodeIdentifier);
         if (result === undefined) {
@@ -259,7 +216,7 @@ async function internalMaybeRecalculate(
         return { value: result, status: "unchanged" };
     }
 
-    await handleChanged(incrementalGraph, nodeDefinition, nodeIdentifier, inputEdges, computedValue, nodeDefinition.alreadyMaterialized, tx);
+    await handleChanged(incrementalGraph, nodeIdentifier, inputEdges, computedValue, nodeDefinition.alreadyMaterialized, batch);
     return { value: computedValue, status: "changed" };
 }
 

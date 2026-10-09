@@ -42,9 +42,9 @@ Reset requires:
 
 Compatibility metadata must come from the same held `JournalSnapshot` used to derive the target and import source records. Reset does not rescan historical overlap merely to re-prove the fork-free lifecycle theorem.
 
-The shared own-writer rollback condition is defined by `database-lifecycle.md` §5. If the held source snapshot is ahead for the receiver's own writer, `resetTo()` fails `JournalWriterBehindError` before import/authorship and leaves the active receiver unchanged. If conflicting same-ID evidence is actually encountered during bounded validation or explicit maintenance, that evidence is unsupported corruption and is rejected as `JournalForkError`.
+The shared own-writer rollback condition is defined by `incremental-graph-journal-lifecycle.md` §5. If the held source snapshot is ahead for the receiver's own writer, `resetTo()` fails `JournalWriterBehindError` before import/authorship and leaves the active receiver unchanged. If conflicting same-ID evidence is actually encountered during bounded validation or explicit maintenance, that evidence is unsupported corruption and is rejected as `JournalForkError`.
 
-An installation with no local database/writer identity uses the absent-state restoration lifecycle in `database-lifecycle.md`; `resetTo()` does not invent a local writer identity for an absent receiver.
+An installation with no local database/writer identity uses the absent-state restoration lifecycle in `incremental-graph-journal-lifecycle.md`; `resetTo()` does not invent a local writer identity for an absent receiver.
 
 ## Source target
 
@@ -376,29 +376,6 @@ ValueIds are intentionally excluded from source-projection equality. For each ta
 
 The equivalence is stable under later ordinary `Unchanged` revalidation of an upstream input: a dependent which reset established as persistently stale does not become fresh unless that dependent itself later validates/recomputes.
 
-## Writer identity
-
-A reset receiver retains its own `DatabaseFingerprint`.
-
-Let R be the receiver's own writer identity before reset. Then:
-
-```text
-localWriter_after_reset == R
-```
-
-for every record the receiver authors in reset's Passes 1–3 and for every record the receiver authors afterwards. Because `JournalAuthor = DatabaseFingerprint` and `JournalRecordId.author` is the leading coordinate of every record id (`incremental-graph-journal-types.md` §Primitive identities), this is the statement that reset authors under its own writer and never under a foreign one, as `incremental-graph-journal-theorems.md` Law 8 requires.
-
-Import transfers history, not identity. Every imported record retains its original `JournalAuthor`, as required above in §First retain the observed history and by `database-lifecycle.md` §5; an imported record is never rewritten to carry the receiver's own writer, and holding imported history never makes the receiver its author.
-
-Adoption of the source's writer identity happens if and only if the receiver is completely absent, and then only through the absent-state restoration lifecycle, not through reset:
-
-- a completely absent local database restores `localWriter_after_restore == S.localWriter` under `incremental-graph-journal-theorems.md` Law 10, whose precondition is "the local database is completely absent" and which `database-lifecycle.md` §4 orders before any new `DatabaseFingerprint` is generated;
-- an already-existing receiver is not in that path, so adoption there is inadmissible, not merely disfavoured: `database-lifecycle.md` §10 states that a completely absent installation does not use reset, and `database-lifecycle.md` §5 states that two independently live installations intentionally authoring under one fingerprint are unsupported.
-
-Consequently the receiver is a distinct identity which holds imported history, and its writer namespace stays coherent: its `DatabaseFingerprint` and its local allocator index are both receiver-local, per `incremental-graph-journal-types.md` §NodeIdentifier uniqueness basis. A conforming implementation therefore persists the receiver's pre-import fingerprint into the activated replica's global sublevel before the active replica switch, rather than letting the imported replica's fingerprint become the receiver's identity.
-
-This rule is the normative Journal 3 statement of the receiver-identity behavior previously described only in the pre-Journal `incremental-graph-fingerprint.md`; that file is a pointer to this section and is scheduled for rewrite per `incremental-graph-journal-checklist.md` §16a.
-
 ## Allocation watermark
 
 Reset does not adopt the source writer's allocation watermark.
@@ -427,7 +404,7 @@ not:
 
 ## Own-writer rollback boundary
 
-Reset uses the shared boundary in `database-lifecycle.md` §5; no additional reset-specific recovery semantics exist.
+Reset uses the shared boundary in `incremental-graph-journal-lifecycle.md` §5; no additional reset-specific recovery semantics exist.
 
 ## Repeat-reset idempotence
 

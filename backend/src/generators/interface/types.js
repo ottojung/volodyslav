@@ -41,16 +41,6 @@
  * @property {AITranscription} aiTranscription - AI transcription capability.
  * @property {NonDeterministicSeed} seed - A random number generator instance.
  * @property {import('../../generators').Interface} interface - The incremental graph interface capability.
- * @property {import('../incremental_graph/journal').CohortBootstrapSource} [cohortBootstrapSource] -
- *   The configured transport-neutral canonical bootstrap source, which is deployment
- *   configuration rather than persisted database state. Absent means the deployment
- *   configures none, which is fail-closed for a supported pre-Journal replica.
- * @property {import('../incremental_graph/journal_recovery_source').InstallationRecoverySource} [installationRecoverySource] -
- *   The configured transport-neutral installation recovery source, which answers whether
- *   recoverable synchronized state exists for a completely absent local database. It is
- *   deployment configuration rather than persisted database state, so it is absent unless a
- *   deployment supplies it, and an absent local database without one fails startup rather
- *   than creates fresh state.
  */
 
 module.exports = {};

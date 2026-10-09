@@ -44,10 +44,6 @@ Bootstrap therefore does not execute ordinary semantic migration decisions befor
 
 If reaching the proposed bootstrap target would require such a transformation, that source/target pair is unsupported and startup fails `JournalVersionCompatibilityError` before authoring bootstrap history.
 
-The same rule applies to the source's persisted identifiers. Bootstrap preserves NodeIdentifiers exactly, so a supported pre-Journal source is one whose persisted `identifiers_keys_map` entries are in the supported NodeIdentifier domain of `incremental-graph-journal-types.md` §Persisted identifier form across the bootstrap and migration boundary — which is the domain of the allocation rules of the eras a supported source may have been minted by, not only the current one. A source replica holding a persisted identifier outside that domain is unsupported and fails `JournalVersionCompatibilityError` before Pass C1 authors any history. It is not repaired by re-minting: re-minting an identifier changes the identity of a materialized node, which is a semantic migration decision that bootstrap is defined not to make (§1).
-
-Bootstrap therefore has a well-defined supported-source boundary, and reaching it is a compatibility question rather than a data-repair question.
-
 Actual graph/schema/representation migration happens either:
 
 - before entering the supported pre-Journal source state, using software which owns that older transition; or
@@ -176,8 +172,6 @@ ValueEvent {
 ```
 
 Call its ID `bootstrapValueId(K)`.
-
-`legacyNodeIdentifier(K)` is the identifier string the source replica already persists for K, transported unchanged. Pass C1 does not mint a replacement, re-spell, or normalize it, and it does not fail one identifier and substitute a fresh allocation for that node: substituting would silently change which physical identity a materialized node has, and would leave the retained history naming a node the source replica no longer describes. A source whose persisted identifiers are outside the supported NodeIdentifier domain is rejected as a whole under §1, before Pass C1 runs.
 
 All canonical ValueEvents precede canonical validation events.
 
@@ -591,7 +585,7 @@ The normative codec contract and rewrite pipeline are in §9a. In summary, the r
 2. applies deterministic `rewriteNodeKey` to every embedded NodeKey;
 3. requires `rewriteNodeKey` to be injective over the complete supported source-version NodeKey semantic domain, independent of which keys this replica retains, so two historical semantic nodes cannot collapse onto one target key after independent migrations;
 4. applies deterministic `rewriteComputedValue` to every retained ValueEvent payload;
-5. preserves Journal IDs, sequence, causal/reference identity, AuthorityTime meaning, NodeIdentifiers, and timestamps, where preserving a NodeIdentifier means transporting its persisted text unchanged and never re-minting it (see §1 and `incremental-graph-journal-types.md` §Persisted identifier form across the bootstrap and migration boundary);
+5. preserves Journal IDs, sequence, causal/reference identity, AuthorityTime meaning, NodeIdentifiers, and timestamps;
 6. re-canonicalizes target structures, including re-sorting ValidationBasis entries by target canonical NodeKey order; and
 7. encodes under the target version.
 

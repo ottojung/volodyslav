@@ -19,7 +19,6 @@ const {
 } = require("./test_database_helper");
 const { stubLogger, stubEnvironment } = require("./stubs");
 const { toJsonKey } = require("./test_json_key_helper");
-const { countComputedValue, numberComputedValue, textComputedValue } = require("./computed_value_fixture");
 
 /**
  * @typedef {import('../src/generators/incremental_graph/database/types').DatabaseCapabilities} DatabaseCapabilities
@@ -178,7 +177,7 @@ describe("generators/incremental_graph", () => {
                     output: "input1",
                     inputs: [],
                     computor: (inputs, oldValue, _bindings) =>
-                        oldValue || textComputedValue("new_data"),
+                        oldValue || { data: "new_data" },
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -186,7 +185,7 @@ describe("generators/incremental_graph", () => {
                     output: "output1",
                     inputs: ["input1"],
                     computor: (inputs, _oldValue, _bindings) => {
-                        return textComputedValue(inputs[0].description + "_processed");
+                        return { data: inputs[0].data + "_processed" };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -197,16 +196,16 @@ describe("generators/incremental_graph", () => {
 
             const testDb = makeTestDatabase(graph);
 
-            await testDb.put("input1", textComputedValue("new_data"));
+            await testDb.put("input1", { data: "new_data" });
             await testDb.put(freshnessKey("input1"), "potentially-outdated");
 
-            await testDb.put("output1", textComputedValue("old_result"));
+            await testDb.put("output1", { data: "old_result" });
             await testDb.put(freshnessKey("output1"), "potentially-outdated");
 
             const result = await graph.pull("output1");
 
             // Should have recomputed with new input
-            expect(result.description).toBe("new_data_processed");
+            expect(result.data).toBe("new_data_processed");
 
             // Both input and output should now be clean
             const input1Freshness = await graph.getFreshness("input1");
@@ -225,7 +224,7 @@ describe("generators/incremental_graph", () => {
 
             const testDb = makeTestDatabase(graph);
 
-            await testDb.put("standalone", textComputedValue("standalone_value"));
+            await testDb.put("standalone", { data: "standalone_value" });
 
             await expect(graph.pull("standalone")).rejects.toThrow(
                 "not found in the incremental graph."
@@ -248,7 +247,7 @@ describe("generators/incremental_graph", () => {
                     output: "input1",
                     inputs: [],
                     computor: (inputs, oldValue, _bindings) =>
-                        oldValue || textComputedValue("test"),
+                        oldValue || { data: "test" },
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -267,15 +266,15 @@ describe("generators/incremental_graph", () => {
 
             const testDb = makeTestDatabase(graph);
 
-            await testDb.put("input1", textComputedValue("test"));
+            await testDb.put("input1", { data: "test" });
             await testDb.put(freshnessKey("input1"), "potentially-outdated");
-            await testDb.put("output1", textComputedValue("existing_value"));
+            await testDb.put("output1", { data: "existing_value" });
             await testDb.put(freshnessKey("output1"), "up-to-date");
 
             const result = await graph.pull("output1");
 
             // Should keep existing value and mark as clean
-            expect(result.description).toBe("existing_value");
+            expect(result.data).toBe("existing_value");
             const output1Freshness = await graph.getFreshness("output1");
             expect(output1Freshness).toBe("up-to-date");
 
@@ -290,7 +289,7 @@ describe("generators/incremental_graph", () => {
                 {
                     output: "input1",
                     inputs: [],
-                    computor: (inputs, oldValue, _bindings) => oldValue || countComputedValue(1),
+                    computor: (inputs, oldValue, _bindings) => oldValue || { count: 1 },
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -299,7 +298,7 @@ describe("generators/incremental_graph", () => {
                     inputs: ["input1"],
                     computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("level1");
-                        return countComputedValue(inputs[0].count + 1);
+                        return { count: inputs[0].count + 1 };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -309,7 +308,7 @@ describe("generators/incremental_graph", () => {
                     inputs: ["level1"],
                     computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("level2");
-                        return countComputedValue(inputs[0].count + 1);
+                        return { count: inputs[0].count + 1 };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -319,7 +318,7 @@ describe("generators/incremental_graph", () => {
                     inputs: ["level2"],
                     computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("level3");
-                        return countComputedValue(inputs[0].count + 1);
+                        return { count: inputs[0].count + 1 };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -330,13 +329,13 @@ describe("generators/incremental_graph", () => {
 
             const testDb = makeTestDatabase(graph);
 
-            await testDb.put("input1", countComputedValue(1));
+            await testDb.put("input1", { count: 1 });
             await testDb.put(freshnessKey("input1"), "potentially-outdated");
-            await testDb.put("level1", countComputedValue(10));
+            await testDb.put("level1", { count: 10 });
             await testDb.put(freshnessKey("level1"), "potentially-outdated");
-            await testDb.put("level2", countComputedValue(20));
+            await testDb.put("level2", { count: 20 });
             await testDb.put(freshnessKey("level2"), "potentially-outdated");
-            await testDb.put("level3", countComputedValue(30));
+            await testDb.put("level3", { count: 30 });
             await testDb.put(freshnessKey("level3"), "potentially-outdated");
             const computeCalls = [];
 
@@ -370,7 +369,7 @@ describe("generators/incremental_graph", () => {
 
             const computeCalls = [];
 
-            const input1Cell = { value: countComputedValue(1) };
+            const input1Cell = { value: { count: 1 } };
 
             const graphDef = [
                 {
@@ -386,7 +385,7 @@ describe("generators/incremental_graph", () => {
                     computor: (inputs, oldValue) => {
                         computeCalls.push("level1");
                         if (!oldValue) {
-                            return countComputedValue(2)  // First time: return actual value;
+                            return { count: 2 }; // First time: return actual value
                         }
                         return makeUnchanged(); // Subsequent times: return Unchanged
                     },
@@ -399,7 +398,7 @@ describe("generators/incremental_graph", () => {
                     computor: (inputs, oldValue) => {
                         computeCalls.push("level2");
                         if (!oldValue) {
-                            return countComputedValue(3)  // First time: return actual value;
+                            return { count: 3 }; // First time: return actual value
                         }
                         return makeUnchanged(); // Subsequent times: return Unchanged
                     },
@@ -412,7 +411,7 @@ describe("generators/incremental_graph", () => {
                     computor: (inputs, oldValue) => {
                         computeCalls.push("level3");
                         if (!oldValue) {
-                            return countComputedValue(4)  // First time: return actual value;
+                            return { count: 4 }; // First time: return actual value
                         }
                         return makeUnchanged(); // Subsequent times: return Unchanged
                     },
@@ -424,7 +423,7 @@ describe("generators/incremental_graph", () => {
             const graph = await createIncrementalGraph(capabilities, db, graphDef);
 
             // Set up chain properly: input1 -> level1 -> level2 -> level3
-            input1Cell.value = countComputedValue(1);
+            input1Cell.value = { count: 1 };
             await graph.invalidate("input1");
             await graph.pull("level3"); // First pull to materialize everything
             expect(computeCalls).toEqual(["level1", "level2", "level3"]);
@@ -432,7 +431,7 @@ describe("generators/incremental_graph", () => {
             computeCalls.length = 0; // Clear
 
             // Now change input1, which should trigger recomputation
-            input1Cell.value = countComputedValue(2);
+            input1Cell.value = { count: 2 };
             await graph.invalidate("input1");
             
             // Pull level3 again
@@ -461,7 +460,7 @@ describe("generators/incremental_graph", () => {
                 {
                     output: "input",
                     inputs: [],
-                    computor: (inputs, oldValue, _bindings) => oldValue || numberComputedValue(1),
+                    computor: (inputs, oldValue, _bindings) => oldValue || { value: 1 },
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -470,7 +469,7 @@ describe("generators/incremental_graph", () => {
                     inputs: ["input"],
                     computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("left");
-                        return numberComputedValue(inputs[0].value * 2);
+                        return { value: inputs[0].value * 2 };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -480,7 +479,7 @@ describe("generators/incremental_graph", () => {
                     inputs: ["input"],
                     computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("right");
-                        return numberComputedValue(inputs[0].value * 3);
+                        return { value: inputs[0].value * 3 };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -490,7 +489,7 @@ describe("generators/incremental_graph", () => {
                     inputs: ["left", "right"],
                     computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("output");
-                        return numberComputedValue(inputs[0].value + inputs[1].value);
+                        return { value: inputs[0].value + inputs[1].value };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -501,16 +500,15 @@ describe("generators/incremental_graph", () => {
 
             const testDb = makeTestDatabase(graph);
 
-            const computeCalls = [];
-
-            await testDb.put("input", numberComputedValue(1));
+            await testDb.put("input", { value: 1 });
             await testDb.put(freshnessKey("input"), "potentially-outdated");
-            await testDb.put("left", numberComputedValue(10));
+            await testDb.put("left", { value: 10 });
             await testDb.put(freshnessKey("left"), "potentially-outdated");
-            await testDb.put("right", numberComputedValue(20));
+            await testDb.put("right", { value: 20 });
             await testDb.put(freshnessKey("right"), "potentially-outdated");
-            await testDb.put("output", numberComputedValue(100));
+            await testDb.put("output", { value: 100 });
             await testDb.put(freshnessKey("output"), "potentially-outdated");
+            const computeCalls = [];
 
             // Diamond: input -> left + right -> output
             // Left path is dirty, right path is potentially-dirty
@@ -543,18 +541,16 @@ describe("generators/incremental_graph", () => {
                 {
                     output: "input",
                     inputs: [],
-                    computor: (inputs, oldValue, _bindings) => oldValue || numberComputedValue(1),
+                    computor: (inputs, oldValue, _bindings) => oldValue || { value: 1 },
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
                 {
                     output: "left",
                     inputs: ["input"],
-                    computor: (inputs, oldValue) => {
+                    computor: () => {
                         computeCalls.push("left");
-                        return oldValue === undefined
-                            ? numberComputedValue(10)
-                            : makeUnchanged();
+                        return makeUnchanged();
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -564,7 +560,7 @@ describe("generators/incremental_graph", () => {
                     inputs: ["input"],
                     computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("right");
-                        return numberComputedValue(inputs[0].value * 5);
+                        return { value: inputs[0].value * 5 };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -574,7 +570,7 @@ describe("generators/incremental_graph", () => {
                     inputs: ["left", "right"],
                     computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("output");
-                        return numberComputedValue(inputs[0].value + inputs[1].value);
+                        return { value: inputs[0].value + inputs[1].value };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -585,27 +581,15 @@ describe("generators/incremental_graph", () => {
 
             const testDb = makeTestDatabase(graph);
 
-            const computeCalls = [];
-
-            await testDb.put("input", numberComputedValue(1));
+            await testDb.put("input", { value: 1 });
             await testDb.put(freshnessKey("input"), "potentially-outdated");
-            await testDb.put("right", numberComputedValue(20));
+            await testDb.put("left", { value: 10 });
+            await testDb.put(freshnessKey("left"), "potentially-outdated");
+            await testDb.put("right", { value: 20 });
             await testDb.put(freshnessKey("right"), "potentially-outdated");
-            await testDb.put("output", numberComputedValue(100));
+            await testDb.put("output", { value: 100 });
             await testDb.put(freshnessKey("output"), "potentially-outdated");
-
-            // Materialize left through its own pull, so the value Unchanged
-            // preserves is one the Journal holds a committed occurrence for.
-            await graph.pull("left");
-            computeCalls.length = 0;
-
-            // Drop input's validity edge to left, so pulling output recomputes left
-            // instead of cache-hitting it.
-            const seeding = makeSemanticStorage(graph);
-            await seeding.withBatch(async (batch) => {
-                batch.valid.put(toJsonKey("input"), []);
-            });
-            await seeding.freshness.put(toJsonKey("left"), "potentially-outdated");
+            const computeCalls = [];
 
             // Diamond: input -> left + right -> output
             // Left returns Unchanged, but right changes, so output must recompute
@@ -631,8 +615,8 @@ describe("generators/incremental_graph", () => {
 
             const computeCalls = [];
 
-            const input1Cell = { value: numberComputedValue(1) };
-            const input2Cell = { value: numberComputedValue(2) };
+            const input1Cell = { value: { value: 1 } };
+            const input2Cell = { value: { value: 2 } };
 
             const graphDef = [
                 {
@@ -654,7 +638,7 @@ describe("generators/incremental_graph", () => {
                     inputs: ["input1"],
                     computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("nodeA");
-                        return numberComputedValue(inputs[0].value * 10);
+                        return { value: inputs[0].value * 10 };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -664,7 +648,7 @@ describe("generators/incremental_graph", () => {
                     inputs: ["input2"],
                     computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("nodeB");
-                        return numberComputedValue(inputs[0].value * 10);
+                        return { value: inputs[0].value * 10 };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -674,7 +658,7 @@ describe("generators/incremental_graph", () => {
                     inputs: ["nodeA", "nodeB"],
                     computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("nodeC");
-                        return numberComputedValue(inputs[0].value + inputs[1].value);
+                        return { value: inputs[0].value + inputs[1].value };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -684,7 +668,7 @@ describe("generators/incremental_graph", () => {
                     inputs: ["nodeC"],
                     computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("nodeD");
-                        return numberComputedValue(inputs[0].value * 2);
+                        return { value: inputs[0].value * 2 };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -694,7 +678,7 @@ describe("generators/incremental_graph", () => {
                     inputs: ["nodeC"],
                     computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("nodeE");
-                        return numberComputedValue(inputs[0].value * 3);
+                        return { value: inputs[0].value * 3 };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -704,9 +688,9 @@ describe("generators/incremental_graph", () => {
             const graph = await createIncrementalGraph(capabilities, db, graphDef);
 
             // Set up the graph properly
-            input1Cell.value = numberComputedValue(1);
+            input1Cell.value = { value: 1 };
             await graph.invalidate("input1");
-            input2Cell.value = numberComputedValue(2);
+            input2Cell.value = { value: 2 };
             await graph.invalidate("input2");
             
             // First pull to materialize all nodes
@@ -717,7 +701,7 @@ describe("generators/incremental_graph", () => {
             computeCalls.length = 0;
             
             // Now change input1, which should trigger recomputation
-            input1Cell.value = numberComputedValue(1);
+            input1Cell.value = { value: 1 };
             await graph.invalidate("input1");
 
             // Complex graph:
@@ -740,7 +724,7 @@ describe("generators/incremental_graph", () => {
 
             const computeCalls = [];
 
-            const inputCell = { value: numberComputedValue(1) };
+            const inputCell = { value: { value: 1 } };
 
             const graphDef = [
                 {
@@ -756,7 +740,7 @@ describe("generators/incremental_graph", () => {
                     computor: (inputs, oldValue) => {
                         computeCalls.push("middle");
                         if (!oldValue) {
-                            return numberComputedValue(10);
+                            return { value: 10 };
                         }
                         return makeUnchanged();
                     },
@@ -769,7 +753,7 @@ describe("generators/incremental_graph", () => {
                     computor: (inputs, oldValue) => {
                         computeCalls.push("output");
                         if (!oldValue) {
-                            return numberComputedValue(20);
+                            return { value: 20 };
                         }
                         return makeUnchanged();
                     },
@@ -781,7 +765,7 @@ describe("generators/incremental_graph", () => {
             const graph = await createIncrementalGraph(capabilities, db, graphDef);
 
             // Set up the graph properly
-            inputCell.value = numberComputedValue(1);
+            inputCell.value = { value: 1 };
             await graph.invalidate("input");
             await graph.pull("output");
             expect(computeCalls).toEqual(["middle", "output"]);
@@ -789,7 +773,7 @@ describe("generators/incremental_graph", () => {
             computeCalls.length = 0;
             
             // Now change input
-            inputCell.value = numberComputedValue(2);
+            inputCell.value = { value: 2 };
             await graph.invalidate("input");
 
             // Chain with mixed states: dirty -> potentially-dirty -> potentially-dirty
@@ -822,7 +806,7 @@ describe("generators/incremental_graph", () => {
                     output: "input1",
                     inputs: [],
                     computor: (inputs, oldValue, _bindings) =>
-                        oldValue || textComputedValue("new_data"),
+                        oldValue || { data: "new_data" },
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -830,7 +814,7 @@ describe("generators/incremental_graph", () => {
                     output: "output1",
                     inputs: ["input1"],
                     computor: (inputs, _oldValue, _bindings) => {
-                        return textComputedValue(inputs[0].description + "_processed");
+                        return { data: inputs[0].data + "_processed" };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -841,15 +825,15 @@ describe("generators/incremental_graph", () => {
 
             const testDb = makeTestDatabase(graph);
 
-            await testDb.put("input1", textComputedValue("new_data"));
+            await testDb.put("input1", { data: "new_data" });
             await testDb.put(freshnessKey("input1"), "potentially-outdated");
-            await testDb.put("output1", textComputedValue("old_result"));
-            await testDb.put(freshnessKey("output1"), "potentially-outdated");            await testDb.put("input1", textComputedValue("new_data"));
+            await testDb.put("output1", { data: "old_result" });
+            await testDb.put(freshnessKey("output1"), "potentially-outdated");            await testDb.put("input1", { data: "new_data" });
 
             const result = await graph.pull("output1");
 
             // Should have recomputed with new input
-            expect(result.description).toBe("new_data_processed");
+            expect(result.data).toBe("new_data_processed");
 
             // Both input and output should now be clean
             const input1Freshness = await graph.getFreshness("input1");
@@ -868,7 +852,7 @@ describe("generators/incremental_graph", () => {
                 {
                     output: "input",
                     inputs: [],
-                    computor: (inputs, oldValue, _bindings) => oldValue || numberComputedValue(10),
+                    computor: (inputs, oldValue, _bindings) => oldValue || { value: 10 },
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -877,7 +861,7 @@ describe("generators/incremental_graph", () => {
                     inputs: ["input"],
                     computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("pathA");
-                        return numberComputedValue(inputs[0].value * 2);
+                        return { value: inputs[0].value * 2 };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -887,7 +871,7 @@ describe("generators/incremental_graph", () => {
                     inputs: ["input"],
                     computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("pathB");
-                        return numberComputedValue(inputs[0].value * 3);
+                        return { value: inputs[0].value * 3 };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -897,7 +881,7 @@ describe("generators/incremental_graph", () => {
                     inputs: ["input"],
                     computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("pathC");
-                        return numberComputedValue(inputs[0].value * 4);
+                        return { value: inputs[0].value * 4 };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -907,7 +891,7 @@ describe("generators/incremental_graph", () => {
                     inputs: ["input"],
                     computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("pathD");
-                        return numberComputedValue(inputs[0].value * 5);
+                        return { value: inputs[0].value * 5 };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -917,12 +901,13 @@ describe("generators/incremental_graph", () => {
                     inputs: ["pathA", "pathB", "pathC", "pathD"],
                     computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("output");
-                        return numberComputedValue(
-                            inputs[0].value +
-                            inputs[1].value +
-                            inputs[2].value +
-                            inputs[3].value
-                        );
+                        return {
+                            value:
+                                inputs[0].value +
+                                inputs[1].value +
+                                inputs[2].value +
+                                inputs[3].value,
+                        };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -933,17 +918,17 @@ describe("generators/incremental_graph", () => {
 
             const testDb = makeTestDatabase(graph);
 
-            await testDb.put("input", numberComputedValue(10));
+            await testDb.put("input", { value: 10 });
             await testDb.put(freshnessKey("input"), "potentially-outdated");
-            await testDb.put("pathA", numberComputedValue(100));
+            await testDb.put("pathA", { value: 100 });
             await testDb.put(freshnessKey("pathA"), "potentially-outdated");
-            await testDb.put("pathB", numberComputedValue(200));
+            await testDb.put("pathB", { value: 200 });
             await testDb.put(freshnessKey("pathB"), "potentially-outdated");
-            await testDb.put("pathC", numberComputedValue(300));
+            await testDb.put("pathC", { value: 300 });
             await testDb.put(freshnessKey("pathC"), "potentially-outdated");
-            await testDb.put("pathD", numberComputedValue(400));
+            await testDb.put("pathD", { value: 400 });
             await testDb.put(freshnessKey("pathD"), "potentially-outdated");
-            await testDb.put("output", numberComputedValue(1000));
+            await testDb.put("output", { value: 1000 });
             await testDb.put(freshnessKey("output"), "potentially-outdated");
             const computeCalls = [];
 
@@ -978,7 +963,7 @@ describe("generators/incremental_graph", () => {
                 {
                     output: "inputA",
                     inputs: [],
-                    computor: (inputs, oldValue, _bindings) => oldValue || numberComputedValue(1),
+                    computor: (inputs, oldValue, _bindings) => oldValue || { value: 1 },
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -987,7 +972,7 @@ describe("generators/incremental_graph", () => {
                     inputs: ["inputA"],
                     computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("outputA");
-                        return numberComputedValue(inputs[0].value * 10);
+                        return { value: inputs[0].value * 10 };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -995,7 +980,7 @@ describe("generators/incremental_graph", () => {
                 {
                     output: "inputB",
                     inputs: [],
-                    computor: (inputs, oldValue, _bindings) => oldValue || numberComputedValue(2),
+                    computor: (inputs, oldValue, _bindings) => oldValue || { value: 2 },
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -1004,7 +989,7 @@ describe("generators/incremental_graph", () => {
                     inputs: ["inputB"],
                     computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("outputB");
-                        return numberComputedValue(inputs[0].value * 20);
+                        return { value: inputs[0].value * 20 };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -1015,9 +1000,9 @@ describe("generators/incremental_graph", () => {
 
             const testDb = makeTestDatabase(graph);
 
-            await testDb.put("inputA", numberComputedValue(1));
+            await testDb.put("inputA", { value: 1 });
             await testDb.put(freshnessKey("inputA"), "potentially-outdated");
-            await testDb.put("inputB", numberComputedValue(2));
+            await testDb.put("inputB", { value: 2 });
             await testDb.put(freshnessKey("inputB"), "potentially-outdated");
             const computeCalls = [];
 
@@ -1051,7 +1036,7 @@ describe("generators/incremental_graph", () => {
                     inputs: [],
                     computor: () => {
                         computeCalls.push("leafNode");
-                        return textComputedValue("freshly_computed_data");
+                        return { data: "freshly_computed_data" };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -1062,14 +1047,14 @@ describe("generators/incremental_graph", () => {
 
             const testDb = makeTestDatabase(graph);
 
-            await testDb.put("leafNode", textComputedValue("cached_external_data"));
+            await testDb.put("leafNode", { data: "cached_external_data" });
             await testDb.put(freshnessKey("leafNode"), "up-to-date");
 
 
             const computeCalls = [];
             const result = await graph.pull("leafNode");
 
-            expect(result.description).toBe("cached_external_data");
+            expect(result.data).toBe("cached_external_data");
             expect(computeCalls).toEqual([]);
 
             await db.close();
@@ -1090,7 +1075,7 @@ describe("generators/incremental_graph", () => {
                         output: "node0",
                         inputs: [],
                         computor: (inputs, oldValue, _bindings) =>
-                            oldValue || numberComputedValue(0),
+                            oldValue || { value: 0 },
                         isDeterministic: true,
                         hasSideEffects: false,
                     });
@@ -1099,7 +1084,7 @@ describe("generators/incremental_graph", () => {
                         output: `node${i}`,
                         inputs: [`node${i - 1}`],
                         computor: (inputs, _oldValue, _bindings) => {
-                            return numberComputedValue(inputs[0].value + 1);
+                            return { value: inputs[0].value + 1 };
                         },
                         isDeterministic: true,
                         hasSideEffects: false,
@@ -1113,7 +1098,7 @@ describe("generators/incremental_graph", () => {
 
             // Seed the nodes with testDb
             for (let i = 0; i < chainLength; i++) {
-                await testDb.put(`node${i}`, numberComputedValue(i * 100));
+                await testDb.put(`node${i}`, { value: i * 100 });
                 await testDb.put(freshnessKey(`node${i}`), "potentially-outdated");
             }
 
@@ -1134,7 +1119,7 @@ describe("generators/incremental_graph", () => {
                 {
                     output: "input",
                     inputs: [],
-                    computor: (inputs, oldValue, _bindings) => oldValue || numberComputedValue(5),
+                    computor: (inputs, oldValue, _bindings) => oldValue || { value: 5 },
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -1143,7 +1128,7 @@ describe("generators/incremental_graph", () => {
                     inputs: ["input"],
                     computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("shortPath");
-                        return numberComputedValue(inputs[0].value * 2);
+                        return { value: inputs[0].value * 2 };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -1153,7 +1138,7 @@ describe("generators/incremental_graph", () => {
                     inputs: ["input"],
                     computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("longA");
-                        return numberComputedValue(inputs[0].value + 1);
+                        return { value: inputs[0].value + 1 };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -1163,7 +1148,7 @@ describe("generators/incremental_graph", () => {
                     inputs: ["longA"],
                     computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("longB");
-                        return numberComputedValue(inputs[0].value + 1);
+                        return { value: inputs[0].value + 1 };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -1173,7 +1158,7 @@ describe("generators/incremental_graph", () => {
                     inputs: ["longB"],
                     computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("longC");
-                        return numberComputedValue(inputs[0].value + 1);
+                        return { value: inputs[0].value + 1 };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -1183,7 +1168,7 @@ describe("generators/incremental_graph", () => {
                     inputs: ["shortPath", "longC"],
                     computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("output");
-                        return numberComputedValue(inputs[0].value + inputs[1].value);
+                        return { value: inputs[0].value + inputs[1].value };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -1194,17 +1179,17 @@ describe("generators/incremental_graph", () => {
 
             const testDb = makeTestDatabase(graph);
 
-            await testDb.put("input", numberComputedValue(5));
+            await testDb.put("input", { value: 5 });
             await testDb.put(freshnessKey("input"), "potentially-outdated");
-            await testDb.put("shortPath", numberComputedValue(0));
+            await testDb.put("shortPath", { value: 0 });
             await testDb.put(freshnessKey("shortPath"), "potentially-outdated");
-            await testDb.put("longA", numberComputedValue(0));
+            await testDb.put("longA", { value: 0 });
             await testDb.put(freshnessKey("longA"), "potentially-outdated");
-            await testDb.put("longB", numberComputedValue(0));
+            await testDb.put("longB", { value: 0 });
             await testDb.put(freshnessKey("longB"), "potentially-outdated");
-            await testDb.put("longC", numberComputedValue(0));
+            await testDb.put("longC", { value: 0 });
             await testDb.put(freshnessKey("longC"), "potentially-outdated");
-            await testDb.put("output", numberComputedValue(0));
+            await testDb.put("output", { value: 0 });
             await testDb.put(freshnessKey("output"), "potentially-outdated");
             const computeCalls = [];
 
@@ -1239,8 +1224,8 @@ describe("generators/incremental_graph", () => {
 
             const computeCalls = [];
 
-            const input1Cell = { value: numberComputedValue(10) };
-            const input2Cell = { value: numberComputedValue(20) };
+            const input1Cell = { value: { value: 10 } };
+            const input2Cell = { value: { value: 20 } };
 
             const graphDef = [
                 {
@@ -1262,7 +1247,7 @@ describe("generators/incremental_graph", () => {
                     inputs: ["input1", "input2"],
                     computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("output");
-                        return numberComputedValue(inputs[0].value + inputs[1].value);
+                        return { value: inputs[0].value + inputs[1].value };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -1271,9 +1256,9 @@ describe("generators/incremental_graph", () => {
 
             const graph = await createIncrementalGraph(capabilities, db, graphDef);
 
-            input1Cell.value = numberComputedValue(10);
+            input1Cell.value = { value: 10 };
             await graph.invalidate("input1");
-            input2Cell.value = numberComputedValue(20);
+            input2Cell.value = { value: 20 };
             await graph.invalidate("input2");
             await graph.pull("output");
             
@@ -1310,7 +1295,7 @@ describe("generators/incremental_graph", () => {
                 {
                     output: "input",
                     inputs: [],
-                    computor: (inputs, oldValue, _bindings) => oldValue || numberComputedValue(7),
+                    computor: (inputs, oldValue, _bindings) => oldValue || { value: 7 },
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -1319,7 +1304,7 @@ describe("generators/incremental_graph", () => {
                     inputs: ["input"],
                     computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("outputA");
-                        return numberComputedValue(inputs[0].value * 2);
+                        return { value: inputs[0].value * 2 };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -1329,7 +1314,7 @@ describe("generators/incremental_graph", () => {
                     inputs: ["input"],
                     computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("outputB");
-                        return numberComputedValue(inputs[0].value * 3);
+                        return { value: inputs[0].value * 3 };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -1339,7 +1324,7 @@ describe("generators/incremental_graph", () => {
                     inputs: ["input"],
                     computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("outputC");
-                        return numberComputedValue(inputs[0].value * 4);
+                        return { value: inputs[0].value * 4 };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -1350,13 +1335,13 @@ describe("generators/incremental_graph", () => {
 
             const testDb = makeTestDatabase(graph);
 
-            await testDb.put("input", numberComputedValue(7));
+            await testDb.put("input", { value: 7 });
             await testDb.put(freshnessKey("input"), "potentially-outdated");
-            await testDb.put("outputA", numberComputedValue(0));
+            await testDb.put("outputA", { value: 0 });
             await testDb.put(freshnessKey("outputA"), "potentially-outdated");
-            await testDb.put("outputB", numberComputedValue(0));
+            await testDb.put("outputB", { value: 0 });
             await testDb.put(freshnessKey("outputB"), "potentially-outdated");
-            await testDb.put("outputC", numberComputedValue(0));
+            await testDb.put("outputC", { value: 0 });
             await testDb.put(freshnessKey("outputC"), "potentially-outdated");
             const computeCalls = [];
 
@@ -1389,7 +1374,7 @@ describe("generators/incremental_graph", () => {
                 {
                     output: "input",
                     inputs: [],
-                    computor: (inputs, oldValue, _bindings) => oldValue || numberComputedValue(2),
+                    computor: (inputs, oldValue, _bindings) => oldValue || { value: 2 },
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -1398,7 +1383,7 @@ describe("generators/incremental_graph", () => {
                     inputs: ["input"],
                     computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("leftA");
-                        return numberComputedValue(inputs[0].value + 1);
+                        return { value: inputs[0].value + 1 };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -1408,7 +1393,7 @@ describe("generators/incremental_graph", () => {
                     inputs: ["input"],
                     computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("rightA");
-                        return numberComputedValue(inputs[0].value + 2);
+                        return { value: inputs[0].value + 2 };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -1418,7 +1403,7 @@ describe("generators/incremental_graph", () => {
                     inputs: ["leftA", "rightA"],
                     computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("middle");
-                        return numberComputedValue(inputs[0].value + inputs[1].value);
+                        return { value: inputs[0].value + inputs[1].value };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -1428,7 +1413,7 @@ describe("generators/incremental_graph", () => {
                     inputs: ["middle"],
                     computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("leftB");
-                        return numberComputedValue(inputs[0].value * 2);
+                        return { value: inputs[0].value * 2 };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -1438,7 +1423,7 @@ describe("generators/incremental_graph", () => {
                     inputs: ["middle"],
                     computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("rightB");
-                        return numberComputedValue(inputs[0].value * 3);
+                        return { value: inputs[0].value * 3 };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -1448,7 +1433,7 @@ describe("generators/incremental_graph", () => {
                     inputs: ["leftB", "rightB"],
                     computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("output");
-                        return numberComputedValue(inputs[0].value + inputs[1].value);
+                        return { value: inputs[0].value + inputs[1].value };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -1459,19 +1444,19 @@ describe("generators/incremental_graph", () => {
 
             const testDb = makeTestDatabase(graph);
 
-            await testDb.put("input", numberComputedValue(2));
+            await testDb.put("input", { value: 2 });
             await testDb.put(freshnessKey("input"), "potentially-outdated");
-            await testDb.put("leftA", numberComputedValue(0));
+            await testDb.put("leftA", { value: 0 });
             await testDb.put(freshnessKey("leftA"), "potentially-outdated");
-            await testDb.put("rightA", numberComputedValue(0));
+            await testDb.put("rightA", { value: 0 });
             await testDb.put(freshnessKey("rightA"), "potentially-outdated");
-            await testDb.put("middle", numberComputedValue(0));
+            await testDb.put("middle", { value: 0 });
             await testDb.put(freshnessKey("middle"), "potentially-outdated");
-            await testDb.put("leftB", numberComputedValue(0));
+            await testDb.put("leftB", { value: 0 });
             await testDb.put(freshnessKey("leftB"), "potentially-outdated");
-            await testDb.put("rightB", numberComputedValue(0));
+            await testDb.put("rightB", { value: 0 });
             await testDb.put(freshnessKey("rightB"), "potentially-outdated");
-            await testDb.put("output", numberComputedValue(0));
+            await testDb.put("output", { value: 0 });
             await testDb.put(freshnessKey("output"), "potentially-outdated");
             const computeCalls = [];
 
@@ -1513,18 +1498,16 @@ describe("generators/incremental_graph", () => {
                 {
                     output: "input",
                     inputs: [],
-                    computor: (inputs, oldValue, _bindings) => oldValue || numberComputedValue(5),
+                    computor: (inputs, oldValue, _bindings) => oldValue || { value: 5 },
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
                 {
                     output: "pathA",
                     inputs: ["input"],
-                    computor: (inputs, oldValue) => {
+                    computor: () => {
                         computeCalls.push("pathA");
-                        return oldValue === undefined
-                            ? numberComputedValue(10)
-                            : makeUnchanged(); // Unchanged
+                        return makeUnchanged(); // Unchanged
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -1534,7 +1517,7 @@ describe("generators/incremental_graph", () => {
                     inputs: ["input"],
                     computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("pathB");
-                        return numberComputedValue(inputs[0].value * 5)  // Changed;
+                        return { value: inputs[0].value * 5 }; // Changed
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -1542,11 +1525,9 @@ describe("generators/incremental_graph", () => {
                 {
                     output: "pathC",
                     inputs: ["input"],
-                    computor: (inputs, oldValue) => {
+                    computor: () => {
                         computeCalls.push("pathC");
-                        return oldValue === undefined
-                            ? numberComputedValue(30)
-                            : makeUnchanged(); // Unchanged
+                        return makeUnchanged(); // Unchanged
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -1556,7 +1537,7 @@ describe("generators/incremental_graph", () => {
                     inputs: ["input"],
                     computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("pathD");
-                        return numberComputedValue(inputs[0].value * 10)  // Changed;
+                        return { value: inputs[0].value * 10 }; // Changed
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -1566,12 +1547,13 @@ describe("generators/incremental_graph", () => {
                     inputs: ["pathA", "pathB", "pathC", "pathD"],
                     computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("output");
-                        return numberComputedValue(
-                            inputs[0].value +
-                            inputs[1].value +
-                            inputs[2].value +
-                            inputs[3].value
-                        );
+                        return {
+                            value:
+                                inputs[0].value +
+                                inputs[1].value +
+                                inputs[2].value +
+                                inputs[3].value,
+                        };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -1582,30 +1564,19 @@ describe("generators/incremental_graph", () => {
 
             const testDb = makeTestDatabase(graph);
 
-            await testDb.put("input", numberComputedValue(5));
+            await testDb.put("input", { value: 5 });
             await testDb.put(freshnessKey("input"), "potentially-outdated");
-            await testDb.put("pathB", numberComputedValue(20));
+            await testDb.put("pathA", { value: 10 });
+            await testDb.put(freshnessKey("pathA"), "potentially-outdated");
+            await testDb.put("pathB", { value: 20 });
             await testDb.put(freshnessKey("pathB"), "potentially-outdated");
-            await testDb.put("pathD", numberComputedValue(40));
+            await testDb.put("pathC", { value: 30 });
+            await testDb.put(freshnessKey("pathC"), "potentially-outdated");
+            await testDb.put("pathD", { value: 40 });
             await testDb.put(freshnessKey("pathD"), "potentially-outdated");
-            await testDb.put("output", numberComputedValue(999));
+            await testDb.put("output", { value: 999 });
             await testDb.put(freshnessKey("output"), "potentially-outdated");
             const computeCalls = [];
-
-            // Materialize pathA and pathC through their own pulls, so the values
-            // Unchanged preserves are ones the Journal holds occurrences for.
-            await graph.pull("pathA");
-            await graph.pull("pathC");
-            computeCalls.length = 0;
-
-            // Drop input's validity edges, so pulling output recomputes every
-            // path instead of cache-hitting the two already materialized.
-            const seeding = makeSemanticStorage(graph);
-            await seeding.withBatch(async (batch) => {
-                batch.valid.put(toJsonKey("input"), []);
-            });
-            await seeding.freshness.put(toJsonKey("pathA"), "potentially-outdated");
-            await seeding.freshness.put(toJsonKey("pathC"), "potentially-outdated");
 
             // Wide diamond where some paths return Unchanged and others change
             // input -> pathA (unchanged), pathB (changed), pathC (unchanged), pathD (changed) -> output
@@ -1638,7 +1609,7 @@ describe("generators/incremental_graph", () => {
 
             const computeCalls = [];
 
-            const inputCell = { value: numberComputedValue(5) };
+            const inputCell = { value: { value: 5 } };
 
             const graphDef = [
                 {
@@ -1654,7 +1625,7 @@ describe("generators/incremental_graph", () => {
                     computor: (inputs, oldValue) => {
                         computeCalls.push("pathA");
                         if (!oldValue) {
-                            return numberComputedValue(10);
+                            return { value: 10 };
                         }
                         return makeUnchanged();
                     },
@@ -1667,7 +1638,7 @@ describe("generators/incremental_graph", () => {
                     computor: (inputs, oldValue) => {
                         computeCalls.push("pathB");
                         if (!oldValue) {
-                            return numberComputedValue(20);
+                            return { value: 20 };
                         }
                         return makeUnchanged();
                     },
@@ -1680,7 +1651,7 @@ describe("generators/incremental_graph", () => {
                     computor: (inputs, oldValue) => {
                         computeCalls.push("pathC");
                         if (!oldValue) {
-                            return numberComputedValue(30);
+                            return { value: 30 };
                         }
                         return makeUnchanged();
                     },
@@ -1692,7 +1663,7 @@ describe("generators/incremental_graph", () => {
                     inputs: ["pathA", "pathB", "pathC"],
                     computor: () => {
                         computeCalls.push("output");
-                        return numberComputedValue(100);
+                        return { value: 100 };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -1701,7 +1672,7 @@ describe("generators/incremental_graph", () => {
 
             const graph = await createIncrementalGraph(capabilities, db, graphDef);
 
-            inputCell.value = numberComputedValue(5);
+            inputCell.value = { value: 5 };
             await graph.invalidate("input");
             await graph.pull("output");
             expect(computeCalls).toEqual(["pathA", "pathB", "pathC", "output"]);
@@ -1709,7 +1680,7 @@ describe("generators/incremental_graph", () => {
             computeCalls.length = 0;
             
             // Now change input
-            inputCell.value = numberComputedValue(6);
+            inputCell.value = { value: 6 };
             await graph.invalidate("input");
 
             // Wide diamond where ALL paths return Unchanged
@@ -1750,7 +1721,7 @@ describe("generators/incremental_graph", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
-            const node1Cell = { value: numberComputedValue(1) };
+            const node1Cell = { value: { val: 1 } };
 
             const graphDef = [
                 {
@@ -1763,7 +1734,7 @@ describe("generators/incremental_graph", () => {
                 {
                     output: "node2",
                     inputs: ["node1"],
-                    computor: ([n1]) => numberComputedValue(n1.value + 1),
+                    computor: ([n1]) => ({ val: n1.val + 1 }),
                     isDeterministic: true,
                     hasSideEffects: false,
                 }
@@ -1773,7 +1744,7 @@ describe("generators/incremental_graph", () => {
             // Initially missing
             expect(await graph.getFreshness("node1")).toBeUndefined();
 
-            node1Cell.value = numberComputedValue(10);
+            node1Cell.value = { val: 10 };
             await graph.pull("node1");
             await graph.invalidate("node1");
             expect(await graph.getFreshness("node1")).toBe("potentially-outdated");
@@ -1792,7 +1763,7 @@ describe("generators/incremental_graph", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
-            const node1Cell = { value: numberComputedValue(1) };
+            const node1Cell = { value: { val: 1 } };
 
             const graphDef = [
                 {
@@ -1805,7 +1776,7 @@ describe("generators/incremental_graph", () => {
                 {
                     output: "node2",
                     inputs: ["node1"],
-                    computor: ([n1]) => numberComputedValue(n1.value + 1),
+                    computor: ([n1]) => ({ val: n1.val + 1 }),
                     isDeterministic: true,
                     hasSideEffects: false,
                 }
@@ -1816,7 +1787,7 @@ describe("generators/incremental_graph", () => {
             // Initially empty
             expect(await graph.listMaterializedNodes()).toEqual([]);
 
-            node1Cell.value = numberComputedValue(10);
+            node1Cell.value = { val: 10 };
             await graph.pull("node1");
             await graph.invalidate("node1");
             

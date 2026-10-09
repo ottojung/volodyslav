@@ -45,6 +45,43 @@ function isDecisionConflict(object) {
 }
 
 /**
+ * Thrown when override() is called more than once on the same node.
+ *
+ * Each node may receive at most one semantic-preserving representation rewrite
+ * during migration. Duplicate override calls are ambiguous about which rewrite
+ * should be applied, so they are rejected. Use keep() instead for nodes that
+ * need no further change after the first override.
+ */
+class OverrideConflict extends Error {
+    /**
+     * @param {NodeIdentifier} nodeKey
+     */
+    constructor(nodeKey) {
+        super(
+            `Override conflict for node ${nodeKey}: override() called more than once`
+        );
+        this.name = "OverrideConflictError";
+        this.nodeKey = nodeKey;
+    }
+}
+
+/**
+ * @param {NodeIdentifier} nodeKey
+ * @returns {OverrideConflict}
+ */
+function makeOverrideConflictError(nodeKey) {
+    return new OverrideConflict(nodeKey);
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is OverrideConflict}
+ */
+function isOverrideConflict(object) {
+    return object instanceof OverrideConflict;
+}
+
+/**
  * Thrown when some nodes in S have no decision after the migration callback.
  */
 class UndecidedNodes extends Error {
@@ -78,7 +115,7 @@ function isUndecidedNodes(object) {
 }
 
 /**
- * Thrown when keep/replace/invalidate is called on a node incompatible with the new schema.
+ * Thrown when keep/override/invalidate is called on a node incompatible with the new schema.
  */
 class SchemaCompatibility extends Error {
     /**
@@ -185,7 +222,7 @@ class CreateExistingNode extends Error {
     constructor(nodeKey) {
         super(
             `Cannot create node ${nodeKey}: it already exists in the previous version. ` +
-                `Use replace() to change its semantic value instead.`
+                `Use override() to change its value instead.`
         );
         this.name = "CreateExistingNodeError";
         this.nodeKey = nodeKey;
@@ -237,66 +274,13 @@ function isInvalidMigrationDecision(object) {
     return object instanceof InvalidMigrationDecision;
 }
 
-/**
- * Thrown when a migration source replica persists an identifier outside the
- * supported `NodeIdentifier` domain.
- *
- * `docs/specs/incremental-graph-journal-types.md` §Persisted identifier form
- * across the bootstrap and migration boundary makes the domain a statement
- * about the persisted forms of every supported source era, and its fail-closed
- * consequence applies to this boundary as it does to the bootstrap boundary:
- * a replica persisting an identifier outside the domain is not a supported
- * source, so the migration rejects it instead of emitting a target replica that
- * materializes nodes no Journal record can name.
- *
- * The identifier is reported rather than corrected. Re-minting or normalizing it
- * would change which physical identity a materialized node has, which is a
- * persisted-data-format change and not a repair a single transition may perform.
- */
-class UnsupportedPersistedIdentifier extends Error {
-    /**
-     * @param {string} context
-     * @param {string} identifier
-     */
-    constructor(context, identifier) {
-        super(
-            `Unsupported persisted NodeIdentifier in ${context}: the replica persists ` +
-            `${JSON.stringify(identifier)}, which is outside the supported NodeIdentifier domain. ` +
-            "This replica is not a supported migration source, because a migration transports each " +
-            "persisted identifier unchanged and the resulting target replica would materialize nodes " +
-            "that no Journal record can name. The identifier is not re-minted or normalized, because " +
-            "that would change which physical identity a materialized node has."
-        );
-        this.name = "UnsupportedPersistedIdentifierError";
-        this.context = context;
-        this.identifier = identifier;
-    }
-}
-
-/**
- * @param {string} context
- * @param {string} identifier
- * @returns {UnsupportedPersistedIdentifier}
- */
-function makeUnsupportedPersistedIdentifierError(context, identifier) {
-    return new UnsupportedPersistedIdentifier(context, identifier);
-}
-
-/**
- * @param {unknown} object
- * @returns {object is UnsupportedPersistedIdentifier}
- */
-function isUnsupportedPersistedIdentifierError(object) {
-    return object instanceof UnsupportedPersistedIdentifier;
-}
-
 module.exports = {
-    makeUnsupportedPersistedIdentifierError,
-    isUnsupportedPersistedIdentifierError,
     makeDecisionConflictError,
     makeInvalidMigrationDecisionError,
     isInvalidMigrationDecision,
     isDecisionConflict,
+    makeOverrideConflictError,
+    isOverrideConflict,
     makeCreateExistingNodeError,
     isCreateExistingNode,
     makeUndecidedNodesError,

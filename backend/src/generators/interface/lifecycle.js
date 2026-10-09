@@ -28,36 +28,11 @@ const {
     createIncrementalGraph,
     LIVE_DATABASE_WORKING_PATH,
     CHECKPOINT_WORKING_PATH,
-    syncJournalReceiverToSource,
-    runCanonicalBootstrapGate,
-    queryInstallationRecovery,
-    restoreAbsentFrom,
-    isRecoveryDefinitelyAbsent,
-    isRecoveryExists,
-    isRecoveryIndeterminate,
-    makeJournalPublicationError,
 } = require("../incremental_graph");
-const { workingRepository } = require("../../gitstore");
+const { defaultBranch, workingRepository } = require("../../gitstore");
 const { createDefaultGraphDefinition } = require("./default_graph");
-const { makeSynchronizeDatabaseError, makeUnresolvedCanonicalBootstrapError } = require("./errors");
+const { makeSynchronizeDatabaseError } = require("./errors");
 const { allEvents, config, diarySummary, ontology } = require("../individual");
-
-/**
- * The synchronization options a normal synchronization is performed with.
- *
- * A synchronization of a receiver which retains Journal records is performed by the Journal
- * synchronization rather than by a fieldwise merge, so the operation is given that
- * synchronization.
- *
- * @param {{ resetToHostname?: string } | undefined} options
- * @returns {{ resetToHostname?: string, journalSync?: import('../incremental_graph/journal_publish').SyncReceiverToSource } | undefined}
- */
-function withJournalSync(options) {
-    if (options?.resetToHostname !== undefined) {
-        return options;
-    }
-    return { ...options, journalSync: syncJournalReceiverToSource };
-}
 
 /** @param {InterfaceLifecycleAccess} interfaceInstance */
 function internalIsInitialized(interfaceInstance) {
@@ -116,73 +91,69 @@ async function internalEnsureInitialized(interfaceInstance) {
 /**
  * Select and execute the bootstrap path when the live LevelDB is absent.
  *
- * `database-lifecycle.md` §4 / `database-boot-sequence.md` §7.1: the absent-state
- * decision queries the transport-neutral `InstallationRecoverySource` and follows
- * exactly one of its answers:
- *  - `Exists(ContinuationSafeSnapshot)` → receiver-less restore of the held snapshot;
- *  - `DefinitelyAbsent` → fresh creation (normal sync from an empty local database);
- *  - `IndeterminateOrError` → fatal, with no fallback to fresh creation.
- *
- * A deployment which configures no recovery source fails closed: an absent local
- * database without the decision is fatal rather than an invented fresh identity.
+ * Protocol section 7.1:
+ *  1. Check if `<hostname>-main` exists on the remote.
+ *  2. If yes  → reset-to-hostname sync (restores snapshot; fatal on any error).
+ *  3. If no   → normal sync from empty local DB (fatal on any error).
  *
  * @param {GeneratorsCapabilities} capabilities
  * @returns {Promise<void>}
  */
 async function internalBootstrap(capabilities) {
-    const source = capabilities.installationRecoverySource;
-    if (source === undefined) {
-        throw makeJournalPublicationError(
-            'the live database is completely absent and the deployment configured no installation recovery ' +
-                'source, so the absent-state decision could not be made'
-        );
-    }
+    const hostname = capabilities.environment.hostname();
+    const remotePath = capabilities.environment.generatorsRepository();
+    const hostnameBranch = defaultBranch(capabilities);
+    const hostnameBranchRef = `refs/heads/${hostnameBranch}`;
 
-    const answer = await queryInstallationRecovery(source);
+    capabilities.logger.logInfo(
+        { hostname, remotePath, hostnameBranch },
+        'Bootstrap: checking if hostname branch exists on remote'
+    );
 
-    if (isRecoveryExists(answer)) {
-        capabilities.logger.logInfo(
-            {},
-            'Bootstrap: installation recovery source holds a continuation-safe snapshot; restoring'
-        );
-        await restoreAbsentFrom(capabilities, answer.snapshot);
-        capabilities.logger.logInfo(
-            {},
-            'Bootstrap: absent-state restore completed'
-        );
-        return;
-    }
+    // Query the remote without requiring a local clone.  Any error here
+    // (e.g. remote unreachable) propagates as a fatal startup crash.
+    // `-c safe.directory=*` avoids "detected dubious ownership" errors when
+    // the remote is a local path with strict safe.directory enforcement.
+    const lsRemoteResult = await capabilities.git.call(
+        "-c", "safe.directory=*",
+        "ls-remote", "--heads", "--", remotePath, hostnameBranchRef
+    );
+    const hostnameBranchExists = lsRemoteResult.stdout.trim() !== '';
 
-    if (isRecoveryDefinitelyAbsent(answer)) {
+    if (hostnameBranchExists) {
         capabilities.logger.logInfo(
-            {},
-            'Bootstrap: installation recovery source reports definite absence; creating fresh'
+            { hostname, hostnameBranch },
+            'Bootstrap: hostname branch found; using reset-to-hostname sync path'
         );
-        // Fresh creation from an empty local database. Pre-initialize the checkpoint
-        // repo before calling synchronizeNoLock so that its checkpointDatabase step
-        // does not attempt to clone the remote with a `--branch` that does not exist
-        // yet. With a local repo already present, workingRepository.synchronize falls
-        // into the pull+push path, where pull returns early when the remote branch
-        // does not exist yet, and push creates the branch for the first time.
+        // Phase 1 (protocol §7.1.2): restore from remote snapshot.
+        // Any error is fatal (protocol §8.3).
+        await synchronizeNoLock(capabilities, { resetToHostname: hostname });
+        capabilities.logger.logInfo(
+            { hostname },
+            'Bootstrap: reset-to-hostname sync completed'
+        );
+    } else {
+        capabilities.logger.logInfo(
+            { hostname, hostnameBranch },
+            'Bootstrap: hostname branch does not exist remotely; using normal sync fallback'
+        );
+        // Phase 1 fallback (protocol §7.1.3): normal sync from empty local DB.
+        // Any error is fatal (protocol §8.3).
+        //
+        // Pre-initialize the checkpoint repo before calling synchronizeNoLock so
+        // that synchronizeNoLock's checkpointDatabase step does not attempt to
+        // clone the remote with `--branch=<hostname>-main` (which would fail
+        // because that branch is absent).  With a local repo already present,
+        // workingRepository.synchronize falls into the pull+push path, where
+        // pull returns early when the remote branch does not exist yet, and push
+        // creates the branch for the first time.
         await internalInitCheckpointRepoForFallback(capabilities);
         await synchronizeNoLock(capabilities);
         capabilities.logger.logInfo(
-            {},
-            'Bootstrap: fresh creation completed'
-        );
-        return;
-    }
-
-    if (isRecoveryIndeterminate(answer)) {
-        throw makeJournalPublicationError(
-            'the installation recovery query was indeterminate, so startup fails without fresh creation: ' +
-                answer.detail
+            { hostname },
+            'Bootstrap: fallback normal sync completed'
         );
     }
-
-    throw makeJournalPublicationError(
-        'the installation recovery query returned an unrecognized answer'
-    );
 }
 
 /**
@@ -263,9 +234,7 @@ async function internalEnsureInitializedWithMigration(
             nodeDefs,
             migrationCallback(capabilities),
         );
-        capabilities.logger.logDebug({}, 'Initialization: migration gate completed, running canonical bootstrap gate');
-        await internalCanonicalBootstrapGate(capabilities, database, nodeDefs);
-        capabilities.logger.logDebug({}, 'Initialization: canonical bootstrap gate completed, constructing incremental graph');
+        capabilities.logger.logDebug({}, 'Initialization: migration gate completed, constructing incremental graph');
         const incrementalGraph = await createIncrementalGraph(
             capabilities,
             database,
@@ -289,36 +258,6 @@ async function internalEnsureInitializedWithMigration(
             );
         }
         throw error;
-    }
-}
-
-/**
- * Run the Journal 3 canonical-bootstrap gate before any graph API is exposed.
- *
- * `database-lifecycle.md` §8.2 requires startup to resolve a canonical
- * bootstrap for a supported pre-Journal replica before graph construction, and requires
- * an unresolved publication outcome to fail startup while leaving the pre-Journal
- * database selected. The gate reports that outcome rather than retrying it, because §6
- * requires a re-query through the owned procedure before another publication attempt.
- *
- * The cohort bootstrap source is deployment configuration carried on the capabilities
- * rather than persisted database state, so an installation which configures none still
- * starts normally for every replica that is not a supported pre-Journal source.
- *
- * @param {GeneratorsCapabilities} capabilities
- * @param {RootDatabase} database
- * @param {NodeDef[]} nodeDefs
- * @returns {Promise<void>}
- */
-async function internalCanonicalBootstrapGate(capabilities, database, nodeDefs) {
-    const outcome = await runCanonicalBootstrapGate({
-        rootDatabase: database,
-        nodeDefs,
-        source: capabilities.cohortBootstrapSource,
-        logger: capabilities.logger,
-    });
-    if (outcome.status === 'unresolved-canonical-bootstrap') {
-        throw makeUnresolvedCanonicalBootstrapError(outcome.detail);
     }
 }
 
@@ -348,7 +287,7 @@ async function internalSynchronizeDatabaseNoLock(interfaceInstance, options) {
     const ontologyBox = interfaceInstance._ontologyBox;
     if (database === null) {
         capabilities.logger.logDebug({ options }, 'Synchronize: interface database is not open; synchronizing directly');
-        await synchronizeNoLock(capabilities, withJournalSync(options));
+        await synchronizeNoLock(capabilities, options);
         return;
     }
 
@@ -376,7 +315,7 @@ async function internalSynchronizeDatabaseNoLock(interfaceInstance, options) {
 
     try {
         capabilities.logger.logDebug({ options }, 'Synchronize: running synchronizeNoLock');
-        await synchronizeNoLock(capabilities, withJournalSync(options));
+        await synchronizeNoLock(capabilities, options);
     } catch (error) {
         synchronizeFailure = error;
     }

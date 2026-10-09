@@ -11,8 +11,8 @@ This model separates three concerns:
 - `NodeIdentifier` is the persisted storage identity of a materialized node
 - filesystem snapshots and internal storage operate directly on stored identifiers
 
-This document defines the node-addressing model for IncrementalGraph storage,
-filesystem snapshots, and the HTTP inspection API as implemented.
+This document is the **intended target design specification** for IncrementalGraph
+node addressing. It describes the model as it is meant to be.
 
 ## Terms
 
@@ -59,7 +59,7 @@ Migration code is internal storage logic, so migrations are fully `NodeIdentifie
 
 - Migration callbacks must receive and return concrete-node references as `NodeIdentifier` values.
 - Migration-produced `valid` must contain only `NodeIdentifier` values.
-- Migration control decisions (`keep`, `replace`, `invalidate`, `create`, `delete`) operate on `NodeIdentifier`-addressed state, with `NodeKey` used only via the lookup bijection when needed for schema/head filtering or inspection.
+- Migration control decisions (`keep`, `override`, `invalidate`, `create`, `delete`) operate on `NodeIdentifier`-addressed state, with `NodeKey` used only via the lookup bijection when needed for schema/head filtering or inspection.
 
 There is no mixed-mode migration API: `NodeKey`-addressed migration payloads are out of scope and unsupported.
 
@@ -208,7 +208,7 @@ Delete removes:
 - `nodeKeyToId(nodeKey)`
 - `nodeIdToKey(id)`
 
-Migration preserves identifiers for `keep` and `invalidate`, and allocates
+Migration preserves identifiers for `keep`, `override`, and `invalidate`, and allocates
 fresh identifiers for `create` using the same fingerprint/index scheme.
 
 ### last_node_index

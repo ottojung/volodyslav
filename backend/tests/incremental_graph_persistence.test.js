@@ -12,10 +12,9 @@ const {
     makeUnchanged,
 } = require("../src/generators/incremental_graph");
 const { getMockedRootCapabilities } = require("./spies");
-const { makeSemanticStorage } = require("./test_database_helper");
+const { makeSemanticStorage, makeTestDatabase } = require("./test_database_helper");
 const { stubLogger, stubEnvironment } = require("./stubs");
 const { toJsonKey } = require("./test_json_key_helper");
-const { numberComputedValue } = require("./computed_value_fixture");
 
 /**
  * Creates test capabilities with a temporary data directory.
@@ -46,7 +45,7 @@ describe("Incremental graph persistence and restart", () => {
             const db = await getRootDatabase(capabilities);
             const computeCalls = [];
 
-            const cellA = { value: numberComputedValue(10) };
+            const cellA = { value: { value: 10 } };
 
             const schemas = [
                 {
@@ -59,12 +58,10 @@ describe("Incremental graph persistence and restart", () => {
                 {
                     output: "B",
                     inputs: ["A"],
-                    computor: (_inputs, oldValue, _bindings) => {
+                    computor: (_inputs, _oldValue, _bindings) => {
                         computeCalls.push("B");
-                        // Materialize once, then always return Unchanged to test propagation
-                        return oldValue === undefined
-                            ? numberComputedValue(100)
-                            : makeUnchanged();
+                        // Always return Unchanged to test propagation
+                        return makeUnchanged();
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -74,7 +71,7 @@ describe("Incremental graph persistence and restart", () => {
                     inputs: ["B"],
                     computor: (inputs, _oldValue, _bindings) => {
                         computeCalls.push("C");
-                        return numberComputedValue(inputs[0].value * 2);
+                        return { value: inputs[0].value * 2 };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -83,8 +80,11 @@ describe("Incremental graph persistence and restart", () => {
 
             const graph1 = await createIncrementalGraph(capabilities, db, schemas);
 
+            const testDb = makeTestDatabase(graph1);
+
             // Initial setup
             await graph1.invalidate("A");
+            await testDb.put("B", { value: 100 });
 
             // Pull C to establish values
             const result1 = await graph1.pull("C");
@@ -101,7 +101,7 @@ describe("Incremental graph persistence and restart", () => {
             const graph2 = await createIncrementalGraph(capabilities, db, schemas);
 
             // Update A (which should invalidate B and C)
-            cellA.value = numberComputedValue(20);
+            cellA.value = { value: 20 };
             await graph2.invalidate("A");
 
             // B and C should be potentially-outdated
@@ -126,7 +126,7 @@ describe("Incremental graph persistence and restart", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
-            const cellA = { value: numberComputedValue(0) };
+            const cellA = { value: { value: 0 } };
 
             // Both graphs must use the same full schema because
             // global/graph_scheme is immutable initialization metadata.
@@ -142,7 +142,9 @@ describe("Incremental graph persistence and restart", () => {
                 {
                     output: "B",
                     inputs: ["A"],
-                    computor: (inputs, _oldValue, _bindings) => numberComputedValue(inputs[0].value * 2),
+                    computor: (inputs, _oldValue, _bindings) => ({
+                        value: inputs[0].value * 2,
+                    }),
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -152,7 +154,7 @@ describe("Incremental graph persistence and restart", () => {
             const graph1 = await createIncrementalGraph(capabilities, db, fullSchemas);
             const version1 = graph1.getDbVersion();
 
-            cellA.value = numberComputedValue(10);
+            cellA.value = { value: 10 };
             await graph1.invalidate("A");
 
             // Create another graph with the same full schema.
@@ -186,7 +188,7 @@ describe("Incremental graph persistence and restart", () => {
                 {
                     output: "source",
                     inputs: [],
-                    computor: async () => numberComputedValue(1),
+                    computor: async () => ({ value: 1 }),
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -220,14 +222,14 @@ describe("Incremental graph persistence and restart", () => {
                 {
                     output: "source",
                     inputs: [],
-                    computor: async () => numberComputedValue(1),
+                    computor: async () => ({ value: 1 }),
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
                 {
                     output: "derived",
                     inputs: ["source"],
-                    computor: async ([source]) => numberComputedValue(source.value + 1),
+                    computor: async ([source]) => ({ value: source.value + 1 }),
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -249,14 +251,14 @@ describe("Incremental graph persistence and restart", () => {
                 {
                     output: "source",
                     inputs: [],
-                    computor: async () => numberComputedValue(1),
+                    computor: async () => ({ value: 1 }),
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
                 {
                     output: "derived",
                     inputs: ["source"],
-                    computor: async ([source]) => numberComputedValue(source.value + 1),
+                    computor: async ([source]) => ({ value: source.value + 1 }),
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
