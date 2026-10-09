@@ -127,6 +127,10 @@ const {
     parseIdentifierLookup,
 } = require('./sync_merge_identifier_lookup');
 
+const {
+    topologicalSortFromMap,
+} = require('./topo_sort');
+
 module.exports = {
     getRootDatabase,
     makeRootDatabase,
@@ -232,4 +236,5 @@ module.exports = {
     isFinalMergeStateError,
     isReplicaStateInvariantError,
     parseIdentifierLookup,
+    topologicalSortFromMap,
 };

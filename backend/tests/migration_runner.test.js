@@ -1000,13 +1000,14 @@ describe("runMigration", () => {
             expect(allValidKeys).toEqual([]);
         });
 
-        test("stale kept node loses incoming proofs after migration", async () => {
+        test("stale kept node preserves its unaffected incoming proof", async () => {
             // A → B
             // B is potentially-outdated, valid[A] contains B
             // migration keeps A and B
-            // after migration valid[A] no longer contains B because
-            // a preexisting stale node carried through keep is conservatively
-            // treated as a direct invalidation root.
+            // after migration valid[A] still contains B: §11 says a stale kept
+            // occurrence does not lose otherwise-valid proof merely because it is
+            // stale. Only the freshness flag records the staleness; the target
+            // input occurrence A is unchanged, so the carried proof edge survives.
             const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
             const aKey = fixtureNode("A");
@@ -1041,10 +1042,8 @@ describe("runMigration", () => {
 
             const validA = await yStorage.valid.get(aMigratedKey) ?? [];
             const bIdStr = String(bMigratedKey);
-            // B was stale before migration and kept: incoming proof removed
-            expect(validA.some(id => String(id) === bIdStr)).toBe(false);
-            // B's outgoing proof to C does not exist here, but the principle
-            // is that outgoing proofs of a stale kept node survive.
+            expect(validA.some(id => String(id) === bIdStr)).toBe(true);
+            expect(await yStorage.freshness.get(bMigratedKey)).toBe("potentially-outdated");
         });
 
         test("does not invent valid flags for stale kept nodes when valid was absent before migration", async () => {
@@ -1090,12 +1089,13 @@ describe("runMigration", () => {
             expect(validA.some(id => String(id) === bIdStr)).toBe(false);
         });
 
-        test("stale kept node with multiple inputs loses all incoming proofs", async () => {
+        test("stale kept node with multiple inputs preserves its incoming proofs", async () => {
             // D ─┐
             //    ├→ N  (N is stale, kept)
             // E ─┘
             // Both D→N and E→N were valid before migration.
-            // N is stale and kept: both incoming proofs must be removed.
+            // N is stale and kept: §11 keeps both unaffected incoming proofs and
+            // records the staleness only in N's freshness flag.
             const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
             const dKey = fixtureNode("D");
@@ -1136,8 +1136,8 @@ describe("runMigration", () => {
 
             const validD = await yStorage.valid.get(dMigrated) ?? [];
             const validE = await yStorage.valid.get(eMigrated) ?? [];
-            expect(validD.some(id => String(id) === String(nMigrated))).toBe(false);
-            expect(validE.some(id => String(id) === String(nMigrated))).toBe(false);
+            expect(validD.some(id => String(id) === String(nMigrated))).toBe(true);
+            expect(validE.some(id => String(id) === String(nMigrated))).toBe(true);
             expect(await yStorage.freshness.get(nMigrated)).toBe("potentially-outdated");
         });
 

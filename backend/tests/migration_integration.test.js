@@ -44,7 +44,7 @@ describe("migration integration", () => {
         );
     });
 
-    test("stale keep/replace region A→B→C loses both proofs, both recompute with oldValue", async () => {
+    test("stale keep region A→B→C preserves its proofs, and every stale node recomputes with oldValue", async () => {
         const caps = getTestCapabilities();
         let db;
         try {
@@ -107,11 +107,12 @@ describe("migration integration", () => {
             expect(await storage.freshness.get(bId2)).toBe("potentially-outdated");
             expect(await storage.freshness.get(cId2)).toBe("potentially-outdated");
 
-            // All incoming proofs removed (stale keep region loses both proofs)
+            // All incoming proofs preserved: §11 keeps a stale occurrence's
+            // unaffected proof, and only its freshness flag records the staleness.
             const validA = await storage.valid.get(aId2) ?? [];
             const validB = await storage.valid.get(bId2) ?? [];
-            expect(validA.some(d => String(d) === String(bId2))).toBe(false);
-            expect(validB.some(d => String(d) === String(cId2))).toBe(false);
+            expect(validA.some(d => String(d) === String(bId2))).toBe(true);
+            expect(validB.some(d => String(d) === String(cId2))).toBe(true);
 
             // --- Phase 4: Pull C — both B and C must recompute with oldValue ---
             aCalls = 0; bCalls = 0; cCalls = 0;
@@ -136,6 +137,52 @@ describe("migration integration", () => {
             const validBFinal = await storage.valid.get(bId2) ?? [];
             expect(validAFinal.some(d => String(d) === String(bId2))).toBe(true);
             expect(validBFinal.some(d => String(d) === String(cId2))).toBe(true);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test("replace(A) keeps B materialized but stale with its replaced-input proof dropped", async () => {
+        const caps = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(caps);
+            const nodeDefs = [
+                { output: "A", inputs: [], computor: async () => numberComputedValue(1), isDeterministic: true, hasSideEffects: false },
+                { output: "B", inputs: ["A"], computor: async () => numberComputedValue(2), isDeterministic: true, hasSideEffects: false },
+            ];
+            const g1 = await createIncrementalGraph(caps, db, nodeDefs);
+            await g1.pull("B");
+            await db.getSchemaStorage().global.put("version", "1");
+            await db.close();
+
+            db = await getRootDatabase(caps);
+            await runMigration(caps, db, nodeDefs, async (storage) => {
+                for await (const nk of storage.listMaterializedNodes()) {
+                    const key = await storage.resolveNodeKey(nk);
+                    if (!key) continue;
+                    if (String(key.head) === "A") {
+                        await storage.replace(nk, async () => numberComputedValue(20));
+                    } else {
+                        await storage.keep(nk);
+                    }
+                }
+            });
+
+            const storage = db.getSchemaStorage();
+            const lookup = db.getActiveIdentifierLookup();
+            const aId = lookup.keyToId.get('{"head":"A","args":[]}');
+            const bId = lookup.keyToId.get('{"head":"B","args":[]}');
+            expect(aId).toBeDefined();
+            expect(bId).toBeDefined();
+
+            // §11a.4: the replacement over a zero-input node is up-to-date, and the
+            // preserved dependent's carried edge named the replaced occurrence, so it
+            // is dropped and B is target-stale rather than claiming B=2 is fresh for A=20.
+            expect(await storage.freshness.get(aId)).toBe("up-to-date");
+            expect(await storage.freshness.get(bId)).toBe("potentially-outdated");
+            const validA = await storage.valid.get(aId) ?? [];
+            expect(validA.some((id) => String(id) === String(bId))).toBe(false);
         } finally {
             if (db) await db.close();
         }

@@ -29,7 +29,7 @@ const {
 } = require("./migration_codec");
 const { makeHistoryRewriter } = require("./journal_rewrite");
 const { makeTargetKeyView } = require("./migration_target_keys");
-const { buildDecisionsMap, buildDesiredValid, buildTargetFreshness, loadMaterializedNodes } = require("./migration_validity");
+const { buildDecisionsMap, buildTargetValidity, loadMaterializedNodes } = require("./migration_validity");
 const { tryUnsupportedPersistedIdentifier } = require("./migration_source_domain");
 const { buildMigrationM1Intents } = require("./migration_m1");
 const { buildProducedOccurrences } = require("./migration_occurrences");
@@ -348,25 +348,17 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
                 'migration target replica'
             );
 
-            // §11a.4 computes the target's freshness flags after target presence is
-            // fixed, in dependency-topological order, because a decision's flag names
-            // the freshness of the inputs it selected. `TargetValid` reads the same
-            // flags, so they are settled before it.
-            const targetFreshness = await buildTargetFreshness(
-                prevStorage,
-                decisions,
-                newGraphScheme,
-                finalLookup
-            );
-
-            const desiredValid = await buildDesiredValid(
+            // §11a.4 fixes the target's validity edges and its freshness flags
+            // together in dependency-topological order: a decision's freshness names
+            // the freshness of the inputs it selected, so those inputs are settled
+            // before it, and a `create`'s up-to-date assertion reads their flags.
+            const { desiredValid, targetFreshness } = await buildTargetValidity(
                 prevStorage,
                 decisions,
                 oldGraphScheme,
                 newGraphScheme,
                 oldLookup,
-                finalLookup,
-                targetFreshness
+                finalLookup
             );
 
             // Create a lazy source that computes desired values on demand.
