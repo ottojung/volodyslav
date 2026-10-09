@@ -23,7 +23,7 @@
  */
 
 const { makeInvalidMigrationDecisionError } = require("./migration_errors");
-const { stringToNodeKeyString, nodeIdentifierToString } = require("./database");
+const { nodeIdentifierToString } = require("./database");
 
 /** @typedef {import('./migration_storage').Decision} Decision */
 /** @typedef {import('./journal/migration_emission').MigrationIntent} MigrationIntent */
@@ -99,15 +99,15 @@ const { stringToNodeKeyString, nodeIdentifierToString } = require("./database");
  * is the one converted history already retains.
  *
  * @param {Map<NodeIdentifier, Decision>} decisions - The settled decisions, keyed by target materialization.
- * @param {import('./database/identifier_lookup').IdentifierLookup} sourceLookup - The source replica's
- *   identifier lookup, which supplies the source NodeKey of every transported key.
+ * @param {import('./migration_target_keys').TargetKeyView} targetKeyView - The source materialization in target NodeKey
+ *   representation, which supplies the transported target key of every key the migration made absent.
  * @param {ReadonlyMap<NodeIdentifier, TargetOccurrence>} producedOccurrences - The occurrences no
  *   converted record names, already carrying their §11a.3 timestamps and values.
  * @param {(nodeKeyString: import('./database/types').NodeKeyString) => NodeKey} toNodeKey - Narrows a persisted NodeKeyString to
  *   the `NodeKey` the journal record names.
  * @returns {Array<MigrationIntent>}
  */
-function buildMigrationM1Intents(decisions, sourceLookup, producedOccurrences, toNodeKey) {
+function buildMigrationM1Intents(decisions, targetKeyView, producedOccurrences, toNodeKey) {
     /** @type {Array<MigrationIntent>} */
     const intents = [];
 
@@ -144,16 +144,16 @@ function buildMigrationM1Intents(decisions, sourceLookup, producedOccurrences, t
         if (decision.kind !== "delete") {
             continue;
         }
-        const sourceKeyString = sourceLookup.idToKey.get(nodeIdentifierToString(identifier));
-        if (sourceKeyString === undefined) {
+        const targetKeyString = targetKeyView.keyForIdentifier(identifier);
+        if (targetKeyString instanceof Error) {
             throw makeInvalidMigrationDecisionError(
                 "migration deleted " + nodeIdentifierToString(identifier) +
-                    ", which the source replica does not materialize"
+                    ", whose target node key the source->target codec could not produce"
             );
         }
         intents.push({
             kind: "migrate-delete",
-            node: toNodeKey(stringToNodeKeyString(String(sourceKeyString))),
+            node: toNodeKey(targetKeyString),
         });
     }
 

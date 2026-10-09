@@ -34,7 +34,7 @@
  */
 
 const { makeInvalidMigrationDecisionError } = require("./migration_errors");
-const { stringToNodeKeyString, nodeIdentifierToString } = require("./database");
+const { deserializeNodeKey, stringToNodeKeyString, nodeIdentifierToString } = require("./database");
 
 /** @typedef {import('./migration_storage').Decision} Decision */
 /** @typedef {import('./migration_storage').ReadableMigrationStorage} ReadableMigrationStorage */
@@ -56,12 +56,15 @@ const { stringToNodeKeyString, nodeIdentifierToString } = require("./database");
  * @param {Map<NodeIdentifier, Decision>} decisions - The settled decisions, keyed by target materialization.
  * @param {ReadableMigrationStorage} prevStorage - The source replica, which holds the replaced occurrence's timestamps.
  * @param {IdentifierLookup} oldLookup - The source replica identifier lookup, which supplies the replaced node key.
+ * @param {import('./migration_target_keys').TargetKeyView} targetKeyView - The source materialization in target NodeKey representation.
  * @param {string} publicationInstant - Canonical whole-millisecond ISO instant of the migration.
  * @param {(nodeKeyString: import('./database/types').NodeKeyString) => Promise<boolean>} namesOccurrence - Whether the
  *   source replica's retained Journal names a value occurrence of this node key.
+ * @param {import('./journal_rewrite').HistoryRewriter} rewriter - The migration's one source->target
+ *   rewrite, which converts the transported payload into its target representation.
  * @returns {Promise<Map<NodeIdentifier, TargetOccurrence>>}
  */
-async function buildProducedOccurrences(decisions, prevStorage, oldLookup, publicationInstant, namesOccurrence) {
+async function buildProducedOccurrences(decisions, prevStorage, oldLookup, targetKeyView, publicationInstant, namesOccurrence, rewriter) {
     /** @type {Map<NodeIdentifier, TargetOccurrence>} */
     const produced = new Map();
     for (const [identifier, decision] of decisions) {
@@ -73,7 +76,9 @@ async function buildProducedOccurrences(decisions, prevStorage, oldLookup, publi
                 identifier,
                 prevStorage,
                 oldLookup,
-                namesOccurrence
+                targetKeyView,
+                namesOccurrence,
+                rewriter
             );
             if (transported !== undefined) {
                 produced.set(identifier, transported);
@@ -115,9 +120,15 @@ async function buildProducedOccurrences(decisions, prevStorage, oldLookup, publi
                 `Migration replaced ${String(identifier)}, whose source replica has no timestamps`
             );
         }
+        const targetKeyString = targetKeyView.keyForIdentifier(identifier);
+        if (targetKeyString instanceof Error) {
+            throw makeInvalidMigrationDecisionError(
+                `Migration replaced ${String(identifier)}, whose target node key the source->target codec could not produce`
+            );
+        }
         produced.set(identifier, {
             identifier,
-            nodeKeyString: stringToNodeKeyString(String(sourceKeyString)),
+            nodeKeyString: targetKeyString,
             value,
             createdAt: existing.createdAt,
             modifiedAt: publicationInstant,
@@ -137,23 +148,31 @@ async function buildProducedOccurrences(decisions, prevStorage, oldLookup, publi
  * occurrence, so the graph state the target persists and the record M1 authors for it
  * describe one occurrence.
  *
+ * Whether the source replica's retained Journal already names the occurrence is asked
+ * of the source replica itself, so that question is put in the source representation the
+ * source replica persists. The occurrence the target carries is in the target
+ * representation, because the retained history it travels with has been rewritten into
+ * it.
+ *
  * @param {NodeIdentifier} identifier - The target materialization of the transported occurrence.
  * @param {ReadableMigrationStorage} prevStorage - The source replica, which persists the occurrence.
  * @param {IdentifierLookup} oldLookup - The source replica identifier lookup, which supplies the node key.
+ * @param {import('./migration_target_keys').TargetKeyView} targetKeyView - The source materialization in target NodeKey representation.
  * @param {(nodeKeyString: import('./database/types').NodeKeyString) => Promise<boolean>} namesOccurrence - Whether
  *   the source replica's retained Journal names a value occurrence of this node key.
+ * @param {import('./journal_rewrite').HistoryRewriter} rewriter - The migration's one source->target
+ *   rewrite, which converts the transported payload into its target representation.
  * @returns {Promise<TargetOccurrence | undefined>} The transported occurrence, or `undefined` when
  *   converted history already names one.
  */
-async function readTransportedOccurrence(identifier, prevStorage, oldLookup, namesOccurrence) {
+async function readTransportedOccurrence(identifier, prevStorage, oldLookup, targetKeyView, namesOccurrence, rewriter) {
     const sourceKeyString = oldLookup.idToKey.get(nodeIdentifierToString(identifier));
     if (sourceKeyString === undefined) {
         throw makeInvalidMigrationDecisionError(
             `Migration preserves ${String(identifier)}, which the source replica does not materialize`
         );
     }
-    const nodeKeyString = stringToNodeKeyString(String(sourceKeyString));
-    if (await namesOccurrence(nodeKeyString)) {
+    if (await namesOccurrence(stringToNodeKeyString(String(sourceKeyString)))) {
         return undefined;
     }
     const [timestamps, value] = await Promise.all([
@@ -170,10 +189,25 @@ async function readTransportedOccurrence(identifier, prevStorage, oldLookup, nam
             `Migration transports ${String(identifier)}, whose source replica has no value`
         );
     }
+    const rewrittenValue = rewriter.payload(
+        deserializeNodeKey(stringToNodeKeyString(String(sourceKeyString))),
+        value
+    );
+    if (rewrittenValue instanceof Error) {
+        throw makeInvalidMigrationDecisionError(
+            `Migration transports ${String(identifier)}, whose value the source->target codec could not rewrite`
+        );
+    }
+    const targetKeyString = targetKeyView.keyForIdentifier(identifier);
+    if (targetKeyString instanceof Error) {
+        throw makeInvalidMigrationDecisionError(
+            `Migration transports ${String(identifier)}, whose target node key the source->target codec could not produce`
+        );
+    }
     return {
         identifier,
-        nodeKeyString,
-        value,
+        nodeKeyString: targetKeyString,
+        value: rewrittenValue,
         createdAt: timestamps.createdAt,
         modifiedAt: timestamps.modifiedAt,
         reason: "bootstrap",

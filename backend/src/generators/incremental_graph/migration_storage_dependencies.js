@@ -102,20 +102,24 @@ async function propagateInvalidate(ctx) {
  *
  * Uses scheme-derived structural dependencies rather than valid so that
  * stale nodes whose dependents are absent from valid are still discovered.
+ *
+ * The structural dependencies are derived in the target NodeKey representation,
+ * which is the key space the target schema is written in.
+ *
  * @param {object} ctx
  * @param {Set<NodeIdentifier>} ctx.materializedNodes
  * @param {Map<NodeIdentifier, Decision>} ctx.decisions
  * @param {import('./database/graph_scheme').GraphScheme} ctx.newGraphScheme
- * @param {import('./database/identifier_lookup').IdentifierLookup} ctx.oldLookup
+ * @param {import('./migration_target_keys').TargetKeyView} ctx.targetKeyView
  * @returns {Promise<void>}
  */
 async function propagateDeletes(ctx) {
-    const { materializedNodes, decisions, newGraphScheme, oldLookup } = ctx;
+    const { materializedNodes, decisions, newGraphScheme, targetKeyView } = ctx;
     /** @type {Array<[NodeIdentifier, import('./database/types').NodeKeyString]>} */
     const candidateEntries = [];
     for (const nodeKey of materializedNodes) {
-        const semanticKey = oldLookup.idToKey.get(nodeIdentifierToString(nodeKey));
-        if (semanticKey !== undefined) {
+        const semanticKey = targetKeyView.keyForIdentifier(nodeKey);
+        if (!(semanticKey instanceof Error)) {
             candidateEntries.push([nodeKey, semanticKey]);
         }
     }

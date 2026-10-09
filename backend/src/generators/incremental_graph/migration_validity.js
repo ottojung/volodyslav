@@ -43,17 +43,25 @@ function addToValidSet(validSets, input, dependent) {
 
 /**
  * Build the identifiers_keys_map that reflects all decisions.
- * @param {import('./database/identifier_lookup').IdentifierLookup} oldLookup
+ *
+ * The target replica materializes the transported target keys, so a source
+ * materialization the migration keeps, invalidates or replaces appears in the map
+ * under `Kt = rewriteNodeKey(Ks)` rather than under the source spelling the source
+ * replica persisted. A `create` declares its key in the target representation
+ * already.
+ *
+ * @param {import('./migration_target_keys').TargetKeyView} targetKeyView - The source
+ *   materialization in target NodeKey representation.
  * @param {Map<NodeIdentifier, Decision>} decisions
  * @returns {Array<[NodeIdentifier, NodeKeyString]>}
  */
-function buildDecisionsMap(oldLookup, decisions) {
+function buildDecisionsMap(targetKeyView, decisions) {
     /** @type {Map<string, NodeKeyString>} */
     const idToKey = new Map();
-    for (const [idString, nodeKeyJson] of oldLookup.idToKey.entries()) {
+    for (const [idString, nodeKeyJson] of targetKeyView.index.entries()) {
         const decision = decisions.get(stringToNodeIdentifier(idString));
         if (!decision || decision.kind !== "delete") {
-            idToKey.set(idString, stringToNodeKeyString(String(nodeKeyJson)));
+            idToKey.set(idString, stringToNodeKeyString(nodeKeyJson));
         }
     }
 

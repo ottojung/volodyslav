@@ -6,6 +6,15 @@ const { makeMigrationStorage: makeMigrationStorageBase } = require("../src/gener
 const { compileNodeDef } = require("../src/generators/incremental_graph/compiled_node");
 const { IDENTIFIERS_KEY } = require("../src/generators/incremental_graph/database");
 const {
+    makeHistoryRewriter,
+} = require("../src/generators/incremental_graph/journal_rewrite");
+const {
+    makeIdentityJournalFormatCodec,
+} = require("../src/generators/incremental_graph/migration_codec");
+const {
+    makeTargetKeyView,
+} = require("../src/generators/incremental_graph/migration_target_keys");
+const {
     isDecisionConflict,
     isUndecidedNodes,
     isSchemaCompatibility,
@@ -66,9 +75,10 @@ function makeInMemorySchemaStorage() {
  * @param {import('../src/generators/incremental_graph/database/identifier_lookup').IdentifierLookup} lookup
  * @returns {import('../src/generators/incremental_graph/migration_storage').MigrationStorage}
  */
-function makeMigrationStorage(storage, newHeadIndex, materializedNodes, fingerprint, lastNodeIndex, oldGraphScheme, newGraphScheme, lookup) {
+function makeMigrationStorage(storage, newHeadIndex, materializedNodes, fingerprint, lastNodeIndex, oldGraphScheme, newGraphScheme, lookup, codec) {
     storage.global.store.set(IDENTIFIERS_KEY, [...lookup.idToKey.entries()]);
-    return makeMigrationStorageBase(storage, newHeadIndex, materializedNodes, fingerprint, lastNodeIndex, oldGraphScheme, newGraphScheme, lookup);
+    const rewriter = makeHistoryRewriter(codec ?? makeIdentityJournalFormatCodec());
+    return makeMigrationStorageBase(storage, newHeadIndex, materializedNodes, fingerprint, lastNodeIndex, oldGraphScheme, newGraphScheme, lookup, makeTargetKeyView(lookup, rewriter));
 }
 
 

@@ -98,7 +98,7 @@ const {
     makeWriterStateRecord,
 } = require("./records");
 
-const { isNodeIdentifier } = require("./record_fields");
+const { isComputedValue, isNodeIdentifier } = require("./record_fields");
 
 // Canonical current-format codec
 const {
@@ -280,6 +280,7 @@ allocateAuthority,
     isJournalReplica,
     isJournalSequence,
     isNodeKey,
+    isComputedValue,
     isNodeIdentifier,
     isSameJournalAuthor,
     isSemanticEvent,

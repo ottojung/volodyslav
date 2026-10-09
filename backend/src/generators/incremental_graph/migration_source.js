@@ -16,20 +16,36 @@
  * The freshness flags are `buildTargetFreshness`'s, also passed in: §11a.4 derives
  * a replacement's flag from the freshness of the inputs it selected, so the flag
  * cannot be read back from the source replica for a node the migration replaced.
+ *
+ * The target replica's `identifiers_keys_map` is the target lookup, which is the
+ * source materialization under the target NodeKey representation, so the graph state
+ * this source yields and the retained history the same cutover rewrites name one node
+ * key for one materialized node. A transported payload is read out of the source
+ * replica and rewritten through the same codec which rewrote the record which names
+ * it, because `GconvertedBefore` carries the rewritten representation of the value
+ * and not the source representation of it.
  */
 
-const { compareNodeIdentifier, GRAPH_SCHEME_KEY, IDENTIFIERS_KEY, LAST_NODE_INDEX_KEY } = require("./database");
+const {
+    compareNodeIdentifier,
+    deserializeNodeKey,
+    GRAPH_SCHEME_KEY,
+    IDENTIFIERS_KEY,
+    LAST_NODE_INDEX_KEY,
+    serializeIdentifierLookup,
+} = require("./database");
 const { makeInvalidMigrationDecisionError } = require("./migration_errors");
-const { buildDecisionsMap } = require("./migration_validity");
 
 /** @typedef {import('./database').ReadableSchemaStorage} ReadableSchemaStorage */
 /** @typedef {import('./database/types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./database/types').ComputedValue} ComputedValue */
 /** @typedef {import('./database/types').Freshness} Freshness */
+/** @typedef {import('./database/types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./database/types').Version} Version */
 /** @typedef {import('./migration_storage').Decision} Decision */
 /** @typedef {import('./migration_storage').ReadableMigrationStorage} ReadableMigrationStorage */
 /** @typedef {import('./database/identifier_lookup').IdentifierLookup} IdentifierLookup */
+/** @typedef {import('./journal_rewrite').HistoryRewriter} HistoryRewriter */
 
 
 /**
@@ -44,7 +60,8 @@ const { buildDecisionsMap } = require("./migration_validity");
  * trade-off that avoids per-value memory retention.
  *
  * @param {ReadableMigrationStorage} prevStorage
- * @param {import('./database/identifier_lookup').IdentifierLookup} oldLookup
+ * @param {IdentifierLookup} sourceLookup - The source replica's identifier lookup, which supplies
+ *   the source NodeKey of every transported key.
  * @param {Map<NodeIdentifier, Decision>} decisions
  * @param {Map<NodeIdentifier, NodeIdentifier[]>} desiredValid
  * @param {ReadonlyMap<NodeIdentifier, Freshness>} targetFreshness - The §11a.4
@@ -58,9 +75,12 @@ const { buildDecisionsMap } = require("./migration_validity");
  *   occurrences a `create` or a replacement produced and the occurrences an occurrence-preserving decision
  *   transported, already carrying their §11a.3 timestamps. The M1 records name the same occurrences, so the
  *   graph state and the journal describe one value.
+ * @param {IdentifierLookup} targetLookup - The target replica's identifier lookup, in target NodeKey
+ *   representation.
+ * @param {HistoryRewriter} rewriter - The migration's one source->target rewrite.
  * @returns {ReadableSchemaStorage}
  */
-function makeLazyMigrationSource(prevStorage, oldLookup, decisions, desiredValid, targetFreshness, newVersion, maxAllocatedIndex, sourceLastNodeIndex, fingerprint, graphSchemeString, producedOccurrences) {
+function makeLazyMigrationSource(prevStorage, sourceLookup, decisions, desiredValid, targetFreshness, newVersion, maxAllocatedIndex, sourceLastNodeIndex, fingerprint, graphSchemeString, producedOccurrences, targetLookup, rewriter) {
     /**
      * @param {NodeIdentifier} key
      * @param {Decision} decision
@@ -74,7 +94,26 @@ function makeLazyMigrationSource(prevStorage, oldLookup, decisions, desiredValid
             }
             throw makeInvalidMigrationDecisionError(`Migration value producer for ${String(key)} did not return a computed value`);
         }
-        return await prevStorage.values.get(key);
+        const sourceValue = await prevStorage.values.get(key);
+        if (sourceValue === undefined) {
+            return undefined;
+        }
+        const sourceKeyString = sourceLookup.idToKey.get(String(key));
+        if (sourceKeyString === undefined) {
+            throw makeInvalidMigrationDecisionError(
+                `Migration transports ${String(key)}, which the source replica does not materialize`
+            );
+        }
+        const rewritten = rewriter.payload(
+            deserializeNodeKey(sourceKeyString),
+            sourceValue
+        );
+        if (rewritten instanceof Error) {
+            throw makeInvalidMigrationDecisionError(
+                `Migration transports ${String(key)}, whose value the source->target codec could not rewrite`
+            );
+        }
+        return rewritten;
     }
 
     const sortedDecisionOutputKeys = [...decisions.keys()]
@@ -163,7 +202,7 @@ function makeLazyMigrationSource(prevStorage, oldLookup, decisions, desiredValid
                     return newVersion;
                 }
                 if (key === IDENTIFIERS_KEY) {
-                    return buildDecisionsMap(oldLookup, decisions);
+                    return serializeIdentifierLookup(targetLookup);
                 }
                 if (key === LAST_NODE_INDEX_KEY) {
                     return Math.max(sourceLastNodeIndex, maxAllocatedIndex);

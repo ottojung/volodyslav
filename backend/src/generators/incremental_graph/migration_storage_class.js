@@ -39,6 +39,7 @@ const {
 /** @typedef {import('./migration_decisions').CreatedFreshness} CreatedFreshness */
 /** @typedef {import('./migration_decisions').CreateDecision} CreateDecision */
 /** @typedef {import('./migration_decisions').Decision} Decision */
+/** @typedef {import('./migration_target_keys').TargetKeyView} TargetKeyView */
 
 /**
  * MigrationStorage class.
@@ -85,6 +86,12 @@ class MigrationStorageClass {
     oldLookup;
 
     /**
+     * The source materialization in target NodeKey representation.
+     * @type {TargetKeyView}
+     */
+    targetKeyView;
+
+    /**
      * @param {ReadableMigrationStorage} prevStorage
      * @param {Map<NodeName, CompiledNode>} newHeadIndex
      * @param {NodeIdentifier[]} materializedNodes
@@ -93,28 +100,42 @@ class MigrationStorageClass {
      * @param {import('./database/graph_scheme').GraphScheme} oldGraphScheme
      * @param {import('./database/graph_scheme').GraphScheme} newGraphScheme
      * @param {import('./database/identifier_lookup').IdentifierLookup} oldLookup
+     * @param {TargetKeyView} targetKeyView
      */
-    constructor(prevStorage, newHeadIndex, materializedNodes, fingerprint, lastNodeIndex, oldGraphScheme, newGraphScheme, oldLookup) {
+    constructor(prevStorage, newHeadIndex, materializedNodes, fingerprint, lastNodeIndex, oldGraphScheme, newGraphScheme, oldLookup, targetKeyView) {
         this.prevStorage = prevStorage;
         this.newHeadIndex = newHeadIndex;
         this.materializedNodes = new Set(materializedNodes);
         this.decisions = new Map();
         this._fingerprint = fingerprint;
         this._nextIndex = lastNodeIndex + 1;
-        this._identifiersKeysIndex = buildIdentifiersKeysIndex(oldLookup);
+        this._identifiersKeysIndex = targetKeyView.index;
+        this._sourceIdentifiersKeysIndex = buildIdentifiersKeysIndex(oldLookup);
+        this._transport = targetKeyView.nodeKeyString;
         this.oldGraphScheme = oldGraphScheme;
         this.newGraphScheme = newGraphScheme;
         this.oldLookup = oldLookup;
+        this.targetKeyView = targetKeyView;
     }
 
     /**
-     * Return the identifiers keys index, pre-built from oldLookup at
-     * construction time.
+     * Return the target key index, pre-built from the source replica's identifier
+     * lookup transported through the source->target codec.
      * @private
      * @returns {Map<string, string>}
      */
     _getIdentifiersKeysIndex() {
         return this._identifiersKeysIndex;
+    }
+
+    /**
+     * Return the source key index, pre-built from the source replica's identifier
+     * lookup as that replica persists it.
+     * @private
+     * @returns {Map<string, string>}
+     */
+    _getSourceIdentifiersKeysIndex() {
+        return this._sourceIdentifiersKeysIndex;
     }
 
     /**
@@ -156,7 +177,14 @@ class MigrationStorageClass {
         }
         const identifiersKeysIndex = this._getIdentifiersKeysIndex();
         await checkSchemaCompatibility(nodeKey, this.newHeadIndex, identifiersKeysIndex, this.decisions);
-        await assertKeepInputPositionsCompatible(nodeKey, identifiersKeysIndex, this.oldGraphScheme, this.newGraphScheme);
+        await assertKeepInputPositionsCompatible(
+            nodeKey,
+            identifiersKeysIndex,
+            this._getSourceIdentifiersKeysIndex(),
+            this.oldGraphScheme,
+            this.newGraphScheme,
+            this._transport
+        );
         const existing = this.decisions.get(nodeKey);
         if (existing !== undefined) {
             if (existing.kind === "keep") return;
@@ -191,7 +219,14 @@ class MigrationStorageClass {
         }
         const identifiersKeysIndex = this._getIdentifiersKeysIndex();
         await checkSchemaCompatibility(nodeKey, this.newHeadIndex, identifiersKeysIndex, this.decisions);
-        await assertKeepInputPositionsCompatible(nodeKey, identifiersKeysIndex, this.oldGraphScheme, this.newGraphScheme);
+        await assertKeepInputPositionsCompatible(
+            nodeKey,
+            identifiersKeysIndex,
+            this._getSourceIdentifiersKeysIndex(),
+            this.oldGraphScheme,
+            this.newGraphScheme,
+            this._transport
+        );
         const existing = this.decisions.get(nodeKey);
         if (existing !== undefined) {
             throw makeDecisionConflictError(nodeKey, existing.kind, "replace");
@@ -283,8 +318,12 @@ class MigrationStorageClass {
         }
         const keyStr = String(nodeKeyString);
 
-        for (const [, existingKey] of this.oldLookup.idToKey.entries()) {
-            if (String(existingKey) === keyStr) {
+        // §11a.1: a create whose target key equals `rewriteNodeKey(Ks)` for any
+        // materialized source node collides with transported source state, so the
+        // comparison is made against the transported target keys and not against the
+        // source spelling the source replica persists.
+        for (const [, existingKey] of this._identifiersKeysIndex.entries()) {
+            if (existingKey === keyStr) {
                 throw makeCreateExistingNodeError(nodeKeyString);
             }
         }
@@ -368,7 +407,7 @@ class MigrationStorageClass {
             materializedNodes: this.materializedNodes,
             decisions: this.decisions,
             newGraphScheme: this.newGraphScheme,
-            oldLookup: this.oldLookup,
+            targetKeyView: this.targetKeyView,
         });
         this._checkCompleteness();
         return this.decisions;

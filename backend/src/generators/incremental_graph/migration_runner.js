@@ -23,6 +23,12 @@ const {
 } = require("./database");
 const { holidayActivity } = require("./lock");
 const { makeMigrationStorage } = require("./migration_storage");
+const {
+    isJournalFormatCodec,
+    makeIdentityJournalFormatCodec,
+} = require("./migration_codec");
+const { makeHistoryRewriter } = require("./journal_rewrite");
+const { makeTargetKeyView } = require("./migration_target_keys");
 const { buildDecisionsMap, buildDesiredValid, buildTargetFreshness, loadMaterializedNodes } = require("./migration_validity");
 const { tryUnsupportedPersistedIdentifier } = require("./migration_source_domain");
 const { buildMigrationM1Intents } = require("./migration_m1");
@@ -50,6 +56,7 @@ const { fromISOString } = require("../../datetime");
 /** @typedef {import('./migration_storage').MigrationStorage} MigrationStorage */
 /** @typedef {import('./migration_storage').ReadableMigrationStorage} ReadableMigrationStorage */
 /** @typedef {import('./migration_storage').Decision} Decision */
+/** @typedef {import('./migration_codec').JournalFormatCodec} JournalFormatCodec */
 
 /**
  * @typedef {import("../../logger").Logger} Logger
@@ -98,6 +105,13 @@ const { fromISOString } = require("../../datetime");
  * the previous application version.  Propagation rules and completeness are
  * enforced automatically; any violation throws before the new version is written.
  *
+ * `codec` is the migration definition's directed source->target
+ * `JournalFormatCodec`, which `incremental-graph-journal-migrations.md` §9a makes the
+ * one representation-rewrite mechanism of the transition. It rewrites the retained
+ * history the target carries while the callback decides the semantic target graph.
+ * §9a defaults an omitted transform to the identity transform, and the identity codec
+ * is the declaration of a transition whose retained history already is target-format.
+ *
  * Uses a replica-pointer-swap strategy: writes the desired state to an
  * in-memory store, gently unifies it into the inactive replica (writing only
  * changed keys, deleting stale ones), then atomically switches the pointer.
@@ -107,11 +121,13 @@ const { fromISOString } = require("../../datetime");
  * @param {RootDatabase} rootDatabase - Opened root database
  * @param {Array<NodeDef>} nodeDefs - New-version schema node definitions
  * @param {(storage: MigrationStorage) => Promise<void>} callback
+ * @param {JournalFormatCodec} [codec] - The transition's source->target Journal format
+ *   codec, which defaults to the identity codec.
  * @returns {Promise<RootDatabase>}
  */
-async function runMigration(capabilities, rootDatabase, nodeDefs, callback) {
+async function runMigration(capabilities, rootDatabase, nodeDefs, callback, codec) {
     return await holidayActivity(capabilities.sleeper, async () => {
-        return await runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback);
+        return await runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback, codec);
     });
 }
 
@@ -157,13 +173,21 @@ function makeOccurrenceNamer(prevStorage) {
  * @param {RootDatabase} rootDatabase - Opened root database
  * @param {Array<NodeDef>} nodeDefs - New-version schema node definitions
  * @param {(storage: MigrationStorage) => Promise<void>} callback
+ * @param {JournalFormatCodec} [codec] - The transition's source->target Journal format
+ *   codec, which defaults to the identity codec.
  * @returns {Promise<RootDatabase>}
  */
-async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback)
+async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback, codec)
 {
     const currentVersion = rootDatabase.getVersion();
     const activeReplica = rootDatabase.currentReplicaName();
     const inactiveReplica = rootDatabase.otherReplicaName();
+    const journalFormatCodec = codec ?? makeIdentityJournalFormatCodec();
+    if (isJournalFormatCodec(journalFormatCodec) !== true) {
+        throw new Error(
+            "runMigration: the journal format codec must be built by makeJournalFormatCodec"
+        );
+    }
 
     capabilities.logger.logDebug(
         {
@@ -268,6 +292,18 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
                 `migration source replica (${fromReplica})`
             );
 
+            // §9a's rewrite and §11's callback key space both address the source
+            // materialization in target NodeKey representation, so the transition's
+            // codec builds the one rewriter which serves both halves: the retained
+            // history the target carries, and the target-key view the callback reasons
+            // in. A rewrite which is not total over this replica's materialized set
+            // fails here, before the callback runs and before the target is written.
+            const rewriter = makeHistoryRewriter(journalFormatCodec);
+            const targetKeyView = makeTargetKeyView(oldLookup, rewriter);
+            if (targetKeyView instanceof Error) {
+                throw targetKeyView;
+            }
+
             // Load previous-version materialized nodes.
             const materializedNodes = loadMaterializedNodes(oldLookup);
 
@@ -292,7 +328,8 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
                 sourceLastNodeIndex,
                 oldGraphScheme,
                 newGraphScheme,
-                oldLookup
+                oldLookup,
+                targetKeyView
             );
 
             // Execute user migration callback.
@@ -303,8 +340,11 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
 
             const toStorage = rootDatabase.schemaStorageForReplica(toReplica);
 
+            // The target replica materializes the transported target keys, so its
+            // identifier lookup is the source materialization under the target
+            // representation rather than the source spelling of it.
             const finalLookup = parseIdentifierLookup(
-                buildDecisionsMap(oldLookup, decisions),
+                buildDecisionsMap(targetKeyView, decisions),
                 'migration target replica'
             );
 
@@ -339,8 +379,10 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
                 decisions,
                 prevStorage,
                 oldLookup,
+                targetKeyView,
                 publicationInstant,
-                makeOccurrenceNamer(prevStorage)
+                makeOccurrenceNamer(prevStorage),
+                rewriter
             );
 
             const lazySource = makeLazyMigrationSource(
@@ -354,7 +396,9 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
                 sourceLastNodeIndex,
                 rootDatabase.getFingerprint(),
                 graphSchemeString,
-                producedOccurrences
+                producedOccurrences,
+                finalLookup,
+                rewriter
             );
 
             // Gently unify the desired state into the target replica.
@@ -370,7 +414,7 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             // the cutover fails.
             const migrationIntents = buildMigrationM1Intents(
                 decisions,
-                oldLookup,
+                targetKeyView,
                 producedOccurrences,
                 /**
                  * @param {NodeKeyString} nodeKeyString
@@ -384,7 +428,8 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
                 rootDatabase.getFingerprint(),
                 migrationIntents,
                 fromISOString(publicationInstant).toMillis(),
-                Math.max(sourceLastNodeIndex, migrationStorage.getMaxAllocatedIndex())
+                Math.max(sourceLastNodeIndex, migrationStorage.getMaxAllocatedIndex()),
+                rewriter
             );
 
             // One final fsync: all unification writes use sync:false for performance;

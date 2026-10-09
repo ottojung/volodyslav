@@ -15,11 +15,9 @@
  * what the migration changed about it.
  *
  * Representation rewriting proper is §9a's `JournalFormatCodec`, owned by the migration
- * definition rather than by this module. This module is the identity-codec seam: it
- * carries each retained record under the target's own current-format encoding, which
- * is the correct rewrite whenever the retained history is already in the running
- * format. A migration whose source version differs supplies its codec by rewriting the
- * records it hands to `carryRetainedJournal`.
+ * definition rather than by this module. This module applies the rewriter that codec
+ * builds, which the same migration hands to the graph-side target key view so that the
+ * retained history and the materialized graph name one node key for one node.
  */
 
 const {
@@ -30,15 +28,23 @@ const {
     finalizeMigrationEmission,
     makeJournalPublicationError,
 } = require("./journal");
+const { rewriteJournalEntry } = require("./journal_rewrite");
+const {
+    journalKeyToString,
+    stringToJournalKey,
+    stringToJournalText,
+} = require("./database");
 
 /** @typedef {import('./journal/errors').AnyJournalError} JournalError */
 /** @typedef {import('./journal/emission').CommittedWriterState} CommittedWriterState */
 /** @typedef {import('./journal/migration_emission').MigrationIntent} MigrationIntent */
+/** @typedef {import('./journal_rewrite').HistoryRewriter} HistoryRewriter */
 /** @typedef {import('./database/root_database').JournalDatabase} JournalDatabase */
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
 
 /**
- * Make the inactive target's Journal be the source replica's retained history.
+ * Make the inactive target's Journal be the source replica's retained history,
+ * rewritten through the source->target codec.
  *
  * Records, the current-occurrence index, and the committed writer state all travel
  * together, because a target which received records without the writer state would
@@ -56,17 +62,21 @@ const {
  *
  * Nothing a source retains is ever removed: the deletion is over the target's keys
  * the source lacks, which is exactly the set this call is responsible for having
- * written. No retained record is rewritten or dropped, only an inactive replica's
- * own leftovers.
+ * written. No retained record is dropped, only an inactive replica's own leftovers.
+ *
+ * A record whose `JournalRecordId` is preserved travels under the same key it had, so
+ * the rewrite changes a key only when the key itself names a node key — which is what
+ * an occurrence-index entry does.
  *
  * The copy is one batch of the target storage, so the target's Journal is either
  * entirely without the retained history or entirely with it.
  *
  * @param {SchemaStorage} sourceStorage
  * @param {SchemaStorage} targetStorage
+ * @param {HistoryRewriter} rewriter - The migration's one source->target rewrite.
  * @returns {Promise<void>}
  */
-async function carryRetainedJournal(sourceStorage, targetStorage) {
+async function carryRetainedJournal(sourceStorage, targetStorage, rewriter) {
     const sourceJournal = sourceStorage.journal;
     const targetJournal = targetStorage.journal;
     /** @type {Set<string>} */
@@ -74,18 +84,27 @@ async function carryRetainedJournal(sourceStorage, targetStorage) {
     /** @type {Array<import('./database/root_database').DatabaseBatchOperation>} */
     const operations = [];
     for await (const sourceKey of sourceJournal.keys()) {
-        const key = String(sourceKey);
+        const key = journalKeyToString(sourceKey);
         const value = await sourceJournal.get(sourceKey);
         if (value === undefined) {
             throw makeJournalPublicationError(
                 "the migration source journal key " + key + " has no stored value"
             );
         }
-        sourceKeys.add(key);
-        operations.push(targetJournal.putOp(sourceKey, value));
+        const rewritten = rewriteJournalEntry(key, value, rewriter);
+        if (rewritten instanceof Error) {
+            throw rewritten;
+        }
+        sourceKeys.add(rewritten.keyText);
+        operations.push(
+            targetJournal.putOp(
+                stringToJournalKey(rewritten.keyText),
+                stringToJournalText(rewritten.text)
+            )
+        );
     }
     for await (const targetKey of targetJournal.keys()) {
-        if (sourceKeys.has(String(targetKey))) {
+        if (sourceKeys.has(journalKeyToString(targetKey))) {
             continue;
         }
         operations.push(targetJournal.delOp(targetKey));
@@ -136,20 +155,22 @@ async function publishMigrationM1(targetStorage, state, intents, publicationInst
  * Build the target replica's Journal for one migration and publish M1 over it.
  *
  * This is the whole Journal half of a cutover in one call: the source's retained
- * history travels into the inactive target, and the M1 records state what the
- * migration changed about that history. Both land before the cutover selects the
- * target, so a failure anywhere in between leaves the previous active pair selected.
+ * history travels into the inactive target under the migration's source->target codec,
+ * and the M1 records state what the migration changed about that history. Both land
+ * before the cutover selects the target, so a failure anywhere in between leaves the
+ * previous active pair selected.
  *
  * @param {SchemaStorage} sourceStorage - The still-active source replica.
  * @param {SchemaStorage} targetStorage - The inactive target replica being built.
  * @param {string} fingerprint - The local writer name.
  * @param {ReadonlyArray<MigrationIntent>} intents - The M1 value/absence transition.
  * @param {number} publicationInstant - Epoch milliseconds of the migration publication.
- * @param {number} allocatorWatermark - The allocation watermark the target establishes.
+ * @param {number} allocatorWatermark - The allocation watermark the target durably establishes.
+ * @param {HistoryRewriter} rewriter - The migration's one source->target rewrite.
  * @returns {Promise<void>}
  */
-async function buildMigrationJournal(sourceStorage, targetStorage, fingerprint, intents, publicationInstant, allocatorWatermark) {
-    await carryRetainedJournal(sourceStorage, targetStorage);
+async function buildMigrationJournal(sourceStorage, targetStorage, fingerprint, intents, publicationInstant, allocatorWatermark, rewriter) {
+    await carryRetainedJournal(sourceStorage, targetStorage, rewriter);
     const sourceWriterState = await readCommittedWriterState(sourceStorage.journal, fingerprint);
     if (sourceWriterState instanceof Error) {
         throw sourceWriterState;
