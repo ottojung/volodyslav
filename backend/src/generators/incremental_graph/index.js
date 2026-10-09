@@ -57,6 +57,11 @@ const { prepareIncrementalGraphStorage } = require('./prepare_graph_storage');
 const { runCanonicalBootstrapGate } = require('./journal_bootstrap_gate');
 const { isCohortBootstrapSource, makeJournalPublicationError } = require('./journal');
 const { resetJournalReceiverToSnapshot } = require('./journal_publish');
+const {
+    makeCanonicalMigrationChain,
+    canonicalNextJournalVersion,
+    resolveCanonicalMigrationChain,
+} = require('./journal_migration_chain');
 
 /** @typedef {import('./types').IncrementalGraphCapabilities} IncrementalGraphCapabilities */
 /** @typedef {import('./class').IncrementalGraph} IncrementalGraph */
@@ -122,4 +127,7 @@ module.exports = {
     prepareIncrementalGraphStorage,
     resetJournalReceiverToSnapshot,
     runCanonicalBootstrapGate,
+    makeCanonicalMigrationChain,
+    canonicalNextJournalVersion,
+    resolveCanonicalMigrationChain,
 };

@@ -36,11 +36,15 @@ const { buildProducedOccurrences } = require("./migration_occurrences");
 const { buildMigrationJournal } = require("./migration_journal");
 const { verifyTargetReplica } = require("./migration_verification");
 const { makeLazyMigrationSource } = require("./migration_source");
-const { makeJournalAuthor } = require("./journal");
+const { makeJournalAuthor, makeJournalVersionCompatibilityError } = require("./journal");
 const { readCurrentOccurrence } = require("./journal_store");
 const { checkpointMigration } = require("./database");
 const { unifyStores, makeDbToDbAdapter, deserializeNodeKey } = require("./database");
 const { fromISOString } = require("../../datetime");
+const {
+    makeCanonicalMigrationChain,
+    resolveCanonicalMigrationChain,
+} = require("./journal_migration_chain");
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
@@ -57,6 +61,8 @@ const { fromISOString } = require("../../datetime");
 /** @typedef {import('./migration_storage').ReadableMigrationStorage} ReadableMigrationStorage */
 /** @typedef {import('./migration_storage').Decision} Decision */
 /** @typedef {import('./migration_codec').JournalFormatCodec} JournalFormatCodec */
+/** @typedef {import('./journal_migration_chain').CanonicalMigrationEdge} CanonicalMigrationEdge */
+/** @typedef {import('./journal_migration_chain').CanonicalMigrationChain} CanonicalMigrationChain */
 
 /**
  * @typedef {import("../../logger").Logger} Logger
@@ -117,17 +123,26 @@ const { fromISOString } = require("../../datetime");
  * changed keys, deleting stale ones), then atomically switches the pointer.
  * A failed migration leaves the active replica unchanged.
  *
+ * `chain` is the canonical Journal migration chain of
+ * `incremental-graph-journal-migrations.md` §9b. When it is omitted, the
+ * migration follows the default one-edge chain from the stored version to the
+ * running version using `callback` and `codec`. When it is supplied, the
+ * stored version must have a complete canonical chain to the running version
+ * and each edge carries its own codec and callback; a stored version with no
+ * complete canonical chain fails `JournalVersionCompatibilityError`.
+ *
  * @param {Capabilities} capabilities - Capabilities needed to run the migration
  * @param {RootDatabase} rootDatabase - Opened root database
  * @param {Array<NodeDef>} nodeDefs - New-version schema node definitions
  * @param {(storage: MigrationStorage) => Promise<void>} callback
  * @param {JournalFormatCodec} [codec] - The transition's source->target Journal format
  *   codec, which defaults to the identity codec.
+ * @param {CanonicalMigrationChain} [chain] - The canonical migration chain to follow.
  * @returns {Promise<RootDatabase>}
  */
-async function runMigration(capabilities, rootDatabase, nodeDefs, callback, codec) {
+async function runMigration(capabilities, rootDatabase, nodeDefs, callback, codec, chain) {
     return await holidayActivity(capabilities.sleeper, async () => {
-        return await runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback, codec);
+        return await runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback, codec, chain);
     });
 }
 
@@ -169,21 +184,30 @@ function makeOccurrenceNamer(prevStorage) {
 /**
  * The unlocked version of runMigration. Should not be called directly.
  *
+ * Resolves the canonical Journal migration chain from the stored version to the
+ * running version and executes each canonical edge stepwise
+ * (`incremental-graph-journal-migrations.md` §9b). When no `chain` is supplied,
+ * the default one-edge chain from the stored version to the running version is
+ * followed using `callback` and `codec`. When a `chain` is supplied, the stored
+ * version must have a complete canonical chain to the running version; a stored
+ * version with no complete canonical chain fails `JournalVersionCompatibilityError`.
+ *
  * @param {Capabilities} capabilities - Capabilities needed to run the migration
  * @param {RootDatabase} rootDatabase - Opened root database
  * @param {Array<NodeDef>} nodeDefs - New-version schema node definitions
  * @param {(storage: MigrationStorage) => Promise<void>} callback
  * @param {JournalFormatCodec} [codec] - The transition's source->target Journal format
  *   codec, which defaults to the identity codec.
+ * @param {CanonicalMigrationChain} [chain] - The canonical migration chain to follow.
  * @returns {Promise<RootDatabase>}
  */
-async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback, codec)
+async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback, codec, chain)
 {
     const currentVersion = rootDatabase.getVersion();
     const activeReplica = rootDatabase.currentReplicaName();
     const inactiveReplica = rootDatabase.otherReplicaName();
-    const journalFormatCodec = codec ?? makeIdentityJournalFormatCodec();
-    if (isJournalFormatCodec(journalFormatCodec) !== true) {
+    const defaultCodec = codec ?? makeIdentityJournalFormatCodec();
+    if (isJournalFormatCodec(defaultCodec) !== true) {
         throw new Error(
             "runMigration: the journal format codec must be built by makeJournalFormatCodec"
         );
@@ -221,8 +245,28 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
         return rootDatabase;
     }
 
+    // §9b: resolve the canonical chain from the stored version to the running
+    // version. Without a supplied chain the default one-edge chain runs the
+    // caller's callback and codec directly to the running version; with a
+    // supplied chain each edge carries its own frozen migration definition and
+    // the stored version must have a complete canonical chain to the running
+    // version.
+    const canonicalChain = chain ?? makeCanonicalMigrationChain([{
+        sourceVersion: prevVersion,
+        targetVersion: currentVersion,
+        codec: defaultCodec,
+        callback,
+    }]);
+    if (canonicalChain instanceof Error) {
+        throw canonicalChain;
+    }
+    const resolved = resolveCanonicalMigrationChain(canonicalChain, prevVersion, currentVersion);
+    if (resolved instanceof Error) {
+        throw resolved;
+    }
+
     capabilities.logger.logDebug(
-        { prevVersion, currentVersion, fromReplica: activeReplica, toReplica: inactiveReplica },
+        { prevVersion, currentVersion, edgeCount: resolved.edges.length, fromReplica: activeReplica, toReplica: inactiveReplica },
         'Migration required: stored version differs from current version; preparing replica cutover migration'
     );
 
@@ -236,236 +280,9 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
         `pre-migration: ${String(prevVersion)} → ${String(currentVersion)}`,
         `post-migration: ${String(currentVersion)}`,
         async () => {
-            const fromReplica = rootDatabase.currentReplicaName();
-            const toReplica = rootDatabase.otherReplicaName();
-
-            const prevStorage = rootDatabase.schemaStorageForReplica(fromReplica);
-
-            // Compile and validate the new schema through the shared helper.
-            const validated = compileValidatedGraphSchema(nodeDefs);
-            const { headIndex: newHeadIndex, graphScheme: newGraphScheme, graphSchemeString } = validated;
-
-            const storedOldScheme = await prevStorage.global.get(GRAPH_SCHEME_KEY);
-            if (storedOldScheme === undefined) {
-                throw new MissingGraphSchemeError(
-                    `migration source replica (${fromReplica})`
-                );
+            for (const edge of resolved.edges) {
+                await runMigrationEdgeUnsafe(capabilities, rootDatabase, nodeDefs, edge);
             }
-            if (typeof storedOldScheme !== "string") {
-                throw new GraphSchemeError(
-                    `Invalid graph_scheme in migration source replica (${fromReplica}): expected string`
-                );
-            }
-            const oldGraphScheme = parseGraphScheme(storedOldScheme);
-
-            // Strict source lookup loading: initialized replicas must have
-            // a valid identifiers_keys_map. An undefined or malformed lookup
-            // is rejected immediately.
-            const rawOldIdentifiers = await prevStorage.global.get(IDENTIFIERS_KEY);
-            if (rawOldIdentifiers === undefined) {
-                throw new MissingIdentifierLookupError(
-                    `migration source replica (${fromReplica})`
-                );
-            }
-            const oldLookup = parseIdentifierLookup(
-                rawOldIdentifiers,
-                `migration source replica (${fromReplica})`
-            );
-
-            // Every identifier of this replica is transported into the target
-            // unchanged, so a source persisting one outside the supported
-            // NodeIdentifier domain is not a supported migration source. It is
-            // rejected here, before the callback runs and before the target
-            // replica is written, rather than leaving a target behind which
-            // materializes nodes no Journal record can name.
-            const unsupportedIdentifier = tryUnsupportedPersistedIdentifier(
-                oldLookup,
-                `migration source replica (${fromReplica})`
-            );
-            if (unsupportedIdentifier !== undefined) {
-                throw unsupportedIdentifier;
-            }
-
-            await assertValidReplicaMaterializationState(
-                prevStorage,
-                oldLookup,
-                `migration source replica (${fromReplica})`
-            );
-
-            // §9a's rewrite and §11's callback key space both address the source
-            // materialization in target NodeKey representation, so the transition's
-            // codec builds the one rewriter which serves both halves: the retained
-            // history the target carries, and the target-key view the callback reasons
-            // in. A rewrite which is not total over this replica's materialized set
-            // fails here, before the callback runs and before the target is written.
-            const rewriter = makeHistoryRewriter(journalFormatCodec);
-            const targetKeyView = makeTargetKeyView(oldLookup, rewriter);
-            if (targetKeyView instanceof Error) {
-                throw targetKeyView;
-            }
-
-            // Load previous-version materialized nodes.
-            const materializedNodes = loadMaterializedNodes(oldLookup);
-
-            // Validate source last_node_index: every initialized replica
-            // must have a valid durable last_node_index.
-            const rawSourceLastNodeIndex = await prevStorage.global.get(LAST_NODE_INDEX_KEY);
-            if (typeof rawSourceLastNodeIndex !== 'number'
-                || !Number.isInteger(rawSourceLastNodeIndex)
-                || rawSourceLastNodeIndex < 0) {
-                throw new MissingIdentifierLookupError(
-                    `migration source replica (${fromReplica}) has a version but missing or invalid last_node_index`
-                );
-            }
-            const sourceLastNodeIndex = rawSourceLastNodeIndex;
-
-            // Create the MigrationStorage for the user callback.
-            const migrationStorage = makeMigrationStorage(
-                prevStorage,
-                newHeadIndex,
-                materializedNodes,
-                rootDatabase.getFingerprint(),
-                sourceLastNodeIndex,
-                oldGraphScheme,
-                newGraphScheme,
-                oldLookup,
-                targetKeyView
-            );
-
-            // Execute user migration callback.
-            await callback(migrationStorage);
-
-            // Finalize: propagate deletes, check fan-in, check completeness.
-            const decisions = await migrationStorage.finalize();
-
-            const toStorage = rootDatabase.schemaStorageForReplica(toReplica);
-
-            // The target replica materializes the transported target keys, so its
-            // identifier lookup is the source materialization under the target
-            // representation rather than the source spelling of it.
-            const finalLookup = parseIdentifierLookup(
-                buildDecisionsMap(targetKeyView, decisions),
-                'migration target replica'
-            );
-
-            // §11a.4 fixes the target's validity edges and its freshness flags
-            // together in dependency-topological order: a decision's freshness names
-            // the freshness of the inputs it selected, so those inputs are settled
-            // before it, and a `create`'s up-to-date assertion reads their flags.
-            const { desiredValid, targetFreshness } = await buildTargetValidity(
-                prevStorage,
-                decisions,
-                oldGraphScheme,
-                newGraphScheme,
-                oldLookup,
-                finalLookup
-            );
-
-            // Create a lazy source that computes desired values on demand.
-            // Combined with makeDbToDbAdapter + unifyStores this keeps peak
-            // memory at O(|max value| + |keys|), matching the sync path.
-            // The migration publication instant, which §11a.3 makes the `modifiedAt` of
-            // every genuinely produced occurrence and the seed of every M1 authority.
-            const publicationInstant = capabilities.datetime.now().toISOString();
-            const producedOccurrences = await buildProducedOccurrences(
-                decisions,
-                prevStorage,
-                oldLookup,
-                targetKeyView,
-                publicationInstant,
-                makeOccurrenceNamer(prevStorage),
-                rewriter
-            );
-
-            const lazySource = makeLazyMigrationSource(
-                prevStorage,
-                oldLookup,
-                decisions,
-                desiredValid,
-                targetFreshness,
-                currentVersion,
-                migrationStorage.getMaxAllocatedIndex(),
-                sourceLastNodeIndex,
-                rootDatabase.getFingerprint(),
-                graphSchemeString,
-                producedOccurrences,
-                finalLookup,
-                rewriter
-            );
-
-            // Gently unify the desired state into the target replica.
-            // Only changed keys are written; stale keys are deleted first.
-            // The new version is included in the lazy source's global sublevel,
-            // so it is written atomically with the data — no separate version write.
-            await unifyStores(makeDbToDbAdapter(lazySource, toStorage));
-
-            // Build the target's Journal before the cutover. The graph state just
-            // unified is a projection of this history, so a target which received
-            // values without the history explaining them has nodes with no value
-            // occurrence to validate against and the first ordinary publication after
-            // the cutover fails.
-            const migrationIntents = buildMigrationM1Intents(
-                decisions,
-                targetKeyView,
-                producedOccurrences,
-                /**
-                 * @param {NodeKeyString} nodeKeyString
-                 * @returns {import('./database/node_key').NodeKey}
-                 */
-                (nodeKeyString) => deserializeNodeKey(nodeKeyString)
-            );
-            await buildMigrationJournal(
-                prevStorage,
-                toStorage,
-                rootDatabase.getFingerprint(),
-                migrationIntents,
-                fromISOString(publicationInstant).toMillis(),
-                Math.max(sourceLastNodeIndex, migrationStorage.getMaxAllocatedIndex()),
-                rewriter,
-                desiredValid,
-                targetFreshness,
-                newGraphScheme,
-                finalLookup
-            );
-
-            // One final fsync: all unification writes use sync:false for performance;
-            // _rawSync() issues an empty batch with sync:true to flush the WAL
-            // without rewriting any keys.
-            await rootDatabase._rawSync();
-
-            // §22 step 5. The target's graph state is a projection of the retained
-            // history just carried into it plus the M1 records just appended, and
-            // nothing else here reads the target's Journal, so the target is
-            // replayed here and compared against the graph it persists. A cutover
-            // which selected a target whose two representations disagreed would
-            // otherwise report success over an inconsistent replica.
-            //
-            // §22 step 6. The one atomic cutover which selects the target. Everything
-            // above wrote only the still-inactive target, so a failure anywhere above
-            // leaves the previous active pair selected.
-
-            // Validate the target replica before activating it.
-            // This checks the invariant: every up-to-date node has valid flags
-            // for every input, and no valid entries reference unknown identifiers.
-            const rawIdentifiers = await toStorage.global.get(IDENTIFIERS_KEY);
-            if (rawIdentifiers === undefined) {
-                throw new MissingIdentifierLookupError('migration target replica');
-            }
-            const targetLookup = parseIdentifierLookup(rawIdentifiers, 'migration target replica');
-            await assertValidReplicaMaterializationState(toStorage, targetLookup, 'migration target replica');
-            const localWriter = makeJournalAuthor(rootDatabase.getFingerprint());
-            if (localWriter instanceof Error) {
-                throw localWriter;
-            }
-            await verifyTargetReplica(
-                toStorage,
-                targetLookup,
-                newGraphScheme,
-                localWriter,
-                toReplica
-            );
-
-            await rootDatabase.setCurrentReplicaPointer(toReplica);
         }
     );
 
@@ -473,6 +290,281 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
         prevVersion, currentVersion
     }, `Migration from ${String(prevVersion)} to ${String(currentVersion)} completed successfully.`);
     return rootDatabase;
+}
+
+/**
+ * Execute one canonical chain step: a complete Journal-aware migration from the
+ * edge's source version to the edge's target version, with a version cut to
+ * that intermediate version.
+ *
+ * §9b makes each chain step a complete migration: whole-history codec rewrite,
+ * semantic repair, replay validation, and a version cut to the intermediate
+ * version. Migration-authored records from this step are retained in the
+ * replica the cut selects and are themselves rewritten by later canonical
+ * steps.
+ *
+ * The cutover alternates the active replica: after this step the active
+ * replica is the edge's target, so the next edge reads it as its source.
+ *
+ * @param {Capabilities} capabilities - Capabilities needed to run the migration
+ * @param {RootDatabase} rootDatabase - Opened root database
+ * @param {Array<NodeDef>} nodeDefs - New-version schema node definitions
+ * @param {CanonicalMigrationEdge} edge - The canonical edge to execute.
+ * @returns {Promise<void>}
+ */
+async function runMigrationEdgeUnsafe(capabilities, rootDatabase, nodeDefs, edge)
+{
+    const { sourceVersion, targetVersion, codec, callback } = edge;
+    if (isJournalFormatCodec(codec) !== true) {
+        throw new Error(
+            "runMigration: the journal format codec must be built by makeJournalFormatCodec"
+        );
+    }
+
+    const fromReplica = rootDatabase.currentReplicaName();
+    const toReplica = rootDatabase.otherReplicaName();
+
+    // The chain resolution guarantees the active replica's stored version is
+    // this edge's source, and each prior edge's cut selected its target as the
+    // new active replica. Verify that boundary before reading the source: a
+    // stored version that disagrees with the canonical edge is unsupported
+    // state, not a migration this edge may silently run from.
+    const activeVersion = await rootDatabase.getGlobalVersion();
+    if (activeVersion !== sourceVersion) {
+        throw makeJournalVersionCompatibilityError(
+            `canonical migration edge ${String(sourceVersion)} → ${String(targetVersion)} cannot run from a replica storing version ${String(activeVersion)}`,
+            `stored version ${String(sourceVersion)}`,
+            `stored version ${String(activeVersion)}`
+        );
+    }
+
+    const prevStorage = rootDatabase.schemaStorageForReplica(fromReplica);
+
+    // Compile and validate the new schema through the shared helper.
+    const validated = compileValidatedGraphSchema(nodeDefs);
+    const { headIndex: newHeadIndex, graphScheme: newGraphScheme, graphSchemeString } = validated;
+
+    const storedOldScheme = await prevStorage.global.get(GRAPH_SCHEME_KEY);
+    if (storedOldScheme === undefined) {
+        throw new MissingGraphSchemeError(
+            `migration source replica (${fromReplica})`
+        );
+    }
+    if (typeof storedOldScheme !== "string") {
+        throw new GraphSchemeError(
+            `Invalid graph_scheme in migration source replica (${fromReplica}): expected string`
+        );
+    }
+    const oldGraphScheme = parseGraphScheme(storedOldScheme);
+
+    // Strict source lookup loading: initialized replicas must have
+    // a valid identifiers_keys_map. An undefined or malformed lookup
+    // is rejected immediately.
+    const rawOldIdentifiers = await prevStorage.global.get(IDENTIFIERS_KEY);
+    if (rawOldIdentifiers === undefined) {
+        throw new MissingIdentifierLookupError(
+            `migration source replica (${fromReplica})`
+        );
+    }
+    const oldLookup = parseIdentifierLookup(
+        rawOldIdentifiers,
+        `migration source replica (${fromReplica})`
+    );
+
+    // Every identifier of this replica is transported into the target
+    // unchanged, so a source persisting one outside the supported
+    // NodeIdentifier domain is not a supported migration source. It is
+    // rejected here, before the callback runs and before the target
+    // replica is written, rather than leaving a target behind which
+    // materializes nodes no Journal record can name.
+    const unsupportedIdentifier = tryUnsupportedPersistedIdentifier(
+        oldLookup,
+        `migration source replica (${fromReplica})`
+    );
+    if (unsupportedIdentifier !== undefined) {
+        throw unsupportedIdentifier;
+    }
+
+    await assertValidReplicaMaterializationState(
+        prevStorage,
+        oldLookup,
+        `migration source replica (${fromReplica})`
+    );
+
+    // §9a's rewrite and §11's callback key space both address the source
+    // materialization in target NodeKey representation, so the transition's
+    // codec builds the one rewriter which serves both halves: the retained
+    // history the target carries, and the target-key view the callback reasons
+    // in. A rewrite which is not total over this replica's materialized set
+    // fails here, before the callback runs and before the target is written.
+    const rewriter = makeHistoryRewriter(codec);
+    const targetKeyView = makeTargetKeyView(oldLookup, rewriter);
+    if (targetKeyView instanceof Error) {
+        throw targetKeyView;
+    }
+
+    // Load previous-version materialized nodes.
+    const materializedNodes = loadMaterializedNodes(oldLookup);
+
+    // Validate source last_node_index: every initialized replica
+    // must have a valid durable last_node_index.
+    const rawSourceLastNodeIndex = await prevStorage.global.get(LAST_NODE_INDEX_KEY);
+    if (typeof rawSourceLastNodeIndex !== 'number'
+        || !Number.isInteger(rawSourceLastNodeIndex)
+        || rawSourceLastNodeIndex < 0) {
+        throw new MissingIdentifierLookupError(
+            `migration source replica (${fromReplica}) has a version but missing or invalid last_node_index`
+        );
+    }
+    const sourceLastNodeIndex = rawSourceLastNodeIndex;
+
+    // Create the MigrationStorage for the user callback.
+    const migrationStorage = makeMigrationStorage(
+        prevStorage,
+        newHeadIndex,
+        materializedNodes,
+        rootDatabase.getFingerprint(),
+        sourceLastNodeIndex,
+        oldGraphScheme,
+        newGraphScheme,
+        oldLookup,
+        targetKeyView
+    );
+
+    // Execute the edge's migration callback.
+    await callback(migrationStorage);
+
+    // Finalize: propagate deletes, check fan-in, check completeness.
+    const decisions = await migrationStorage.finalize();
+
+    const toStorage = rootDatabase.schemaStorageForReplica(toReplica);
+
+    // The target replica materializes the transported target keys, so its
+    // identifier lookup is the source materialization under the target
+    // representation rather than the source spelling of it.
+    const finalLookup = parseIdentifierLookup(
+        buildDecisionsMap(targetKeyView, decisions),
+        'migration target replica'
+    );
+
+    // §11a.4 fixes the target's validity edges and its freshness flags
+    // together in dependency-topological order: a decision's freshness names
+    // the freshness of the inputs it selected, so those inputs are settled
+    // before it, and a `create`'s up-to-date assertion reads their flags.
+    const { desiredValid, targetFreshness } = await buildTargetValidity(
+        prevStorage,
+        decisions,
+        oldGraphScheme,
+        newGraphScheme,
+        oldLookup,
+        finalLookup
+    );
+
+    // Create a lazy source that computes desired values on demand.
+    // Combined with makeDbToDbAdapter + unifyStores this keeps peak
+    // memory at O(|max value| + |keys|), matching the sync path.
+    // The migration publication instant, which §11a.3 makes the `modifiedAt` of
+    // every genuinely produced occurrence and the seed of every M1 authority.
+    const publicationInstant = capabilities.datetime.now().toISOString();
+    const producedOccurrences = await buildProducedOccurrences(
+        decisions,
+        prevStorage,
+        oldLookup,
+        targetKeyView,
+        publicationInstant,
+        makeOccurrenceNamer(prevStorage),
+        rewriter
+    );
+
+    const lazySource = makeLazyMigrationSource(
+        prevStorage,
+        oldLookup,
+        decisions,
+        desiredValid,
+        targetFreshness,
+        targetVersion,
+        migrationStorage.getMaxAllocatedIndex(),
+        sourceLastNodeIndex,
+        rootDatabase.getFingerprint(),
+        graphSchemeString,
+        producedOccurrences,
+        finalLookup,
+        rewriter
+    );
+
+    // Gently unify the desired state into the target replica.
+    // Only changed keys are written; stale keys are deleted first.
+    // The new version is included in the lazy source's global sublevel,
+    // so it is written atomically with the data — no separate version write.
+    await unifyStores(makeDbToDbAdapter(lazySource, toStorage));
+
+    // Build the target's Journal before the cutover. The graph state just
+    // unified is a projection of this history, so a target which received
+    // values without the history explaining them has nodes with no value
+    // occurrence to validate against and the first ordinary publication after
+    // the cutover fails.
+    const migrationIntents = buildMigrationM1Intents(
+        decisions,
+        targetKeyView,
+        producedOccurrences,
+        /**
+         * @param {NodeKeyString} nodeKeyString
+         * @returns {import('./database/node_key').NodeKey}
+         */
+        (nodeKeyString) => deserializeNodeKey(nodeKeyString)
+    );
+    await buildMigrationJournal(
+        prevStorage,
+        toStorage,
+        rootDatabase.getFingerprint(),
+        migrationIntents,
+        fromISOString(publicationInstant).toMillis(),
+        Math.max(sourceLastNodeIndex, migrationStorage.getMaxAllocatedIndex()),
+        rewriter,
+        desiredValid,
+        targetFreshness,
+        newGraphScheme,
+        finalLookup
+    );
+
+    // One final fsync: all unification writes use sync:false for performance;
+    // _rawSync() issues an empty batch with sync:true to flush the WAL
+    // without rewriting any keys.
+    await rootDatabase._rawSync();
+
+    // §22 step 5. The target's graph state is a projection of the retained
+    // history just carried into it plus the M1 records just appended, and
+    // nothing else here reads the target's Journal, so the target is
+    // replayed here and compared against the graph it persists. A cutover
+    // which selected a target whose two representations disagreed would
+    // otherwise report success over an inconsistent replica.
+    //
+    // §22 step 6. The one atomic cutover which selects the target. Everything
+    // above wrote only the still-inactive target, so a failure anywhere above
+    // leaves the previous active pair selected.
+
+    // Validate the target replica before activating it.
+    // This checks the invariant: every up-to-date node has valid flags
+    // for every input, and no valid entries reference unknown identifiers.
+    const rawIdentifiers = await toStorage.global.get(IDENTIFIERS_KEY);
+    if (rawIdentifiers === undefined) {
+        throw new MissingIdentifierLookupError('migration target replica');
+    }
+    const targetLookup = parseIdentifierLookup(rawIdentifiers, 'migration target replica');
+    await assertValidReplicaMaterializationState(toStorage, targetLookup, 'migration target replica');
+    const localWriter = makeJournalAuthor(rootDatabase.getFingerprint());
+    if (localWriter instanceof Error) {
+        throw localWriter;
+    }
+    await verifyTargetReplica(
+        toStorage,
+        targetLookup,
+        newGraphScheme,
+        localWriter,
+        toReplica
+    );
+
+    await rootDatabase.setCurrentReplicaPointer(toReplica);
 }
 
 module.exports = {
