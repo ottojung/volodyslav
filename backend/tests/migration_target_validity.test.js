@@ -262,19 +262,30 @@ function makeFanInNodeDefs() {
     ];
 }
 
+/** Seed the graph scheme alone, without the identifier lookup or watermark. */
+async function seedGraphSchemeOnly(storage, nodeDefs) {
+    const compiledNodes = nodeDefs.map(compileNodeDef);
+    const scheme = serializeGraphScheme(buildGraphSchemeFromNodeDefs(compiledNodes));
+    await storage.global.put(GRAPH_SCHEME_KEY, JSON.stringify(scheme));
+}
+
 /**
  * Seed the graph scheme, the identifier lookup and the allocator watermark a
  * migrated source replica must have.
  * @param {ReturnType<typeof makeSchemaStorage>} storage
  * @param {Array<import('../src/generators/incremental_graph/types').NodeDef>} nodeDefs
+ * @param {string[]} [materializedHeads] - Which heads the source materializes.
+ *   Defaults to every head the nodeDefs name; a fixture which creates a genuinely
+ *   new node seeds only the heads its source actually materialized, so the
+ *   created node's target key is not already the source's.
  */
-async function seedGraphScheme(storage, nodeDefs) {
-    const compiledNodes = nodeDefs.map(compileNodeDef);
-    const scheme = serializeGraphScheme(buildGraphSchemeFromNodeDefs(compiledNodes));
-    await storage.global.put(GRAPH_SCHEME_KEY, JSON.stringify(scheme));
-    const identifiers = nodeDefs.map((def) => [fixtureNode(def.output), toJsonKey(def.output)]);
+async function seedGraphScheme(storage, nodeDefs, materializedHeads = nodeDefs.map((def) => def.output)) {
+    await seedGraphSchemeOnly(storage, nodeDefs);
+    const identifiers = materializedHeads.map((head) => [fixtureNode(head), toJsonKey(head)]);
     await storage.global.put(IDENTIFIERS_KEY, identifiers);
-    await storage.global.put(LAST_NODE_INDEX_KEY, 0);
+    // The allocator watermark sits past every fixture identifier, so an
+    // identifier a `create` allocates cannot collide with a source materialization.
+    await storage.global.put(LAST_NODE_INDEX_KEY, fixtureIdentifiersByHead.size + 10);
 }
 
 /**
@@ -496,8 +507,81 @@ describe("a replaced input removes a preserved dependent's carried proof edge", 
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// A replacement preserves the materialization and mints a new occurrence
+// §11a.2 structural delete closure
 // ─────────────────────────────────────────────────────────────────────────────
+
+describe("structural delete closure", () => {
+    test("delete(A) with B undecided propagates an absence to B", async () => {
+        const capabilities = await getTestCapabilities();
+        const xStorage = makeSchemaStorage();
+        const yStorage = makeSchemaStorage();
+        const { nkA, nkB } = await seedChain(xStorage);
+        const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
+
+        await seedGraphScheme(xStorage, makeNodeDefs(["A", "B"]));
+        await runMigration(capabilities, rootDatabase, makeNodeDefs(["A", "B"]), async (storage) => {
+            await storage.delete(nkA);
+        });
+
+        await expect(yStorage.values.get(nkA)).resolves.toBeUndefined();
+        await expect(yStorage.values.get(nkB)).resolves.toBeUndefined();
+        await expect(hasEdge(yStorage, nkA, nkB)).resolves.toBe(false);
+    });
+
+    test("delete(A); keep(B) fails DecisionConflictError rather than retaining B without its input", async () => {
+        const capabilities = await getTestCapabilities();
+        const xStorage = makeSchemaStorage();
+        const yStorage = makeSchemaStorage();
+        const { nkA, nkB } = await seedChain(xStorage);
+        const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
+
+        await seedGraphScheme(xStorage, makeNodeDefs(["A", "B"]));
+        await expect(runMigration(capabilities, rootDatabase, makeNodeDefs(["A", "B"]), async (storage) => {
+            await storage.delete(nkA);
+            await storage.keep(nkB);
+        })).rejects.toThrow(/Decision conflict for node/);
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// §11a.4 A potentially-outdated create on a zero-input node stays stale
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("a potentially-outdated create stays stale", () => {
+    test("a zero-input create asserts no positive incoming validity and is persisted stale", async () => {
+        const capabilities = await getTestCapabilities();
+        const xStorage = makeSchemaStorage();
+        const yStorage = makeSchemaStorage();
+        const nkA = fixtureNode("A");
+        await seedNode(xStorage, nkA);
+        const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
+
+        // Only A is materialized in the source. NEW is a new zero-input node the
+        // target schema adds, so it has no target input edge to prove at all.
+        const nodeDefs = [
+            { output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false },
+            { output: "NEW", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false },
+        ];
+        await seedGraphScheme(xStorage, nodeDefs, ["A"]);
+        await runMigration(capabilities, rootDatabase, nodeDefs, async (storage) => {
+            await storage.keep(nkA);
+            await storage.create(toJsonKey("NEW"), async () => ({ type: "all_events", events: [] }), "potentially-outdated");
+        });
+
+        const lookup = await yStorage.global.get(IDENTIFIERS_KEY);
+        const created = lookup.find(([, key]) => String(key) === toJsonKey("NEW"));
+        expect(created).toBeDefined();
+        if (created === undefined) {
+            return;
+        }
+        const createdIdentifier = created[0];
+        expect(nodeIdentifierToString(createdIdentifier)).not.toBe(nodeIdentifierToString(nkA));
+        await expect(yStorage.freshness.get(nodeIdentifierToString(createdIdentifier)))
+            .resolves.toBe("potentially-outdated");
+        await expect(hasEdge(yStorage, nkA, createdIdentifier)).resolves.toBe(false);
+    });
+});
+
 
 describe("a replacement preserves its materialization and mints a new occurrence", () => {
     test("the target keeps B's identifier and authors a second ValueEvent for B's node key", async () => {

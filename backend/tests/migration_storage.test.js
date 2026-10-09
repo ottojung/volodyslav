@@ -1017,6 +1017,28 @@ describe("MigrationStorage", () => {
             expect(isCreateExistingNode(err)).toBe(true);
         });
 
+        // §11a.1 removes the legacy representation-rewrite decision, so an existing
+        // node's semantic value change has exactly one owner: replace(). The message
+        // is the point of this test, because an error which named the removed
+        // decision would send a migration author to a surface this implementation no
+        // longer has.
+        test("create() on an existing node names replace() as the existing-node value change", async () => {
+            const storage = makeInMemorySchemaStorage();
+            const headIndex = makeHeadIndex(["A"]);
+            const A = nk("A");
+            await storage.values.put(A, DUMMY_VALUE);
+            await storage.freshness.put(A, "up-to-date");
+            await storage.timestamps.put(A, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" });
+            const scheme = makeZeroInputScheme(["A", "NEW"]);
+            const lookup = makeLookupFromKeys([A]);
+            const ms = makeMigrationStorage(storage, headIndex, [A], "testfingerprint", 0, scheme, scheme, lookup);
+
+            const err = await ms.create(A, () => Promise.resolve(DUMMY_VALUE), "up-to-date").catch((e) => e);
+            expect(isCreateExistingNode(err)).toBe(true);
+            expect(err.message).toContain("replace()");
+            expect(err.message).not.toContain("override");
+        });
+
         test("create() twice with same semantic key throws DecisionConflictError", async () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A", "NEW"]);
