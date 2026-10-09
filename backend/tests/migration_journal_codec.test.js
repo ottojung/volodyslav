@@ -335,4 +335,205 @@ describe("journal-aware migration format codec", () => {
     test("the identity codec is a nominal codec value", () => {
         expect(isJournalFormatCodec(makeIdentityJournalFormatCodec())).toBe(true);
     });
+
+    test("a codec whose target canonical order differs re-sorts every rewritten basis", async () => {
+        const caps = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(caps);
+            const sourceNodeDefs = [
+                {
+                    output: "A", inputs: [],
+                    computor: async () => numberComputedValue(1),
+                    isDeterministic: true, hasSideEffects: false,
+                },
+                {
+                    output: "Z", inputs: [],
+                    computor: async () => numberComputedValue(2),
+                    isDeterministic: true, hasSideEffects: false,
+                },
+                {
+                    output: "sum", inputs: ["A", "Z"],
+                    computor: async (inputs) => numberComputedValue(
+                        Number(inputs[0].value) + Number(inputs[1].value)
+                    ),
+                    isDeterministic: true, hasSideEffects: false,
+                },
+            ];
+            const graph = await createIncrementalGraph(caps, db, sourceNodeDefs);
+            await graph.pull("sum");
+            await db.getSchemaStorage().global.put("version", "1");
+            await db.close();
+
+            // Under the source representation `A` sorts before `Z`; under the target
+            // representation `a9` sorts before `z9`, which is the opposite order.
+            const reordering = makeJournalFormatCodec({
+                rewriteNodeKey: (sourceKey) => {
+                    if (sourceKey.head === "A") {
+                        return { head: "z9", args: sourceKey.args };
+                    }
+                    if (sourceKey.head === "Z") {
+                        return { head: "a9", args: sourceKey.args };
+                    }
+                    return { head: sourceKey.head, args: sourceKey.args };
+                },
+            });
+            expect(reordering instanceof Error).toBe(false);
+            if (reordering instanceof Error) {
+                return;
+            }
+
+            const targetNodeDefs = [
+                {
+                    output: "z9", inputs: [],
+                    computor: async () => numberComputedValue(1),
+                    isDeterministic: true, hasSideEffects: false,
+                },
+                {
+                    output: "a9", inputs: [],
+                    computor: async () => numberComputedValue(2),
+                    isDeterministic: true, hasSideEffects: false,
+                },
+                {
+                    output: "sum", inputs: ["z9", "a9"],
+                    computor: async (inputs) => numberComputedValue(
+                        Number(inputs[0].value) + Number(inputs[1].value)
+                    ),
+                    isDeterministic: true, hasSideEffects: false,
+                },
+            ];
+
+            db = await getRootDatabase(caps);
+            await runMigration(caps, db, targetNodeDefs, async (storage) => {
+                for await (const identifier of storage.listMaterializedNodes()) {
+                    await storage.keep(identifier);
+                }
+            }, reordering);
+
+            const retained = await readRetainedJournal(db.getSchemaStorage().journal);
+            expect(retained instanceof Error).toBe(false);
+            if (retained instanceof Error) {
+                return;
+            }
+            const events = semanticEventsOfReplica(retained);
+            /** @type {string[]} */
+            const basisOrders = [];
+            for (const event of events) {
+                if (event.kind !== "validate") {
+                    continue;
+                }
+                basisOrders.push(
+                    event.basis.map((entry) => nodeKeyToCanonicalString(entry.input)).join(" ")
+                );
+            }
+            // The zero-input nodes carry an empty basis, and the dependent carries
+            // the one this test is about.
+            expect(basisOrders).toEqual([
+                "",
+                "",
+                '{"head":"a9","args":[]} {"head":"z9","args":[]}',
+            ]);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test("a create collides with a transported target key rather than with the source spelling", async () => {
+        const caps = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(caps);
+            const graph = await createIncrementalGraph(caps, db, SOURCE_NODE_DEFS.slice(0, 1));
+            await graph.pull("A");
+            await db.getSchemaStorage().global.put("version", "1");
+            await db.close();
+
+            const codec = renamingCodec("renamed");
+            const targetNodeDefs = [
+                {
+                    output: "Arenamed", inputs: [],
+                    computor: async () => numberComputedValue(1),
+                    isDeterministic: true, hasSideEffects: false,
+                },
+                {
+                    output: "Brenamed", inputs: ["Arenamed"],
+                    computor: async (inputs) => numberComputedValue(Number(inputs[0].value) * 2),
+                    isDeterministic: true, hasSideEffects: false,
+                },
+            ];
+
+            db = await getRootDatabase(caps);
+            let rejection;
+            try {
+                await runMigration(caps, db, targetNodeDefs, async (storage) => {
+                    for await (const identifier of storage.listMaterializedNodes()) {
+                        await storage.keep(identifier);
+                    }
+                    await storage.create(
+                        '{"head":"Arenamed","args":[]}',
+                        async () => numberComputedValue(9),
+                        "up-to-date"
+                    );
+                }, codec);
+            } catch (error) {
+                rejection = error;
+            }
+            // `Arenamed` is the transported target key of a materialized source
+            // node, so the target semantic node already exists and create refuses it.
+            expect(rejection).toMatchObject({ name: "CreateExistingNodeError" });
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test("keep validates the transported target key, not the source spelling", async () => {
+        const caps = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(caps);
+            const graph = await createIncrementalGraph(caps, db, SOURCE_NODE_DEFS.slice(0, 1));
+            await graph.pull("A");
+            await db.getSchemaStorage().global.put("version", "1");
+            await db.close();
+
+            // The target schema declares only the transported key, so a check made
+            // against the source spelling would refuse every keep.
+            const targetNodeDefs = [
+                {
+                    output: "Arenamed", inputs: [],
+                    computor: async () => numberComputedValue(1),
+                    isDeterministic: true, hasSideEffects: false,
+                },
+            ];
+
+            db = await getRootDatabase(caps);
+            await runMigration(caps, db, targetNodeDefs, async (storage) => {
+                for await (const identifier of storage.listMaterializedNodes()) {
+                    await storage.keep(identifier);
+                }
+            }, renamingCodec("renamed"));
+
+            const retained = await readRetainedJournal(db.getSchemaStorage().journal);
+            expect(retained instanceof Error).toBe(false);
+            if (retained instanceof Error) {
+                return;
+            }
+            const events = semanticEventsOfReplica(retained);
+            expect(events.map((event) => nodeKeyToCanonicalString(event.node)))
+                .toEqual([
+                    '{"head":"Arenamed","args":[]}',
+                    '{"head":"Arenamed","args":[]}',
+                ]);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test("a codec whose transform is not a function is refused as a codec definition", () => {
+        const badValue = makeJournalFormatCodec({
+            rewriteComputedValue: /** @type {never} */ (42),
+        });
+        expect(isJournalVersionCompatibilityError(badValue)).toBe(true);
+        expect(isJournalFormatCodec(badValue)).toBe(false);
+    });
 });
