@@ -199,30 +199,28 @@ async function isFinalCached(_prevStorage, decisions, nodeIdentifier) {
 }
 
 /**
- * @param {ReadableMigrationStorage} prevStorage
- * @param {Map<NodeIdentifier, Decision>} decisions
- * @param {NodeIdentifier} nodeIdentifier
- * @returns {Promise<import('./database/types').Freshness | undefined>}
- */
-async function finalFreshness(prevStorage, decisions, nodeIdentifier) {
-    const decision = decisions.get(nodeIdentifier);
-    if (decision === undefined || decision.kind === "delete") return undefined;
-    if (decision.kind === "create") return decision.freshness;
-    if (decision.kind === "invalidate") return "potentially-outdated";
-    return await prevStorage.freshness.get(nodeIdentifier);
-}
-
-/**
  * Build validity sets from migration decisions and scheme-derived final edges.
+ *
+ * §11a.4 derives `TargetValid` per decision family. An occurrence-preserving
+ * decision derives its edges from actual source proof provenance: an edge is
+ * carried only when the input's occurrence survives, the edge existed under the
+ * source scheme, and the source replica persisted it. A replacement instead
+ * establishes full positive proof against every selected direct target input
+ * occurrence, because the migration produced that occurrence at the cut with the
+ * supplied value.
+ *
  * @param {ReadableMigrationStorage} prevStorage
  * @param {Map<NodeIdentifier, Decision>} decisions
  * @param {import('./database/graph_scheme').GraphScheme} oldScheme
  * @param {import('./database/graph_scheme').GraphScheme} newScheme
  * @param {import('./database/identifier_lookup').IdentifierLookup} oldLookup
  * @param {import('./database/identifier_lookup').IdentifierLookup} finalLookup
+ * @param {ReadonlyMap<NodeIdentifier, import('./database/types').Freshness>} targetFreshness - The §11a.4
+ *   freshness flag of every target-present node, which is what a `create`'s
+ *   assertion and a replacement's own flag are read from.
  * @returns {Promise<Map<NodeIdentifier, NodeIdentifier[]>>}
  */
-async function buildDesiredValid(prevStorage, decisions, oldScheme, newScheme, oldLookup, finalLookup) {
+async function buildDesiredValid(prevStorage, decisions, oldScheme, newScheme, oldLookup, finalLookup, targetFreshness) {
     /** @type {Map<string, Set<NodeIdentifier>>} */
     const validSets = new Map();
     const materialized = materializedDecisionStrings(decisions);
@@ -244,10 +242,21 @@ async function buildDesiredValid(prevStorage, decisions, oldScheme, newScheme, o
                 if (!await isFinalCached(prevStorage, decisions, input)) {
                     throw makeInvalidMigrationDecisionError(`Cannot create ${nodeIdentifierToString(nodeIdentifier)} as up-to-date: input ${nodeIdentifierToString(input)} is not cached`);
                 }
-                const inputFreshness = await finalFreshness(prevStorage, decisions, input);
+                const inputFreshness = targetFreshness.get(input);
                 if (inputFreshness !== "up-to-date") {
                     throw makeInvalidMigrationDecisionError(`Cannot create ${nodeIdentifierToString(nodeIdentifier)} as up-to-date: input ${nodeIdentifierToString(input)} is ${inputFreshness ?? "not materialized"}`);
                 }
+                addToValidSet(validSets, input, nodeIdentifier);
+            }
+            continue;
+        }
+
+        // A replacement establishes full positive proof against every selected
+        // direct target input occurrence. §11a.4 allows no precondition on those
+        // inputs: a stale input leaves the replacement's own flag stale while its
+        // own proof stays complete.
+        if (decision.kind === "replace") {
+            for (const input of finalEdges) {
                 addToValidSet(validSets, input, nodeIdentifier);
             }
             continue;
@@ -262,9 +271,10 @@ async function buildDesiredValid(prevStorage, decisions, oldScheme, newScheme, o
         // A preexisting stale node carried through keep loses its incoming
         // proofs: persisted storage does not encode whether its staleness was
         // explicit or propagated, so we conservatively treat it as a direct
-        // invalidation root.
-        const nodeFreshness = await finalFreshness(prevStorage, decisions, nodeIdentifier);
-        if (decision.kind === "keep" && nodeFreshness === "potentially-outdated") continue;
+        // invalidation root. A propagated invalidation is different — §11a.4
+        // keeps propagated freshness separate from a semantic decision, so its
+        // node keeps the outgoing proofs its unchanged value supports.
+        if (decision.kind === "keep" && targetFreshness.get(nodeIdentifier) === "potentially-outdated") continue;
 
         /** @param {import('./migration_storage').Decision | undefined} d @returns {boolean} */
         const preservesValue = (d) => d !== undefined && d.kind !== "delete" && d.kind !== "create" && d.kind !== "replace";

@@ -308,23 +308,25 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
                 'migration target replica'
             );
 
+            // §11a.4 computes the target's freshness flags after target presence is
+            // fixed, in dependency-topological order, because a decision's flag names
+            // the freshness of the inputs it selected. `TargetValid` reads the same
+            // flags, so they are settled before it.
+            const targetFreshness = await buildTargetFreshness(
+                prevStorage,
+                decisions,
+                newGraphScheme,
+                finalLookup
+            );
+
             const desiredValid = await buildDesiredValid(
                 prevStorage,
                 decisions,
                 oldGraphScheme,
                 newGraphScheme,
                 oldLookup,
-                finalLookup
-            );
-
-            // §11a.4 computes the target's freshness flags after target presence
-            // and `TargetValid` are fixed, in dependency-topological order, because
-            // a decision's flag names the freshness of the inputs it selected.
-            const targetFreshness = await buildTargetFreshness(
-                prevStorage,
-                decisions,
-                newGraphScheme,
-                finalLookup
+                finalLookup,
+                targetFreshness
             );
 
             // Create a lazy source that computes desired values on demand.
