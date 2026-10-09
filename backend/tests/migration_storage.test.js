@@ -398,34 +398,40 @@ describe("MigrationStorage", () => {
     // -----------------------------------------------------------------------
     // Section 3: INVALIDATE propagation (fan-in allowed)
     // -----------------------------------------------------------------------
-    describe("Section 3: INVALIDATE propagation", () => {
-        test("invalidate(A) propagates to B and D", async () => {
+    describe("Section 3: INVALIDATE assigns no dependent decision", () => {
+        test("invalidate(A) does not assign an invalidation decision to B or D", async () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A", "B", "C", "D"]);
             const ms = await setupStandardGraph(storage, headIndex);
 
             await ms.invalidate(nk("A"));
 
-            // Must keep/delete remaining nodes to satisfy completeness
+            // §11a.2: a dependent is not assigned a propagated invalidation, so the
+            // callback must decide it. A kept dependent is allowed and is staled
+            // through its stale input during replay.
+            await ms.keep(nk("B"));
             await ms.keep(nk("C"));
+            await ms.keep(nk("D"));
             const decisions = await ms.finalize();
 
             expect(decisions.get(nk("A"))?.kind).toBe("invalidate");
-            expect(decisions.get(nk("B"))?.kind).toBe("invalidate");
-            expect(decisions.get(nk("D"))?.kind).toBe("invalidate");
+            expect(decisions.get(nk("B"))?.kind).toBe("keep");
+            expect(decisions.get(nk("D"))?.kind).toBe("keep");
         });
 
-        test("invalidate(A) propagates through B to D (multi-hop)", async () => {
+        test("invalidate(A) leaves a multi-hop dependent undecided rather than propagating", async () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A", "B", "C", "D"]);
             const ms = await setupStandardGraph(storage, headIndex);
 
-            // Invalidate only A; D is a fan-in of B and C, allowed
+            // Invalidate only A; D is a fan-in of B and C.
             await ms.invalidate(nk("A"));
+            await ms.keep(nk("B"));
             await ms.keep(nk("C"));
+            await ms.keep(nk("D"));
             const decisions = await ms.finalize();
 
-            expect(decisions.get(nk("D"))?.kind).toBe("invalidate");
+            expect(decisions.get(nk("D"))?.kind).toBe("keep");
         });
     });
 
@@ -925,15 +931,17 @@ describe("MigrationStorage", () => {
             await expect(ms.delete(nk("A"))).resolves.toBeUndefined();
         });
 
-        test("propagated invalidation on incompatible dependent throws SchemaCompatibilityError", async () => {
+        test("invalidate(A) assigns no decision to an incompatible dependent", async () => {
             const storage = makeInMemorySchemaStorage();
             // B is not in new schema; A is; C and D are
             const headIndex = makeHeadIndex(["A", "C", "D"]);
             const ms = await setupStandardGraph(storage, headIndex);
 
-            // invalidate(A) will try to propagate to B which is incompatible → SchemaCompatibilityError
-            const err = await ms.invalidate(nk("A")).catch((e) => e);
-            expect(isSchemaCompatibility(err)).toBe(true);
+            // §11a.2: invalidate(A) visits only A, so it makes no compatibility
+            // check on the incompatible dependent B. B is incompatible with the
+            // target schema, so the callback must delete it instead.
+            await expect(ms.invalidate(nk("A"))).resolves.toBeUndefined();
+            await expect(ms.delete(nk("B"))).resolves.toBeUndefined();
         });
 
         test("create() with head not in new schema throws SchemaCompatibilityError", async () => {

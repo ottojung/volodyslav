@@ -2505,8 +2505,8 @@ describe("retry after failure", () => {
     test('explicit invalidation preserves outgoing proofs through chain', async () => {
         // A → B → C. Explicitly invalidate A (zero-input root).
         // A has no incoming proofs to remove. valid[A].has(B) is outgoing
-        // from A and is preserved (A's value unchanged).
-        // B is propagated, preserving valid[B].has(C).
+        // from A and is preserved (A's value unchanged). B and C are kept and
+        // become stale through their stale input during replay.
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
@@ -2526,6 +2526,8 @@ describe("retry after failure", () => {
         await seedGraphScheme(xStorage, nodeDefs);
         await runMigration(capabilities, mock.rootDatabase, nodeDefs, async (storage) => {
             await storage.invalidate(nkA);
+            await storage.keep(nkB);
+            await storage.keep(nkC);
         });
         const resultStorage = mock.rootDatabase.schemaStorageForReplica('y');
         const validA = await resultStorage.valid.get(nkA) ?? [];
@@ -2534,11 +2536,12 @@ describe("retry after failure", () => {
         expect(validB.some(id => String(id) === String(nkC))).toBe(true);
     });
 
-    test('non-source explicit root B loses incoming proofs, preserves outgoing proofs, C propagated stale', async () => {
+    test('non-source explicit root B loses incoming proofs, preserves outgoing proofs, C stale through B', async () => {
         // A → B → C. Explicitly invalidate B (non-zero-input root).
         // valid[A].has(B) must be removed (incoming proof of the root).
         // valid[B].has(C) must survive (outgoing proof, value unchanged).
-        // A remains up-to-date (no invalidation reached it).
+        // A remains up-to-date (no invalidation reached it). C is kept and is
+        // stale through its stale input B, not through a propagated decision.
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
@@ -2559,7 +2562,7 @@ describe("retry after failure", () => {
         await runMigration(capabilities, mock.rootDatabase, nodeDefs, async (storage) => {
             await storage.keep(nkA);
             await storage.invalidate(nkB);
-            // C is left undecided — finalize will auto-propagate invalidation from B
+            await storage.keep(nkC);
         });
         const resultStorage = mock.rootDatabase.schemaStorageForReplica('y');
         const validA = await resultStorage.valid.get(nkA) ?? [];

@@ -22,7 +22,6 @@ const {
 } = require("./migration_storage_schema");
 const {
     readValidDependents,
-    propagateInvalidate,
     propagateDeletes,
 } = require("./migration_storage_dependencies");
 
@@ -237,6 +236,15 @@ class MigrationStorageClass {
     /**
      * Assign an INVALIDATE decision to a node.
      * Idempotent if the same decision already exists.
+     *
+     * `incremental-graph-journal-migrations.md` §11a.2 makes this a genuine
+     * node-scoped semantic invalidation of exactly the named node: it does not
+     * assign a decision to any dependent. A kept dependent stays materialized and
+     * becomes recursively stale through its stale input during replay, so no
+     * dependent conflict is raised merely because the invalidated node is its
+     * input. Journal 3 represents propagated freshness separately from semantic
+     * migration decisions.
+     *
      * @param {NodeIdentifier} nodeKey
      * @returns {Promise<void>}
      */
@@ -249,21 +257,11 @@ class MigrationStorageClass {
         const existing = this.decisions.get(nodeKey);
         if (existing !== undefined) {
             if (existing.kind === "invalidate") {
-                this.decisions.set(nodeKey, { kind: "invalidate", provenance: "explicit" });
                 return;
             }
             throw makeDecisionConflictError(nodeKey, existing.kind, "invalidate");
         }
         this.decisions.set(nodeKey, { kind: "invalidate", provenance: "explicit" });
-        await propagateInvalidate({
-            nodeKey,
-            visited: new Set(),
-            prevStorage: this.prevStorage,
-            materializedNodes: this.materializedNodes,
-            decisions: this.decisions,
-            newHeadIndex: this.newHeadIndex,
-            getIdentifiersKeysIndex: () => this._identifiersKeysIndex,
-        });
     }
 
     /**

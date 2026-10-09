@@ -188,6 +188,50 @@ describe("migration integration", () => {
         }
     });
 
+    test("invalidate(A); keep(B) stales A and B without assigning B an invalidation decision", async () => {
+        const caps = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(caps);
+            const nodeDefs = [
+                { output: "A", inputs: [], computor: async () => numberComputedValue(1), isDeterministic: true, hasSideEffects: false },
+                { output: "B", inputs: ["A"], computor: async () => numberComputedValue(2), isDeterministic: true, hasSideEffects: false },
+            ];
+            const g1 = await createIncrementalGraph(caps, db, nodeDefs);
+            await g1.pull("B");
+            await db.getSchemaStorage().global.put("version", "1");
+            await db.close();
+
+            db = await getRootDatabase(caps);
+            await runMigration(caps, db, nodeDefs, async (storage) => {
+                for await (const nk of storage.listMaterializedNodes()) {
+                    const key = await storage.resolveNodeKey(nk);
+                    if (!key) continue;
+                    if (String(key.head) === "A") {
+                        await storage.invalidate(nk);
+                    } else {
+                        await storage.keep(nk);
+                    }
+                }
+            });
+
+            const storage = db.getSchemaStorage();
+            const lookup = db.getActiveIdentifierLookup();
+            const aId = lookup.keyToId.get('{"head":"A","args":[]}');
+            const bId = lookup.keyToId.get('{"head":"B","args":[]}');
+
+            // §11a.2: explicit invalidate(A) assigns no decision to B, so keep(B) is
+            // allowed; A is stale, and B is target-stale through its stale input while
+            // retaining the proof edge its unchanged occurrence supports.
+            expect(await storage.freshness.get(aId)).toBe("potentially-outdated");
+            expect(await storage.freshness.get(bId)).toBe("potentially-outdated");
+            const validA = await storage.valid.get(aId) ?? [];
+            expect(validA.some((id) => String(id) === String(bId))).toBe(true);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
     test("explicit B root removes A→B, preserves B→C, C cache-revalidates; durable cutover", async () => {
         const caps = getTestCapabilities();
         let db;
@@ -231,6 +275,8 @@ describe("migration integration", () => {
                         await storage.keep(nk);
                     } else if (String(key.head) === "B") {
                         await storage.invalidate(nk);
+                    } else {
+                        await storage.keep(nk);
                     }
                 }
             });

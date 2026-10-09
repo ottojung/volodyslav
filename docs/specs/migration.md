@@ -128,11 +128,11 @@ functor and arity exist in the new schema.  Incompatible nodes must be explicitl
 
 ### Operation semantics
 
-`keep` preserves the value, freshness, timestamps, and — for up-to-date nodes — compatible incoming validity. A stale node carried through `keep` loses its incoming proofs: persisted storage does not encode whether its staleness was explicit or propagated, so it is conservatively treated as a direct invalidation root.
+`keep` preserves the value, timestamps, and the incoming validity edges whose source occurrence survives under the occurrence-provenance rule of `docs/specs/incremental-graph-journal-migrations.md` §11a.4. An edge is carried only when its input's occurrence is preserved, the edge existed under the source schema, and the source replica persisted it. A stale occurrence keeps those unaffected edges too: staleness alone does not discard otherwise-valid proof, and only the node's freshness flag records it.
 
-Within a **preexisting stale `keep` region**, every stale node loses incoming proofs, so validity edges inside the region may disappear. A stale B whose dependent C is also stale loses both `A⇝B` and `B⇝C` during migration, and both nodes must recompute.
+A preserved dependent whose required input occurrence changed — because that input was `replace`d or `create`d — drops that edge and is target-stale, because no legacy replica ever validated the combination. A stale `keep` therefore still recomputes when it is later pulled, but it is recomputation from a stale flag rather than from a missing proof.
 
-**Migration-time propagated invalidation** is different: the migration callback explicitly calls `invalidate()` on a node, and the propagation runs in memory with full provenance. In that case outgoing proofs survive and freshness-only propagation preserves validity edges.
+An occurrence-preserving decision is target-fresh only when its source occurrence had no surviving direct stale state, every required target input edge is carried, and every target input is target-fresh; otherwise it is target-stale.
 
 `replace` is a **genuine semantic value replacement** of an already-materialized node. It does not propagate invalidation — a replaced node's dependents keep their own decisions and their freshness is derived from the replaced occurrence through replay — but it authors a new occurrence, so an incoming proof edge which named the replaced occurrence is not carried forward. This follows `docs/specs/incremental-graph-journal-migrations.md` §11a.4: a preserved dependent whose required input occurrence changed is hard stale unless the dependent is itself explicitly created or replaced. A representation-only change of the same semantic value is not `replace`; it is the canonical whole-history format codec plus `keep`.
 
@@ -142,16 +142,16 @@ A replaced node takes the migration publication time as its `modifiedAt`, keeps 
 
 **Explicit invalidation** removes only the explicitly named node's incoming validity proofs. Its outgoing proofs remain intact because its stored semantic value has not changed. Because the migrated graph persists the node as `"potentially-outdated"` while the retained certificates which named its occurrence are now ineligible, the cutover also authors one `InvalidateEvent` with `scope={kind:"node"}` and `reason="migration"` at the node's target key, so replay derives the same staleness the graph persists.
 
-**Propagated invalidation** (automatic recursive propagation) preserves all validity proofs — both incoming and outgoing. It is freshness-only: downstream nodes are marked stale but retain their complete proof sets. Replay derives a propagated invalidation through the invalidated input, so it authors no record of its own.
+**Explicit invalidation assigns no decision to any dependent.** A kept dependent stays materialized and becomes stale through its stale input during replay; the migration does not assign it a propagated invalidation decision and does not conflict merely because it is explicitly kept. Replay derives the dependent's staleness through the invalidated input, so the migration authors no record for the dependent.
 
 `create(..., "up-to-date")` is a clean-cache assertion. The migration validates this assertion before writing the migrated state.
 `create(..., "potentially-outdated")` seeds a cached value without claiming it is clean.
 
 ### Propagation rules
 
-#### INVALIDATE → propagate INVALIDATE downstream
+#### INVALIDATE assigns no dependent decision
 
-When a node is invalidated, all its dependents are automatically marked `INVALIDATE` (recursively), unless they are already `DELETE`d.  If a dependent already has a `KEEP` or `REPLACE` decision, `DecisionConflictError` is thrown immediately.
+An explicit invalidation is a node-scoped semantic decision about exactly the named node. It assigns no decision to any dependent; a dependent must be explicitly decided and becomes stale through its stale input during replay.
 
 #### DELETE → propagate DELETE downstream (deferred, dependency-closed)
 

@@ -13,14 +13,9 @@ const {
     makeDecisionConflictError,
     makeInvalidMigrationDecisionError,
 } = require("./migration_errors");
-const {
-    checkSchemaCompatibility,
-} = require("./migration_storage_schema");
 
 /** @typedef {import('./database/types').ComputedValue} ComputedValue */
 /** @typedef {import('./database/types').NodeIdentifier} NodeIdentifier */
-/** @typedef {import('./types').CompiledNode} CompiledNode */
-/** @typedef {import('./types').NodeName} NodeName */
 /** @typedef {import('./migration_storage').ReadableMigrationStorage} ReadableMigrationStorage */
 
 /** @typedef {import('./migration_decisions').KeepDecision} KeepDecision */
@@ -40,61 +35,6 @@ const {
 async function readValidDependents(nodeKey, prevStorage) {
     const dependents = await prevStorage.valid.get(nodeKey);
     return dependents !== undefined ? dependents : [];
-}
-
-/**
- * Propagate INVALIDATE through previous validity edges.
- *
- * Recursive invalidation propagates freshness only — it does not remove
- * validity edges. Each reached dependent is marked as a propagated
- * invalidation, and the traversal continues through its outgoing validity
- * frontier. A node-level visited set is sufficient; there is no need to
- * track causal predecessors because no validity edges are revoked.
- * @param {object} ctx
- * @param {NodeIdentifier} ctx.nodeKey
- * @param {Set<NodeIdentifier>} ctx.visited
- * @param {ReadableMigrationStorage} ctx.prevStorage
- * @param {Set<NodeIdentifier>} ctx.materializedNodes
- * @param {Map<NodeIdentifier, Decision>} ctx.decisions
- * @param {Map<NodeName, CompiledNode>} ctx.newHeadIndex
- * @param {() => Map<string, string>} ctx.getIdentifiersKeysIndex
- * @returns {Promise<void>}
- */
-async function propagateInvalidate(ctx) {
-    const { nodeKey, visited, prevStorage, materializedNodes, decisions, newHeadIndex, getIdentifiersKeysIndex } = ctx;
-    /** @type {NodeIdentifier[]} */
-    const worklist = [nodeKey];
-
-    while (worklist.length > 0) {
-        const current = worklist.pop();
-        if (current === undefined) continue;
-        if (visited.has(current)) continue;
-        visited.add(current);
-
-        const dependents = await readValidDependents(current, prevStorage);
-        for (const dep of dependents) {
-            if (!materializedNodes.has(dep)) continue;
-            const existing = decisions.get(dep);
-            if (existing !== undefined) {
-                if (existing.kind === "delete") {
-                    continue;
-                }
-                if (existing.kind === "invalidate") {
-                    if (!visited.has(dep)) {
-                        worklist.push(dep);
-                    }
-                    continue;
-                }
-                throw makeDecisionConflictError(dep, existing.kind, "invalidate");
-            }
-            const identifiersKeysIndex = getIdentifiersKeysIndex();
-            await checkSchemaCompatibility(dep, newHeadIndex, identifiersKeysIndex, decisions);
-            decisions.set(dep, { kind: "invalidate", provenance: "propagated" });
-            if (!visited.has(dep)) {
-                worklist.push(dep);
-            }
-        }
-    }
 }
 
 /**
@@ -201,6 +141,5 @@ async function propagateDeletes(ctx) {
 
 module.exports = {
     readValidDependents,
-    propagateInvalidate,
     propagateDeletes,
 };
