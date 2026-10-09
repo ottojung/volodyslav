@@ -35,6 +35,47 @@ Traversal helpers expose dependency metadata derived from durable graph metadata
 
 Traversal never re-executes computors; it derives dependency edges from `global/graph_scheme` and `identifiers_keys_map`.
 
+### Source-to-target NodeKey representation
+
+Every transition is declared with one directed source-to-target **format codec**
+(`docs/specs/incremental-graph-journal-migrations.md` §9a), which may declare two
+transforms and defaults an omitted one to the identity transform:
+
+```text
+rewriteNodeKey(sourceKey) -> NodeKey
+rewriteComputedValue(sourceKey, payload) -> ComputedValue
+```
+
+Both are synchronous and deterministic and receive no database handle, clock,
+randomness, allocator or other replica-local capability. `rewriteNodeKey` changes
+representation only: its result denotes the same historical semantic node under the
+target version.
+
+The cutover applies the codec twice, and both applications must agree:
+
+* every retained Journal record is rewritten — its own node key, every `NodeKey`
+  embedded in a `ValidationBasis` or a `proof` invalidation scope, and every
+  `ValueEvent` payload. `JournalRecordId`, writer sequence, context, `AuthorityTime`,
+  `NodeIdentifier` and both value timestamps are preserved, and a rewritten
+  `ValidationBasis` is re-sorted into the target's canonical `NodeKeyString` order.
+  The current-occurrence index, which is keyed by node key, is re-keyed;
+* the target replica's `identifiers_keys_map` maps every preserved `NodeIdentifier`
+  to the transported target key.
+
+The callback then works in that target key space. `get`, `has` and the traversal
+helpers still address the previous replica, so they expose source-representation
+data; every decision on an existing materialization resolves its source key `Ks` and
+reasons about `Kt = rewriteNodeKey(Ks)`. A representation rename `Ks -> Kt` can
+therefore use `keep(id(Ks))` even when `Ks` is absent from the target schema, provided
+`Kt` is target-compatible. `create(nodeKeyString, ...)` accepts a target-representation
+key and throws `CreateExistingNodeError` when it equals `rewriteNodeKey(Ks)` of any
+materialized source node.
+
+A codec which is not total over the retained history, a transform which throws or
+returns a non-representation, and a rewrite which this replica observes mapping two
+distinct source keys onto one target key all fail
+`JournalVersionCompatibilityError` before the cutover.
+
 ---
 
 ## `MigrationStorage` API
@@ -75,11 +116,15 @@ Calling the same decision twice (except for `replace` and `create`) is allowed a
 * Calling **different** decisions on the same node throws `DecisionConflictError`.
 * Calling `replace()` more than once on the same node throws `DecisionConflictError`.
 * Calling `create()` twice on the same node throws `DecisionConflictError`.
-* Calling `create()` on a node that exists in the previous version throws `CreateExistingNodeError`.
+* Calling `create()` on a target key which equals `rewriteNodeKey(Ks)` of a
+  materialized source node, or on a target key another `create` already took, throws
+  `CreateExistingNodeError`.
 
 ### Schema compatibility
 
-`keep`, `replace`, `invalidate`, and `create` check that the node's functor and arity exist in the new schema.  Incompatible nodes must be explicitly `delete`d.  Violation throws `SchemaCompatibilityError`.
+`keep`, `replace`, `invalidate`, and `create` check that the node's target key's
+functor and arity exist in the new schema.  Incompatible nodes must be explicitly
+`delete`d.  Violation throws `SchemaCompatibilityError`.
 
 ### Operation semantics
 
@@ -121,12 +166,13 @@ This preserves the materialization invariant that every materialized node has al
 | Error class | When thrown |
 |-------------|------------|
 | `DecisionConflictError` | Two different decisions assigned to the same node. |
-| `CreateExistingNodeError` | `create()` called for a node that already exists in the previous version. |
+| `CreateExistingNodeError` | `create()` called for a target key which equals the transported target key of a materialized previous-version node. |
 | `UndecidedNodesError` | Some nodes in `S` have no decision after the callback. |
 | `SchemaCompatibilityError` | `keep`/`replace`/`invalidate`/`create` on a node absent from the new schema. |
 | `InvalidMigrationDecisionError` | A decision which asserts proof or freshness the migration cannot establish, or a decision whose produced state cannot be derived. |
 | `GetMissingNodeError` | `get()`/traversal called for a node not in `S`. |
 | `MissingDependencyMetadataError` | A materialized node has missing or corrupted dependency metadata. |
+| `JournalVersionCompatibilityError` | The transition's format codec is not a valid codec definition, is not total over the retained history, or is observed to map two distinct source node keys onto one target key. |
 
 ---
 
