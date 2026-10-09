@@ -17,7 +17,6 @@ const {
     createIncrementalGraph,
     makeUnchanged,
 } = require("../src/generators/incremental_graph");
-const { numberComputedValue } = require("./computed_value_fixture");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger, stubDatetime, stubEnvironment } = require("./stubs");
 
@@ -44,7 +43,7 @@ describe("migration integration", () => {
         );
     });
 
-    test("stale keep region A→B→C preserves its proofs, and every stale node recomputes with oldValue", async () => {
+    test("stale keep/override region A→B→C loses both proofs, both recompute with oldValue", async () => {
         const caps = getTestCapabilities();
         let db;
         try {
@@ -55,9 +54,9 @@ describe("migration integration", () => {
             let aCalls = 0, bCalls = 0, cCalls = 0;
 
             const nodeDefs = [
-                { output: "A", inputs: [], computor: async () => { aCalls++; return numberComputedValue(1); }, isDeterministic: true, hasSideEffects: false },
-                { output: "B", inputs: ["A"], computor: async (_inputs, oldValue) => { bCalls++; receivedOldValues.push({ bOld: oldValue }); return numberComputedValue(2); }, isDeterministic: true, hasSideEffects: false },
-                { output: "C", inputs: ["B"], computor: async (_inputs, oldValue) => { cCalls++; receivedOldValues.push({ cOld: oldValue }); return numberComputedValue(3); }, isDeterministic: true, hasSideEffects: false },
+                { output: "A", inputs: [], computor: async () => { aCalls++; return ({ v: 1 }); }, isDeterministic: true, hasSideEffects: false },
+                { output: "B", inputs: ["A"], computor: async (_inputs, oldValue) => { bCalls++; receivedOldValues.push({ bOld: oldValue }); return ({ v: 2 }); }, isDeterministic: true, hasSideEffects: false },
+                { output: "C", inputs: ["B"], computor: async (_inputs, oldValue) => { cCalls++; receivedOldValues.push({ cOld: oldValue }); return ({ v: 3 }); }, isDeterministic: true, hasSideEffects: false },
             ];
 
             // --- Phase 1: Build version-1 source with A→B→C chain ---
@@ -107,12 +106,11 @@ describe("migration integration", () => {
             expect(await storage.freshness.get(bId2)).toBe("potentially-outdated");
             expect(await storage.freshness.get(cId2)).toBe("potentially-outdated");
 
-            // All incoming proofs preserved: §11 keeps a stale occurrence's
-            // unaffected proof, and only its freshness flag records the staleness.
+            // All incoming proofs removed (stale keep region loses both proofs)
             const validA = await storage.valid.get(aId2) ?? [];
             const validB = await storage.valid.get(bId2) ?? [];
-            expect(validA.some(d => String(d) === String(bId2))).toBe(true);
-            expect(validB.some(d => String(d) === String(cId2))).toBe(true);
+            expect(validA.some(d => String(d) === String(bId2))).toBe(false);
+            expect(validB.some(d => String(d) === String(cId2))).toBe(false);
 
             // --- Phase 4: Pull C — both B and C must recompute with oldValue ---
             aCalls = 0; bCalls = 0; cCalls = 0;
@@ -123,11 +121,11 @@ describe("migration integration", () => {
             expect(aCalls).toBe(1);
             expect(bCalls).toBe(1);
             expect(cCalls).toBe(1);
-            expect(result).toEqual(numberComputedValue(3));
+            expect(result).toEqual({ v: 3 });
             // oldValue was delivered to both B and C
             expect(receivedOldValues.length).toBe(2);
-            expect(receivedOldValues[0].bOld).toEqual(numberComputedValue(2));
-            expect(receivedOldValues[1].cOld).toEqual(numberComputedValue(3));
+            expect(receivedOldValues[0].bOld).toEqual({ v: 2 });
+            expect(receivedOldValues[1].cOld).toEqual({ v: 3 });
 
             // --- Phase 5: Final state — proofs and freshness restored ---
             expect(await g2.getFreshness("A")).toBe("up-to-date");
@@ -142,96 +140,6 @@ describe("migration integration", () => {
         }
     });
 
-    test("replace(A) keeps B materialized but stale with its replaced-input proof dropped", async () => {
-        const caps = getTestCapabilities();
-        let db;
-        try {
-            db = await getRootDatabase(caps);
-            const nodeDefs = [
-                { output: "A", inputs: [], computor: async () => numberComputedValue(1), isDeterministic: true, hasSideEffects: false },
-                { output: "B", inputs: ["A"], computor: async () => numberComputedValue(2), isDeterministic: true, hasSideEffects: false },
-            ];
-            const g1 = await createIncrementalGraph(caps, db, nodeDefs);
-            await g1.pull("B");
-            await db.getSchemaStorage().global.put("version", "1");
-            await db.close();
-
-            db = await getRootDatabase(caps);
-            await runMigration(caps, db, nodeDefs, async (storage) => {
-                for await (const nk of storage.listMaterializedNodes()) {
-                    const key = await storage.resolveNodeKey(nk);
-                    if (!key) continue;
-                    if (String(key.head) === "A") {
-                        await storage.replace(nk, async () => numberComputedValue(20));
-                    } else {
-                        await storage.keep(nk);
-                    }
-                }
-            });
-
-            const storage = db.getSchemaStorage();
-            const lookup = db.getActiveIdentifierLookup();
-            const aId = lookup.keyToId.get('{"head":"A","args":[]}');
-            const bId = lookup.keyToId.get('{"head":"B","args":[]}');
-            expect(aId).toBeDefined();
-            expect(bId).toBeDefined();
-
-            // §11a.4: the replacement over a zero-input node is up-to-date, and the
-            // preserved dependent's carried edge named the replaced occurrence, so it
-            // is dropped and B is target-stale rather than claiming B=2 is fresh for A=20.
-            expect(await storage.freshness.get(aId)).toBe("up-to-date");
-            expect(await storage.freshness.get(bId)).toBe("potentially-outdated");
-            const validA = await storage.valid.get(aId) ?? [];
-            expect(validA.some((id) => String(id) === String(bId))).toBe(false);
-        } finally {
-            if (db) await db.close();
-        }
-    });
-
-    test("invalidate(A); keep(B) stales A and B without assigning B an invalidation decision", async () => {
-        const caps = getTestCapabilities();
-        let db;
-        try {
-            db = await getRootDatabase(caps);
-            const nodeDefs = [
-                { output: "A", inputs: [], computor: async () => numberComputedValue(1), isDeterministic: true, hasSideEffects: false },
-                { output: "B", inputs: ["A"], computor: async () => numberComputedValue(2), isDeterministic: true, hasSideEffects: false },
-            ];
-            const g1 = await createIncrementalGraph(caps, db, nodeDefs);
-            await g1.pull("B");
-            await db.getSchemaStorage().global.put("version", "1");
-            await db.close();
-
-            db = await getRootDatabase(caps);
-            await runMigration(caps, db, nodeDefs, async (storage) => {
-                for await (const nk of storage.listMaterializedNodes()) {
-                    const key = await storage.resolveNodeKey(nk);
-                    if (!key) continue;
-                    if (String(key.head) === "A") {
-                        await storage.invalidate(nk);
-                    } else {
-                        await storage.keep(nk);
-                    }
-                }
-            });
-
-            const storage = db.getSchemaStorage();
-            const lookup = db.getActiveIdentifierLookup();
-            const aId = lookup.keyToId.get('{"head":"A","args":[]}');
-            const bId = lookup.keyToId.get('{"head":"B","args":[]}');
-
-            // §11a.2: explicit invalidate(A) assigns no decision to B, so keep(B) is
-            // allowed; A is stale, and B is target-stale through its stale input while
-            // retaining the proof edge its unchanged occurrence supports.
-            expect(await storage.freshness.get(aId)).toBe("potentially-outdated");
-            expect(await storage.freshness.get(bId)).toBe("potentially-outdated");
-            const validA = await storage.valid.get(aId) ?? [];
-            expect(validA.some((id) => String(id) === String(bId))).toBe(true);
-        } finally {
-            if (db) await db.close();
-        }
-    });
-
     test("explicit B root removes A→B, preserves B→C, C cache-revalidates; durable cutover", async () => {
         const caps = getTestCapabilities();
         let db;
@@ -241,9 +149,9 @@ describe("migration integration", () => {
 
             let aCalls = 0, bCalls = 0, cCalls = 0;
             const nodeDefs = [
-                { output: "A", inputs: [], computor: async () => { aCalls++; return numberComputedValue(1); }, isDeterministic: true, hasSideEffects: false },
-                { output: "B", inputs: ["A"], computor: async (_inputs, oldValue) => { bCalls++; if (oldValue === undefined) return numberComputedValue(2); return makeUnchanged(); }, isDeterministic: true, hasSideEffects: false },
-                { output: "C", inputs: ["B"], computor: async () => { cCalls++; return numberComputedValue(3); }, isDeterministic: true, hasSideEffects: false },
+                { output: "A", inputs: [], computor: async () => { aCalls++; return ({ v: 1 }); }, isDeterministic: true, hasSideEffects: false },
+                { output: "B", inputs: ["A"], computor: async (_inputs, oldValue) => { bCalls++; if (oldValue === undefined) return ({ v: 2 }); return makeUnchanged(); }, isDeterministic: true, hasSideEffects: false },
+                { output: "C", inputs: ["B"], computor: async () => { cCalls++; return ({ v: 3 }); }, isDeterministic: true, hasSideEffects: false },
             ];
             const expectedScheme = JSON.stringify({
                 format: 1,
@@ -275,8 +183,6 @@ describe("migration integration", () => {
                         await storage.keep(nk);
                     } else if (String(key.head) === "B") {
                         await storage.invalidate(nk);
-                    } else {
-                        await storage.keep(nk);
                     }
                 }
             });
@@ -321,7 +227,7 @@ describe("migration integration", () => {
             expect(aCalls).toBe(0);
             expect(bCalls).toBe(1);
             expect(cCalls).toBe(0);
-            expect(result).toEqual(numberComputedValue(3));
+            expect(result).toEqual({ v: 3 });
 
             // --- Phase 7: Final state ---
             expect(await g2.getFreshness("A")).toBe("up-to-date");

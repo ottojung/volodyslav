@@ -12,49 +12,44 @@
  *
  * 1. Verify that `H` was written by the same schema version as the local
  *    database.
- * 2. Refuse the merge when either source replica carries Journal state, because this
- *    engine's fieldwise semantics are not what the Journal permits for those replicas
- *    (see `JournalBackedFieldwiseMergeError`).
- * 3. Parse the staged host identifier lookup and validate the active local and
+ * 2. Parse the staged host identifier lookup and validate the active local and
  *    staged host source replicas.
- * 4. Validate that the two source replicas have distinct allocation
+ * 3. Validate that the two source replicas have distinct allocation
  *    fingerprints before touching the inactive replica.
- * 5. Copy `L` into `T` (the inactive replica).
- * 6. Parse target/host identifier lookups and reject identifiers that map to
+ * 4. Copy `L` into `T` (the inactive replica).
+ * 5. Parse target/host identifier lookups and reject identifiers that map to
  *    different semantic keys.
- * 7. Select a candidate source side (keep or take) for each semantic node key
+ * 6. Select a candidate source side (keep or take) for each semantic node key
  *    using the canonical `(modifiedAt, NodeIdentifier, sourceFingerprint)`
  *    tuple. There is no local tie preference; source fingerprint is the final
  *    tie-breaker.
- * 8. Propagate taint forward from strict tuple winners along the selected
+ * 7. Propagate taint forward from strict tuple winners along the selected
  *    dependency graph. Taint records ancestry; it does not override source
  *    selection.
- * 9. Detect direct invalidation candidates: nodes with opposite-side ancestry,
+ * 8. Detect direct invalidation candidates: nodes with opposite-side ancestry,
  *    direct relowering through strict selected-source provenance, or stale
  *    matching-coordinate freshness metadata.
- * 10. Classify each candidate by distinct semantic input count:
+ * 9. Classify each candidate by distinct semantic input count:
  *    - 0 or 1 distinct input: hard invalidate (retain cached value as
  *      oldValue, mark stale, remove incoming proofs).
  *    - 2+ distinct inputs: delete (oldValue will be undefined, Unchanged not
  *      legal).
- * 11. Expand deletion roots through transitive materialized dependents.
- * 12. Apply final outcomes to T: copy/keep values, freshness, and timestamps
+ * 10. Expand deletion roots through transitive materialized dependents.
+ * 11. Apply final outcomes to T: copy/keep values, freshness, and timestamps
  *    from the appropriate source; mark hard-invalidated nodes stale; remove
  *    deleted records.
- * 13. Rebuild validity and propagated freshness: transport validity proofs
+ * 12. Rebuild validity and propagated freshness: transport validity proofs
  *     through selected-source provenance and final structural edges; mark direct
  *     invalidation roots stale; propagate staleness forward preserving valid
  *     proofs; throw UnplannedMissingValidityProofError if planning and proof
  *     transport disagree.
- * 14. Validate the final state: every up-to-date node must have up-to-date
+ * 13. Validate the final state: every up-to-date node must have up-to-date
  *     inputs and complete incoming proofs.
- * 15. Switch the active replica pointer when graph data or identifier
+ * 14. Switch the active replica pointer when graph data or identifier
  *     reconciliation changed.
  *
  * Error handling policy:
  * - Version mismatch throws HostVersionMismatchError.
- * - A merge source replica that carries Journal state throws
- *   JournalBackedFieldwiseMergeError.
  * - Identifier metadata conflicts/malformed records throw the specific errors
  *   defined by the identifier lookup modules.
  * - Graph cycles throw TopologicalSortCycleError from `topo_sort`.
@@ -65,7 +60,7 @@
  */
 
 const { isTopologicalSortCycleError } = require('./topo_sort');
-const { stringToVersion, versionToString } = require('./types');
+const { versionToString } = require('./types');
 const {
     IDENTIFIERS_KEY,
     makeEmptyIdentifierLookup,
@@ -158,85 +153,6 @@ function isSameSourceFingerprintSyncMergeError(object) {
 }
 
 /**
- * Thrown when a merge source replica carries Journal state.
- *
- * This merge engine selects and combines `values`, `freshness`, `valid`,
- * `timestamps` and identifier maps fieldwise from two materialized replicas. For a
- * replica that carries Journal state those sublevels are a projection of a retained
- * Journal, and `docs/specs/incremental-graph-journal-sync.md`
- * (`IncrementalGraph-facing behavior`) states that synchronization must not merge them
- * as independent authorities: the resulting graph has to be `project(Jfinal)`. Reusing
- * another writer's materialized rows — or dropping rows a remote writer no longer
- * holds — cannot be that projection, and it would publish a graph that no replay of the
- * retained Journal produces. The engine therefore refuses instead of computing a merge
- * whose semantics the Journal forbids; Journal-backed synchronization is
- * `synchronizeFrom(source)` over a held `JournalSnapshot`.
- *
- * @see docs/specs/incremental-graph-journal-sync.md
- */
-class JournalBackedFieldwiseMergeError extends Error {
-    /**
-     * @param {string} hostname
-     * @param {'local synchronization source' | 'staged host snapshot'} role
-     */
-    constructor(hostname, role) {
-        super(
-            `Cannot merge host '${hostname}': the ${role} carries Journal state, and a ` +
-            `fieldwise merge of materialized rows is not the synchronization the Journal permits`
-        );
-        this.name = 'JournalBackedFieldwiseMergeError';
-        this.hostname = hostname;
-        this.role = role;
-    }
-}
-
-/**
- * @param {unknown} object
- * @returns {object is JournalBackedFieldwiseMergeError}
- */
-function isJournalBackedFieldwiseMergeError(object) {
-    return object instanceof JournalBackedFieldwiseMergeError;
-}
-
-
-/**
- * Whether a replica's Journal sublevel holds any key.
- *
- * The sublevel holds the committed-pair state record, one key per retained record and
- * one key per current value occurrence. An empty sublevel therefore means this replica
- * has published no Journal transition and retains no Journal history; any key means its
- * graph sublevels are a projection of a retained Journal.
- *
- * @param {SchemaStorage} storage
- * @returns {Promise<boolean>}
- */
-async function carriesJournalState(storage) {
-    for await (const key of storage.journal.keys()) {
-        return key !== undefined;
-    }
-    return false;
-}
-
-/**
- * Refuse to merge fieldwise when one of the two merge sources carries Journal state.
- *
- * The check runs before the inactive replica is copied, so a refusal leaves both
- * replicas and the active replica pointer untouched.
- *
- * @param {string} hostname
- * @param {SchemaStorage} storage
- * @param {'local synchronization source' | 'staged host snapshot'} role
- * @returns {Promise<void>}
- * @throws {JournalBackedFieldwiseMergeError}
- */
-async function assertNoJournalState(hostname, storage, role) {
-    if (await carriesJournalState(storage)) {
-        throw new JournalBackedFieldwiseMergeError(hostname, role);
-    }
-}
-
-
-/**
  * Thrown when one or more per-host merges fail. Contains per-host failure
  * records so callers can report exactly which hosts failed and which succeeded.
  */
@@ -277,28 +193,16 @@ function formatVersionForError(version) {
 }
 
 /**
- * Read the schema version one staging storage persists.
- *
- * @param {SchemaStorage} storage
- * @returns {Promise<Version | undefined>}
- */
-async function stagedVersionOf(storage) {
-    const raw = await storage.global.get('version');
-    return typeof raw === 'string' ? stringToVersion(raw) : undefined;
-}
-
-/**
  * Verify that the staged host graph and local graph use the same schema version.
  *
  * @param {RootDatabase} rootDatabase
- * @param {SchemaStorage} hostStorage
  * @param {string} hostname
  * @returns {Promise<void>}
  * @throws {HostVersionMismatchError}
  */
-async function assertHostVersionMatches(rootDatabase, hostStorage, hostname) {
+async function assertHostVersionMatches(rootDatabase, hostname) {
     const localVersion = formatOptionalVersion(await rootDatabase.getGlobalVersion());
-    const remoteVersion = formatOptionalVersion(await stagedVersionOf(hostStorage));
+    const remoteVersion = formatOptionalVersion(await rootDatabase.getHostnameGlobalVersion(hostname));
 
     if (localVersion !== remoteVersion) {
         throw new HostVersionMismatchError(
@@ -389,11 +293,11 @@ async function commitChangedMerge(
 
 
 /**
- * Run the graph-aware merge algorithm for one staged remote host snapshot.
+ * Run the graph-aware merge algorithm for one staged remote hostname.
  *
  * Pre-conditions:
- * - The remote snapshot has already been scanned into the synchronization
- *   staging storage (`sync_staging`).
+ * - The hostname's remote snapshot has already been scanned into hostname
+ *   staging storage.
  * - The live database is locked for the duration of this call.
  *
  * Post-conditions on success:
@@ -404,24 +308,20 @@ async function commitChangedMerge(
  *   replica pointer is unchanged. The inactive replica may still have been
  *   refreshed as a copy of the active replica, but callers must continue
  *   reading from the active pointer.
- * - Staging storage is not cleared here; the caller owns cleanup.
+ * - Hostname staging storage is not cleared here; the caller owns cleanup.
  *
  * @param {Logger} logger
  * @param {RootDatabase} rootDatabase
- * @param {string} hostname - The remote host label, used for logging and error
- *   reporting only; the staged snapshot is read from the synchronization staging
- *   storage, whose name carries no transport locator.
+ * @param {string} hostname
  * @returns {Promise<boolean>} Whether the active replica pointer changed.
  * @throws {HostVersionMismatchError} If the remote schema version differs from local.
- * @throws {JournalBackedFieldwiseMergeError} If either merge source replica carries Journal state.
  * @throws {import('./topo_sort').TopologicalSortCycleError} If the merged graph has a cycle.
  */
 async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
-    const hostStorage = rootDatabase.syncStagingStorage();
-    await assertHostVersionMatches(rootDatabase, hostStorage, hostname);
+    await assertHostVersionMatches(rootDatabase, hostname);
 
     // Fail-fast: validate host metadata before expensive copy.
-    await assertNoJournalState(hostname, hostStorage, 'staged host snapshot');
+    const hostStorage = rootDatabase.hostnameSchemaStorage(hostname);
     const hostLookup = parseIdentifierLookup(
         await hostStorage.global.get(IDENTIFIERS_KEY),
         'staged host snapshot'
@@ -443,7 +343,6 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     const targetSourceFingerprint = await loadSourceFingerprint(localSourceStorage, 'local synchronization source fingerprint');
     const hostSourceFingerprint = await loadSourceFingerprint(hostStorage, 'staged host source fingerprint');
     assertDistinctSourceFingerprints(hostname, targetSourceFingerprint, hostSourceFingerprint);
-    await assertNoJournalState(hostname, localSourceStorage, 'local synchronization source');
 
     await copyReplicaGently(rootDatabase, fromReplica, toReplica);
 
@@ -552,11 +451,8 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
 
 module.exports = {
     mergeHostIntoReplica,
-    carriesJournalState,
     HostVersionMismatchError,
     isHostVersionMismatchError,
-    JournalBackedFieldwiseMergeError,
-    isJournalBackedFieldwiseMergeError,
     FinalMergeStateError,
     isFinalMergeStateError,
     SyncMergeAggregateError,

@@ -14,7 +14,6 @@ const { IDENTIFIERS_KEY } = require("../src/generators/incremental_graph/databas
 const { createIncrementalGraph } = require("../src/generators/incremental_graph");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger, stubEnvironment } = require("./stubs");
-const { numberComputedValue, textComputedValue } = require("./computed_value_fixture");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -75,7 +74,7 @@ describe("Properties 1+5 — Exact isomorphism: volatile matches disk after comm
             {
                 output: "source",
                 inputs: [],
-                computor: async () => numberComputedValue(42),
+                computor: async () => ({ type: "test", value: 42 }),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -115,7 +114,7 @@ describe("Properties 1+5 — Exact isomorphism: volatile matches disk after comm
             {
                 output: "node_paused",
                 inputs: [],
-                computor: async () => numberComputedValue(10),
+                computor: async () => ({ value: 10 }),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -168,7 +167,7 @@ describe("Property 2 — No conflicting concurrent allocations", () => {
             {
                 output: "source",
                 inputs: [],
-                computor: async () => numberComputedValue(1),
+                computor: async () => ({ type: "test", value: 1 }),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -182,8 +181,8 @@ describe("Property 2 — No conflicting concurrent allocations", () => {
         ]);
 
         expect(results).toEqual([
-            { type: "calories", value: 1 },
-            { type: "calories", value: 1 },
+            { type: "test", value: 1 },
+            { type: "test", value: 1 },
         ]);
 
         // The volatile lookup has exactly one entry for "source".
@@ -203,21 +202,21 @@ describe("Property 2 — No conflicting concurrent allocations", () => {
             {
                 output: "z",
                 inputs: [],
-                computor: async () => numberComputedValue(0),
+                computor: async () => ({ type: "base", value: 0 }),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
             {
                 output: "x",
                 inputs: ["z"],
-                computor: async ([zVal]) => numberComputedValue(zVal.value + 1),
+                computor: async ([zVal]) => ({ type: "x", value: zVal.value + 1 }),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
             {
                 output: "y",
                 inputs: ["z"],
-                computor: async ([zVal]) => numberComputedValue(zVal.value + 2),
+                computor: async ([zVal]) => ({ type: "y", value: zVal.value + 2 }),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -229,8 +228,8 @@ describe("Property 2 — No conflicting concurrent allocations", () => {
             graph.pull("y"),
         ]);
 
-        expect(xVal.value).toBe(1);
-        expect(yVal.value).toBe(2);
+        expect(xVal).toEqual({ type: "x", value: 1 });
+        expect(yVal).toEqual({ type: "y", value: 2 });
 
         // Z must have exactly one identifier in the volatile lookup
         // (the first commit for Z wins; the second is retried).
@@ -250,7 +249,7 @@ describe("Property 2 — No conflicting concurrent allocations", () => {
             {
                 output: "flush_fail_node",
                 inputs: [],
-                computor: async () => textComputedValue("value"),
+                computor: async () => ({ value: "value" }),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -292,7 +291,7 @@ describe("Property 3 — Identifier stability across restarts", () => {
             {
                 output: "stable",
                 inputs: [],
-                computor: async () => numberComputedValue(99),
+                computor: async () => ({ type: "data", v: 99 }),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -328,14 +327,14 @@ describe("Property 4 — Monotonicity: no identifier entries disappear", () => {
             {
                 output: "a",
                 inputs: [],
-                computor: async () => numberComputedValue(1),
+                computor: async () => ({ v: 1 }),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
             {
                 output: "b",
                 inputs: [],
-                computor: async () => numberComputedValue(2),
+                computor: async () => ({ v: 2 }),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -369,14 +368,14 @@ describe("Property 6 — Disk-first ordering: no optimistic volatile writes", ()
             {
                 output: "node1",
                 inputs: [],
-                computor: async () => numberComputedValue(1),
+                computor: async () => ({ value: 1 }),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
             {
                 output: "node2",
                 inputs: [],
-                computor: async () => numberComputedValue(2),
+                computor: async () => ({ value: 2 }),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -406,22 +405,18 @@ describe("Property 6 — Disk-first ordering: no optimistic volatile writes", ()
 });
 
 // ---------------------------------------------------------------------------
-// A failed pull publishes nothing
+// Failed parent does not undo committed dependency
 // ---------------------------------------------------------------------------
 
-describe("A failed pull publishes nothing", () => {
-    test("when outer computation fails, no dependency state is durable", async () => {
+describe("Failed parent does not undo committed dependency", () => {
+    test("when outer computation fails, dependency data remains committed", async () => {
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);
-        let sourceComputations = 0;
         const graph = await createIncrementalGraph(capabilities, db, [
             {
                 output: "source",
                 inputs: [],
-                computor: async () => {
-                    sourceComputations++;
-                    return textComputedValue("good");
-                },
+                computor: async () => ({ value: "good" }),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -439,18 +434,12 @@ describe("A failed pull publishes nothing", () => {
         // The pull fails because derived's computor throws.
         await expect(graph.pull("derived")).rejects.toThrow("fail-intentionally");
 
-        // source's pull ran as a dependency of derived's and computed once, but
-        // the computor runs before the serialized finalization boundary: the whole
-        // transition was abandoned, so source is materialized nowhere, durably
-        // or otherwise.
-        expect(sourceComputations).toBe(1);
-        expect(await graph.getFreshness("source")).toBeUndefined();
+        // In the new design, each pull creates its own Transaction.
+        // source's pull (triggered by derived's computation) committed independently,
+        // so source IS committed to disk even though derived's computor threw.
+        // derived itself was never committed.
+        expect(await graph.getFreshness("source")).toBe("up-to-date");
         expect(await graph.getFreshness("derived")).toBeUndefined();
-
-        // The next pull recomputes source, which is what must happen if the failed
-        // pull left no value behind for it.
-        await expect(graph.pull("source")).resolves.toEqual(textComputedValue("good"));
-        expect(sourceComputations).toBe(2);
 
         await db.close();
     });
@@ -460,7 +449,7 @@ describe("A failed pull publishes nothing", () => {
 // Property 11 — Nested pulls submit independent batches
 // ---------------------------------------------------------------------------
 
-describe("Property 11 — Nested pulls publish with the pull which pulled them", () => {
+describe("Property 11 — Nested pulls submit independent batches", () => {
     test("dependency and parent are both materialized after successful pull", async () => {
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);
@@ -472,7 +461,7 @@ describe("Property 11 — Nested pulls publish with the pull which pulled them",
                 inputs: [],
                 computor: async () => {
                     innerComputations++;
-                    return textComputedValue("inner-data");
+                    return { value: "inner-data" };
                 },
                 isDeterministic: true,
                 hasSideEffects: false,
@@ -480,7 +469,7 @@ describe("Property 11 — Nested pulls publish with the pull which pulled them",
             {
                 output: "outer",
                 inputs: ["inner"],
-                computor: async ([innerVal]) => textComputedValue(`outer(${innerVal.description})`),
+                computor: async ([innerVal]) => ({ value: `outer(${innerVal.value})` }),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -488,35 +477,36 @@ describe("Property 11 — Nested pulls publish with the pull which pulled them",
 
         // Pull outer (which triggers inner as dependency).
         const result = await graph.pull("outer");
-        expect(result.description).toBe("outer(inner-data)");
+        expect(result).toEqual({ value: "outer(inner-data)" });
         expect(innerComputations).toBe(1);
 
         // Both inner and outer must be up-to-date after a single top-level pull.
         expect(await graph.getFreshness("inner")).toBe("up-to-date");
         expect(await graph.getFreshness("outer")).toBe("up-to-date");
 
-        // Pulling outer again does not recompute inner: both are already
-        // up-to-date, so the whole operation is a no-op and publishes nothing.
+        // Pulling outer again does not recompute inner (both are already up-to-date;
+        // each was committed in its own separate batch).
         await graph.pull("outer");
         expect(innerComputations).toBe(1);
 
         await db.close();
     });
 
-    test("dependency and parent writes are flushed in one batch", async () => {
+    test("dependency and parent writes are flushed in separate batches", async () => {
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);
         const schemaStorage = db.getSchemaStorage();
-        // Each schemaStorage.<name> access returns a fresh typed wrapper, so the
-        // operations name the level below it.
-        const valuesLevel = schemaStorage.values.sublevel;
-        const globalLevel = schemaStorage.global.sublevel;
-        const journalLevel = schemaStorage.journal.sublevel;
         const originalBatch = schemaStorage.batch.bind(schemaStorage);
-        /** @type {Array<Array<*>>} */
+        /** @type {Array<Array<{ type: string, key: unknown, value: unknown }>>} */
         const capturedBatches = [];
         schemaStorage.batch = async (operations) => {
-            capturedBatches.push(operations);
+            capturedBatches.push(
+                operations.map((op) => ({
+                    type: op.type,
+                    key: op.key,
+                    value: op.value,
+                }))
+            );
             await originalBatch(operations);
         };
 
@@ -525,63 +515,81 @@ describe("Property 11 — Nested pulls publish with the pull which pulled them",
                 {
                     output: "inner_atomic",
                     inputs: [],
-                    computor: async () => textComputedValue("inner-data"),
+                    computor: async () => ({ value: "inner-data" }),
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
                 {
                     output: "outer_atomic",
                     inputs: ["inner_atomic"],
-                    computor: async ([innerVal]) =>
-                        textComputedValue(`outer(${innerVal.description})`),
+                    computor: async ([innerVal]) => ({
+                        value: `outer(${innerVal.value})`,
+                    }),
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
             ]);
 
-            // Only the batches the pull itself issues are of interest; creating
-            // the graph on a fresh database writes the graph scheme.
-            capturedBatches.length = 0;
-
             await graph.pull("outer_atomic");
 
-            // A nested dependency pull joins the operation which pulled it, so
-            // the whole transition is one durable write. Anything else would let
-            // the dependency be durable without the parent which needs it.
-            expect(capturedBatches).toHaveLength(1);
-            const flush = capturedBatches[0];
-
-            // That one write carries both materialized values and one identifier table.
-            expect(flush).toEqual(expect.arrayContaining([
-                expect.objectContaining({
-                    type: "put",
-                    sublevel: valuesLevel,
-                    value: textComputedValue("inner-data"),
-                }),
-                expect.objectContaining({
-                    type: "put",
-                    sublevel: valuesLevel,
-                    value: textComputedValue("outer(inner-data)"),
-                }),
-                expect.objectContaining({
-                    type: "put",
-                    sublevel: globalLevel,
-                    key: IDENTIFIERS_KEY,
-                }),
-            ]));
-
-            // It also carries the Journal records describing those materializations,
-            // so the graph side and the journal side become durable together.
-            expect(
-                flush.filter((op) => op.sublevel === journalLevel)
-            ).not.toHaveLength(0);
+            // In the new design, inner and outer each have their own Transaction,
+            // so they flush in separate batches. Find the batch containing inner-data
+            // and the batch containing outer(inner-data).
+            const innerFlush = capturedBatches.find((batch) =>
+                batch.some(
+                    (op) =>
+                        op.type === "put" &&
+                        op.value !== null &&
+                        typeof op.value === "object" &&
+                        "value" in op.value &&
+                        op.value.value === "inner-data"
+                )
+            );
+            const outerFlush = capturedBatches.find((batch) =>
+                batch.some(
+                    (op) =>
+                        op.type === "put" &&
+                        op.value !== null &&
+                        typeof op.value === "object" &&
+                        "value" in op.value &&
+                        op.value.value === "outer(inner-data)"
+                )
+            );
+            expect(innerFlush).toBeDefined();
+            expect(outerFlush).toBeDefined();
+            // inner's flush contains its own value and identifier
+            expect(innerFlush).toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining({
+                        type: "put",
+                        value: { value: "inner-data" },
+                    }),
+                    expect.objectContaining({
+                        type: "put",
+                        key: IDENTIFIERS_KEY,
+                    }),
+                ])
+            );
+            // outer's flush contains its own value, valid edge, and identifier
+            expect(outerFlush).toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining({
+                        type: "put",
+                        value: { value: "outer(inner-data)" },
+                    }),
+                    expect.objectContaining({
+                        type: "put",
+                        key: IDENTIFIERS_KEY,
+                    }),
+                ])
+            );
         } finally {
             schemaStorage.batch = originalBatch;
             await db.close();
         }
     });
 
-    test("when outer pull fails, no dependency state is durable", async () => {
+    test("when outer pull fails, dependency data remains committed", async () => {
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);
         let innerComputations = 0;
@@ -592,7 +600,7 @@ describe("Property 11 — Nested pulls publish with the pull which pulled them",
                 inputs: [],
                 computor: async () => {
                     innerComputations++;
-                    return textComputedValue("dep-data");
+                    return { value: "dep-data" };
                 },
                 isDeterministic: true,
                 hasSideEffects: false,
@@ -611,16 +619,11 @@ describe("Property 11 — Nested pulls publish with the pull which pulled them",
         await expect(graph.pull("consumer")).rejects.toThrow("consumer-fails");
         expect(innerComputations).toBe(1);
 
-        // dep's pull ran as a dependency of consumer's and computed once, but the
-        // computor runs before the serialized finalization boundary: the whole
-        // transition was abandoned, so dep is materialized nowhere.
-        expect(await graph.getFreshness("dep")).toBeUndefined();
+        // In the new design, each pull creates its own Transaction.
+        // dep's pull (as a dependency of consumer) committed independently,
+        // so dep IS committed even though consumer's computor threw.
+        expect(await graph.getFreshness("dep")).toBe("up-to-date");
         expect(await graph.getFreshness("consumer")).toBeUndefined();
-
-        // The next pull recomputes dep, which is what must happen if the failed
-        // pull left no value behind for it.
-        await expect(graph.pull("dep")).resolves.toEqual(textComputedValue("dep-data"));
-        expect(innerComputations).toBe(2);
 
         await db.close();
     });
@@ -638,7 +641,7 @@ describe("No-op pull optimization — skips persistent batch writes", () => {
             {
                 output: "stable",
                 inputs: [],
-                computor: async () => textComputedValue("same"),
+                computor: async () => ({ value: "same" }),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -676,14 +679,14 @@ describe("Supplemental scenario — Read-only lookups do not interfere with allo
             {
                 output: "existing",
                 inputs: [],
-                computor: async () => textComputedValue("exists"),
+                computor: async () => ({ value: "exists" }),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
             {
                 output: "new_node",
                 inputs: [],
-                computor: async () => textComputedValue("new"),
+                computor: async () => ({ value: "new" }),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -732,7 +735,7 @@ describe("Invariant 3 — Independent pull concurrency", () => {
                 computor: async () => {
                     started.push("n1");
                     await released.promise;
-                    return numberComputedValue(1);
+                    return { value: 1 };
                 },
                 isDeterministic: true,
                 hasSideEffects: false,
@@ -744,7 +747,7 @@ describe("Invariant 3 — Independent pull concurrency", () => {
                     started.push("n2");
                     // released.promise is already resolved at this point
                     await released.promise;
-                    return numberComputedValue(2);
+                    return { value: 2 };
                 },
                 isDeterministic: true,
                 hasSideEffects: false,
@@ -783,28 +786,28 @@ describe("Dependency lock ordering", () => {
             {
                 output: "a",
                 inputs: [],
-                computor: async () => numberComputedValue(1),
+                computor: async () => ({ value: 1 }),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
             {
                 output: "b",
                 inputs: [],
-                computor: async () => numberComputedValue(2),
+                computor: async () => ({ value: 2 }),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
             {
                 output: "left",
                 inputs: ["a", "b"],
-                computor: async ([a, b]) => numberComputedValue(a.value + b.value),
+                computor: async ([a, b]) => ({ value: a.value + b.value }),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
             {
                 output: "right",
                 inputs: ["b", "a"],
-                computor: async ([b, a]) => numberComputedValue(b.value - a.value),
+                computor: async ([b, a]) => ({ value: b.value - a.value }),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -817,8 +820,8 @@ describe("Dependency lock ordering", () => {
             Promise.all([graph.pull("left"), graph.pull("right")]),
             timeout,
         ])).resolves.toEqual([
-            { type: "calories", value: 3 },
-            { type: "calories", value: 1 },
+            { value: 3 },
+            { value: 1 },
         ]);
 
         await db.close();
@@ -832,28 +835,28 @@ describe("Dependency lock ordering", () => {
             {
                 output: "a",
                 inputs: [],
-                computor: async () => numberComputedValue(1),
+                computor: async () => ({ value: 1 }),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
             {
                 output: "b",
                 inputs: [],
-                computor: async () => numberComputedValue(2),
+                computor: async () => ({ value: 2 }),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
             {
                 output: "left",
                 inputs: ["a", "b"],
-                computor: async ([a, b]) => numberComputedValue(a.value + b.value),
+                computor: async ([a, b]) => ({ value: a.value + b.value }),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
             {
                 output: "right",
                 inputs: ["b", "a"],
-                computor: async ([b, a]) => numberComputedValue(b.value - a.value),
+                computor: async ([b, a]) => ({ value: b.value - a.value }),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -870,8 +873,8 @@ describe("Dependency lock ordering", () => {
             Promise.all([graph.pull("left"), graph.pull("right")]),
             timeout,
         ])).resolves.toEqual([
-            { type: "calories", value: 3 },
-            { type: "calories", value: 1 },
+            { value: 3 },
+            { value: 1 },
         ]);
 
         await db.close();

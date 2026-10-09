@@ -4,7 +4,6 @@ const {
     stringToNodeIdentifier,
     stringToNodeKeyString,
     deriveInputEdges,
-    topologicalSortFromMap,
 } = require("./database");
 const { makeInvalidMigrationDecisionError } = require("./migration_errors");
 
@@ -42,25 +41,17 @@ function addToValidSet(validSets, input, dependent) {
 
 /**
  * Build the identifiers_keys_map that reflects all decisions.
- *
- * The target replica materializes the transported target keys, so a source
- * materialization the migration keeps, invalidates or replaces appears in the map
- * under `Kt = rewriteNodeKey(Ks)` rather than under the source spelling the source
- * replica persisted. A `create` declares its key in the target representation
- * already.
- *
- * @param {import('./migration_target_keys').TargetKeyView} targetKeyView - The source
- *   materialization in target NodeKey representation.
+ * @param {import('./database/identifier_lookup').IdentifierLookup} oldLookup
  * @param {Map<NodeIdentifier, Decision>} decisions
  * @returns {Array<[NodeIdentifier, NodeKeyString]>}
  */
-function buildDecisionsMap(targetKeyView, decisions) {
+function buildDecisionsMap(oldLookup, decisions) {
     /** @type {Map<string, NodeKeyString>} */
     const idToKey = new Map();
-    for (const [idString, nodeKeyJson] of targetKeyView.index.entries()) {
+    for (const [idString, nodeKeyJson] of oldLookup.idToKey.entries()) {
         const decision = decisions.get(stringToNodeIdentifier(idString));
         if (!decision || decision.kind !== "delete") {
-            idToKey.set(idString, stringToNodeKeyString(nodeKeyJson));
+            idToKey.set(idString, stringToNodeKeyString(String(nodeKeyJson)));
         }
     }
 
@@ -80,179 +71,128 @@ function buildDecisionsMap(targetKeyView, decisions) {
 }
 
 
+
+
 /**
- * The target validity edges and the persisted freshness flag of every
- * target-present node.
- *
- * `docs/specs/incremental-graph-journal-migrations.md` §11a.4 fixes both facts and
- * requires freshness to be computed in deterministic dependency-topological order
- * after target presence and `TargetValid` are fixed. They are produced together
- * because a `create`'s up-to-date assertion is admitted exactly when its selected
- * inputs are target-fresh, and a target input's own freshness is only known once
- * that input has been settled, which is why the pass walks inputs before dependents.
- *
- * - an explicit `invalidate` is stale and asserts no positive incoming edge: §16.1
- *   makes it a genuine node-scoped invalidation rather than a certificate-selection
- *   trick;
- * - a `"potentially-outdated"` create is stale and asserts no positive incoming edge;
- * - a `"up-to-date"` create establishes full positive proof against every selected
- *   direct target input and is admitted only when every one of them is target-fresh,
- *   otherwise `InvalidMigrationDecisionError` is thrown before cutover;
- * - a replacement establishes full positive proof against every selected direct
- *   target input occurrence and is target-fresh exactly when every one of those
- *   inputs is target-fresh, otherwise it "retains full own proof but is target-stale
- *   through that input";
- * - an occurrence-preserving decision (`keep`, and a propagated invalidation) derives
- *   each carried edge from actual source proof provenance: an edge is carried only
- *   when the input's occurrence survives, the edge existed under the source scheme,
- *   and the source replica persisted it. It is target-fresh only when the source
- *   occurrence had no direct stale state which survives migration, every required
- *   target input edge is in `TargetValid`, and every target input is target-fresh.
- *   A stale occurrence keeps the unaffected proof edges its unchanged value supports;
- *   only the target's freshness flag changes, not the edge set.
- *
+ * @param {Map<NodeIdentifier, Decision>} decisions
+ * @returns {Set<string>}
+ */
+function materializedDecisionStrings(decisions) {
+    const result = new Set();
+    for (const [identifier, decision] of decisions) {
+        if (decision.kind !== "delete") {
+            result.add(nodeIdentifierToString(identifier));
+        }
+    }
+    return result;
+}
+
+/**
+ * @param {ReadableMigrationStorage} _prevStorage
+ * @param {Map<NodeIdentifier, Decision>} decisions
+ * @param {NodeIdentifier} nodeIdentifier
+ * @returns {Promise<boolean>}
+ */
+async function isFinalCached(_prevStorage, decisions, nodeIdentifier) {
+    const decision = decisions.get(nodeIdentifier);
+    return decision !== undefined && decision.kind !== "delete";
+}
+
+/**
+ * @param {ReadableMigrationStorage} prevStorage
+ * @param {Map<NodeIdentifier, Decision>} decisions
+ * @param {NodeIdentifier} nodeIdentifier
+ * @returns {Promise<import('./database/types').Freshness | undefined>}
+ */
+async function finalFreshness(prevStorage, decisions, nodeIdentifier) {
+    const decision = decisions.get(nodeIdentifier);
+    if (decision === undefined || decision.kind === "delete") return undefined;
+    if (decision.kind === "create") return decision.freshness;
+    if (decision.kind === "invalidate") return "potentially-outdated";
+    return await prevStorage.freshness.get(nodeIdentifier);
+}
+
+/**
+ * Build validity sets from migration decisions and scheme-derived final edges.
  * @param {ReadableMigrationStorage} prevStorage
  * @param {Map<NodeIdentifier, Decision>} decisions
  * @param {import('./database/graph_scheme').GraphScheme} oldScheme
  * @param {import('./database/graph_scheme').GraphScheme} newScheme
  * @param {import('./database/identifier_lookup').IdentifierLookup} oldLookup
  * @param {import('./database/identifier_lookup').IdentifierLookup} finalLookup
- * @returns {Promise<{
- *   desiredValid: Map<NodeIdentifier, NodeIdentifier[]>,
- *   targetFreshness: Map<NodeIdentifier, import('./database/types').Freshness>,
- * }>}
+ * @returns {Promise<Map<NodeIdentifier, NodeIdentifier[]>>}
  */
-async function buildTargetValidity(prevStorage, decisions, oldScheme, newScheme, oldLookup, finalLookup) {
-    /** @type {Set<string>} */
-    const present = new Set();
-    for (const [identifier, decision] of decisions) {
-        if (decision.kind !== "delete") {
-            present.add(nodeIdentifierToString(identifier));
-        }
-    }
-
-    /** @type {Map<NodeIdentifier, NodeIdentifier[]>} */
-    const targetInputs = new Map();
-    for (const [identifier, decision] of decisions) {
-        if (decision.kind === "delete") {
-            continue;
-        }
-        const edges = deriveInputEdges(newScheme, finalLookup, identifier);
-        for (const edge of edges) {
-            if (!present.has(nodeIdentifierToString(edge))) {
-                throw makeInvalidMigrationDecisionError(
-                    `Migration dependency ${nodeIdentifierToString(edge)} for ` +
-                    `${nodeIdentifierToString(identifier)} is not materialized in the target replica`
-                );
-            }
-        }
-        targetInputs.set(identifier, edges);
-    }
-
+async function buildDesiredValid(prevStorage, decisions, oldScheme, newScheme, oldLookup, finalLookup) {
     /** @type {Map<string, Set<NodeIdentifier>>} */
     const validSets = new Map();
-    /** @type {Map<NodeIdentifier, import('./database/types').Freshness>} */
-    const targetFreshness = new Map();
+    const materialized = materializedDecisionStrings(decisions);
 
-    /** @param {import('./migration_storage').Decision | undefined} d @returns {boolean} */
-    const preservesValue = (d) => d !== undefined && d.kind !== "delete" && d.kind !== "create" && d.kind !== "replace";
+    for (const [nodeIdentifier, decision] of decisions) {
+        if (decision.kind === "delete" || (decision.kind === "invalidate" && decision.provenance === "explicit")) continue;
+        if (!await isFinalCached(prevStorage, decisions, nodeIdentifier)) continue;
 
-    const order = topologicalSortFromMap(targetInputs);
-    for (const identifier of order) {
-        const decision = decisions.get(identifier);
-        if (decision === undefined || decision.kind === "delete") {
-            continue;
+        const finalEdges = deriveInputEdges(newScheme, finalLookup, nodeIdentifier);
+        for (const edge of finalEdges) {
+            if (!materialized.has(nodeIdentifierToString(edge))) {
+                throw makeInvalidMigrationDecisionError(`Migration dependency ${nodeIdentifierToString(edge)} for ${nodeIdentifierToString(nodeIdentifier)} is not materialized in the target replica`);
+            }
         }
-        const edges = targetInputs.get(identifier) ?? [];
 
-        if (decision.kind === "invalidate" && decision.provenance === "explicit") {
-            targetFreshness.set(identifier, "potentially-outdated");
-            continue;
-        }
         if (decision.kind === "create") {
-            if (decision.freshness === "potentially-outdated") {
-                targetFreshness.set(identifier, "potentially-outdated");
-                continue;
-            }
-            for (const input of edges) {
-                const inputFreshness = targetFreshness.get(input);
+            if (decision.freshness === "potentially-outdated") continue;
+            for (const input of finalEdges) {
+                if (!await isFinalCached(prevStorage, decisions, input)) {
+                    throw makeInvalidMigrationDecisionError(`Cannot create ${nodeIdentifierToString(nodeIdentifier)} as up-to-date: input ${nodeIdentifierToString(input)} is not cached`);
+                }
+                const inputFreshness = await finalFreshness(prevStorage, decisions, input);
                 if (inputFreshness !== "up-to-date") {
-                    throw makeInvalidMigrationDecisionError(
-                        `Cannot create ${nodeIdentifierToString(identifier)} as up-to-date: ` +
-                        `input ${nodeIdentifierToString(input)} is ${inputFreshness ?? "not materialized"}`
-                    );
+                    throw makeInvalidMigrationDecisionError(`Cannot create ${nodeIdentifierToString(nodeIdentifier)} as up-to-date: input ${nodeIdentifierToString(input)} is ${inputFreshness ?? "not materialized"}`);
                 }
+                addToValidSet(validSets, input, nodeIdentifier);
             }
-            for (const input of edges) {
-                addToValidSet(validSets, input, identifier);
-            }
-            targetFreshness.set(identifier, "up-to-date");
-            continue;
-        }
-        if (decision.kind === "replace") {
-            for (const input of edges) {
-                addToValidSet(validSets, input, identifier);
-            }
-            let fresh = true;
-            for (const input of edges) {
-                if (targetFreshness.get(input) !== "up-to-date") {
-                    fresh = false;
-                }
-            }
-            targetFreshness.set(identifier, fresh ? "up-to-date" : "potentially-outdated");
             continue;
         }
 
-        // Occurrence-preserving: `keep`, or a propagated invalidation. The source
-        // occurrence survives, so the direct stale state it persisted does too.
-        const sourceFreshness = await prevStorage.freshness.get(identifier);
-        if (sourceFreshness === undefined) {
-            throw makeInvalidMigrationDecisionError(
-                `Migration transports ${nodeIdentifierToString(identifier)}, whose source replica has no freshness`
-            );
-        }
-        const oldEdges = deriveInputEdges(oldScheme, oldLookup, identifier);
-        let everyRequiredEdgeCarried = true;
-        for (const input of edges) {
-            let carried = false;
-            if (preservesValue(decisions.get(input))) {
-                const hadOldEdge = oldEdges.some(
-                    (edge) => nodeIdentifierToString(edge) === nodeIdentifierToString(input)
-                );
-                if (hadOldEdge) {
-                    const existingValidForD = await prevStorage.valid.get(input) ?? [];
-                    if (existingValidForD.some(
-                        (id) => nodeIdentifierToString(id) === nodeIdentifierToString(identifier)
-                    )) {
-                        addToValidSet(validSets, input, identifier);
-                        carried = true;
-                    }
-                }
-            }
-            if (!carried) {
-                everyRequiredEdgeCarried = false;
+        // Preserve old outgoing proofs when the input's stored semantic value
+        // survives — this applies to keep, override, and propagated
+        // invalidations (invalidation changes freshness, not value).
+        // Delete nodes have no surviving value; create nodes have no old proof.
+        // Explicit invalidation is excluded above.
+        //
+        // A preexisting stale node carried through keep or override loses its
+        // incoming proofs: persisted storage does not encode whether its
+        // staleness was explicit or propagated, so we conservatively treat it
+        // as a direct invalidation root.
+        const nodeFreshness = await finalFreshness(prevStorage, decisions, nodeIdentifier);
+        const isKeepOrOverride = decision.kind === "keep" || decision.kind === "override";
+        if (isKeepOrOverride && nodeFreshness === "potentially-outdated") continue;
+
+        /** @param {import('./migration_storage').Decision | undefined} d @returns {boolean} */
+        const preservesValue = (d) => d !== undefined && d.kind !== "delete" && d.kind !== "create";
+        const oldEdges = deriveInputEdges(oldScheme, oldLookup, nodeIdentifier);
+        for (const input of finalEdges) {
+            const inputDecision = decisions.get(input);
+            if (!preservesValue(inputDecision)) continue;
+            if (!await isFinalCached(prevStorage, decisions, input)) continue;
+            if (!oldEdges.some(edge => nodeIdentifierToString(edge) === nodeIdentifierToString(input))) continue;
+            const existingValidForD = await prevStorage.valid.get(input) ?? [];
+            if (existingValidForD.some(id => nodeIdentifierToString(id) === nodeIdentifierToString(nodeIdentifier))) {
+                addToValidSet(validSets, input, nodeIdentifier);
             }
         }
-        let fresh = sourceFreshness === "up-to-date" && everyRequiredEdgeCarried;
-        for (const input of edges) {
-            if (targetFreshness.get(input) !== "up-to-date") {
-                fresh = false;
-            }
-        }
-        targetFreshness.set(identifier, fresh ? "up-to-date" : "potentially-outdated");
     }
 
     /** @type {Map<NodeIdentifier, NodeIdentifier[]>} */
-    const desiredValid = new Map();
+    const result = new Map();
     for (const [inputString, dependents] of validSets) {
-        desiredValid.set(stringToNodeIdentifier(inputString), [...dependents].sort(compareNodeIdentifier));
+        result.set(stringToNodeIdentifier(inputString), [...dependents].sort(compareNodeIdentifier));
     }
-    return { desiredValid, targetFreshness };
+    return result;
 }
 
 
 module.exports = {
     buildDecisionsMap,
-    buildTargetValidity,
+    buildDesiredValid,
     loadMaterializedNodes,
 };

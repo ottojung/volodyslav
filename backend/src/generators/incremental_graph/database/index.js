@@ -3,20 +3,12 @@
  * Provides a LevelDB key-value store for storing generated values and event log mirrors.
  */
 
-const { computedValueViolation } = require('./computed_value');
-
 const {
-    COMPUTED_VALUE_TYPE_TAGS,
     schemaPatternToString,
     stringToSchemaPattern,
     stringToNodeKeyString,
     stringToNodeIdentifier,
     unsafeStringToNodeIdentifier,
-    stringToJournalKey,
-    journalKeyToString,
-    isJournalKey,
-    stringToJournalText,
-    journalTextToString,
     nodeNameToString,
     stringToNodeName,
     nodeKeyStringToString,
@@ -72,7 +64,6 @@ const {
     serializeIdentifierLookup,
     setIdentifierMapping,
     txAllocateNodeIdentifier,
-    requireTxNodeKey,
     txNodeIdToKey,
     txNodeKeyToId,
     serializeTransactionLookup,
@@ -127,10 +118,6 @@ const {
     parseIdentifierLookup,
 } = require('./sync_merge_identifier_lookup');
 
-const {
-    topologicalSortFromMap,
-} = require('./topo_sort');
-
 module.exports = {
     getRootDatabase,
     makeRootDatabase,
@@ -145,8 +132,6 @@ module.exports = {
     isInvalidFingerprintError,
     isValidFingerprint,
     requireValidFingerprint,
-    COMPUTED_VALUE_TYPE_TAGS,
-    computedValueViolation,
     LAST_NODE_INDEX_KEY,
     makeTypedDatabase,
     isTypedDatabase,
@@ -158,11 +143,6 @@ module.exports = {
     stringToNodeKeyString,
     stringToNodeIdentifier,
     unsafeStringToNodeIdentifier,
-    stringToJournalKey,
-    journalKeyToString,
-    isJournalKey,
-    stringToJournalText,
-    journalTextToString,
     nodeNameToString,
     stringToNodeName,
     nodeKeyStringToString,
@@ -205,7 +185,6 @@ module.exports = {
     serializeIdentifierLookup,
     setIdentifierMapping,
     txAllocateNodeIdentifier,
-    requireTxNodeKey,
     txNodeIdToKey,
     txNodeKeyToId,
     serializeTransactionLookup,
@@ -236,5 +215,4 @@ module.exports = {
     isFinalMergeStateError,
     isReplicaStateInvariantError,
     parseIdentifierLookup,
-    topologicalSortFromMap,
 };

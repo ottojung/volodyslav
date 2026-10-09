@@ -23,7 +23,6 @@ const { getRootDatabase, nodeIdentifierToString, isReplicaStateInvariantError, a
 const {
     createIncrementalGraph,
 } = require("../src/generators/incremental_graph");
-const { numberComputedValue } = require("./computed_value_fixture");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger, stubEnvironment } = require("./stubs");
 
@@ -127,7 +126,7 @@ describe("materialized node invariant", () => {
             {
                 output: "standalone",
                 inputs: [],
-                computor: async () => (numberComputedValue(1)),
+                computor: async () => ({ type: "test", value: 1 }),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -142,14 +141,14 @@ describe("materialized node invariant", () => {
             {
                 output: "source",
                 inputs: [],
-                computor: async () => (numberComputedValue(1)),
+                computor: async () => ({ type: "test", value: 1 }),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
             {
                 output: "derived",
                 inputs: ["source"],
-                computor: async ([s]) => (numberComputedValue(s.value + 1)),
+                computor: async ([s]) => ({ type: "test", value: s.value + 1 }),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -166,21 +165,21 @@ describe("materialized node invariant", () => {
             {
                 output: "nodeA",
                 inputs: [],
-                computor: async () => (numberComputedValue(10)),
+                computor: async () => ({ type: "test", value: 10 }),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
             {
                 output: "nodeB",
                 inputs: [],
-                computor: async () => (numberComputedValue(20)),
+                computor: async () => ({ type: "test", value: 20 }),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
             {
                 output: "nodeC",
                 inputs: [],
-                computor: async () => (numberComputedValue(30)),
+                computor: async () => ({ type: "test", value: 30 }),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -197,7 +196,7 @@ describe("materialized node invariant", () => {
             {
                 output: "steady",
                 inputs: [],
-                computor: async () => (numberComputedValue(99)),
+                computor: async () => ({ type: "test", value: 99 }),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -218,7 +217,7 @@ describe("materialized node invariant", () => {
             {
                 output: "counter",
                 inputs: [],
-                computor: async () => (numberComputedValue(Math.random())),
+                computor: async () => ({ type: "test", value: Math.random() }),
                 isDeterministic: false,
                 hasSideEffects: false,
             },
@@ -241,7 +240,7 @@ describe("materialized node invariant", () => {
             {
                 output: "hollow",
                 inputs: [],
-                computor: async () => (numberComputedValue(7)),
+                computor: async () => ({ type: "test", value: 7 }),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -269,7 +268,7 @@ describe("materialized node invariant", () => {
             {
                 output: "source",
                 inputs: [],
-                computor: async () => (numberComputedValue(1)),
+                computor: async () => ({ type: "test", value: 1 }),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -291,7 +290,7 @@ describe("materialized node invariant", () => {
             {
                 output: "source",
                 inputs: [],
-                computor: async () => (numberComputedValue(1)),
+                computor: async () => ({ type: "test", value: 1 }),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -316,7 +315,7 @@ describe("materialized node invariant", () => {
             {
                 output: "source",
                 inputs: [],
-                computor: async () => (numberComputedValue(1)),
+                computor: async () => ({ type: "test", value: 1 }),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -340,7 +339,7 @@ describe("materialized node invariant", () => {
             {
                 output: "source",
                 inputs: [],
-                computor: async () => (numberComputedValue(1)),
+                computor: async () => ({ type: "test", value: 1 }),
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -352,7 +351,7 @@ describe("materialized node invariant", () => {
         const timestampGet = jest.spyOn(storage.timestamps, "get");
         const validGet = jest.spyOn(storage.valid, "get");
 
-        await expect(graph.getValue("source")).resolves.toEqual(numberComputedValue(1));
+        await expect(graph.getValue("source")).resolves.toEqual({ type: "test", value: 1 });
 
         expect(freshnessGet).not.toHaveBeenCalled();
         expect(timestampGet).not.toHaveBeenCalled();

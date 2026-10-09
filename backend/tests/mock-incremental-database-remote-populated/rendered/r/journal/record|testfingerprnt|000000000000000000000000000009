@@ -1,1 +1,0 @@
-{"id":"testfingerprnt:9","kind":"value","node":"{\"head\":\"events_count\",\"args\":[]}","context":[["testfingerprnt","8"]],"authorityTime":{"physical":1775714460000,"logical":"7"},"nodeIdentifier":"4-testfingerprnt","payload":{"type":"events_count","count":26},"createdAt":"2026-04-09T05:50:59.759Z","modifiedAt":"2026-04-09T05:50:59.759Z","reason":"compute"}

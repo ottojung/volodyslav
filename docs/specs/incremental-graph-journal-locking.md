@@ -56,13 +56,13 @@ Receiver normalization is finalized after the imported frontier it normalizes. I
 
 ### Same-writer-behind boundary
 
-Locking adds no special semantics here. The lifecycle condition is owned by `database-lifecycle.md` §5 and synchronization behavior by `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is unsupported state. The locking requirement is only that a failed operation publish no staged import/normalization state.
+Locking adds no special semantics here. The lifecycle condition is owned by `incremental-graph-journal-lifecycle.md` §5 and synchronization behavior by `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is unsupported state. The locking requirement is only that a failed operation publish no staged import/normalization state.
 
 ## Reset
 
 Reset runs as exclusive maintenance.
 
-Reset's own-writer-ahead precondition is owned by `incremental-graph-journal-reset.md` §Preconditions and `database-lifecycle.md` §5; locking only guarantees failure publishes no staged state.
+Reset's own-writer-ahead precondition is owned by `incremental-graph-journal-reset.md` §Preconditions and `incremental-graph-journal-lifecycle.md` §5; locking only guarantees failure publishes no staged state.
 
 Otherwise reset stages only required Value/Delete/Validate/Invalidate records. Preserved ValueIds are not reallocated merely because reset is maintenance.
 

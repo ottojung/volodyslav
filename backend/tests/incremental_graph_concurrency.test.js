@@ -12,7 +12,6 @@ const {
     cloneIdentifierLookup,
     nodeIdToKeyFromLookup,
     nodeKeyToIdFromLookup,
-    makeNodeIdentifier,
     nodeIdentifierFromString,
     nodeIdentifierToString,
     IDENTIFIERS_KEY,
@@ -20,7 +19,6 @@ const {
 } = require("../src/generators/incremental_graph/database");
 const { holidayActivity, nighttimeActivity, telescopeActivity, daytimeActivity } = require("../src/generators/incremental_graph/lock");
 const { getMockedRootCapabilities } = require("./spies");
-const { numberComputedValue, textComputedValue } = require("./computed_value_fixture");
 
 const testCapabilities = getMockedRootCapabilities();
 
@@ -48,7 +46,7 @@ class InMemoryDatabase {
         this.version = 'test-version';
         this._identifierLookup = makeEmptyIdentifierLookup();
         this._identifierCounter = 0;
-        /** @type {Map<string, {identifier: string, waiters: number}>} */
+        /** @type {Map<string, string>} */
         this._pendingAllocations = new Map();
         this._computed = { lastNodeIndex: 0, fingerprint: 'testconfingerprint' };
     }
@@ -77,7 +75,13 @@ class InMemoryDatabase {
 
     generateNodeIdentifier() {
         this._identifierCounter++;
-        return makeNodeIdentifier(this.getFingerprint(), this._identifierCounter);
+        let n = this._identifierCounter;
+        let id = '';
+        for (let i = 0; i < 9; i++) {
+            id = String.fromCharCode(97 + (n % 26)) + id;
+            n = Math.floor(n / 26);
+        }
+        return nodeIdentifierFromString(id);
     }
 
     getCurrentAllocationWatermark() {
@@ -95,35 +99,26 @@ class InMemoryDatabase {
     advanceLastNodeIndex(value) { this._computed.lastNodeIndex = Math.max(this._computed.lastNodeIndex, value); }
 
     _allocateKeyIdentifier(keyString, makeIdentifier, committedLookup) {
-        const reservation = this._pendingAllocations.get(keyString);
-        if (reservation !== undefined) {
-            reservation.waiters += 1;
-            return nodeIdentifierFromString(reservation.identifier);
+        if (this._pendingAllocations.has(keyString)) {
+            throw new Error(`BUG: pending allocation for key ${keyString} found during allocation under telescope lock`);
         }
         const candidate = makeIdentifier();
         const candidateStr = nodeIdentifierToString(candidate);
         if (committedLookup.idToKey.get(candidateStr) !== undefined) {
             throw new Error(`BUG: identifier collision with committed lookup: ${candidateStr}`);
         }
-        for (const pending of this._pendingAllocations.values()) {
-            if (pending.identifier === candidateStr) {
+        for (const idStr of this._pendingAllocations.values()) {
+            if (idStr === candidateStr) {
                 throw new Error(`BUG: identifier collision with pending allocation: ${candidateStr}`);
             }
         }
-        this._pendingAllocations.set(keyString, { identifier: candidateStr, waiters: 1 });
+        this._pendingAllocations.set(keyString, candidateStr);
         return candidate;
     }
 
     releaseIdentifierReservations(ownedKeys) {
         for (const keyString of ownedKeys) {
-            const reservation = this._pendingAllocations.get(keyString);
-            if (reservation === undefined) {
-                continue;
-            }
-            reservation.waiters -= 1;
-            if (reservation.waiters === 0) {
-                this._pendingAllocations.delete(keyString);
-            }
+            this._pendingAllocations.delete(keyString);
         }
     }
 
@@ -183,7 +178,6 @@ class InMemoryDatabase {
         const valid = createSublevel("valid");
         const timestamps = createSublevel("timestamps");
         const global = createSublevel("global");
-        const journal = createSublevel("journal");
 
         return {
             values,
@@ -191,7 +185,6 @@ class InMemoryDatabase {
             valid,
             timestamps,
             global,
-            journal,
             batch: async (operations) => {
                 for (const op of operations) {
                     if (op.type === "put") {
@@ -213,7 +206,7 @@ describe("IncrementalGraph concurrency", () => {
     describe("concurrent invalidate() operations", () => {
         test("multiple invalidate() calls on same node are serialized", async () => {
             const db = new InMemoryDatabase();
-            const sourceCell = { value: numberComputedValue(0) };
+            const sourceCell = { value: { type: "test", value: 0 } };
 
             const graph = await createIncrementalGraph(testCapabilities, db, [
                 {
@@ -233,7 +226,7 @@ describe("IncrementalGraph concurrency", () => {
             // Create multiple concurrent invalidate operations
             const promises = [];
             for (let i = 0; i < 10; i++) {
-                const value = numberComputedValue(i);
+                const value = { type: "test", value: i };
                 promises.push(
                     (async () => {
                         sourceCell.value = value;
@@ -250,15 +243,15 @@ describe("IncrementalGraph concurrency", () => {
 
             // The final value should be one of the set values
             const result = await graph.pull("source");
-            expect(result.type).toBe("calories");
+            expect(result.type).toBe("test");
             expect(result.value).toBeGreaterThanOrEqual(0);
             expect(result.value).toBeLessThan(10);
         });
 
         test("concurrent invalidate() on different nodes works correctly", async () => {
             const db = new InMemoryDatabase();
-            const source1Cell = { value: numberComputedValue(0) };
-            const source2Cell = { value: numberComputedValue(0) };
+            const source1Cell = { value: { type: "test", value: 0 } };
+            const source2Cell = { value: { type: "test", value: 0 } };
 
             const graph = await createIncrementalGraph(testCapabilities, db, [
                 {
@@ -282,8 +275,8 @@ describe("IncrementalGraph concurrency", () => {
             ]);
 
             // Invalidate different nodes concurrently
-            source1Cell.value = numberComputedValue(1);
-            source2Cell.value = numberComputedValue(2);
+            source1Cell.value = { type: "test", value: 1 };
+            source2Cell.value = { type: "test", value: 2 };
             await Promise.all([
                 graph.invalidate("source1"),
                 graph.invalidate("source2"),
@@ -302,7 +295,7 @@ describe("IncrementalGraph concurrency", () => {
         test("multiple pull() calls on same node are serialized", async () => {
             const db = new InMemoryDatabase();
             let computeCount = 0;
-            const sourceCell = { value: numberComputedValue(5) };
+            const sourceCell = { value: { type: "test", value: 5 } };
 
             const graph = await createIncrementalGraph(testCapabilities, db, [
                 {
@@ -323,7 +316,7 @@ describe("IncrementalGraph concurrency", () => {
                         await new Promise((resolve) =>
                             setTimeout(resolve, 10)
                         );
-                        return numberComputedValue(source.value * 2);
+                        return { type: "derived", value: source.value * 2 };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -331,7 +324,7 @@ describe("IncrementalGraph concurrency", () => {
             ]);
 
             // Invalidate source value
-            sourceCell.value = numberComputedValue(5);
+            sourceCell.value = { type: "test", value: 5 };
             await graph.invalidate("source");
 
             // Create multiple concurrent pull operations
@@ -355,8 +348,8 @@ describe("IncrementalGraph concurrency", () => {
 
         test("concurrent pull() on different nodes works correctly", async () => {
             const db = new InMemoryDatabase();
-            const source1Cell = { value: numberComputedValue(1) };
-            const source2Cell = { value: numberComputedValue(2) };
+            const source1Cell = { value: { type: "test", value: 1 } };
+            const source2Cell = { value: { type: "test", value: 2 } };
 
             const graph = await createIncrementalGraph(testCapabilities, db, [
                 {
@@ -380,9 +373,9 @@ describe("IncrementalGraph concurrency", () => {
             ]);
 
             // Invalidate source values
-            source1Cell.value = numberComputedValue(1);
+            source1Cell.value = { type: "test", value: 1 };
             await graph.invalidate("source1");
-            source2Cell.value = numberComputedValue(2);
+            source2Cell.value = { type: "test", value: 2 };
             await graph.invalidate("source2");
 
             // Pull different nodes concurrently
@@ -399,7 +392,7 @@ describe("IncrementalGraph concurrency", () => {
     describe("concurrent invalidate() and pull() operations", () => {
         test("concurrent invalidate() and pull() on same node are serialized", async () => {
             const db = new InMemoryDatabase();
-            const sourceCell = { value: numberComputedValue(0) };
+            const sourceCell = { value: { type: "test", value: 0 } };
 
             const graph = await createIncrementalGraph(testCapabilities, db, [
                 {
@@ -414,7 +407,7 @@ describe("IncrementalGraph concurrency", () => {
             ]);
 
             // Initial value
-            sourceCell.value = numberComputedValue(0);
+            sourceCell.value = { type: "test", value: 0 };
             await graph.invalidate("source");
 
             // Concurrent invalidate and pull operations
@@ -422,7 +415,7 @@ describe("IncrementalGraph concurrency", () => {
             for (let i = 0; i < 5; i++) {
                 operations.push(
                     (async () => {
-                        sourceCell.value = numberComputedValue(i);
+                        sourceCell.value = { type: "test", value: i };
                         await graph.invalidate("source");
                     })()
                 );
@@ -437,7 +430,7 @@ describe("IncrementalGraph concurrency", () => {
             // All pull results should be valid
             expect(pullResults.length).toBeGreaterThan(0);
             for (const result of pullResults) {
-                expect(result.type).toBe("calories");
+                expect(result.type).toBe("test");
                 expect(result.value).toBeGreaterThanOrEqual(0);
                 expect(result.value).toBeLessThan(5);
             }
@@ -446,7 +439,7 @@ describe("IncrementalGraph concurrency", () => {
         test("invalidate() on source invalidates dependent nodes correctly with concurrent pulls", async () => {
             const db = new InMemoryDatabase();
             let computeCount = 0;
-            const sourceCell = { value: numberComputedValue(5) };
+            const sourceCell = { value: { type: "test", value: 5 } };
 
             const graph = await createIncrementalGraph(testCapabilities, db, [
                 {
@@ -463,7 +456,7 @@ describe("IncrementalGraph concurrency", () => {
                     inputs: ["source"],
                     computor: async ([source]) => {
                         computeCount++;
-                        return numberComputedValue(source.value * 2);
+                        return { type: "derived", value: source.value * 2 };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -471,7 +464,7 @@ describe("IncrementalGraph concurrency", () => {
             ]);
 
             // Set initial value
-            sourceCell.value = numberComputedValue(5);
+            sourceCell.value = { type: "test", value: 5 };
             await graph.invalidate("source");
 
             // Pull derived to compute it
@@ -485,7 +478,7 @@ describe("IncrementalGraph concurrency", () => {
             // Concurrent operations: update source and pull derived
             await Promise.all([
                 (async () => {
-                    sourceCell.value = numberComputedValue(10);
+                    sourceCell.value = { type: "test", value: 10 };
                     await graph.invalidate("source");
                 })(),
                 graph.pull("derived"),
@@ -502,7 +495,7 @@ describe("IncrementalGraph concurrency", () => {
 
         test("concurrent invalidate-pull cycles maintain consistency", async () => {
             const db = new InMemoryDatabase();
-            const counterCell = { value: numberComputedValue(0) };
+            const counterCell = { value: { type: "test", value: 0 } };
 
             const graph = await createIncrementalGraph(testCapabilities, db, [
                 {
@@ -518,7 +511,7 @@ describe("IncrementalGraph concurrency", () => {
                     output: "doubled",
                     inputs: ["counter"],
                     computor: async ([counter]) => {
-                        return numberComputedValue(counter.value * 2);
+                        return { type: "derived", value: counter.value * 2 };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -526,7 +519,7 @@ describe("IncrementalGraph concurrency", () => {
             ]);
 
             // Initial value
-            counterCell.value = numberComputedValue(0);
+            counterCell.value = { type: "test", value: 0 };
             await graph.invalidate("counter");
 
             // Simulate concurrent async operations doing increment + read cycles
@@ -534,7 +527,7 @@ describe("IncrementalGraph concurrency", () => {
             for (let i = 1; i <= 5; i++) {
                 cycles.push(
                     (async () => {
-                        counterCell.value = numberComputedValue(i);
+                        counterCell.value = { type: "test", value: i };
                         await graph.invalidate("counter");
                         const doubled = await graph.pull("doubled");
                         // The doubled value should be consistent with some counter value
@@ -550,7 +543,7 @@ describe("IncrementalGraph concurrency", () => {
             // All results should be valid doubles
             expect(results).toHaveLength(5);
             for (const result of results) {
-                expect(result.type).toBe("calories");
+                expect(result.type).toBe("derived");
                 expect(result.value % 2).toBe(0);
             }
         });
@@ -559,8 +552,8 @@ describe("IncrementalGraph concurrency", () => {
     describe("complex dependency chains with concurrency", () => {
         test("concurrent operations on complex graph maintain consistency", async () => {
             const db = new InMemoryDatabase();
-            const aCell = { value: numberComputedValue(1) };
-            const bCell = { value: numberComputedValue(2) };
+            const aCell = { value: { type: "test", value: 1 } };
+            const bCell = { value: { type: "test", value: 2 } };
 
             const graph = await createIncrementalGraph(testCapabilities, db, [
                 {
@@ -585,7 +578,7 @@ describe("IncrementalGraph concurrency", () => {
                     output: "c",
                     inputs: ["a", "b"],
                     computor: async ([a, b]) => {
-                        return numberComputedValue(a.value + b.value);
+                        return { type: "sum", value: a.value + b.value };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -594,7 +587,7 @@ describe("IncrementalGraph concurrency", () => {
                     output: "d",
                     inputs: ["c"],
                     computor: async ([c]) => {
-                        return numberComputedValue(c.value * 2);
+                        return { type: "doubled", value: c.value * 2 };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -602,9 +595,9 @@ describe("IncrementalGraph concurrency", () => {
             ]);
 
             // Set initial values
-            aCell.value = numberComputedValue(1);
+            aCell.value = { type: "test", value: 1 };
             await graph.invalidate("a");
-            bCell.value = numberComputedValue(2);
+            bCell.value = { type: "test", value: 2 };
             await graph.invalidate("b");
 
             // Concurrent operations
@@ -612,12 +605,12 @@ describe("IncrementalGraph concurrency", () => {
                 graph.pull("c"),
                 graph.pull("d"),
                 (async () => {
-                    aCell.value = numberComputedValue(5);
+                    aCell.value = { type: "test", value: 5 };
                     await graph.invalidate("a");
                 })(),
                 graph.pull("c"),
                 (async () => {
-                    bCell.value = numberComputedValue(10);
+                    bCell.value = { type: "test", value: 10 };
                     await graph.invalidate("b");
                 })(),
                 graph.pull("d"),
@@ -652,8 +645,8 @@ describe("IncrementalGraph concurrency", () => {
         test("concurrent invalidates can overlap", async () => {
             const capabilities = getMockedRootCapabilities();
             const db = new InMemoryDatabase();
-            const source1Cell = { value: numberComputedValue(1) };
-            const source2Cell = { value: numberComputedValue(2) };
+            const source1Cell = { value: { type: "test", value: 1 } };
+            const source2Cell = { value: { type: "test", value: 2 } };
 
             const graph = await createIncrementalGraph(capabilities, db, [
                 {
@@ -699,7 +692,7 @@ describe("IncrementalGraph concurrency", () => {
         test("inspection reads can run while invalidate is in progress", async () => {
             const capabilities = getMockedRootCapabilities();
             const db = new InMemoryDatabase();
-            const sourceCell = { value: numberComputedValue(1) };
+            const sourceCell = { value: { type: "test", value: 1 } };
 
             const graph = await createIncrementalGraph(capabilities, db, [
                 {
@@ -740,7 +733,7 @@ describe("IncrementalGraph concurrency", () => {
         test("pull blocks invalidate and inspection reads", async () => {
             const capabilities = getMockedRootCapabilities();
             const db = new InMemoryDatabase();
-            const sourceCell = { value: numberComputedValue(1) };
+            const sourceCell = { value: { type: "test", value: 1 } };
             const pullStarted = makeDeferred();
             const releasePull = makeDeferred();
 
@@ -782,7 +775,7 @@ describe("IncrementalGraph concurrency", () => {
         test("concurrent pulls on the same node are serialized", async () => {
             const capabilities = getMockedRootCapabilities();
             const db = new InMemoryDatabase();
-            const sourceCell = { value: numberComputedValue(1) };
+            const sourceCell = { value: { type: "test", value: 1 } };
             let activeComputations = 0;
             let maxActiveComputations = 0;
 
@@ -819,8 +812,8 @@ describe("IncrementalGraph concurrency", () => {
         test("concurrent pulls on different nodes can overlap safely", async () => {
             const capabilities = getMockedRootCapabilities();
             const db = new InMemoryDatabase();
-            const source1Cell = { value: numberComputedValue(1) };
-            const source2Cell = { value: numberComputedValue(2) };
+            const source1Cell = { value: { type: "test", value: 1 } };
+            const source2Cell = { value: { type: "test", value: 2 } };
             const releaseBoth = makeDeferred();
             const started = [];
 
@@ -879,7 +872,7 @@ describe("IncrementalGraph concurrency", () => {
                         );
                         await releaseSlow.promise;
                         activeSlowComputations -= 1;
-                        return textComputedValue("slow-value");
+                        return { type: "test", value: "slow-value" };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -892,7 +885,7 @@ describe("IncrementalGraph concurrency", () => {
                             const result = await graph.pull("slow");
                             callbackResult.resolve(result);
                         }, 10);
-                        return textComputedValue("trigger-value");
+                        return { type: "test", value: "trigger-value" };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -909,7 +902,10 @@ describe("IncrementalGraph concurrency", () => {
 
             releaseSlow.resolve(undefined);
             await slowPull;
-            await expect(callbackResult.promise).resolves.toEqual(textComputedValue("slow-value"));
+            await expect(callbackResult.promise).resolves.toEqual({
+                type: "test",
+                value: "slow-value",
+            });
 
             expect(maxActiveSlowComputations).toBe(1);
         });
@@ -1329,7 +1325,7 @@ describe("IncrementalGraph concurrency", () => {
                     inputs: [],
                     computor: async () => {
                         await new Promise((resolve) => setTimeout(resolve, 30));
-                        return numberComputedValue(1);
+                        return { type: "test", value: 1 };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -1339,7 +1335,7 @@ describe("IncrementalGraph concurrency", () => {
                     inputs: [],
                     computor: async () => {
                         await new Promise((resolve) => setTimeout(resolve, 30));
-                        return numberComputedValue(2);
+                        return { type: "test", value: 2 };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -1349,7 +1345,7 @@ describe("IncrementalGraph concurrency", () => {
                     output: "a",
                     inputs: ["x", "y"],
                     computor: async ([x, y]) => {
-                        return numberComputedValue(x.value + y.value);
+                        return { type: "sum", value: x.value + y.value };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -1359,7 +1355,7 @@ describe("IncrementalGraph concurrency", () => {
                     output: "b",
                     inputs: ["y", "x"],
                     computor: async ([y, x]) => {
-                        return numberComputedValue(x.value + y.value);
+                        return { type: "sum", value: x.value + y.value };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -1389,7 +1385,7 @@ describe("IncrementalGraph concurrency", () => {
                     inputs: [],
                     computor: async () => {
                         await new Promise((resolve) => setTimeout(resolve, 20));
-                        return numberComputedValue(3);
+                        return { type: "test", value: 3 };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -1399,7 +1395,7 @@ describe("IncrementalGraph concurrency", () => {
                     inputs: [],
                     computor: async () => {
                         await new Promise((resolve) => setTimeout(resolve, 20));
-                        return numberComputedValue(2);
+                        return { type: "test", value: 2 };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -1409,7 +1405,7 @@ describe("IncrementalGraph concurrency", () => {
                     output: "x",
                     inputs: ["y", "z"],
                     computor: async ([y, z]) => {
-                        return numberComputedValue(y.value + z.value);
+                        return { type: "sum", value: y.value + z.value };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -1419,7 +1415,7 @@ describe("IncrementalGraph concurrency", () => {
                     output: "u",
                     inputs: ["z", "y"],
                     computor: async ([z, y]) => {
-                        return numberComputedValue(z.value + y.value);
+                        return { type: "sum", value: z.value + y.value };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -1428,7 +1424,7 @@ describe("IncrementalGraph concurrency", () => {
                     output: "a",
                     inputs: ["x"],
                     computor: async ([x]) => {
-                        return numberComputedValue(x.value);
+                        return { type: "val", value: x.value };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -1437,7 +1433,7 @@ describe("IncrementalGraph concurrency", () => {
                     output: "b",
                     inputs: ["u"],
                     computor: async ([u]) => {
-                        return numberComputedValue(u.value);
+                        return { type: "val", value: u.value };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -1477,21 +1473,21 @@ describe("IncrementalGraph concurrency", () => {
                 {
                     output: "source",
                     inputs: [],
-                    computor: async () => (numberComputedValue(1)),
+                    computor: async () => ({ type: "test", value: 1 }),
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
                 {
                     output: "middle",
                     inputs: ["source"],
-                    computor: async ([s]) => (numberComputedValue(s.value + 1)),
+                    computor: async ([s]) => ({ type: "test", value: s.value + 1 }),
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
                 {
                     output: "leaf",
                     inputs: ["middle"],
-                    computor: async ([m]) => (numberComputedValue(m.value + 1)),
+                    computor: async ([m]) => ({ type: "test", value: m.value + 1 }),
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -1521,7 +1517,7 @@ describe("IncrementalGraph concurrency", () => {
             const sources = Array.from({ length: 10 }, (_, i) => ({
                 output: `source${i}`,
                 inputs: [],
-                computor: async () => (numberComputedValue(i)),
+                computor: async () => ({ type: "test", value: i }),
                 isDeterministic: true,
                 hasSideEffects: false,
             }));
@@ -1530,7 +1526,7 @@ describe("IncrementalGraph concurrency", () => {
                 inputs: sources.map((_, i) => `source${i}`),
                 computor: async (args) => {
                     const sum = args.reduce((acc, v) => acc + v.value, 0);
-                    return numberComputedValue(sum);
+                    return { type: "sum", value: sum };
                 },
                 isDeterministic: true,
                 hasSideEffects: false,
@@ -1559,21 +1555,21 @@ describe("IncrementalGraph concurrency", () => {
                 {
                     output: "a",
                     inputs: [],
-                    computor: async () => (numberComputedValue(1)),
+                    computor: async () => ({ type: "test", value: 1 }),
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
                 {
                     output: "b",
                     inputs: [],
-                    computor: async () => (numberComputedValue(2)),
+                    computor: async () => ({ type: "test", value: 2 }),
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
                 {
                     output: "sum",
                     inputs: ["a", "b"],
-                    computor: async ([a, b]) => (numberComputedValue(a.value + b.value)),
+                    computor: async ([a, b]) => ({ type: "sum", value: a.value + b.value }),
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -1629,21 +1625,21 @@ describe("IncrementalGraph concurrency", () => {
                 {
                     output: "root",
                     inputs: [],
-                    computor: async () => (numberComputedValue(1)),
+                    computor: async () => ({ type: "test", value: 1 }),
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
                 {
                     output: "mid",
                     inputs: ["root"],
-                    computor: async ([r]) => (numberComputedValue(r.value + 1)),
+                    computor: async ([r]) => ({ type: "test", value: r.value + 1 }),
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
                 {
                     output: "far",
                     inputs: ["mid"],
-                    computor: async ([m]) => (numberComputedValue(m.value + 1)),
+                    computor: async ([m]) => ({ type: "test", value: m.value + 1 }),
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -1676,28 +1672,28 @@ describe("IncrementalGraph concurrency", () => {
                 {
                     output: "root",
                     inputs: [],
-                    computor: async () => (numberComputedValue(1)),
+                    computor: async () => ({ type: "test", value: 1 }),
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
                 {
                     output: "left",
                     inputs: ["root"],
-                    computor: async ([r]) => (numberComputedValue(r.value + 10)),
+                    computor: async ([r]) => ({ type: "test", value: r.value + 10 }),
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
                 {
                     output: "right",
                     inputs: ["root"],
-                    computor: async ([r]) => (numberComputedValue(r.value + 20)),
+                    computor: async ([r]) => ({ type: "test", value: r.value + 20 }),
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
                 {
                     output: "other",
                     inputs: ["root"],
-                    computor: async ([r]) => (numberComputedValue(r.value + 30)),
+                    computor: async ([r]) => ({ type: "test", value: r.value + 30 }),
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -1706,7 +1702,7 @@ describe("IncrementalGraph concurrency", () => {
                     inputs: ["left", "right"],
                     computor: async ([l, r]) => {
                         joinedComputorCalls++;
-                        return numberComputedValue(l.value + r.value);
+                        return { type: "test", value: l.value + r.value };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -1762,21 +1758,24 @@ describe("IncrementalGraph concurrency", () => {
                 {
                     output: "a",
                     inputs: [],
-                    computor: async () => (numberComputedValue(1)),
+                    computor: async () => ({ type: "test", value: 1 }),
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
                 {
                     output: "b",
                     inputs: [],
-                    computor: async () => (numberComputedValue(2)),
+                    computor: async () => ({ type: "test", value: 2 }),
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
                 {
                     output: "shared",
                     inputs: ["a", "b"],
-                    computor: async ([aVal, bVal]) => (numberComputedValue(aVal.value + bVal.value)),
+                    computor: async ([aVal, bVal]) => ({
+                        type: "test",
+                        value: aVal.value + bVal.value,
+                    }),
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -1785,7 +1784,7 @@ describe("IncrementalGraph concurrency", () => {
                     inputs: ["shared"],
                     computor: async ([s]) => {
                         leafComputorCalls++;
-                        return numberComputedValue(s.value * 2);
+                        return { type: "test", value: s.value * 2 };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -1832,14 +1831,14 @@ describe("IncrementalGraph concurrency", () => {
                 {
                     output: "src",
                     inputs: [],
-                    computor: async () => (numberComputedValue(1)),
+                    computor: async () => ({ type: "test", value: 1 }),
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
                 {
                     output: "dep",
                     inputs: ["src"],
-                    computor: async ([s]) => (numberComputedValue(s.value + 1)),
+                    computor: async ([s]) => ({ type: "test", value: s.value + 1 }),
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -1929,7 +1928,7 @@ describe("IncrementalGraph concurrency", () => {
                 {
                     output: "source",
                     inputs: [],
-                    computor: async () => (numberComputedValue(1)),
+                    computor: async () => ({ type: "test", value: 1 }),
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -2000,7 +1999,7 @@ describe("IncrementalGraph concurrency", () => {
                         readyCount++;
                         if (readyCount === 2) barrierResolve();
                         await barrier.promise;
-                        return numberComputedValue(zValue.value);
+                        return { type: "x", value: zValue };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -2012,7 +2011,7 @@ describe("IncrementalGraph concurrency", () => {
                         readyCount++;
                         if (readyCount === 2) barrierResolve();
                         await barrier.promise;
-                        return numberComputedValue(zValue.value);
+                        return { type: "y", value: zValue };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -2020,17 +2019,11 @@ describe("IncrementalGraph concurrency", () => {
                 {
                     output: "z",
                     inputs: [],
-                    computor: async () => Promise.resolve(numberComputedValue(1)),
+                    computor: async () => Promise.resolve({ type: "z", value: 1 }),
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
             ]);
-
-            // Materialise the shared dependency before the concurrent phase, so
-            // the phase covers concurrent recomputation against one committed
-            // occurrence of z. Concurrent *first* materialisation of z is covered
-            // by its own test, which pins the conservative outcome of that case.
-            await graph.pull("z");
 
             // Pull x and y concurrently. The barrier forces both computors
             // to wait until both are ready, then both proceed through
@@ -2070,7 +2063,7 @@ describe("IncrementalGraph concurrency", () => {
                             if (readyCount === 2) barrierResolve();
                             await barrier.promise;
                         }
-                        return numberComputedValue(zValue.value);
+                        return { type: "x", value: zValue };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -2084,7 +2077,7 @@ describe("IncrementalGraph concurrency", () => {
                             if (readyCount === 2) barrierResolve();
                             await barrier.promise;
                         }
-                        return numberComputedValue(zValue.value);
+                        return { type: "y", value: zValue };
                     },
                     isDeterministic: true,
                     hasSideEffects: false,
@@ -2092,7 +2085,7 @@ describe("IncrementalGraph concurrency", () => {
                 {
                     output: "z",
                     inputs: [],
-                    computor: async () => Promise.resolve(numberComputedValue(1)),
+                    computor: async () => Promise.resolve({ type: "z", value: 1 }),
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -2104,13 +2097,6 @@ describe("IncrementalGraph concurrency", () => {
             await graph.invalidate("z");
             expect(await graph.getFreshness("x")).toBe("potentially-outdated");
             expect(await graph.getFreshness("y")).toBe("potentially-outdated");
-
-            // Re-materialise the shared dependency before the concurrent phase, so
-            // the phase covers concurrent recomputation of the dependents against
-            // one committed occurrence of z. Without it both transactions
-            // re-materialise z concurrently, and the documented conservative
-            // withdrawal of the frontier applies instead.
-            await graph.pull("z");
 
             // Enable the barrier for the recomputation phase
             useBarrier = true;
@@ -2130,284 +2116,27 @@ describe("IncrementalGraph concurrency", () => {
             expect(await graph.getFreshness("y")).toBe("potentially-outdated");
         }, 15000);
 
-        test("concurrent first materialisation of a shared dependency partially withdraws the frontier it cannot vouch for and heals on the next pull", async () => {
-            const db = new InMemoryDatabase();
-            const graph = await createIncrementalGraph(testCapabilities, db, [
-                {
-                    output: "x",
-                    inputs: ["z"],
-                    computor: async ([zValue]) => numberComputedValue(zValue.value),
-                    isDeterministic: true,
-                    hasSideEffects: false,
-                },
-                {
-                    output: "y",
-                    inputs: ["z"],
-                    computor: async ([zValue]) => numberComputedValue(zValue.value),
-                    isDeterministic: true,
-                    hasSideEffects: false,
-                },
-                {
-                    output: "z",
-                    inputs: [],
-                    computor: async () => Promise.resolve(numberComputedValue(1)),
-                    isDeterministic: true,
-                    hasSideEffects: false,
-                },
-            ]);
-
-            // Two transactions materialise the shared dependency z for the first
-            // time, so both reserve it under one identifier and each publishes its
-            // own value occurrence of z. A clear of valid[z] is not scoped to an
-            // occurrence, so the second publication withdraws one of the two
-            // frontier edges the first established rather than vouching for a
-            // proof made against a value occurrence which no longer exists.
-            await Promise.all([
-                graph.pull("x"),
-                graph.pull("y"),
-            ]);
-
-            const zKey = JSON.stringify({ head: "z", args: [] });
-            const xKey = JSON.stringify({ head: "x", args: [] });
-            const yKey = JSON.stringify({ head: "y", args: [] });
-            const zId = graph.rootDatabase.nodeKeyToId(zKey);
-            const xId = graph.rootDatabase.nodeKeyToId(xKey);
-            const yId = graph.rootDatabase.nodeKeyToId(yKey);
-            if (zId === undefined || xId === undefined || yId === undefined) {
-                throw new Error("Expected identifiers after pull");
-            }
-            const xStr = nodeIdentifierToString(xId);
-            const yStr = nodeIdentifierToString(yId);
-
-            // The conservative outcome is a partial withdrawal: exactly one of the
-            // two dependent proofs survives, and exactly one dependent is left
-            // claiming to be up to date. The complementarity is asserted as well
-            // as the count, so a withdrawn proof must also have withdrawn
-            // freshness, in either direction.
-            const validAfterConcurrent = (await graph.storage.valid.get(zId) ?? []).map(id => nodeIdentifierToString(id));
-            const freshnessAfterConcurrent = [
-                await graph.getFreshness("x"),
-                await graph.getFreshness("y"),
-            ];
-            const surviving = validAfterConcurrent.filter(id => id === xStr || id === yStr);
-            const stale = freshnessAfterConcurrent.filter(freshness => freshness === "potentially-outdated");
-            expect(surviving.length).toBe(1);
-            expect(stale.length).toBe(2 - surviving.length);
-
-            // The withdrawal costs a recomputation, not an answer: one further pull
-            // of each dependent restores both edges, both up-to-date, both values
-            // computed from the committed occurrence of z.
-            await graph.pull("x");
-            await graph.pull("y");
-
-            const validAfterHealing = (await graph.storage.valid.get(zId) ?? []).map(id => nodeIdentifierToString(id));
-            expect(validAfterHealing).toContain(xStr);
-            expect(validAfterHealing).toContain(yStr);
-            expect(await graph.getFreshness("x")).toBe("up-to-date");
-            expect(await graph.getFreshness("y")).toBe("up-to-date");
-            expect((await graph.pull("x")).value).toBe(1);
-            expect((await graph.pull("y")).value).toBe(1);
-        }, 15000);
-
-        test("a clear withdraws a proof established against the occurrence the clearing transaction supersedes", async () => {
-            const db = new InMemoryDatabase();
-
-            // z's computor yields a different value on each materialisation, so the
-            // two concurrent re-materialisations below publish different occurrences
-            // of one node and the survivor's proof is observably false.
-            let zCall = 0;
-            const nextZ = () => {
-                zCall += 1;
-                return 1000 * zCall;
-            };
-
-            let xComputorEntered = () => undefined;
-            const xComputorEnteredPromise = new Promise(r => { xComputorEntered = r; });
-            let releaseX = () => undefined;
-            const releaseXPromise = new Promise(r => { releaseX = r; });
-
-            const graph = await createIncrementalGraph(testCapabilities, db, [
-                {
-                    output: "w",
-                    inputs: [],
-                    computor: async () => Promise.resolve(numberComputedValue(7)),
-                    isDeterministic: true,
-                    hasSideEffects: false,
-                },
-                {
-                    output: "z",
-                    inputs: ["w"],
-                    computor: async () => Promise.resolve(numberComputedValue(nextZ())),
-                    isDeterministic: false,
-                    hasSideEffects: false,
-                },
-                {
-                    output: "x",
-                    inputs: ["z"],
-                    computor: async ([zValue]) => {
-                        xComputorEntered();
-                        await releaseXPromise;
-                        return numberComputedValue(zValue.value);
-                    },
-                    isDeterministic: true,
-                    hasSideEffects: false,
-                },
-                {
-                    output: "y",
-                    inputs: ["z"],
-                    computor: async ([zValue]) => numberComputedValue(zValue.value),
-                    isDeterministic: true,
-                    hasSideEffects: false,
-                },
-            ]);
-
-            // Materialise z with no dependent having validated against it, so
-            // valid[z] does not exist and both concurrent pulls observe it empty.
-            await graph.pull("w");
-            await graph.pull("z");
-            await graph.invalidate("z");
-            expect(await graph.getFreshness("z")).toBe("potentially-outdated");
-
-            // op1 re-materialises z (computor call 2) and reaches x's computor,
-            // which blocks. Its transaction is uncommitted, so committed z is still
-            // potentially-outdated and the next pull re-materialises z again.
-            const op1 = graph.pull("x");
-            await xComputorEnteredPromise;
-
-            // op2 re-materialises z (computor call 3) and publishes before op1 does.
-            const op2Value = await graph.pull("y");
-            expect(op2Value.value).toBe(3000);
-
-            // op1 now publishes, overwriting z with its own older occurrence and
-            // re-adding x to valid[z].
-            releaseX();
-            await op1;
-            expect(await graph.getFreshness("z")).toBe("up-to-date");
-            // y validated against op2's occurrence of z, which op1's publication
-            // superseded, so y's proof is withdrawn and y is left stale rather than
-            // claiming to be up to date against a value occurrence that is gone.
-            expect(await graph.getFreshness("y")).toBe("potentially-outdated");
-
-            // op1's occurrence is the committed one, and y's proof — established
-            // against op2's occurrence of z, which no longer exists — must not
-            // survive op1's clear.
-            const committedZ = await graph.pull("z");
-            expect(committedZ.value).toBe(2000);
-
-            const zKey = JSON.stringify({ head: "z", args: [] });
-            const zId = graph.rootDatabase.nodeKeyToId(zKey);
-            if (zId === undefined) {
-                throw new Error("Expected identifier for z after pull");
-            }
-            const validZ = await graph.storage.valid.get(zId) ?? [];
-            const validZStrings = validZ.map(id => nodeIdentifierToString(id));
-            const yKey = JSON.stringify({ head: "y", args: [] });
-            const yId = graph.rootDatabase.nodeKeyToId(yKey);
-            if (yId === undefined) {
-                throw new Error("Expected identifier for y after pull");
-            }
-            expect(validZStrings).not.toContain(nodeIdentifierToString(yId));
-        }, 15000);
-
-        test("a pull after a clear supersedes a committed occurrence answers the committed value", async () => {
-            const db = new InMemoryDatabase();
-
-            // z's computor yields a different value on each materialisation, so the
-            // two concurrent re-materialisations publish different occurrences of one
-            // node and a value computed against the superseded one is observably wrong.
-            let zCall = 0;
-            const nextZ = () => {
-                zCall += 1;
-                return 1000 * zCall;
-            };
-
-            let xComputorEntered = () => undefined;
-            const xComputorEnteredPromise = new Promise(r => { xComputorEntered = r; });
-            let releaseX = () => undefined;
-            const releaseXPromise = new Promise(r => { releaseX = r; });
-
-            const graph = await createIncrementalGraph(testCapabilities, db, [
-                {
-                    output: "w",
-                    inputs: [],
-                    computor: async () => Promise.resolve(numberComputedValue(7)),
-                    isDeterministic: true,
-                    hasSideEffects: false,
-                },
-                {
-                    output: "z",
-                    inputs: ["w"],
-                    computor: async () => Promise.resolve(numberComputedValue(nextZ())),
-                    isDeterministic: false,
-                    hasSideEffects: false,
-                },
-                {
-                    output: "x",
-                    inputs: ["z"],
-                    computor: async ([zValue]) => {
-                        xComputorEntered();
-                        await releaseXPromise;
-                        return numberComputedValue(zValue.value);
-                    },
-                    isDeterministic: true,
-                    hasSideEffects: false,
-                },
-                {
-                    output: "y",
-                    inputs: ["z"],
-                    computor: async ([zValue]) => numberComputedValue(zValue.value),
-                    isDeterministic: true,
-                    hasSideEffects: false,
-                },
-            ]);
-
-            await graph.pull("w");
-            await graph.pull("z");
-            await graph.invalidate("z");
-
-            // op1 re-materialises z (computor call 2) and blocks inside x's computor.
-            // op2 re-materialises z (computor call 3) and publishes first, so y's
-            // value is computed against op2's occurrence of z.
-            const op1 = graph.pull("x");
-            await xComputorEnteredPromise;
-            const op2Value = await graph.pull("y");
-            expect(op2Value.value).toBe(3000);
-
-            // op1 publishes its own older occurrence of z, overwriting op2's.
-            releaseX();
-            await op1;
-
-            const committedZ = await graph.pull("z");
-            expect(committedZ.value).toBe(2000);
-
-            // y published a value against op2's occurrence, which no longer exists.
-            // The pull must not answer with it: y is a function of the committed z,
-            // so the only correct answer is the committed z's value.
-            const yAfter = await graph.pull("y");
-            expect(yAfter.value).toBe(2000);
-        }, 15000);
-
-        test("concurrent valid[D] additions are merged at commit time when both dependents are recomputed", async () => {
+        test("concurrent valid[D] additions via withTransaction are merged at commit time", async () => {
             const db = new InMemoryDatabase();
             const graph = await createIncrementalGraph(testCapabilities, db, [
                 {
                     output: "z",
                     inputs: [],
-                    computor: async () => Promise.resolve(numberComputedValue(1)),
+                    computor: async () => Promise.resolve({ type: "z", value: 1 }),
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
                 {
                     output: "x",
                     inputs: ["z"],
-                    computor: async () => Promise.resolve(numberComputedValue(1)),
+                    computor: async () => Promise.resolve({ type: "x", value: 1 }),
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
                 {
                     output: "y",
                     inputs: ["z"],
-                    computor: async () => Promise.resolve(numberComputedValue(1)),
+                    computor: async () => Promise.resolve({ type: "y", value: 1 }),
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -2428,23 +2157,19 @@ describe("IncrementalGraph concurrency", () => {
                 throw new Error("Expected identifiers after pull");
             }
 
-            // Both dependents go stale, so each concurrent pull below recomputes
-            // its own node and records an addition to valid[z]. The dependency is
-            // re-materialised first, so the concurrent phase records the two
-            // additions against one committed occurrence of z instead of
-            // re-materialising z twice.
-            await graph.invalidate("z");
-            await graph.pull("z");
-
             // Clear valid[z] to start from empty
             await graph.storage.valid.del(zId);
 
-            // Two concurrent operations that both add to valid[z]. Each one is a
-            // recomputation, so each publishes the materialization which describes
-            // its own addition.
+            // Run two concurrent transactions that both add to valid[z]
             await Promise.all([
-                graph.pull("x"),
-                graph.pull("y"),
+                graph.storage.withTransaction(async (tx) => {
+                    tx.batch.valid.add(zId, xId);
+                    return { value: undefined };
+                }),
+                graph.storage.withTransaction(async (tx) => {
+                    tx.batch.valid.add(zId, yId);
+                    return { value: undefined };
+                }),
             ]);
 
             // Verify valid[z] contains both dependents
@@ -2461,21 +2186,21 @@ describe("IncrementalGraph concurrency", () => {
                 {
                     output: "z",
                     inputs: [],
-                    computor: async () => Promise.resolve(numberComputedValue(1)),
+                    computor: async () => Promise.resolve({ type: "z", value: 1 }),
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
                 {
                     output: "x",
                     inputs: ["z"],
-                    computor: async () => Promise.resolve(numberComputedValue(1)),
+                    computor: async () => Promise.resolve({ type: "x", value: 1 }),
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
                 {
                     output: "y",
                     inputs: ["z"],
-                    computor: async () => Promise.resolve(numberComputedValue(1)),
+                    computor: async () => Promise.resolve({ type: "y", value: 1 }),
                     isDeterministic: true,
                     hasSideEffects: false,
                 },
@@ -2492,37 +2217,29 @@ describe("IncrementalGraph concurrency", () => {
             const zId = graph.rootDatabase.nodeKeyToId(zKey);
             const xId = graph.rootDatabase.nodeKeyToId(xKey);
             const yId = graph.rootDatabase.nodeKeyToId(yKey);
-            if (zId === undefined || xId === undefined || yId === undefined) {
+            if (!zId || !xId || !yId) {
                 throw new Error("Expected identifiers after pull");
             }
-
-            // Both dependents go stale, so each concurrent pull below recomputes
-            // its own node and records an addition to valid[z]. The dependency is
-            // re-materialised first, so the concurrent phase records the two
-            // additions against one committed occurrence of z instead of
-            // re-materialising z twice.
-            await graph.invalidate("z");
-            await graph.pull("z");
 
             // Clear valid[z]
             await graph.storage.valid.del(zId);
             expect(await graph.storage.valid.get(zId)).toBeUndefined();
 
-            // Intercept withUserOperation to force both operations to record their
+            // Intercept withTransaction to force both callbacks to record
             // mutations before either enters the darkroom commit section.
             // This deterministically reproduces the lost-update interleaving
             // that the mutation-based approach prevents.
-            let bodiesFinished = 0;
+            let callbacksFinished = 0;
             /** @type {() => void} */
             let releaseCommit = () => undefined;
             const releaseCommitPromise = new Promise(resolve => { releaseCommit = resolve; });
 
-            const originalWithUserOperation = graph.storage.withUserOperation.bind(graph.storage);
-            graph.storage.withUserOperation = async (fn) => {
-                return originalWithUserOperation(async (operation) => {
-                    const result = await fn(operation);
-                    bodiesFinished += 1;
-                    if (bodiesFinished === 2) {
+            const originalWithTransaction = graph.storage.withTransaction.bind(graph.storage);
+            graph.storage.withTransaction = async (run) => {
+                return originalWithTransaction(async (tx) => {
+                    const result = await run(tx);
+                    callbacksFinished += 1;
+                    if (callbacksFinished === 2) {
                         releaseCommit();
                     }
                     await releaseCommitPromise;
@@ -2531,8 +2248,14 @@ describe("IncrementalGraph concurrency", () => {
             };
 
             await Promise.all([
-                graph.pull("x"),
-                graph.pull("y"),
+                graph.storage.withTransaction(async (tx) => {
+                    tx.batch.valid.add(zId, xId);
+                    return { value: undefined };
+                }),
+                graph.storage.withTransaction(async (tx) => {
+                    tx.batch.valid.add(zId, yId);
+                    return { value: undefined };
+                }),
             ]);
 
             // Both additions were merged at commit time
@@ -2551,8 +2274,8 @@ describe("IncrementalGraph concurrency", () => {
         test("withBatch persists valid.add mutations", async () => {
             const db = new InMemoryDatabase();
             const graph = await createIncrementalGraph(testCapabilities, db, [
-                { output: "z", inputs: [], computor: async () => (numberComputedValue(1)), isDeterministic: true, hasSideEffects: false },
-                { output: "x", inputs: [], computor: async () => (numberComputedValue(1)), isDeterministic: true, hasSideEffects: false },
+                { output: "z", inputs: [], computor: async () => ({ type: "z", value: 1 }), isDeterministic: true, hasSideEffects: false },
+                { output: "x", inputs: [], computor: async () => ({ type: "x", value: 1 }), isDeterministic: true, hasSideEffects: false },
             ]);
 
             await graph.pull("z");
@@ -2585,9 +2308,9 @@ describe("IncrementalGraph concurrency", () => {
         test("withBatch persists valid.remove mutation", async () => {
             const db = new InMemoryDatabase();
             const graph = await createIncrementalGraph(testCapabilities, db, [
-                { output: "z", inputs: [], computor: async () => (numberComputedValue(1)), isDeterministic: true, hasSideEffects: false },
-                { output: "x", inputs: [], computor: async () => (numberComputedValue(1)), isDeterministic: true, hasSideEffects: false },
-                { output: "y", inputs: [], computor: async () => (numberComputedValue(1)), isDeterministic: true, hasSideEffects: false },
+                { output: "z", inputs: [], computor: async () => ({ type: "z", value: 1 }), isDeterministic: true, hasSideEffects: false },
+                { output: "x", inputs: [], computor: async () => ({ type: "x", value: 1 }), isDeterministic: true, hasSideEffects: false },
+                { output: "y", inputs: [], computor: async () => ({ type: "y", value: 1 }), isDeterministic: true, hasSideEffects: false },
             ]);
 
             await graph.pull("z");
@@ -2623,8 +2346,8 @@ describe("IncrementalGraph concurrency", () => {
         test("withBatch persists valid.clear mutation", async () => {
             const db = new InMemoryDatabase();
             const graph = await createIncrementalGraph(testCapabilities, db, [
-                { output: "z", inputs: [], computor: async () => (numberComputedValue(1)), isDeterministic: true, hasSideEffects: false },
-                { output: "x", inputs: [], computor: async () => (numberComputedValue(1)), isDeterministic: true, hasSideEffects: false },
+                { output: "z", inputs: [], computor: async () => ({ type: "z", value: 1 }), isDeterministic: true, hasSideEffects: false },
+                { output: "x", inputs: [], computor: async () => ({ type: "x", value: 1 }), isDeterministic: true, hasSideEffects: false },
             ]);
 
             await graph.pull("z");

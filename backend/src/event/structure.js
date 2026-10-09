@@ -1,4 +1,4 @@
-const { serialize, deserialize, tryDeserialize, tryValidateEvent } = require('./serialization');
+const { serialize, deserialize, tryDeserialize } = require('./serialization');
 const {
     isTryDeserializeError,
     isMissingFieldError,
@@ -56,7 +56,6 @@ module.exports = {
     serialize,
     deserialize,
     tryDeserialize,
-    tryValidateEvent,
     isTryDeserializeError,
     isMissingFieldError,
     isInvalidTypeError,

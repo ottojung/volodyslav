@@ -112,7 +112,7 @@ J0 = Jreceiver join Jsource
 Jafter = J0 + required reset events
 ```
 
-Reset's own-writer-ahead precondition is defined in `incremental-graph-journal-reset.md` §Preconditions and `database-lifecycle.md` §5.
+Reset's own-writer-ahead precondition is defined in `incremental-graph-journal-reset.md` §Preconditions and `incremental-graph-journal-lifecycle.md` §5.
 
 Reset first inspects `selectedHeads(J0)`, not `project(J0)`: a compatible raw union may temporarily violate dependency closure even though receiver and source are each valid. Pass 1 repairs selected presence/immutable occurrence state to the valid source target; only then does full projection begin.
 
@@ -154,7 +154,7 @@ The artifact is the original frozen bootstrap cut. A running release joins it on
 
 ## Established local writer state is monotone under the supported lifecycle
 
-The fault-model and established-writer rollback boundary are defined normatively in `database-lifecycle.md` §5, with ordinary synchronization behavior in `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is unsupported state.
+The fault-model and established-writer rollback boundary are defined normatively in `incremental-graph-journal-lifecycle.md` §5, with ordinary synchronization behavior in `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is unsupported state.
 
 The algebraic fact used here is only that supported existing-writer history is monotone; complete absence and continuation-safe restoration are a distinct lifecycle transition.
 

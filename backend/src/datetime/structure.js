@@ -13,8 +13,9 @@ class DateTimeClass {
         if (this.__brand !== undefined) {
             throw new Error("DateTime is nominal");
         }
-        Object.freeze(this);
     }
+
+
 
     /**
      * @returns {string}

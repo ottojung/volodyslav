@@ -7,16 +7,16 @@ and exposes it as a typed, namespace-scoped key–value store for the incrementa
 
 ## Conceptual overview
 
-### One active representation
+### Namespaces (x / y)
 
-The database has one current persisted representation selected by `global/version`.
-Journal records do not carry an independent version tag. A format migration builds a
-homogeneous target representation and cuts over only after all retained records have
-deterministic target encodings and target replay validates.
+Every key is stored inside a *namespace sublevel* – currently `x` (live data) or `y` (staging
+namespace used during schema migrations).  At the LevelDB level this means all keys are prefixed
+with `!x!` or `!y!`.  Callers never deal with these prefixes directly; the `RootDatabase` class
+encapsulates them.
 
-### Sublevels
+### Sub-sublevels
 
-Within the database there are typed sublevels:
+Within each namespace there are further typed sublevels:
 
 | Sublevel    | Purpose                                                   |
 |-------------|-----------------------------------------------------------|
@@ -24,17 +24,16 @@ Within the database there are typed sublevels:
 | `freshness` | Total materialized-node freshness table: `potentially-outdated` or `up-to-date` |
 | `valid`     | Inverse validity relation for cached values (input → validated cached consumers) |
 | `timestamps`| Total materialized-node timestamp table (`createdAt` identity creation, `modifiedAt` value version) |
-| `global`    | Database metadata (version, graph_scheme, identifiers_keys_map materialized-node registry, last_node_index, fingerprint) |
-
-Journal-specific state lives in new namespaces alongside these existing sublevels.
-Journal records are authoritative semantic history; the graph sublevels are the
-materialized projection `project(Journal)`.
+| `global`    | Namespace metadata (version, identifiers_keys_map materialized-node registry, last_node_index, fingerprint, graph_scheme) |
 
 Structural dependency edges (`inputEdges(N)`) are not persisted per node. They are derived from
 `global/graph_scheme` (the schema's input-position definitions), `global/identifiers_keys_map`
 (the semantic-key-to-identifier bijection), and the node's own semantic key. The resulting
 `NodeIdentifier[]` is computed at runtime and used for validity checking. Because the
 graph scheme defines the dependency shape centrally, per-node input storage is unnecessary.
+
+There is also a top-level `_meta` sublevel (outside the `x`/`y` namespace) that stores the database
+current replica pointer.
 
 ### Key format
 
@@ -48,7 +47,7 @@ in the `global` sublevel.  The relationship between the two addressing schemes i
   `NodeKey` strings or concrete `NodeKey` descriptors.
 - **Storage** is identifier-native: all data sublevel records are keyed by
   `NodeIdentifier`.
-- **Migration decisions** (`keep`, `replace`, `delete`, `invalidate`, `get`)
+- **Migration decisions** (`keep`, `override`, `delete`, `invalidate`, `get`)
   take `NodeIdentifier` values, since migration operates directly on the
   stored graph state.
 - **`create(nodeKeyString, value)`** is the special migration case: it
@@ -60,6 +59,7 @@ At the raw LevelDB level these are concatenated with the sublevel prefixes, e.g.
 ```
 !x!!values!gafdmopql
 !x!!freshness!gafdmopql
+!_meta!current_replica
 ```
 
 ---
@@ -101,12 +101,13 @@ The key content is percent-encoded for filesystem safety: `/` → `%2F`, `%` →
 Literal dot-segment path components `.` and `..` are encoded as `%2E` and `%2E%2E`
 to prevent path traversal while keeping the key↔path mapping bijective.
 
-#### Meta sublevels (`global`)
+#### Meta sublevels (`_meta`, `global`)
 
-The stored key is a plain string (e.g. `version`, `graph_scheme`).
+The stored key is a plain string (e.g. `format`, `version`).
 It is used as a single percent-encoded path segment:
 
 ```
+!_meta!current_replica    → _meta/current_replica
 !x!!global!version → x/global/version
 ```
 
@@ -167,8 +168,10 @@ Two higher-level operations are available:
 - **`synchronizeNoLock(capabilities, options)`** – renders the current database,
   synchronises the rendered repository with the remote generators repository,
   and then scans the updated rendered snapshot back into the live database.
-  Synchronization imports missing foreign-writer Journal suffixes, normalizes
-  required semantic transitions, and atomically publishes the resulting
-  Journal + projection pair.
+  During per-host graph merge, this sync path switches `_meta/current_replica`
+  only when the final local graph differs from the active source replica, such as
+  imported host materializations, target materialization deletions, surviving
+  identifier reconciliation, freshness or validity changes. Pure no-op merges keep
+  the active replica pointer unchanged.
 
 See [`docs/gitstore.md`](./gitstore.md) for the gitstore primitives that back these operations.

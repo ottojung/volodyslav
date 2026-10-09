@@ -14,12 +14,6 @@ const {
     versionToString,
 } = require('./types');
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
-const {
-    TEXT_VALUE_ENCODING,
-    decodeRawValue,
-    encodeRawValue,
-    declaredValueEncodingForSublevelName,
-} = require('./sublevel_encoding');
 const { GRAPH_SCHEME_KEY } = require('./graph_scheme');
 const {
     IDENTIFIERS_KEY,
@@ -29,13 +23,16 @@ const {
     nodeIdToKeyFromLookup,
     nodeKeyToIdFromLookup,
 } = require('./identifier_lookup');
-const { makeNodeIdentifier, nodeIdentifierFromString, nodeIdentifierToString } = require('./node_identifier');
+const { makeNodeIdentifier, nodeIdentifierToString } = require('./node_identifier');
 const { requireValidFingerprint } = require('./fingerprint');
 
 const {
-    clearSyncStaging: clearSyncStagingHelper,
-    syncStagingStorage: syncStagingStorageHelper,
-} = require('./sync_staging');
+    hostnameSchemaStorage: hostnameSchemaStorageHelper,
+    clearHostnameStorage: clearHostnameStorageHelper,
+    getHostnameGlobalVersion: getHostnameGlobalVersionHelper,
+    setHostnameGlobal: setHostnameGlobalHelper,
+    rawPutAllToHostname: rawPutAllToHostnameHelper,
+} = require('./hostname_storage');
 const {
     InvalidReplicaPointerError,
     isInvalidReplicaPointerError,
@@ -63,14 +60,6 @@ const {
 /** @typedef {import('./types').Version} Version */
 /** @typedef {import('./types').IdentifiersKeysMap} IdentifiersKeysMap */
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
-
-/**
- * One live identifier reservation over a node key, held by `waiters` operations.
- *
- * @typedef {object} PendingAllocation
- * @property {string} identifier - The reserved identifier's persisted string form.
- * @property {number} waiters - Number of live operations holding the reservation.
- */
 /**
  * Compiled active-replica state that CAN be reconstructed from a database
  * snapshot. Every field in this struct is derivable from the persisted on-disk
@@ -176,13 +165,6 @@ function assertNeverReplicaName(name) {
  */
 
 /**
- * Database for storing Journal records and Journal committed-pair metadata.
- * Key: an opaque Journal storage key (see `journal_store/journal_database.js`)
- * Value: canonical current-format record text, or the JSON committed-pair metadata
- * @typedef {GenericDatabase<import('./types').JournalText, import('./types').JournalKey>} JournalDatabase
- */
-
-/**
  * Storage container for a single incremental graph namespace.
  * All data (values, freshness, indices) is isolated per namespace.
  * @typedef {object} SchemaStorage
@@ -191,7 +173,6 @@ function assertNeverReplicaName(name) {
  * @property {ValidDatabase} valid - Inverse validity flags (dependency -> dependents validated against it)
  * @property {TimestampsDatabase} timestamps - Node timestamps (creation and modification)
  * @property {GlobalVersionDatabase} global - Replica-level global state (version + identifiers lookup metadata)
- * @property {JournalDatabase} journal - Journal records and Journal committed-pair metadata
  * @property {(operations: DatabaseBatchOperation[]) => Promise<void>} batch - Batch operation interface for atomic writes
  */
 
@@ -238,15 +219,13 @@ async function loadIdentifierLookupFromGlobal(globalSublevel, context) {
  */
 function buildSchemaStorage(namespaceSublevel, globalSublevel, version) {
     /** @type {SimpleSublevel<ComputedValue, NodeIdentifier>} */
-    const valuesSublevel = namespaceSublevel.sublevel('values', { valueEncoding: declaredValueEncodingForSublevelName('values') });
+    const valuesSublevel = namespaceSublevel.sublevel('values', { valueEncoding: 'json' });
     /** @type {SimpleSublevel<Freshness, NodeIdentifier>} */
-    const freshnessSublevel = namespaceSublevel.sublevel('freshness', { valueEncoding: declaredValueEncodingForSublevelName('freshness') });
+    const freshnessSublevel = namespaceSublevel.sublevel('freshness', { valueEncoding: 'json' });
     /** @type {SimpleSublevel<NodeIdentifier[], NodeIdentifier>} */
-    const validSublevel = namespaceSublevel.sublevel('valid', { valueEncoding: declaredValueEncodingForSublevelName('valid') });
+    const validSublevel = namespaceSublevel.sublevel('valid', { valueEncoding: 'json' });
     /** @type {SimpleSublevel<TimestampRecord, NodeIdentifier>} */
-    const timestampsSublevel = namespaceSublevel.sublevel('timestamps', { valueEncoding: declaredValueEncodingForSublevelName('timestamps') });
-    /** @type {SimpleSublevel<import('./types').JournalText, import('./types').JournalKey>} */
-    const journalSublevel = namespaceSublevel.sublevel('journal', { valueEncoding: declaredValueEncodingForSublevelName('journal') });
+    const timestampsSublevel = namespaceSublevel.sublevel('timestamps', { valueEncoding: 'json' });
 
     // True once this closure's first non-empty batch() verifies any existing global/version.
     // Prevents redundant DB reads on subsequent batch calls.
@@ -279,7 +258,6 @@ function buildSchemaStorage(namespaceSublevel, globalSublevel, version) {
         valid: makeTypedDatabase(validSublevel),
         timestamps: makeTypedDatabase(timestampsSublevel),
         global: makeTypedDatabase(globalSublevel),
-        journal: makeTypedDatabase(journalSublevel),
     };
 }
 
@@ -344,35 +322,13 @@ class RootDatabaseClass {
     _nextNodeIndex;
 
     /**
-      * Identifier reservations for keys claimed by in-flight (not-yet-committed)
-      * operations but not yet in the committed `identifierLookup`.
+      * Key→identifier mappings that have been reserved by in-flight
+      * (not-yet-committed) transactions but are not yet in the committed
+      * `identifierLookup`.
       * Lives outside `_computed` because it is purely ephemeral — it must NOT
       * be reconstructed from a database snapshot.
-      *
-      * A reservation is multi-owner: `waiters` counts the live operations which
-      * hold the reservation, and the entry disappears only when the last of them
-      * releases it. One operation may therefore join a reservation another live
-      * operation made instead of allocating a second identifier for the same key.
-      *
-      * The properties that a reservation carries are:
-      * - the identifier is the identifier the key will carry once some operation
-      *   holding it commits;
-      * - `waiters` is the number of live operations still holding it, and the
-      *   entry is present exactly while that number is positive.
-      *
-      * The proof of those properties is guaranteed by:
-      * - `_allocateKeyIdentifier`: satisfies the first property because it either
-      *   mints a fresh identifier from the monotonic counter or adopts the
-      *   identifier of the entry it finds, so the entry's identifier is always the
-      *   one its holders will publish; satisfies the second property because it
-      *   stores `waiters: 1` for a new entry and increments it for a join, and it
-      *   never stores a non-positive count.
-      * - `releaseIdentifierReservations`: satisfies the second property because it
-      *   decrements the count of each released key and deletes the entry, together
-      *   with its `_pendingAllocationsById` reverse entry, exactly when the count
-      *   reaches zero.
       * @private
-      * @type {Map<string, PendingAllocation>}
+      * @type {Map<string, string>}
       */
     _pendingAllocations;
 
@@ -380,8 +336,6 @@ class RootDatabaseClass {
       * Reverse map of _pendingAllocations: identifierString → keyString.
       * Maintained alongside the forward map for O(1) collision checks during
       * identifier reservation — never iterate _pendingAllocations.values().
-      * An entry exists exactly while the corresponding forward reservation exists,
-      * so a joined reservation contributes no new reverse entry.
       * @private
       * @type {Map<string, string>}
       */
@@ -400,7 +354,7 @@ class RootDatabaseClass {
         this._seed = seed;
 
         // Root-level _meta sublevel for the replica pointer.
-        this._rootMetaSublevel = db.sublevel('_meta', { valueEncoding: declaredValueEncodingForSublevelName('_meta') });
+        this._rootMetaSublevel = db.sublevel('_meta', { valueEncoding: 'json' });
 
         const namespaceSublevel = this.replicaNamespaceSublevel(currentReplicaName);
         const globalSublevel = this.replicaGlobalSublevel(currentReplicaName);
@@ -539,33 +493,15 @@ class RootDatabaseClass {
     }
 
     /**
-      * Reserve a unique identifier for a node key on behalf of the current
-      * in-flight operation, joining an existing reservation for the same key if
-      * one is live. Synchronous — no await between the read and write, so
-      * JavaScript's single-threaded execution guarantees atomicity.
+      * Allocate a unique identifier for a node key and claim it in
+      * _pendingAllocations for the current in-flight transaction.
+      * Synchronous — no await between the read and write, so JavaScript's
+      * single-threaded execution guarantees atomicity.
       *
-      * The caller must hold the telescope lock for keyString (see pull.js), which
-      * serialises all concurrent allocation attempts for the same key. The
-      * telescope window and the reservation lifetime are therefore not nested: a
-      * reservation made by one operation is released only when that whole
-      * operation ends (`withUserOperation`'s finally), long after its telescope
-      * window for the key closed, so another operation can reach this point for a
-      * key which already carries a live reservation. That is not a locking bug, and
-      * the second operation JOINS the reservation: it adopts the reserved
-      * identifier and joins the set of its holders rather than minting a second
-      * identifier for the same key.
-      *
-      * What a joining operation shares is the identifier, not the value. The
-      * joining operation computes the node's value itself and publishes it under
-      * the shared identifier, exactly as it would have under a freshly minted one;
-      * whichever of the two operations commits last writes the value the node then
-      * carries. A holder which commits before a joiner publishes the
-      * key-to-identifier mapping itself, and the joiner's own commit re-publishes
-      * the same mapping, which `serializeTransactionLookup` and
-      * `commitTransactionLookup` both treat as idempotent. A holder which rolls
-      * back releases only its own hold, so the reservation and its identifier
-      * survive for the remaining holders, and the identifier is published by
-      * whichever of them commits.
+      * The caller must hold the telescope lock for keyString (see pull.js),
+      * which serialises all concurrent allocation attempts for the same key.
+      * Consequently, _pendingAllocations MUST NOT already contain keyString —
+      * if it does, a locking bug exists.
       *
       * Node identifiers are derived from a monotonic counter and the database
       * fingerprint, so collisions are impossible. No retry loop is needed.
@@ -573,13 +509,15 @@ class RootDatabaseClass {
       * @param {string} keyString - Serialized node key string.
       * @param {() => NodeIdentifier} makeIdentifier - Synchronous identifier factory.
       * @param {IdentifierLookup} committedLookup - The committed lookup (used for correctness assertion only).
-      * @returns {NodeIdentifier} The reserved identifier, which a joiner shares with the operations already holding it.
+      * @returns {NodeIdentifier} The newly allocated identifier.
       */
     _allocateKeyIdentifier(keyString, makeIdentifier, committedLookup) {
-        const reservation = this._pendingAllocations.get(keyString);
-        if (reservation !== undefined) {
-            reservation.waiters += 1;
-            return nodeIdentifierFromString(reservation.identifier);
+        // The telescope lock per keyString guarantees no concurrent in-flight
+        // allocation for this key, so _pendingAllocations must be clean.
+        if (this._pendingAllocations.has(keyString)) {
+            throw new Error(
+                `BUG: pending allocation for key ${keyString} found during allocation under telescope lock`
+            );
         }
 
         const candidate = makeIdentifier();
@@ -599,34 +537,23 @@ class RootDatabaseClass {
             );
         }
 
-        this._pendingAllocations.set(keyString, { identifier: candidateStr, waiters: 1 });
+        this._pendingAllocations.set(keyString, candidateStr);
         this._pendingAllocationsById.set(candidateStr, keyString);
         return candidate;
     }
 
     /**
-      * Give up this operation's hold on each identifier reservation it took,
-      * whether it made the reservation or joined one. Called in the finally block
-      * after commit success or failure, so a hold is given up exactly once per
-      * operation that took it.
-      *
-      * A reservation survives until its last holder gives it up, so an operation
-      * which joined another operation's reservation keeps the identifier reserved
-      * even when the operation that originally allocated it commits or rolls back.
-      *
-      * @param {Set<string>} ownedKeys - Key strings this operation holds a reservation on.
+      * Release pending allocations for keys that this transaction owned.
+      * Called in the finally block after commit success or failure.
+      * @param {Set<string>} ownedKeys - Key strings owned by the transaction.
       * @returns {void}
       */
     releaseIdentifierReservations(ownedKeys) {
         for (const keyString of ownedKeys) {
-            const reservation = this._pendingAllocations.get(keyString);
-            if (reservation === undefined) {
-                continue;
-            }
-            reservation.waiters -= 1;
-            if (reservation.waiters === 0) {
-                this._pendingAllocations.delete(keyString);
-                this._pendingAllocationsById.delete(reservation.identifier);
+            const idStr = this._pendingAllocations.get(keyString);
+            this._pendingAllocations.delete(keyString);
+            if (idStr !== undefined) {
+                this._pendingAllocationsById.delete(idStr);
             }
         }
     }
@@ -872,7 +799,7 @@ class RootDatabaseClass {
      */
     replicaNamespaceSublevel(name) {
         if (name === 'x' || name === 'y') {
-            return this.db.sublevel(name, { valueEncoding: declaredValueEncodingForSublevelName(name) });
+            return this.db.sublevel(name, { valueEncoding: 'json' });
         }
         return assertNeverReplicaName(name);
     }
@@ -882,33 +809,61 @@ class RootDatabaseClass {
      * @returns {GlobalSublevelType}
      */
     replicaGlobalSublevel(name) {
-        return this.replicaNamespaceSublevel(name).sublevel('global', { valueEncoding: declaredValueEncodingForSublevelName('global') });
+        return this.replicaNamespaceSublevel(name).sublevel('global', { valueEncoding: 'json' });
     }
 
     /**
-     * The staging storage one synchronization builds into before cutover.
-     *
-     * The staged target mirrors a replica's own sublevel names, so the same
-     * lowering writes both the active replica and the staged one. The name is a
-     * constant which names a role rather than a peer, so no persisted sublevel
-     * name or key carries a transport locator.
-     *
+     * Returns a bare SchemaStorage for a hostname staging namespace.
+     * @param {string} hostname - The hostname key (must be non-empty and must not
+     *   contain `/`, `\`, or `!`).
      * @returns {SchemaStorage}
+     * @throws {import('./hostname_storage').InvalidHostnameError} If the hostname is invalid.
      */
-    syncStagingStorage() {
-        return syncStagingStorageHelper(this.db);
+    hostnameSchemaStorage(hostname) {
+        return hostnameSchemaStorageHelper(this.db, hostname);
     }
 
     /**
-     * Discard a staged synchronization target.
-     *
-     * A staging sublevel holds only inactive state, so clearing it is a supported
-     * way to abandon a staging attempt.
-     *
+     * Clear all data stored under the `_h_<hostname>` staging namespace.
+     * @param {string} hostname - The hostname key (must be non-empty and must not
+     *   contain `/`, `\`, or `!`).
+     * @returns {Promise<void>}
+     * @throws {import('./hostname_storage').InvalidHostnameError} If the hostname is invalid.
+     */
+    async clearHostnameStorage(hostname) {
+        return clearHostnameStorageHelper(this.db, hostname);
+    }
+
+    /**
+     * Reads the app version stored in a hostname's staging global sublevel.
+     * Returns `undefined` when the hostname storage contains no version entry.
+     * @param {string} hostname
+     * @returns {Promise<Version | undefined>}
+     */
+    async getHostnameGlobalVersion(hostname) {
+        return getHostnameGlobalVersionHelper(this.db, hostname);
+    }
+
+    /**
+     * Write a key/value pair into a hostname's staging global sublevel.
+     * @param {string} hostname
+     * @param {string} key - The key to write (e.g. 'version').
+     * @param {DatabaseStoredValue} value - The value to store.
      * @returns {Promise<void>}
      */
-    async clearSyncStaging() {
-        return clearSyncStagingHelper(this.db);
+    async setHostnameGlobal(hostname, key, value) {
+        return setHostnameGlobalHelper(this.db, hostname, key, value);
+    }
+
+    /**
+     * Write raw `{ sublevelName, subkey, value }` entries into a hostname's
+     * staging namespace without going through the typed schema layer.
+     * @param {string} hostname
+     * @param {Array<{ sublevelName: string, subkey: string, value: * }>} entries
+     * @returns {Promise<void>}
+     */
+    async _rawPutAllToHostname(hostname, entries) {
+        return rawPutAllToHostnameHelper(this.db, hostname, entries);
     }
 
     /**
@@ -921,20 +876,14 @@ class RootDatabaseClass {
      * `!_meta!current_replica`) reconstructed by prepending `!<sublevelName>!` to the
      * key returned by the sublevel iterator.
      *
-     * The range of one top-level sublevel spans its nested sublevels too, and the
-     * nested sublevels do not all store values the same way, so the iterator reads
-     * every value as text and `decodeRawValue` applies the encoding the key's own
-     * sublevel was declared with.
-     *
      * @param {string} sublevelName - Top-level sublevel name (e.g. "x", "_meta").
      * @returns {AsyncIterable<[string, unknown]>}
      */
     async *_rawEntriesForSublevel(sublevelName) {
         /** @type {SchemaSublevelType} */
-        const sublevel = this.db.sublevel(sublevelName, { valueEncoding: TEXT_VALUE_ENCODING });
+        const sublevel = this.db.sublevel(sublevelName, { valueEncoding: 'json' });
         for await (const [key, value] of sublevel.iterator()) {
-            const rawKey = `!${sublevelName}!` + String(key);
-            yield [rawKey, decodeRawValue(rawKey, String(value))];
+            yield [`!${sublevelName}!` + key, value];
         }
     }
 
@@ -950,7 +899,7 @@ class RootDatabaseClass {
      */
     async *_rawKeysForSublevel(sublevelName) {
         /** @type {SchemaSublevelType} */
-        const sublevel = this.db.sublevel(sublevelName, { valueEncoding: TEXT_VALUE_ENCODING });
+        const sublevel = this.db.sublevel(sublevelName, { valueEncoding: 'json' });
         for await (const key of sublevel.keys()) { yield `!${sublevelName}!` + String(key); }
     }
 
@@ -965,30 +914,19 @@ class RootDatabaseClass {
      */
     async _rawGetInSublevel(sublevelName, innerKey) {
         /** @type {SchemaSublevelType} */
-        const sublevel = this.db.sublevel(sublevelName, { valueEncoding: TEXT_VALUE_ENCODING });
-        const rawKey = `!${sublevelName}!${innerKey}`;
-        const text = await sublevel.get(unsafeStringToNodeIdentifier(innerKey));
-        if (text === undefined) {
-            return undefined;
-        }
-        return decodeRawValue(rawKey, String(text));
+        const sublevel = this.db.sublevel(sublevelName, { valueEncoding: 'json' });
+        return await sublevel.get(unsafeStringToNodeIdentifier(innerKey));
     }
 
     /**
      * Iterate over all raw key/value pairs in the root LevelDB instance.
      * Yields every entry stored at the root level, including all sublevel-prefixed keys.
      * Used by renderToFilesystem to produce a complete snapshot.
-     *
-     * The whole key space spans sublevels which do not all store values the same
-     * way, so every value is read as text and decoded with the encoding its own
-     * sublevel was declared with.
-     *
      * @returns {AsyncIterable<[string, unknown]>}
      */
     async *_rawEntries() {
-        for await (const [key, value] of this.db.iterator({ valueEncoding: TEXT_VALUE_ENCODING })) {
-            const rawKey = String(key);
-            yield [rawKey, decodeRawValue(rawKey, String(value))];
+        for await (const [key, value] of this.db.iterator()) {
+            yield [String(key), value];
         }
     }
 
@@ -996,10 +934,6 @@ class RootDatabaseClass {
      * Write a raw key/value pair directly into the root LevelDB instance,
      * bypassing the sublevel abstraction, using sync:false for performance.
      * Used by fs_to_db unification adapter for individual key writes.
-     *
-     * The value is stored with the encoding the key's own sublevel was declared
-     * with, so a value written here is the value a reader of that sublevel reads
-     * back unchanged.
      *
      * Call _rawSync() once after all bulk unification writes are done to
      * ensure the writes are flushed to durable storage.
@@ -1021,9 +955,8 @@ class RootDatabaseClass {
         // one recognised property to be present. keyEncoding:undefined is a valid
         // AbstractPutOptions property and satisfies the weak-type check without
         // changing runtime behaviour.
-        const { valueEncoding, value: storedValue } = encodeRawValue(key, value);
-        const opts = { sync: false, keyEncoding: undefined, valueEncoding };
-        await this.db.put(unsafeStringToNodeIdentifier(key), storedValue, opts);
+        const opts = { sync: false, keyEncoding: undefined };
+        await this.db.put(unsafeStringToNodeIdentifier(key), value, opts);
     }
 
     /**
@@ -1078,18 +1011,15 @@ class RootDatabaseClass {
     async _rawPutAll(entries) {
         /**
          * Converts a plain raw-entry object into a LevelDB batch put operation,
-         * applying the JSDoc-level NodeIdentifier wrapper expected by this.db and
-         * the encoding the key's own sublevel was declared with.
+         * applying the JSDoc-level NodeIdentifier wrapper expected by this.db.
          * @param {{ key: string, value: * }} entry
-         * @returns {{ type: 'put', key: DatabaseKey, value: *, valueEncoding: import('./sublevel_encoding').SublevelValueEncoding }}
+         * @returns {{ type: 'put', key: DatabaseKey, value: * }}
          */
         function makePutOp(entry) {
-            const { valueEncoding, value } = encodeRawValue(entry.key, entry.value);
             return {
                 type: 'put',
                 key: unsafeStringToNodeIdentifier(entry.key),
-                value,
-                valueEncoding,
+                value: entry.value,
             };
         }
 
@@ -1189,7 +1119,7 @@ async function makeRootDatabase(capabilities, databasePath) {
         }
     }
 
-    const rootMetaSublevel = db.sublevel('_meta', { valueEncoding: declaredValueEncodingForSublevelName('_meta') });
+    const rootMetaSublevel = db.sublevel('_meta', { valueEncoding: 'json' });
     const storedReplica = await rootMetaSublevel.get('current_replica');
 
     if (storedReplica === undefined) {
