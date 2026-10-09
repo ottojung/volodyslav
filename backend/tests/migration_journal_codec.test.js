@@ -536,4 +536,146 @@ describe("journal-aware migration format codec", () => {
         expect(isJournalVersionCompatibilityError(badValue)).toBe(true);
         expect(isJournalFormatCodec(badValue)).toBe(false);
     });
+
+    test("keep of a key whose representation changed preserves its ValueId and authors nothing", async () => {
+        const caps = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(caps);
+            const graph = await createIncrementalGraph(caps, db, SOURCE_NODE_DEFS);
+            await graph.pull("B");
+            await db.getSchemaStorage().global.put("version", "1");
+
+            const sourceRetained = await readRetainedJournal(db.getSchemaStorage().journal);
+            expect(sourceRetained instanceof Error).toBe(false);
+            if (sourceRetained instanceof Error) {
+                return;
+            }
+            /** @type {Map<string, string>} */
+            const sourceValueIdByKey = new Map();
+            for (const event of semanticEventsOfReplica(sourceRetained)) {
+                if (event.kind === "value") {
+                    sourceValueIdByKey.set(nodeKeyToCanonicalString(event.node), String(event.id));
+                }
+            }
+            await db.close();
+
+            db = await getRootDatabase(caps);
+            await runMigration(caps, db, RENAMED_NODE_DEFS, async (storage) => {
+                for await (const identifier of storage.listMaterializedNodes()) {
+                    await storage.keep(identifier);
+                }
+            }, renamingCodec("renamed"));
+
+            const retained = await readRetainedJournal(db.getSchemaStorage().journal);
+            expect(retained instanceof Error).toBe(false);
+            if (retained instanceof Error) {
+                return;
+            }
+            /** @type {Map<string, string>} */
+            const targetValueIdByKey = new Map();
+            for (const event of semanticEventsOfReplica(retained)) {
+                if (event.kind === "value") {
+                    targetValueIdByKey.set(nodeKeyToCanonicalString(event.node), String(event.id));
+                }
+            }
+            expect(targetValueIdByKey.get('{"head":"Arenamed","args":[]}'))
+                .toBe(sourceValueIdByKey.get('{"head":"A","args":[]}'));
+            expect(targetValueIdByKey.get('{"head":"Brenamed","args":[]}'))
+                .toBe(sourceValueIdByKey.get('{"head":"B","args":[]}'));
+
+            // A representation change is not a semantic occurrence replacement, so
+            // no migration ValueEvent and no DeleteEvent were authored for it.
+            for (const event of semanticEventsOfReplica(retained)) {
+                if (event.kind === "value") {
+                    expect(event.reason).not.toBe("migration");
+                }
+                if (event.kind === "delete") {
+                    expect(event.reason).not.toBe("migration");
+                }
+            }
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test("a node family the target schema no longer declares keeps its retained history", async () => {
+        const caps = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(caps);
+            const removedSourceDefs = [
+                ...SOURCE_NODE_DEFS,
+                {
+                    output: "gone", inputs: [],
+                    computor: async () => numberComputedValue(7),
+                    isDeterministic: true, hasSideEffects: false,
+                },
+                {
+                    output: "goneUser", inputs: ["gone"],
+                    computor: async (inputs) => numberComputedValue(Number(inputs[0].value) + 1),
+                    isDeterministic: true, hasSideEffects: false,
+                },
+            ];
+            const graph = await createIncrementalGraph(caps, db, removedSourceDefs);
+            await graph.pull("B");
+            await graph.pull("goneUser");
+            await db.getSchemaStorage().global.put("version", "1");
+            await db.close();
+
+            db = await getRootDatabase(caps);
+            await runMigration(caps, db, RENAMED_NODE_DEFS, async (storage) => {
+                for await (const identifier of storage.listMaterializedNodes()) {
+                    const key = await storage.resolveNodeKey(identifier);
+                    const head = key === undefined ? "" : String(key.head);
+                    if (head === "A" || head === "B") {
+                        await storage.keep(identifier);
+                    } else {
+                        await storage.delete(identifier);
+                    }
+                }
+            }, renamingCodec("renamed"));
+
+            const retained = await readRetainedJournal(db.getSchemaStorage().journal);
+            expect(retained instanceof Error).toBe(false);
+            if (retained instanceof Error) {
+                return;
+            }
+            const events = semanticEventsOfReplica(retained);
+            /** @type {Set<string>} */
+            const removedFamilyKeys = new Set();
+            /** @type {Set<string>} */
+            const deletedKeys = new Set();
+            for (const event of events) {
+                const key = nodeKeyToCanonicalString(event.node);
+                if (String(event.node.head).startsWith("gone")) {
+                    removedFamilyKeys.add(key);
+                }
+                if (event.kind === "delete") {
+                    deletedKeys.add(key);
+                }
+            }
+            // The codec domain is all retained source history, including records for
+            // node families absent from the target schema, so the removed family's
+            // occurrences and its absence both survive the rewrite.
+            expect(removedFamilyKeys).toEqual(new Set([
+                '{"head":"gonerenamed","args":[]}',
+                '{"head":"goneUserrenamed","args":[]}',
+            ]));
+            expect(deletedKeys).toEqual(new Set([
+                '{"head":"gonerenamed","args":[]}',
+                '{"head":"goneUserrenamed","args":[]}',
+            ]));
+            // Neither removed node resolves a current occurrence any more.
+            for (const key of removedFamilyKeys) {
+                const occurrence = await readCurrentOccurrence(
+                    db.getSchemaStorage().journal,
+                    deserializeNodeKey(stringToNodeKeyString(key))
+                );
+                expect(occurrence).toBeUndefined();
+            }
+        } finally {
+            if (db) await db.close();
+        }
+    });
 });

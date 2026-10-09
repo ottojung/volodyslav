@@ -18,7 +18,7 @@ const {
 const {
     checkSchemaCompatibility,
     assertKeepInputPositionsCompatible,
-    resolveNodeKeyFromIndex,
+    resolveSourceNodeKeyFromIndex,
 } = require("./migration_storage_schema");
 const {
     readValidDependents,
@@ -384,8 +384,7 @@ class MigrationStorageClass {
      * @returns {Promise<import('./database/node_key').NodeKey | undefined>}
      */
     async resolveNodeKey(nodeKey) {
-        const identifiersKeysIndex = this._getIdentifiersKeysIndex();
-        return resolveNodeKeyFromIndex(nodeKey, identifiersKeysIndex, this.decisions);
+        return resolveSourceNodeKeyFromIndex(nodeKey, this._sourceIdentifiersKeysIndex, this.decisions);
     }
 
     /**

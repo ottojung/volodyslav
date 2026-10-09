@@ -55,6 +55,31 @@ function resolveNodeKeyFromIndex(nodeKey, identifiersKeysIndex, decisions) {
 }
 
 /**
+ * Resolve a node key to its parsed form using the source replica's indexed
+ * `identifiers_keys_map` record or a create decision.
+ *
+ * `incremental-graph-journal-migrations.md` §11 keeps `get` and the traversal
+ * helpers addressing the previous replica, so they expose source-representation
+ * data: this is the source spelling of the key, not the transported one.
+ *
+ * @param {NodeIdentifier} nodeKey
+ * @param {Map<string, string>} sourceIndex - idString -> sourceNodeKeyString
+ * @param {Map<NodeIdentifier, Decision>} [decisions]
+ * @returns {import('./database/node_key').NodeKey | undefined}
+ */
+function resolveSourceNodeKeyFromIndex(nodeKey, sourceIndex, decisions) {
+    const sourceKeyString = sourceIndex.get(String(nodeKey));
+    if (sourceKeyString !== undefined) {
+        return deserializeNodeKey(stringToNodeKeyString(sourceKeyString));
+    }
+    const decision = decisions?.get(nodeKey);
+    if (decision?.kind === "create" && decision.nodeKeyString !== undefined) {
+        return deserializeNodeKey(stringToNodeKeyString(decision.nodeKeyString));
+    }
+    return undefined;
+}
+
+/**
  * Checks whether a node is compatible with the new schema.
  *
  * The check is made against the transported target key, because §11 requires an
@@ -124,6 +149,7 @@ async function assertKeepInputPositionsCompatible(nodeKey, identifiersKeysIndex,
 
 module.exports = {
     resolveNodeKeyFromIndex,
+    resolveSourceNodeKeyFromIndex,
     checkSchemaCompatibility,
     assertKeepInputPositionsCompatible,
 };
