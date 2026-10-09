@@ -14,20 +14,17 @@
  * is indistinguishable from a correct one until something replays the record and
  * compares, and the target is the only place both representations coexist.
  *
- * **Scope of the comparison.** M1 determines the target's occurrences: which
- * semantic nodes are present, which occurrence each one names, that occurrence's
- * payload, its `NodeIdentifier`, and its `createdAt`/`modifiedAt` (§§11a.3, 15, 19).
- * Those are the facts this module compares, and they are compared exactly.
+ * **Scope of the comparison.** The target's graph state is a projection of the
+ * retained history, so every fact the graph persists must equal the replayed one:
+ * which semantic nodes are present, which occurrence each one names, that
+ * occurrence's payload, its `NodeIdentifier`, its `createdAt`/`modifiedAt`
+ * (§§11a.3, 15, 19), and the freshness and validity edges M2 (§16) and M3 (§17)
+ * encode. Those are the facts this module compares, and they are compared exactly.
  *
- * A migration's derived freshness and target validity edges are M2's and M3's
- * output (§§16, 17), not M1's. A target graph which `create`s a node carries a
- * validity edge and an up-to-date freshness that no retained certificate yet
- * supports, so the replayed projection legitimately differs from the graph on
- * exactly those two facts until a migration authors M2 and M3. Comparing them here
- * would reject every correct M1 cutover, and reading the graph's own values for
- * them would make the check vacuous. The occurrence facts above are what the cutover
- * commits on, and they are the facts on which the graph and the retained authority
- * can currently disagree.
+ * Comparing freshness and validity here is what makes M2 and M3 load-bearing: a
+ * cutover which authored the target occurrences but not the proof and persistent
+ * staleness which explain them replays to a different freshness or edge set, and is
+ * refused rather than selected.
  */
 
 const {
@@ -82,6 +79,8 @@ function makeCurrentInputKeysOfNode(graphScheme) {
  * @property {import('./database/types').NodeIdentifier} nodeIdentifier
  * @property {string} createdAt
  * @property {string} modifiedAt
+ * @property {boolean} fresh
+ * @property {Set<string>} validInputs
  */
 
 /**
@@ -93,15 +92,17 @@ function makeCurrentInputKeysOfNode(graphScheme) {
  *
  * @param {SchemaStorage} targetStorage
  * @param {IdentifierLookup} targetLookup
+ * @param {GraphScheme} graphScheme
  * @returns {Promise<Map<string, PersistedOccurrence>>}
  */
-async function readTargetOccurrences(targetStorage, targetLookup) {
+async function readTargetOccurrences(targetStorage, targetLookup, graphScheme) {
     /** @type {Map<string, PersistedOccurrence>} */
     const occurrences = new Map();
     for (const [nodeIdentifier, nodeKeyString] of targetLookup.serialized) {
-        const [timestamps, value] = await Promise.all([
+        const [timestamps, value, freshness] = await Promise.all([
             targetStorage.timestamps.get(nodeIdentifier),
             targetStorage.values.get(nodeIdentifier),
+            targetStorage.freshness.get(nodeIdentifier),
         ]);
         if (timestamps === undefined || value === undefined) {
             throw makeJournalProjectionError(
@@ -109,11 +110,27 @@ async function readTargetOccurrences(targetStorage, targetLookup) {
                 nodeKeyStringToString(nodeKeyString)
             );
         }
+        /** @type {Set<string>} */
+        const validInputs = new Set();
+        for (const inputKey of deriveInputPositions(graphScheme, nodeKeyString)) {
+            const inputIdentifier = targetLookup.keyToId.get(nodeKeyStringToString(inputKey));
+            if (inputIdentifier === undefined) {
+                continue;
+            }
+            const dependents = await targetStorage.valid.get(inputIdentifier) ?? [];
+            if (dependents.some(
+                (id) => nodeIdentifierToString(id) === nodeIdentifierToString(nodeIdentifier)
+            )) {
+                validInputs.add(nodeKeyStringToString(inputKey));
+            }
+        }
         occurrences.set(nodeKeyStringToString(nodeKeyString), {
             payload: value,
             nodeIdentifier,
             createdAt: timestamps.createdAt,
             modifiedAt: timestamps.modifiedAt,
+            fresh: freshness === "up-to-date",
+            validInputs,
         });
     }
     return occurrences;
@@ -161,7 +178,7 @@ async function verifyTargetReplica(targetStorage, targetLookup, graphScheme, loc
         );
     }
 
-    const persisted = await readTargetOccurrences(targetStorage, targetLookup);
+    const persisted = await readTargetOccurrences(targetStorage, targetLookup, graphScheme);
     for (const replayed of projection.occurrences) {
         const graph = persisted.get(replayed.nodeKeyString);
         if (graph === undefined) {
@@ -212,6 +229,20 @@ function describeDisagreement(replayed, graph) {
     }
     if (JSON.stringify(replayed.payload) !== JSON.stringify(graph.payload)) {
         return "the replayed occurrence carries a payload the graph does not persist";
+    }
+    if (replayed.fresh !== graph.fresh) {
+        return "the replayed occurrence is " + (replayed.fresh ? "fresh" : "stale") +
+            " while the graph persists it " + (graph.fresh ? "fresh" : "stale");
+    }
+    if (replayed.validInputs.size !== graph.validInputs.size) {
+        return "the replayed occurrence proves " + replayed.validInputs.size +
+            " input edge(s) while the graph persists " + graph.validInputs.size;
+    }
+    for (const inputKeyString of replayed.validInputs) {
+        if (!graph.validInputs.has(inputKeyString)) {
+            return "the replayed occurrence proves input edge " + inputKeyString +
+                " which the graph does not persist";
+        }
     }
     return undefined;
 }

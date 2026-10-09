@@ -26,9 +26,11 @@ const {
 } = require("./journal_store");
 const {
     finalizeMigrationEmission,
+    makeJournalAuthor,
     makeJournalPublicationError,
 } = require("./journal");
 const { rewriteJournalEntry } = require("./journal_rewrite");
+const { repairMigrationJournal } = require("./migration_repair");
 const {
     journalKeyToString,
     stringToJournalKey,
@@ -167,9 +169,13 @@ async function publishMigrationM1(targetStorage, state, intents, publicationInst
  * @param {number} publicationInstant - Epoch milliseconds of the migration publication.
  * @param {number} allocatorWatermark - The allocation watermark the target durably establishes.
  * @param {HistoryRewriter} rewriter - The migration's one source->target rewrite.
+ * @param {Map<import('./database/types').NodeIdentifier, import('./database/types').NodeIdentifier[]>} desiredValid - The target's validity edges, which M2 encodes.
+ * @param {Map<import('./database/types').NodeIdentifier, import('./database/types').Freshness>} targetFreshness - The target's freshness flags, which M3 encodes.
+ * @param {import('./database/graph_scheme').GraphScheme} graphScheme - The target schema.
+ * @param {import('./database/identifier_lookup').IdentifierLookup} targetLookup - The target replica's identifier lookup.
  * @returns {Promise<void>}
  */
-async function buildMigrationJournal(sourceStorage, targetStorage, fingerprint, intents, publicationInstant, allocatorWatermark, rewriter) {
+async function buildMigrationJournal(sourceStorage, targetStorage, fingerprint, intents, publicationInstant, allocatorWatermark, rewriter, desiredValid, targetFreshness, graphScheme, targetLookup) {
     await carryRetainedJournal(sourceStorage, targetStorage, rewriter);
     const sourceWriterState = await readCommittedWriterState(sourceStorage.journal, fingerprint);
     if (sourceWriterState instanceof Error) {
@@ -184,6 +190,34 @@ async function buildMigrationJournal(sourceStorage, targetStorage, fingerprint, 
     );
     if (targetWriterState instanceof Error) {
         throw targetWriterState;
+    }
+    const localWriter = makeJournalAuthor(fingerprint);
+    if (localWriter instanceof Error) {
+        throw localWriter;
+    }
+    // §16 and §17: M2 encodes the target's validity edges and M3 its persistent
+    // staleness, so replay derives the same facts the target graph persists.
+    const repaired = await repairMigrationJournal({
+        targetStorage,
+        graphScheme,
+        targetLookup,
+        localWriter,
+        desiredValid,
+        targetFreshness,
+        state: targetWriterState,
+        publicationInstant,
+    });
+    if ("error" in repaired) {
+        throw repaired.error;
+    }
+    if (repaired.records.length > 0) {
+        /** @type {Array<import('./database/root_database').DatabaseBatchOperation>} */
+        const operations = [];
+        const rejected = appendJournalPublicationOps(targetStorage.journal, operations, repaired);
+        if (rejected !== undefined) {
+            throw rejected;
+        }
+        await targetStorage.batch(operations);
     }
 }
 

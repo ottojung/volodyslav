@@ -153,7 +153,7 @@ const {
 
 // Ordinary emission finalization
 const { allocateAuthority, contextOf, finalizeEmission } = require("./emission");
-const { finalizeMigrationEmission } = require("./migration_emission");
+const { finalizeMigrationEmission, finalizeMigrationRepair } = require("./migration_emission");
 const {
     compareCertificates, coversValueInvalidations, deriveFreshness, effectiveInputsOf,
     HeadSelectionClass, isEligibleCertificate, isPresent, isProjection, makeReplicaSource,
@@ -258,6 +258,7 @@ allocateAuthority,
     encodeJournalRecord,
     finalizeEmission,
     finalizeMigrationEmission,
+    finalizeMigrationRepair,
     frontierJoin,
     happenedBefore,
     isAuthorityTime,

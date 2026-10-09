@@ -421,7 +421,11 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
                 migrationIntents,
                 fromISOString(publicationInstant).toMillis(),
                 Math.max(sourceLastNodeIndex, migrationStorage.getMaxAllocatedIndex()),
-                rewriter
+                rewriter,
+                desiredValid,
+                targetFreshness,
+                newGraphScheme,
+                finalLookup
             );
 
             // One final fsync: all unification writes use sync:false for performance;

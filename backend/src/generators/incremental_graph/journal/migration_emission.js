@@ -41,11 +41,12 @@
 /** @typedef {import('./emission').FinalizedPublication} FinalizedPublication */
 
 const { makeJournalPublicationError } = require("./errors");
-const { makeNodeScope, nodeKeyToCanonicalString } = require("./basis");
+const { makeNodeScope, makeProofScope, makeValueScope, nodeKeyToCanonicalString } = require("./basis");
 const { predecessorJournalSequence, requireSuccessorJournalSequence } = require("./coordinates");
 const {
     makeDeleteEvent,
     makeInvalidateEvent,
+    makeValidateEvent,
     makeValueEvent,
     makeWriterStateRecord,
 } = require("./records");
@@ -163,6 +164,44 @@ const {
 
 /**
  * @typedef {MigrationValueIntent | MigrationDeleteIntent | MigrationInvalidateIntent} MigrationIntent
+ */
+
+/**
+ * One occurrence-scoped proof barrier of Pass M2: an incoming edge the target must
+ * not expose, retired for the exact preserved occurrence
+ * (`incremental-graph-journal-migrations.md` §16.2).
+ *
+ * @typedef {object} MigrationProofBarrierIntent
+ * @property {"migrate-proof-barrier"} kind
+ * @property {NodeKey} node
+ * @property {JournalRecordId} value
+ * @property {NodeKey} input
+ */
+
+/**
+ * One target certificate of Pass M2 for a preserved or produced occurrence whose
+ * replay state does not already yield exactly the target's validity edges
+ * (`incremental-graph-journal-migrations.md` §16.3).
+ *
+ * @typedef {object} MigrationValidationIntent
+ * @property {"migrate-validate"} kind
+ * @property {NodeKey} node
+ * @property {JournalRecordId} value
+ * @property {import('./basis').ValidationBasis} basis
+ */
+
+/**
+ * One target-persistent-stale marker of Pass M3 for a target-stale occurrence whose
+ * own proof is ready (`incremental-graph-journal-migrations.md` §17).
+ *
+ * @typedef {object} MigrationStaleMarkerIntent
+ * @property {"migrate-stale-marker"} kind
+ * @property {NodeKey} node
+ * @property {JournalRecordId} value
+ */
+
+/**
+ * @typedef {MigrationProofBarrierIntent | MigrationValidationIntent | MigrationStaleMarkerIntent} MigrationRepairIntent
  */
 
 /**
@@ -387,6 +426,105 @@ function finalizeMigrationEmission(request) {
     };
 }
 
+/**
+ * Finalize the M2/M3 repair publication of one migration over the already-converted
+ * and M1-extended target history.
+ *
+ * The requests arrive in the order the passes fixed them — barriers, then target
+ * certificates, then value markers — because a barrier must be causally earlier than
+ * the certificate which re-proves the target's remaining edges, and the marker must
+ * observe the certificate. Every record is seeded from the migration publication
+ * instant like every other non-value migration record, and its context observes the
+ * committed frontier the M1 publication left, so the repair records are causally
+ * after M1.
+ *
+ * @param {object} request
+ * @param {CommittedWriterState} request.state
+ * @param {ReadonlyArray<MigrationRepairIntent>} request.requests
+ * @param {number} request.publicationInstant
+ * @returns {{records: ReadonlyArray<JournalRecord>, writerState: CommittedWriterState} | JournalError}
+ */
+function finalizeMigrationRepair(request) {
+    const { state, requests, publicationInstant } = request;
+    if (!Number.isSafeInteger(publicationInstant) || publicationInstant < 0) {
+        return makeJournalPublicationError(
+            "migration publication instant must be a non-negative whole millisecond, got " +
+                JSON.stringify(publicationInstant)
+        );
+    }
+    if (requests.length === 0) {
+        return { records: [], writerState: state };
+    }
+
+    /** @type {JournalAuthor} */
+    const localWriter = state.localWriter;
+    /** @type {JournalRecord[]} */
+    const records = [];
+    /** @type {JournalSequence} */
+    let nextSequence = requireSuccessorJournalSequence(state.writerHead);
+    /** @type {AuthorityTime} */
+    let highWater = state.authorityHighWater;
+
+    for (const entry of requests) {
+        const id = makeJournalRecordId(localWriter, nextSequence);
+        if (id instanceof Error) {
+            return id;
+        }
+        const ownPrefix = predecessorJournalSequence(nextSequence);
+        if (ownPrefix instanceof Error) {
+            return ownPrefix;
+        }
+        const context = contextOf(state, localWriter, ownPrefix);
+        if (context instanceof Error) {
+            return context;
+        }
+        const allocated = allocateAuthority(highWater, publicationInstant);
+        if ("error" in allocated) {
+            return allocated.error;
+        }
+        const base = { id, context, authorityTime: allocated.authorityTime, node: entry.node };
+        /** @type {JournalRecord | JournalError} */
+        let record;
+        if (entry.kind === "migrate-proof-barrier") {
+            record = makeInvalidateEvent(base, makeProofScope(entry.value, entry.input), "migration");
+        } else if (entry.kind === "migrate-validate") {
+            record = makeValidateEvent(base, entry.value, entry.basis, "migration");
+        } else {
+            record = makeInvalidateEvent(base, makeValueScope(entry.value), "migration");
+        }
+        if (record instanceof Error) {
+            return record;
+        }
+        records.push(record);
+        highWater = allocated.highWater;
+        nextSequence = requireSuccessorJournalSequence(nextSequence);
+    }
+
+    const lastRecord = records[records.length - 1];
+    if (lastRecord === undefined) {
+        return makeJournalPublicationError("the migration repair publication authored no record");
+    }
+    const advanced = makeJournalFrontier([[localWriter, lastRecord.id.sequence]]);
+    if (advanced instanceof Error) {
+        return advanced;
+    }
+    const newFrontier = frontierJoin(state.committedFrontier, advanced);
+    if (newFrontier instanceof Error) {
+        return newFrontier;
+    }
+    return {
+        records,
+        writerState: {
+            localWriter,
+            writerHead: lastRecord.id.sequence,
+            committedFrontier: newFrontier,
+            authorityHighWater: highWater,
+            allocatorWatermark: state.allocatorWatermark,
+        },
+    };
+}
+
 module.exports = {
     finalizeMigrationEmission,
+    finalizeMigrationRepair,
 };
