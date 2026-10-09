@@ -32,6 +32,8 @@
 /** @typedef {import('../level_database').LevelDatabase} LevelDatabase */
 /** @typedef {import('../generators').Interface} Interface */
 /** @typedef {import('../temporary').Temporary} Temporary */
+/** @typedef {import('../generators/incremental_graph/journal').CohortBootstrapSource} CohortBootstrapSource */
+/** @typedef {import('../generators/incremental_graph/journal_recovery_source').InstallationRecoverySource} InstallationRecoverySource */
 
 
 /**
@@ -67,6 +69,19 @@
  * @property {Threading} threading - A threading instance.
  * @property {WifiConnectionChecker} wifiChecker - A WiFi connection checker instance.
  * @property {LevelDatabase} levelDatabase - A level database instance.
+ * @property {CohortBootstrapSource} [cohortBootstrapSource] - The deployment's
+ *   canonical-bootstrap source, when the deployment configures one. It is
+ *   deployment configuration rather than persisted database state, so it is
+ *   absent unless a deployment supplies it, and a supported pre-Journal replica
+ *   without one fails startup with `JournalPublicationError` instead of
+ *   creating a second canonical bootstrap.
+ * @property {InstallationRecoverySource} [installationRecoverySource] - The
+ *   deployment's installation recovery source, when the deployment configures
+ *   one. It answers whether recoverable synchronized state exists for a
+ *   completely absent local database. It is deployment configuration rather
+ *   than persisted database state, so it is absent unless a deployment supplies
+ *   it, and an absent local database without one fails startup rather than
+ *   creates fresh state.
  */
 
 const random = require("../random");
@@ -100,16 +115,55 @@ const schedule = require('../scheduler');
 const runtimeStateStorage = require('../runtime_state_storage');
 const threadingCapability = require('../threading');
 const levelDatabaseCapability = require('../level_database');
-const { makeInterface } = require('../generators');
+const { makeInterface, isCohortBootstrapSource, makeJournalPublicationError, isInstallationRecoverySource } = require('../generators');
 const { makeTemporary } = require('../temporary');
+
+/**
+ * The deployment configuration a deployment may supply when it creates the root
+ * capabilities.
+ *
+ * @typedef {object} RootCapabilityOptions
+ * @property {CohortBootstrapSource} [cohortBootstrapSource] - The cohort
+ *   canonical-bootstrap source this deployment publishes to and observes
+ *   (`incremental-graph-journal-migrations.md` §4). It is deployment
+ *   configuration rather than persisted database state, so it is carried here and
+ *   not read from the database.
+ * @property {InstallationRecoverySource} [installationRecoverySource] - The
+ *   installation recovery source this deployment queries when the local database
+ *   is completely absent (`database-lifecycle.md` §4). It is deployment
+ *   configuration rather than persisted database state, so it is carried here and
+ *   not read from the database.
+ */
 
 /**
  * This structure collects maximum capabilities that any part of Volodyslav can access.
  * It is supposed to be initialized at the main entry to Volodyslav, and then passed down the call stack.
  * It should be a pure, well-behaved, non-throwing function,
  * because it is required for everything else in Volodyslav to work, including error reporting.
+ *
+ * The one way it reports a fault is a misconfigured canonical-bootstrap source:
+ * starting with an unusable source would leave the canonical-bootstrap gate to
+ * discover it later, after the deployment is already serving, so the
+ * configuration is checked here with the same `JournalPublicationError` the gate
+ * itself uses and startup fails instead.
+ *
+ * @param {RootCapabilityOptions} [options]
+ * @returns {Capabilities}
  */
-const make = () => {
+const make = (options = {}) => {
+    const { cohortBootstrapSource, installationRecoverySource } = options;
+    if (cohortBootstrapSource !== undefined && !isCohortBootstrapSource(cohortBootstrapSource)) {
+        throw makeJournalPublicationError(
+            'the deployment configured a cohort bootstrap source which is not a CohortBootstrapSource, so the ' +
+                'canonical-bootstrap slot could not be arbitrated'
+        );
+    }
+    if (installationRecoverySource !== undefined && !isInstallationRecoverySource(installationRecoverySource)) {
+        throw makeJournalPublicationError(
+            'the deployment configured an installation recovery source which is not an InstallationRecoverySource, ' +
+                'so the absent-state decision could not be made'
+        );
+    }
     const environment = environmentCapability.make();
     const datetime = datetimeCapability.make();
     const sleeper = sleeperCapability.make();
@@ -150,6 +204,12 @@ const make = () => {
         threading,
         levelDatabase: levelDatabaseCapability.make(),
     };
+    if (cohortBootstrapSource !== undefined) {
+        ret.cohortBootstrapSource = cohortBootstrapSource;
+    }
+    if (installationRecoverySource !== undefined) {
+        ret.installationRecoverySource = installationRecoverySource;
+    }
 
     return ret;
 };

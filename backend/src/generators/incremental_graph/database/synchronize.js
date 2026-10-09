@@ -22,6 +22,8 @@ const {
     DATABASE_SUBPATH,
 } = require('./gitstore');
 const {
+    JournalResetFrontMissingError,
+    isJournalResetFrontMissingError,
     synchronizeResetToHostname,
 } = require('./synchronize_reset_snapshot');
 const { scanFromFilesystem } = require('./render');
@@ -30,7 +32,9 @@ const {
     mergeHostIntoReplica,
     SyncMergeAggregateError,
     isSyncMergeAggregateError,
+    carriesJournalState,
 } = require('./sync_merge');
+const { makeDbToDbAdapter, unifyStores } = require('./unification');
 
 /** @typedef {import('../../../filesystem/checker').FileChecker} FileChecker */
 /** @typedef {import('../../../filesystem/mover').FileMover} FileMover */
@@ -47,6 +51,7 @@ const {
 /** @typedef {import('../../../level_database').LevelDatabase} LevelDatabase */
 /** @typedef {import('../../../generators/interface').Interface} Interface */
 /** @typedef {import('./root_database').RootDatabase} RootDatabase */
+/** @typedef {import('../journal_publish').ResetReceiverToSnapshot} ResetReceiverToSnapshot */
 
 /**
  * @typedef {object} Capabilities
@@ -69,7 +74,7 @@ const {
 
 /**
  * @param {Capabilities} capabilities
- * @param {{ rootDatabase: RootDatabase }} state
+ * @param {{ rootDatabase: RootDatabase, journalSync?: import('../journal_publish').SyncReceiverToSource }} state
  * @returns {Promise<void>}
  */
 async function mergeRemoteHostBranches(capabilities, state) {
@@ -126,17 +131,45 @@ async function mergeRemoteHostBranches(capabilities, state) {
 
 
             const remoteRDir = path.join(tmpDir, DATABASE_SUBPATH, 'r');
+            const inactiveReplica = state.rootDatabase.otherReplicaName();
             await scanFromFilesystem(
                 capabilities,
                 state.rootDatabase,
                 remoteRDir,
-                '_h_' + hostname
+                inactiveReplica
             );
-            const switchedReplica = await mergeHostIntoReplica(
-                capabilities.logger,
-                state.rootDatabase,
-                hostname
+
+            const localSourceStorage = state.rootDatabase.schemaStorageForReplica(
+                state.rootDatabase.currentReplicaName()
             );
+            const inactiveStorage = state.rootDatabase.schemaStorageForReplica(inactiveReplica);
+            const localHasJournal = await carriesJournalState(localSourceStorage);
+            const inactiveHasJournal = await carriesJournalState(inactiveStorage);
+
+            /** @type {boolean} */
+            let switchedReplica;
+            if (localHasJournal || inactiveHasJournal) {
+                if (state.journalSync === undefined) {
+                    throw new Error(
+                        `Cannot synchronize host '${hostname}': a merge source carries Journal state, ` +
+                        'and no Journal synchronization was supplied'
+                    );
+                }
+                switchedReplica = await state.journalSync({
+                    database: state.rootDatabase,
+                    capabilities,
+                    receiver: state.rootDatabase.currentReplicaName(),
+                    source: inactiveReplica,
+                });
+            } else {
+                const stagingStorage = state.rootDatabase.syncStagingStorage();
+                await unifyStores(makeDbToDbAdapter(inactiveStorage, stagingStorage));
+                switchedReplica = await mergeHostIntoReplica(
+                    capabilities.logger,
+                    state.rootDatabase,
+                    hostname
+                );
+            }
             if (switchedReplica) {
                 await state.rootDatabase.close();
                 state.rootDatabase = await getRootDatabase(capabilities);
@@ -183,7 +216,7 @@ async function mergeRemoteHostBranches(capabilities, state) {
             }
 
             try {
-                await state.rootDatabase.clearHostnameStorage(hostname);
+                await state.rootDatabase.clearSyncStaging();
             } catch (cleanupErr) {
                 recordHostFailure(
                     hostname,
@@ -210,10 +243,17 @@ async function mergeRemoteHostBranches(capabilities, state) {
  * The caller must ensure the database is locked (not written to) for the
  * duration of this call.
  *
+ * A reset (`options.resetToHostname`) resets a receiver which retains Journal records
+ * through `options.journalReset`, which the caller supplies because that operation
+ * belongs to the Journal layer rather than to the database layer. A caller which resets a
+ * Journal receiver without it is refused rather than left holding the snapshot's rows
+ * under no records.
+ *
  * @param {Capabilities} capabilities
- * @param {{ resetToHostname?: string }} [options]
+ * @param {{ resetToHostname?: string, journalReset?: ResetReceiverToSnapshot, journalSync?: import('../journal_publish').SyncReceiverToSource }} [options]
  * @return {Promise<void>}
  * @throws {import('../../../gitstore/working_repository').WorkingRepositoryError} If git sync fails
+ * @throws {JournalResetFrontMissingError} If a Journal receiver is reset without a Journal reset
  * @throws {SyncMergeAggregateError} If one or more per-host graph merges fail
  */
 async function synchronizeNoLock(capabilities, options) {
@@ -229,7 +269,7 @@ async function synchronizeNoLock(capabilities, options) {
             remoteLocation,
             { ...options, mergeHostBranches: false }
         );
-        await synchronizeResetToHostname(capabilities, remoteLocation);
+        await synchronizeResetToHostname(capabilities, remoteLocation, options?.journalReset);
         capabilities.logger.logInfo(
             { remotePath, options },
             'Synchronized generators database with remote'
@@ -256,7 +296,7 @@ async function synchronizeNoLock(capabilities, options) {
             { ...options, mergeHostBranches: false }
         );
 
-        const state = { rootDatabase };
+        const state = { rootDatabase, journalSync: options?.journalSync };
         try {
             await mergeRemoteHostBranches(capabilities, state);
         } finally {
@@ -275,6 +315,8 @@ async function synchronizeNoLock(capabilities, options) {
 }
 
 module.exports = {
+    JournalResetFrontMissingError,
     synchronizeNoLock,
+    isJournalResetFrontMissingError,
     isSyncMergeAggregateError,
 };

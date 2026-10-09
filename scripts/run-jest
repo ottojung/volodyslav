@@ -1,0 +1,17 @@
+#! /bin/sh
+#
+# The one entry point for running the test suite.
+#
+# JEST_MAX_WORKERS is validated here rather than in jest.config.js because a
+# configuration file cannot report a rejected value to whoever typed it: the
+# failure mode of the unsound arithmetic in that file is silence. See
+# scripts/check-jest-max-workers for the accepted grammar.
+
+set -eu
+
+script_directory=$(CDPATH='' cd -P "$(dirname "$0")" && pwd)
+cd "$script_directory/.."
+
+sh "$script_directory/check-jest-max-workers"
+
+npx jest "$@"

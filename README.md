@@ -62,6 +62,29 @@ npm test
 npm run static-analysis
 ```
 
+### Worker count
+
+The suite runs at one worker unless `JEST_MAX_WORKERS` says otherwise. That
+variable accepts a whole number of workers between 1 and what this host reports
+available to one process, and nothing else: every other value is refused with a
+message naming it, by every way of starting Jest in this repository.
+
+Two channels reach the worker count from outside the grammar. Both are described
+here rather than refused, because Jest offers no hook for either:
+
+- Jest's command line outranks every configuration value. `--maxWorkers`, `-w`,
+  `--runInBand`, `--config` and `--projects` named there run the suite outside
+  the counts this repository validates. Nothing here names one, and
+  `backend/tests/worker_count_gate.test.js` fails if a package script, workflow,
+  shell script, Dockerfile, Makefile target or document does.
+- A configuration written as JSON text on the command line replaces this
+  repository's configurations instead of adding to them, so no configuration here
+  is read and nothing here can refuse it.
+
+One worker is slow rather than wrong. It removes the oversubscription that turned
+wall-clock budgets into timeouts, and it does not make the suite deterministic on
+a host shared with other work.
+
 ---
 
 # License

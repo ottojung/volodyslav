@@ -1,8 +1,6 @@
 # IncrementalGraph Journal 3
 
-## Status and scope
-
-**Status:** this document specifies the Journal 3 target design. Journal 3 is not yet implemented in the current backend. Until implementation lands, existing non-Journal component specifications continue to describe shipped/pre-Journal behavior unless they explicitly identify themselves as target design. The Journal-owned specifications are normative for the Journal 3 implementation and make no claims about current runtime behavior.
+## Scope
 
 Journal 3 is the append-only replay history for IncrementalGraph state.
 
@@ -121,17 +119,17 @@ The number of inputs is irrelevant.
 
 ## Ordinary synchronization
 
-Ordinary synchronization semantics—including snapshot compatibility, immutable foreign-history import, receiver normalization, convergence, and operation-specific own-writer-ahead behavior—are owned by `incremental-graph-journal-sync.md`; the shared established-writer rollback classification is owned by `incremental-graph-journal-lifecycle.md` §5.
+Ordinary synchronization semantics—including snapshot compatibility, immutable foreign-history import, receiver normalization, convergence, and operation-specific own-writer-ahead behavior—are owned by `incremental-graph-journal-sync.md`; the shared established-writer rollback classification is owned by `database-lifecycle.md` §5.
 
 ## Absent-installation restoration
 
-When the complete local database is gone, the installation is `Absent`. Continuation safety is defined in `incremental-graph-journal-lifecycle.md` §4.1.
+When the complete local database is gone, the installation is `Absent`. Continuation safety is defined in `database-lifecycle.md` §4.1.
 
 `InstallationRecoverySource` packages that lifecycle guarantee as a `ContinuationSafeSnapshot`; how a backend establishes it is transport-specific. This mechanism applies only to complete local absence, not to repair of an existing truncated or rolled-back database. Transport locators such as hostnames or branch names remain outside persisted IncrementalGraph state and outside the recovery semantic interface.
 
 ## Canonical pre-Journal bootstrap
 
-Canonical pre-Journal bootstrap—including creator creation/resume, joining, exact-shared identity/proof/freshness, and first-creator arbitration—is owned by `incremental-graph-journal-migrations.md` Part I (§§1–8), with lifecycle gating owned by `incremental-graph-journal-lifecycle.md`.
+Canonical pre-Journal bootstrap—including creator creation/resume, joining, exact-shared identity/proof/freshness, and first-creator arbitration—is owned by `incremental-graph-journal-migrations.md` Part I (§§1–8), with lifecycle gating owned by `database-lifecycle.md`.
 
 ## Journal-aware migration
 
@@ -139,7 +137,7 @@ Journal-aware migration—including whole-history format rewriting, the semantic
 
 ## Reset
 
-Reset semantics—including raw-union repair, occurrence preservation/replacement, proof weakening, target freshness, and operation-specific own-writer-ahead behavior—are owned by `incremental-graph-journal-reset.md`, with the shared rollback classification owned by `incremental-graph-journal-lifecycle.md` §5.
+Reset semantics—including raw-union repair, occurrence preservation/replacement, proof weakening, target freshness, and operation-specific own-writer-ahead behavior—are owned by `incremental-graph-journal-reset.md`, with the shared rollback classification owned by `database-lifecycle.md` §5.
 
 ## History retention and scope
 

@@ -101,7 +101,7 @@ For compatible supported same-version causally closed prefix Journals, immutable
 
 ## Law 9: established local writer history does not roll back
 
-The established-writer rollback boundary is defined normatively by `incremental-graph-journal-lifecycle.md` §5; ordinary synchronization behavior is defined by `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is unsupported state.
+The established-writer rollback boundary is defined normatively by `database-lifecycle.md` §5; ordinary synchronization behavior is defined by `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is unsupported state.
 
 The proof obligation is that supported lifecycle transitions never decrease an established local writer head/allocator state and that operations obey those owned failure rules rather than inventing a same-writer rollback-recovery transition.
 
@@ -115,7 +115,7 @@ localWriter_after_restore == S.localWriter
 
 The writer head, allocator watermark, authority high-water, Journal, and projection are restored before new authoring.
 
-Continuation safety is defined in `incremental-graph-journal-lifecycle.md` §4.1. This law assumes that lifecycle condition for S; writer-coordinate and allocator reuse after restoration is valid only where that owner permits it.
+Continuation safety is defined in `database-lifecycle.md` §4.1. This law assumes that lifecycle condition for S; writer-coordinate and allocator reuse after restoration is valid only where that owner permits it.
 
 Definite absence alone permits fresh identity generation. Read/continuation-safety uncertainty must not fall back to fresh creation.
 
@@ -392,7 +392,7 @@ Let J1 be J0 plus those Pass 1 occurrence/presence repairs. Because Pass 1 autho
 
 Later passes repair proof/freshness using certificate-complete `proof(V,D)` barriers and Law 22.
 
-Reset's own-writer-ahead precondition is the one defined in `incremental-graph-journal-reset.md` and the lifecycle boundary in `incremental-graph-journal-lifecycle.md` §5.
+Reset's own-writer-ahead precondition is the one defined in `incremental-graph-journal-reset.md` and the lifecycle boundary in `database-lifecycle.md` §5.
 
 After reset:
 
@@ -406,7 +406,7 @@ relative to the history reset observed.
 
 Writer-prefix contiguity and WriterState legality are defined by `incremental-graph-journal-types.md` and `incremental-graph-journal-well-formedness.md`. The proof obligation is that every supported transition of an established writer preserves those invariants for its retained writer stream.
 
-Continuation-safe absent restoration is the explicit lifecycle exception: it may restore an older retained prefix and allocator watermark exactly under `incremental-graph-journal-lifecycle.md` §4.1 and `incremental-graph-journal-types.md` §NodeIdentifier uniqueness basis.
+Continuation-safe absent restoration is the explicit lifecycle exception: it may restore an older retained prefix and allocator watermark exactly under `database-lifecycle.md` §4.1 and `incremental-graph-journal-types.md` §NodeIdentifier uniqueness basis.
 
 ## Law 40: replay rebuild safety
 

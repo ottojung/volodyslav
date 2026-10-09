@@ -197,13 +197,28 @@ Conceptually a locally allocated NodeIdentifier combines:
 
 The database-fingerprint intent explicitly accepts the negligible probability of two independently-created hosts receiving the same fingerprint. Within one continuing fingerprint namespace, a local allocation index is never reallocated while the earlier allocation can exist in, or later enter, supported retained history.
 
-During normal operation and every supported transition of an existing database, `last_node_index` is monotone. Continuation-safe restoration of a completely absent installation is the deliberate exception: restoration may return to an older writer prefix and reconstruct the allocator watermark from that prefix. Indices allocated only in the discarded local suffix may be reallocated exactly when `incremental-graph-journal-lifecycle.md` §4.1 guarantees that the old suffix cannot later enter supported retained history.
+During normal operation and every supported transition of an existing database, `last_node_index` is monotone. Continuation-safe restoration of a completely absent installation is the deliberate exception: restoration may return to an older writer prefix and reconstruct the allocator watermark from that prefix. Indices allocated only in the discarded local suffix may be reallocated exactly when `database-lifecycle.md` §4.1 guarantees that the old suffix cannot later enter supported retained history.
 
 Therefore NodeIdentifiers are treated as unique across every set of histories that can coexist in or later join supported retained state, under the project's accepted fingerprint-collision assumption plus this allocation rule.
 
 This is a **supported-history uniqueness** invariant, not a "never physically issued twice" invariant over allocations confined to history that is permanently discarded by a continuation-safe lifecycle transition.
 
 Restoration and migration must reconstruct the allocator watermark required by the retained local-writer history before that writer may allocate again. Observable reuse of one physical identifier for incompatible semantic nodes within supported retained history remains corruption, but historical replay does not need a second independent uniqueness mechanism beyond the allocator/fingerprint invariant.
+
+### Persisted identifier form across the bootstrap and migration boundary
+
+The allocation rule above describes how a NodeIdentifier is **minted**. It does not by itself say which persisted identifier strings may appear inside retained Journal history, because a supported pre-Journal source replica was minted by whatever allocation rule its own era used, and that era's rule is not this rule.
+
+The two are reconciled by a single normative commitment: **a supported lifecycle transition transports a persisted NodeIdentifier verbatim and never re-mints, re-spells, normalizes, or renames it.** Consequently:
+
+1. The `(DatabaseFingerprint, local allocation index)` composition is the form of every identifier **this** writer mints, and it is the uniqueness argument for identifiers minted under it.
+2. A NodeIdentifier that reached a supported retained history by transport from a pre-Journal source replica carries the identifier text its source replica persisted. Its uniqueness within supported retained history rests on the allocation rule of the era that minted it, together with the guarantee that this project never rewrites it. Renaming it would destroy that guarantee, because the uniqueness argument belongs to the original minter.
+3. Because the identifier is transported verbatim, the record layer's NodeIdentifier field validation must accept the persisted forms of every supported source era and must reject only text that no supported era's allocation rule produces. Validation is a statement about the supported identifier domain, not a restatement of the current allocator's output shape.
+4. A source replica whose persisted identifier text is outside the supported identifier domain is not a supported source for that transition. It fails `JournalVersionCompatibilityError` before bootstrap or migration history is authored, per `incremental-graph-journal-migrations.md` §1.
+
+Clause 4 is the fail-closed consequence of clauses 2 and 3: an unjournallable identifier cannot be repaired at the record boundary, so the transition must reject the source rather than emit a target that materializes nodes no record can name.
+
+`incremental-graph-journal-migrations.md` owns which source replicas are supported for the bootstrap and migration transitions; this section owns the identity consequence of that choice.
 
 ## DeleteEvent
 
