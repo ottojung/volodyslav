@@ -91,15 +91,15 @@ fail hard instead of being silently accepted or replaced.
 - `scanFromFilesystem` imports the fingerprint as part of the replica's
   global sublevel.
 
-## Relationship to sync and merge
+## Relationship to sync and reset
 
 The fingerprint is included in rendered snapshots and may be staged from
 remote hosts during sync/reset. However:
 
-- **Normal sync merge**: A host's staged snapshot may contain a different
-  fingerprint. The local active replica keeps its own fingerprint; the
-  remote host fingerprint is not adopted. Merge does not modify the local
-  fingerprint.
+- **Normal synchronization**: A host's held source snapshot may contain a
+  different fingerprint. The local active replica keeps its own fingerprint;
+  the remote host fingerprint is not adopted. Synchronization does not
+  modify the local fingerprint.
 
 - **Reset/import into existing live DB**: The snapshot may contain a remote
   fingerprint. After import, the live database preserves its pre-import
