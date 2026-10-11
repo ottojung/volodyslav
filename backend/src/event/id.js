@@ -20,6 +20,7 @@ class EventIdClass {
         if (this.__brand !== undefined) {
             throw new Error("EventId is a nominal type and should not be instantiated directly");
         }
+        Object.freeze(this);
     }
 }
 
@@ -60,8 +61,18 @@ function toString(eventId) {
     return eventId.identifier;
 }
 
+/**
+ * Checks if the given object is an EventId instance.
+ * @param {unknown} object
+ * @returns {object is EventId}
+ */
+function isEventId(object) {
+    return object instanceof EventIdClass;
+}
+
 module.exports = {
     make,
     fromString,
     toString,
+    isEventId,
 };

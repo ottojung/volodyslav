@@ -11,12 +11,12 @@ The goal is confidence in both **correctness of the migration engine** and **rea
 
 ## Mental model: what a migration must guarantee
 
-At startup, the incremental graph compares:
+At startup, the Journal 3 lifecycle gate of `database-lifecycle.md` §8 compares:
 
-- the **stored version** in the active replica namespace, and
+- the **stored version** in the active committed pair, and
 - the **current application version**.
 
-If versions differ, migration runs in a staged replica and then swaps the active replica pointer.
+If the stored version is a supported older Journal version, the gate resolves and executes the canonical Journal-aware migration chain from that version to the running version, cutting over atomically; failure leaves the previous active pair selected.
 
 Conceptually, migration must preserve these invariants:
 
@@ -58,13 +58,13 @@ If this layer fails, migration is unsafe even if UI-level smoke tests pass. Thes
 
 File: `backend/tests/migration_fixture_populated_remote.test.js`.
 
-This is the test that performs migration against a **mock remote repository fixture** representing a prior version (`populated-lastversion`) and then verifies exact rendered output equivalence with the current expected fixture (`populated`).
+This is the test that performs Journal-aware migration against a **mock remote repository fixture** representing a prior version (`populated-lastversion`) and then verifies exact rendered output equivalence with the current expected fixture (`populated`).
 
 ### High-level approach
 
 1. Build capabilities (environment/logger/datetime stubs and forced app version).
 2. Seed a mocked incremental-database remote branch from the old-version fixture.
-3. Initialize interface and trigger synchronization (which runs migration when needed).
+3. Initialize the interface. Startup follows the Journal 3 lifecycle gate of `database-lifecycle.md` §8: the absent-state decision restores the fixture snapshot, and the migration gate resolves and executes the canonical Journal-aware migration chain from the fixture's stored version to the running version. The test fails unless a migration actually ran rather than leaving through the equal-version early exit.
 4. Clone the resulting remote branch.
 5. Compare its rendered database directory against the canonical “current populated” fixture.
 
@@ -80,15 +80,15 @@ It also remains reasonably robust because it compares canonical fixture director
 
 ---
 
-## Layer 3 — smoke test that exercises the migrated repository
+## Layer 3 — smoke test that exercises the populated Journal repository
 
 File: `backend/tests/populated_incremental_database_remote_smoke.test.js`.
 
-This is the behavioral smoke test over a realistic populated fixture. It ensures the repository is not just structurally migrated, but also **operationally healthy** through the public interface.
+This is the behavioral smoke test over a realistic populated fixture. It ensures the repository is not just structurally sound, but also **operationally healthy** through the public interface.
 
 ### What this smoke test covers
 
-After bootstrapping from fixture-backed remote state, it exercises:
+The fixture remote is seeded from the `populated` fixture and the local live database is deleted, so startup exercises the Journal 3 lifecycle gate of `database-lifecycle.md`: the absent-state decision restores the fixture snapshot through the receiver-less restore path, and the restored replica is already at the current version so no bootstrap or migration runs. Over the restored database it exercises:
 
 - initialization and synchronization lifecycle,
 - core reads (`getAllEvents`, `getEvent`, `getConfig`),
@@ -97,6 +97,8 @@ After bootstrapping from fixture-backed remote state, it exercises:
 - mutation flow (`update` with new events),
 - follow-up reads and contextual queries,
 - post-mutation synchronize durability.
+
+A second describe block then checks the fixture's place in the Journal 3 startup lifecycle: the populated fixture is a Journal replica, so startup does not bootstrap it again, and the fixture's persisted graph is one the canonical-bootstrap creator can stage and resume with identifiers transported unchanged.
 
 ### Why this smoke test is essential
 

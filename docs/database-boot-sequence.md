@@ -2,30 +2,33 @@
 
 ## 1) Purpose
 
-Define a deterministic, correctness-first startup protocol for IncrementalGraph database initialization.
+Define a deterministic, correctness-first startup protocol for IncrementalGraph database initialization under the Journal model.
 
 The protocol is intentionally fail-fast: it prefers crashing on ambiguous or structurally invalid state over silently starting from a potentially wrong state.
 
 This document specifies **startup behavior only**. It does not specify steady-state synchronization, runtime merge behavior outside boot, or corruption-repair workflows.
 
+The lifecycle rules this protocol implements are normative in `database-lifecycle.md`.
+
 ---
 
 ## 2) Data model and storage layers
 
-Volodyslav uses two coordinated stores for generators data:
+Volodyslav persists IncrementalGraph state in one live database:
 
-1. **Live LevelDB (authoritative at runtime)**
+1. **Live database (authoritative at runtime)**
    - Path: `<workingDirectory>/generators-leveldb`
    - Root metadata includes:
-     - `_meta/current_replica`
-     - `_meta/current_replica`
-   - Replicated graph namespaces: `x` and `y`.
+     - `global/version` — the one persisted format selector for the active replica
+     - `global/graph_scheme` — the active graph scheme string
+   - Journal sublevels hold the retained immutable record history.
+   - Graph sublevels hold the materialized projection `project(Journal)`.
 
-2. **Git-tracked rendered snapshot (synchronization/checkpoint projection)**
-   - Path: `<workingDirectory>/generators-database/rendered`
-   - Contains filesystem render of active data (`r/`) and metadata (`_meta/`).
+2. **Synchronization transport (checkpoint projection)**
+   - The configured synchronization repository carries stable database snapshots.
+   - A snapshot is a synchronization dependency, not the runtime source of truth.
 
-The boot protocol decides how the live LevelDB is seeded/opened; the snapshot repository is a synchronization dependency, not the runtime source of truth.
+The boot protocol decides how the live database is opened, restored, or created; the transport is a synchronization dependency, not the runtime source of truth.
 
 ---
 
@@ -33,24 +36,23 @@ The boot protocol decides how the live LevelDB is seeded/opened; the snapshot re
 
 ### 3.1 Environment preconditions
 
-1. `VOLODYSLAV_HOSTNAME` is present and valid before startup proceeds.
+1. Required environment configuration is present and valid before startup proceeds.
 2. At most one process executes this boot sequence against the same working directory at a time.
 
 ### 3.2 Trust assumptions about inputs
 
-1. If the live DB directory exists at boot entry, the protocol assumes it remains structurally readable and non-malformed for the duration of that boot attempt.
-2. If `<hostname>-main` exists remotely, the protocol assumes its rendered data is structurally well-formed for the reset/scan/merge path.
+1. If the live database exists at boot entry, the protocol assumes it remains structurally readable and non-malformed for the duration of that boot attempt.
+2. Participating installations are non-adversarial but may be stale, interrupted, offline, delayed, or incompatible.
 
 ### 3.3 Terminology used by this protocol
 
-1. **Live DB exists**: directory existence at `<workingDirectory>/generators-leveldb` only.
-2. **Fresh DB**: a newly initialized DB where active replica version metadata is absent.
-3. **Current version**: the application version expected by the running build.
-4. **Migration checkpoint**: the `checkpointSession`-based write sequence (via `checkpointMigration`) that prepares migrated replica state and records pre/post rendered snapshots.
-5. **Replica cutover**: the committed switch of `_meta/current_replica` from old replica to migrated replica.
-6. **Fatal startup crash**: startup abort where IncrementalGraph is not exposed.
-7. **Structural validation**: boot-time checks for `_meta/current_replica == x or y` and `_meta/current_replica ∈ {x,y}`.
-8. **Effective version**: the version metadata associated with the active replica after startup completes.
+1. **Live database exists**: a supported local database is present at the runtime storage path.
+2. **Absent**: no supported local database/writer identity is present locally, including after complete loss of the local database.
+3. **Current version**: the database version expected by the running build.
+4. **Committed pair**: the atomically published `(retained journal, materialized projection)` selected by `global/version`.
+5. **Fatal startup crash**: startup abort where IncrementalGraph is not exposed.
+6. **Routine open**: the bounded `O(1 + G)` open of an already-current supported database, which does not replay retained history.
+7. **Effective version**: the version metadata associated with the active pair after startup completes.
 
 ### 3.4 Out of scope
 
@@ -63,19 +65,18 @@ The boot protocol decides how the live LevelDB is seeded/opened; the snapshot re
 
 If startup completes successfully, all of the following hold:
 
-1. A live LevelDB is present and openable at the runtime storage path.
-2. Root current replica pointer is valid (`x or y`).
-3. Replica pointer is valid (`x` or `y`).
-4. Active replica version is current application version (either already current or migrated during startup).
-5. IncrementalGraph is exposed only after the above conditions are satisfied.
+1. A live database is present and openable at the runtime storage path.
+2. The active committed pair is valid and identifies current version/schema.
+3. Active database version is current application version (either already current, restored, bootstrapped, or migrated during startup).
+4. IncrementalGraph is exposed only after the above conditions are satisfied.
 
 ---
 
 ## 5) Conceptual phases
 
-1. **Bootstrap source selection** (only if live DB directory is missing).
-2. **Open + structural validation** (current replica pointer + replica pointer).
-3. **Version check + migration** (if version mismatch).
+1. **Existence decision** (absent-state decision only if the local database is completely absent).
+2. **Open + structural validation** (committed-pair metadata).
+3. **Migration/bootstrap gate** (if version/schema require a transition).
 4. **Expose initialized graph**.
 
 Each phase addresses one class of risk and does not mix responsibilities.
@@ -86,85 +87,96 @@ Each phase addresses one class of risk and does not mix responsibilities.
 
 ```mermaid
 flowchart TD
-    A[Startup] --> B{Live DB directory exists?}
-    B -->|Yes| C[Open RootDatabase]
-    B -->|No| D[Try sync reset_to_hostname=current hostname]
-    D --> E{Hostname branch exists remotely?}
-    E -->|Yes| C
-    E -->|No| F[Fallback: normal sync from empty local DB]
-    F --> C
+    A[Startup] --> B{Supported local database present?}
+    B -->|No| C[Query InstallationRecoverySource]
+    C --> D{Source result}
+    D -->|Exists(ContinuationSafeSnapshot)| E[Receiver-less restore]
+    D -->|DefinitelyAbsent| F[Fresh creation]
+    D -->|IndeterminateOrError| X[Crash]
+    E --> G[Open + structural validation]
+    F --> G
+    B -->|Yes| G
 
-    C --> G{_meta/current_replica == x or y?}
-    G -->|No| X[Crash]
-    G -->|Yes| H{_meta/current_replica in x,y?}
+    G --> H{Committed-pair metadata valid?}
     H -->|No| X
-    H -->|Yes| I[Check version and run migration if needed]
+    H -->|Yes| I[Migration/bootstrap gate]
 
-    I --> J{Version already current?}
-    J -->|Yes| K[No migration]
-    J -->|No| L[Run migration checkpoint + replica cutover]
-
-    K --> M[Expose IncrementalGraph]
+    I --> J{Stored version}
+    J -->|Current| M[Expose IncrementalGraph]
+    J -->|Supported older Journal version| L[Journal-aware migration]
+    J -->|Pre-Journal| N[Canonical bootstrap]
+    J -->|Unsupported / no chain| X
     L --> M
+    N --> M
 ```
 
 ---
 
 ## 7) Detailed protocol
 
-### 7.1 Bootstrap when live DB is missing
+### 7.1 Absent-state decision when the live database is missing
 
-Trigger: `<workingDirectory>/generators-leveldb` does not exist.
+Trigger: no supported local database is present at the runtime storage path.
+
+This decision happens **before generating a new DatabaseFingerprint**.
 
 Ordered behavior:
 
-1. Read current hostname (`VOLODYSLAV_HOSTNAME`).
-2. Attempt sync with `resetToHostname=<hostname>`.
-3. If reset fails specifically because `<hostname>-main` does not exist remotely:
-   - run normal sync (no reset) from empty local DB.
-4. Any other sync/reset failure is fatal.
+1. Query the transport-neutral `InstallationRecoverySource` for this installation.
+2. The source answers exactly one of:
+   - **`Exists(ContinuationSafeSnapshot)`** — open/hold that source's stable database snapshot and restore it through the receiver-less restore path (`database-lifecycle.md` §4.2). The held snapshot must establish a continuation-safe head before this installation may author another record under that writer.
+   - **`DefinitelyAbsent`** — fresh creation is allowed. Generate one new durable `DatabaseFingerprint`, start at local writer frontier zero, retain no foreign history, materialize an empty graph, and record current version/schema metadata.
+   - **`IndeterminateOrError`** — startup fails. Failure to query or obtain known synchronized state MUST NOT fall back to fresh creation.
+
+3. Any query/read failure or indeterminate result is fatal.
+
+There is no `resetToHostname` attempt and no fallback to normal synchronization from an empty local database. An existing but damaged, truncated, or older local database does not enter this path; it is corrupted/unsupported.
 
 ### 7.2 Open + structural validation
 
 On open, enforce:
 
-1. Existing DB current replica pointer must be exactly `x or y`; otherwise crash.
-2. Replica pointer must exist and be one of `x|y`; otherwise crash.
-3. Fresh DB initialization writes required root metadata.
+1. The active committed-pair metadata (`global/version`, `global/graph_scheme`) must be present and valid; otherwise crash.
+2. Routine open of an already-current supported database performs only the bounded checks of `database-lifecycle.md` §6: current version/schema compatibility, constant-size/current-state metadata, local writer head, allocator watermark, authority high-water, and current graph/index consistency work bounded by G. It does not replay retained history.
+3. Missing or inconsistent committed-pair metadata causes startup failure or an explicit supported maintenance/rebuild transition; it does not trigger a silent full-history routine-open scan.
 
-### 7.3 Version check + migration
+### 7.3 Migration/bootstrap gate
 
-After structural validation:
+After structural validation, follow the gate of `database-lifecycle.md` §8:
 
-1. Read active replica version metadata.
-2. If no version is recorded (fresh DB), record current version.
-3. If version equals current version, continue.
-4. If version differs, run migration checkpoint (via `checkpointMigration`) and then perform replica cutover.
+1. Read stored database version.
+2. If the stored version matches the current Journal version, continue.
+3. If the stored version is a supported older Journal version, resolve and execute the canonical Journal migration chain from that stored version to the running version.
+4. If the stored version is an older Journal version without a complete canonical chain to the running version, fail `JournalVersionCompatibilityError`.
+5. If the stored version is unsupported, fail.
+6. If the state is a supported pre-Journal database, run the canonical-bootstrap-source decision (`database-lifecycle.md` §8.2): the canonical bootstrap artifact must be selected and published before any local Journal cutover or ordinary Journal authoring. An unresolved publication outcome leaves the supported pre-Journal database selected and startup fails before graph APIs are exposed.
+7. Absence of stored version is treated as fresh only under genuine fresh-creation rules; it does not erase structured existing state whose metadata is malformed/missing.
 
 ### 7.4 Exposure boundary
 
-IncrementalGraph becomes available only after bootstrap/open/validation/migration complete successfully.
+IncrementalGraph becomes available only after the absent-state decision (if any), open/structural validation, and the migration/bootstrap gate complete successfully.
 
 ---
 
 ## 8) Failure semantics
 
-1. **Format mismatch** (`_meta/current_replica != x or y`) -> fatal startup crash.
-2. **Invalid replica pointer** -> fatal startup crash.
-3. **Unexpected reset/sync failure** (non-"hostname branch absent") -> fatal startup crash.
-4. **Migration failure** -> fatal startup crash.
+1. **Indeterminate or failed recovery-source query** -> fatal startup crash; no fresh fallback.
+2. **Invalid committed-pair metadata** -> fatal startup crash or explicit supported maintenance transition.
+3. **Unsupported version or incomplete migration chain** -> fatal startup crash (`JournalVersionCompatibilityError`).
+4. **Unresolved canonical bootstrap publication** -> fatal startup crash; the supported pre-Journal database remains selected.
+5. **Migration failure** -> fatal startup crash; the previous active pair remains selected.
 
 ### Scope of consistency claim on migration failure
 
-This document claims consistency at the **live RootDatabase boundary**, specifically:
+This document claims consistency at the **live database boundary**, specifically:
 
-1. active replica pointer (`_meta/current_replica`),
-2. committed contents of the active replica namespace, and
+1. the active committed-pair metadata (`global/version`),
+2. committed contents of the active Journal/projection pair, and
 3. version metadata used for subsequent boot decisions.
 
 Migration/cutover guarantees are **restart-safety guarantees** around named cut-points, not a blanket claim of atomic rollback for every external side effect.
 
-The following are outside this guarantee boundary unless explicitly covered by the same checkpoint/cutover path:
+The following are outside this guarantee boundary unless explicitly covered by the same cutover path:
 
 - rendered snapshot refresh work,
 - git-visible checkpoint/update side effects,
@@ -176,21 +188,24 @@ The following are outside this guarantee boundary unless explicitly covered by t
 
 This protocol is restart-safe by re-running deterministic checks from the beginning.
 
-1. **Crash after reset-to-hostname success, before DB open**
-   - Next start sees live DB present and proceeds to open/validate/version-check.
+1. **Crash after receiver-less restore success, before DB open**
+    - Next start sees the live database present and proceeds to open/validate/migrate.
 
-2. **Crash after fallback normal sync success, before DB open**
-   - Next start follows same path as above (open/validate/version-check).
+2. **Crash after fresh creation success, before DB open**
+    - Next start follows the same path as above (open/validate/migrate).
 
-3. **Crash during migration checkpoint before replica cutover commit**
-   - Active replica pointer remains at old replica; next start retries migration path.
+3. **Crash during Journal-aware migration before cutover commit**
+    - The active pair remains the previous one; next start retries the migration path.
 
-4. **Crash after replica cutover commit, before follow-up side effects**
-   - New replica is active on next start; startup continues from structural/version checks.
-   - Follow-up side effects in this context are limited to rendered snapshot refresh, git-visible checkpoint updates, and observability emissions.
+4. **Crash after cutover commit, before follow-up side effects**
+    - The new pair is active on next start; startup continues from structural/version checks.
+    - Follow-up side effects in this context are limited to rendered snapshot refresh, git-visible checkpoint updates, and observability emissions.
 
 5. **Crash after successful migration, before interface exposure**
-   - Next start re-checks state; version already current, no re-migration needed.
+    - Next start re-checks state; version already current, no re-migration needed.
+
+6. **Crash during canonical bootstrap publication**
+    - The supported pre-Journal database remains selected; next start re-queries/resolves the canonical artifact through the owned procedure before another publication attempt or cutover.
 
 ---
 
@@ -198,16 +213,14 @@ This protocol is restart-safe by re-running deterministic checks from the beginn
 
 A compliant implementation must emit enough structured log information to reconstruct these facts for every startup attempt:
 
-1. Whether live DB directory existed at startup.
-2. Chosen bootstrap path (none/reset/fallback).
-3. Whether reset-to-hostname was attempted.
-4. Whether fallback was taken and exact reason.
-5. Detected current replica pointer result.
-6. Detected replica pointer result.
-7. Detected active version and current app version.
-8. Whether migration ran.
-9. Whether cutover was committed and the final active replica/effective version.
-10. Final startup result (success/fatal) and error class when failed.
+1. Whether a supported local database existed at startup.
+2. Chosen bootstrap path (none/restore/fresh).
+3. The recovery-source query result (exists/definitely-absent/indeterminate-or-error).
+4. Detected committed-pair metadata result.
+5. Detected stored version and current app version.
+6. Whether the migration/bootstrap gate ran and which transition it selected.
+7. Whether a cutover was committed and the final active pair/effective version.
+8. Final startup result (success/fatal) and error class when failed.
 
 ---
 
@@ -215,20 +228,22 @@ A compliant implementation must emit enough structured log information to recons
 
 | ID | Scenario | Expected result |
 |---|---|---|
-| V1 | Live DB exists, valid, current version | Startup succeeds without migration |
-| V2 | Live DB exists, valid, old version | Migration runs, then startup succeeds |
-| V2b | Fresh DB (no version recorded yet) | Current version is recorded without migration, then startup succeeds |
-| V3 | Live DB missing, hostname branch exists | Reset bootstrap path used, then open/validate/migrate as needed |
-| V4 | Live DB missing, hostname branch absent | Fallback normal sync path used, then open/validate/migrate as needed |
-| V5 | Live DB exists, format mismatch | Fatal crash before graph exposure |
-| V6 | Live DB exists, invalid replica pointer | Fatal crash before graph exposure |
-| V7 | Live DB missing, reset path fails for unexpected reason | Fatal crash |
-| V7b | Live DB exists but malformed (assumption violation) | Fatal crash path is explicit; classification recorded as assumption violation |
-| V7c | Hostname branch exists but rendered data malformed (assumption violation) | Fatal crash path is explicit; classification recorded as assumption violation |
-| V8 | Migration fails before cutover commit | Fatal crash; previous active replica remains active |
-| V9 | Migration fails after cutover commit, before follow-up side effects | Fatal crash; new replica remains active on restart |
+| V1 | Live database exists, valid, current version | Startup succeeds without migration |
+| V2 | Live database exists, valid, old Journal version | Journal-aware migration runs, then startup succeeds |
+| V2b | Fresh database (no version recorded yet) | Current version is recorded without migration, then startup succeeds |
+| V3 | Live database missing, recovery source returns Exists(ContinuationSafeSnapshot) | Receiver-less restore path used, then open/validate/migrate as needed |
+| V4 | Live database missing, recovery source returns DefinitelyAbsent | Fresh creation path used, then open/validate as needed |
+| V5 | Live database exists, committed-pair metadata invalid | Fatal crash before graph exposure |
+| V6 | Live database missing, recovery source returns IndeterminateOrError | Fatal crash; no fresh fallback |
+| V7 | Live database exists, unsupported version | Fatal crash (`JournalVersionCompatibilityError`) |
+| V7b | Live database exists but malformed (assumption violation) | Fatal crash path is explicit; classification recorded as assumption violation |
+| V7c | Recovery source snapshot malformed (assumption violation) | Fatal crash path is explicit; classification recorded as assumption violation |
+| V8 | Migration fails before cutover commit | Fatal crash; previous active pair remains active |
+| V9 | Migration fails after cutover commit, before follow-up side effects | Fatal crash; new pair remains active on restart |
 | V9b | Migration succeeds but rendered/git follow-up fails | Startup result matches restart-safe boundary; next boot deterministically re-evaluates |
 | V10 | Repeated restarts at each crash cut-point | Deterministic re-entry into protocol (no silent success from wrong state) |
+| V11 | Pre-Journal database, canonical bootstrap artifact exists | Creator-resume or join completes before graph exposure |
+| V12 | Pre-Journal database, canonical bootstrap publication indeterminate | Fatal crash; pre-Journal database remains selected |
 
 ---
 
@@ -236,7 +251,7 @@ A compliant implementation must emit enough structured log information to recons
 
 1. Prefers startup refusal over compatibility heuristics when structural contracts are violated.
 2. Prefers a narrow, auditable decision tree over flexible recovery logic.
-3. Separates bootstrap concerns from structural validation and migration/cutover boundaries.
+3. Separates the absent-state decision from structural validation and the migration/bootstrap gate.
 4. Accepts explicit trust assumptions on local/remote storage shape to keep boot logic simple.
 5. Intentionally does not attempt self-healing from malformed inputs.
 
@@ -247,17 +262,16 @@ A compliant implementation must emit enough structured log information to recons
 These touchpoints are informative and do not define protocol semantics.
 
 - `backend/src/generators/interface/lifecycle.js` (startup orchestration boundary)
-- `backend/src/generators/incremental_graph/database/root_database.js` (format/pointer checks)
+- `backend/src/generators/incremental_graph/journal_bootstrap_startup.js` (bootstrap gate routing)
+- `backend/src/generators/incremental_graph/journal_bootstrap_gate.js` (migration/bootstrap gate)
 - `backend/src/generators/incremental_graph/migration_runner.js` (version/migration behavior)
-- `backend/src/generators/incremental_graph/database/gitstore.js` (migration snapshot/checkpoint integration)
-- `backend/src/generators/incremental_graph/database/synchronize.js` (bootstrap sync behaviors)
+- `backend/src/generators/incremental_graph/database/synchronize.js` (synchronization behaviors)
 
 ---
 
 ## 14) Non-goals
 
-1. Supporting legacy current replica pointers (for example `invalid value`).
-2. Soft recovery from format mismatch.
+1. Supporting legacy committed-pair metadata that does not identify a valid active pair.
+2. Soft recovery from structural-contract violations.
 3. General corruption-repair workflow for malformed local/remote data.
-4. Expanding bootstrap fallback beyond the single explicit missing-hostname-branch condition.
-
+4. Expanding bootstrap fallback beyond the explicit `InstallationRecoverySource` answers.
