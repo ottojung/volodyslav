@@ -217,6 +217,7 @@ function isUnrecognizedFieldError(object) {
 }
 
 module.exports = {
+    TryDeserializeError,
     makeMissingFieldError,
     makeInvalidTypeError,
     makeInvalidValueError,

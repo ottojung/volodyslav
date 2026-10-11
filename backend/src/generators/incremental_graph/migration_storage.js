@@ -11,7 +11,7 @@ const { MigrationStorageClass } = require("./migration_storage_class");
 /** @typedef {import('./database/types').NodeIdentifier} NodeIdentifier */
 
 /** @typedef {import('./migration_decisions').KeepDecision} KeepDecision */
-/** @typedef {import('./migration_decisions').OverrideDecision} OverrideDecision */
+/** @typedef {import('./migration_decisions').ReplaceDecision} ReplaceDecision */
 /** @typedef {import('./migration_decisions').InvalidateDecision} InvalidateDecision */
 /** @typedef {import('./migration_decisions').DeleteDecision} DeleteDecision */
 /** @typedef {import('./migration_decisions').CreatedFreshness} CreatedFreshness */
@@ -41,16 +41,18 @@ const { MigrationStorageClass } = require("./migration_storage_class");
  * @param {import('./database/graph_scheme').GraphScheme} oldGraphScheme
  * @param {import('./database/graph_scheme').GraphScheme} newGraphScheme
  * @param {import('./database/identifier_lookup').IdentifierLookup} oldLookup
+ * @param {import('./migration_target_keys').TargetKeyView} targetKeyView - The source
+ *   materialization in target NodeKey representation, which is the key space the
+ *   callback's decisions are addressed in.
  * @returns {MigrationStorageClass}
  */
-function makeMigrationStorage(prevStorage, newHeadIndex, materializedNodes, fingerprint, lastNodeIndex, oldGraphScheme, newGraphScheme, oldLookup) {
-    if (oldGraphScheme === undefined || newGraphScheme === undefined || oldLookup === undefined) {
+function makeMigrationStorage(prevStorage, newHeadIndex, materializedNodes, fingerprint, lastNodeIndex, oldGraphScheme, newGraphScheme, oldLookup, targetKeyView) {
+    if (oldGraphScheme === undefined || newGraphScheme === undefined || oldLookup === undefined || targetKeyView === undefined) {
         throw new Error(
-            "makeMigrationStorage: oldGraphScheme, newGraphScheme, and oldLookup are required. " +
-            "Test callers must build real graph schemes and identifier lookups."
+            "makeMigrationStorage: oldGraphScheme, newGraphScheme, oldLookup and the target key view are required. "
         );
     }
-    return new MigrationStorageClass(prevStorage, newHeadIndex, materializedNodes, fingerprint, lastNodeIndex, oldGraphScheme, newGraphScheme, oldLookup);
+    return new MigrationStorageClass(prevStorage, newHeadIndex, materializedNodes, fingerprint, lastNodeIndex, oldGraphScheme, newGraphScheme, oldLookup, targetKeyView);
 }
 
 /**
