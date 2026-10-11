@@ -510,19 +510,19 @@ interface IncrementalGraph {
 **REQ-IFACE-07 (getModificationTime):** `getModificationTime(nodeName, bindings?)` MUST return the persisted `modifiedAt` for the currently materialized node instance. MUST throw `MissingTimestampError` if the node is not materialized or if no timestamp record exists for it.
 
 **REQ-IFACE-08 (Timestamp Invariants):**
-* `getCreationTime(N, B)` and `getModificationTime(N, B)` are persisted physical timestamps; no ordering relation between them is required.
+* `getCreationTime(N, B)` and `getModificationTime(N, B)` are persisted physical timestamps; no ordering relation between them is required. Clock skew, backward wall-clock movement, or recomputation after adopting a future-skewed remote `createdAt` may legitimately produce `createdAt > modifiedAt`.
 * Initial computation with no existing timestamp record sets both `createdAt` and `modifiedAt` to the current time. Migration `create` does the same.
 * A changed computor result for an already-materialized node preserves its existing `createdAt` and sets `modifiedAt` to the current time. Successive `modifiedAt` values are not required to increase numerically; local wall-clock movement or an earlier synchronization that copied a future-skewed timestamp can make a later value change record a numerically earlier `modifiedAt`.
-* Synchronization `take` copies the source node's persisted `createdAt` and `modifiedAt` pair. Synchronization `keep` preserves the existing pair. Synchronization MUST NOT substitute merge execution time or another manufactured timestamp.
+* Synchronization imports foreign records unchanged, preserving their persisted `createdAt` and `modifiedAt` pair. Synchronization MUST NOT substitute merge execution time or another manufactured timestamp.
 * Reset imports the source snapshot's persisted timestamp records. It MUST NOT substitute reset execution time or another manufactured timestamp.
-* Migration `keep`, `override`, and `invalidate` preserve the existing timestamp pair. Migration `create` initializes both timestamps to the current time.
+* Migration `keep` and `invalidate` preserve the existing timestamp pair. Migration `replace` preserves the existing `createdAt` and sets `modifiedAt` to the migration publication/finalization physical time. Migration `create` initializes both timestamps to the current time.
 * `modifiedAt` MUST NOT change when:
   * a node becomes `potentially-outdated` (invalidation);
   * invalidation propagates to dependent nodes;
   * validity flags are added, removed, transported, or rebuilt;
   * a computor returns `Unchanged`;
-  * synchronization keeps an existing value (the `keep` decision);
-  * migration uses `keep`, `override`, or `invalidate`;
+  * synchronization imports or retains an existing occurrence;
+  * migration uses `keep` or `invalidate`;
   * identifier reconciliation occurs;
   * dependency identifiers are relowered;
   * a cached value is deleted because the old value is not valid for the final dependency structure;
