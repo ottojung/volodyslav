@@ -442,6 +442,32 @@ describe("synchronizeRetainedJournal, acquiring foreign-writer suffixes", () => 
         expect(isJournalWriterBehindError(result.error)).toBe(true);
     });
 
+    test("a source ahead for the receiver's own writer is refused when the receiver retains no own-writer record", () => {
+        // The receiver has no record for its own writer, so `retainedLengthOf`
+        // reports `undefined`. That is length zero, not "unknown", and a source
+        // which retains a longer prefix of the receiver's own writer is still
+        // unsupported state rather than a peer prefix to import.
+        const source = materialize({
+            writer: WRITER_LOCAL,
+            sequence: "1",
+            node: NODE_A,
+            context: [],
+            basis: [],
+        });
+
+        const result = synchronize({
+            receiver: [],
+            source,
+            authorityPhysical: 400,
+        });
+
+        expect("outcome" in result).toBe(false);
+        if ("outcome" in result) {
+            return;
+        }
+        expect(isJournalWriterBehindError(result.error)).toBe(true);
+    });
+
     test("a source which declares a different database version is refused before anything is admitted", () => {
         const result = synchronize({
             receiver: receiverChain(),

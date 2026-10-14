@@ -282,15 +282,19 @@ function planForeignSuffixImport(plan) {
 
     const sourceLocalLength = source.retainedLengthOf(localWriter);
     if (sourceLocalLength !== undefined) {
+        // A receiver with no record for its own writer retains length zero, not
+        // "unknown": `retainedLengthOf` reports `undefined` for a writer with no
+        // records, so the comparison must treat that as zero or a source ahead of
+        // an empty own writer would be silently accepted.
         const receiverLocalLength = receiver.retainedLengthOf(localWriter);
-        if (
-            receiverLocalLength !== undefined &&
-            compareJournalSequence(sourceLocalLength, receiverLocalLength) > 0
-        ) {
+        const receiverAfter = receiverLocalLength === undefined
+            ? ZERO_JOURNAL_SEQUENCE
+            : receiverLocalLength;
+        if (compareJournalSequence(sourceLocalLength, receiverAfter) > 0) {
             return {
                 error: makeJournalWriterBehindError(
                     journalAuthorToString(localWriter),
-                    journalSequenceToString(receiverLocalLength),
+                    journalSequenceToString(receiverAfter),
                     journalSequenceToString(sourceLocalLength)
                 ),
             };
