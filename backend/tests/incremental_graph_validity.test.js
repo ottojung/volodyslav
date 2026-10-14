@@ -12,6 +12,7 @@ const {
 const {
     GRAPH_SCHEME_KEY,
     makeEmptyIdentifierLookup,
+    makeIdentifierLookup,
     cloneIdentifierLookup,
     nodeIdToKeyFromLookup,
     nodeKeyToIdFromLookup,
@@ -1111,6 +1112,68 @@ describe("Incremental graph validity", () => {
             await expect(
                 prepareIncrementalGraphStorage(existingDb, nodeDefs)
             ).rejects.toThrow(/graph_scheme exists but version is missing/);
+        });
+
+        it("materialized node without version and graph_scheme fails closed instead of re-initializing", async () => {
+            const { nodeDefs } = createChainGraph(
+                () => (textComputedValue("src")),
+                () => (textComputedValue("mid")),
+                () => (textComputedValue("dep"))
+            );
+            const existingDb = new InMemoryDatabase();
+            const storage = existingDb.getSchemaStorage();
+            await storage.values.put(
+                nodeIdentifierFromString("1-abcdefghi"),
+                textComputedValue("stored")
+            );
+
+            await expect(
+                prepareIncrementalGraphStorage(existingDb, nodeDefs)
+            ).rejects.toThrow(/refusing to re-initialize an existing replica as fresh/);
+
+            // The existing state was not erased: neither key was rewritten.
+            expect(await storage.global.get("version")).toBeUndefined();
+            expect(await storage.global.get(GRAPH_SCHEME_KEY)).toBeUndefined();
+        });
+
+        it("retained Journal record without version and graph_scheme fails closed instead of re-initializing", async () => {
+            const { nodeDefs } = createChainGraph(
+                () => (textComputedValue("src")),
+                () => (textComputedValue("mid")),
+                () => (textComputedValue("dep"))
+            );
+            const existingDb = new InMemoryDatabase();
+            const storage = existingDb.getSchemaStorage();
+            await storage.journal.put("writer-a/1", "retained-journal-record");
+
+            await expect(
+                prepareIncrementalGraphStorage(existingDb, nodeDefs)
+            ).rejects.toThrow(/refusing to re-initialize an existing replica as fresh/);
+
+            expect(await storage.global.get("version")).toBeUndefined();
+            expect(await storage.global.get(GRAPH_SCHEME_KEY)).toBeUndefined();
+        });
+
+        it("non-empty identifier lookup without version and graph_scheme fails closed instead of re-initializing", async () => {
+            const { nodeDefs } = createChainGraph(
+                () => (textComputedValue("src")),
+                () => (textComputedValue("mid")),
+                () => (textComputedValue("dep"))
+            );
+            const existingDb = new InMemoryDatabase();
+            existingDb.replaceActiveIdentifierLookup(
+                makeIdentifierLookup([
+                    [nodeIdentifierFromString("1-abcdefghi"), '{"head":"source","args":[]}'],
+                ])
+            );
+            const storage = existingDb.getSchemaStorage();
+
+            await expect(
+                prepareIncrementalGraphStorage(existingDb, nodeDefs)
+            ).rejects.toThrow(/refusing to re-initialize an existing replica as fresh/);
+
+            expect(await storage.global.get("version")).toBeUndefined();
+            expect(await storage.global.get(GRAPH_SCHEME_KEY)).toBeUndefined();
         });
 
         it("malformed graph_scheme JSON fails as graph scheme metadata error", async () => {
