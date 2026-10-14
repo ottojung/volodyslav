@@ -26,6 +26,9 @@ const {
     holidayActivity,
     migrationCallback,
     createIncrementalGraph,
+    makeCanonicalMigrationChain,
+    makeIdentityJournalFormatCodec,
+    isJournalVersionCompatibilityError,
     LIVE_DATABASE_WORKING_PATH,
     CHECKPOINT_WORKING_PATH,
     syncJournalReceiverToSource,
@@ -230,7 +233,7 @@ async function internalInitCheckpointRepoForFallback(capabilities) {
 
 /**
  * @param {InterfaceLifecycleAccess} interfaceInstance
- * @param {(capabilities: GeneratorsCapabilities, database: RootDatabase, nodeDefs: Array<NodeDef>, callback: (storage: MigrationStorage) => Promise<void>) => Promise<RootDatabase>} runMigrationProcedure
+ * @param {(capabilities: GeneratorsCapabilities, database: RootDatabase, nodeDefs: Array<NodeDef>, callback: (storage: MigrationStorage) => Promise<void>, codec?: import('../incremental_graph/migration_codec').JournalFormatCodec, chain?: import('../incremental_graph/journal_migration_chain').CanonicalMigrationChain) => Promise<RootDatabase>} runMigrationProcedure
  * @returns {Promise<IncrementalGraph>}
  */
 async function internalEnsureInitializedWithMigration(
@@ -257,11 +260,39 @@ async function internalEnsureInitializedWithMigration(
     );
     try {
         capabilities.logger.logDebug({}, 'Initialization: running migration gate before graph construction');
+        // `incremental-graph-journal-migrations.md` §9b: startup resolves the release's
+        // canonical migration chain from the stored version to the running version and
+        // hands it to the migration procedure. The release lineage today carries exactly
+        // one Journal version, so the canonical chain from a stored version to the running
+        // version is legitimately the single direct identity edge; building it here —
+        // rather than letting the migration runner synthesize it — keeps startup routed
+        // through the canonical chain registry, so a future second version must declare
+        // its real lineage at this call site instead of silently running the identity
+        // edge. The runner's equal-version and no-stored-version early returns run
+        // before chain resolution, so the empty chain supplied for those states is
+        // never resolved.
+        const storedVersion = await database.getGlobalVersion();
+        const currentVersion = database.getVersion();
+        const canonicalChain = makeCanonicalMigrationChain(
+            storedVersion === undefined || storedVersion === currentVersion
+                ? []
+                : [{
+                    sourceVersion: storedVersion,
+                    targetVersion: currentVersion,
+                    codec: makeIdentityJournalFormatCodec(),
+                    callback: migrationCallback(capabilities),
+                }]
+        );
+        if (isJournalVersionCompatibilityError(canonicalChain)) {
+            throw canonicalChain;
+        }
         database = await runMigrationProcedure(
             capabilities,
             database,
             nodeDefs,
             migrationCallback(capabilities),
+            undefined,
+            canonicalChain,
         );
         capabilities.logger.logDebug({}, 'Initialization: migration gate completed, running canonical bootstrap gate');
         await internalCanonicalBootstrapGate(capabilities, database, nodeDefs);
