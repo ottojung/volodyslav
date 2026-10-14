@@ -303,9 +303,13 @@ function planForeignSuffixImport(plan) {
     if (empty instanceof Error) {
         return { error: empty };
     }
-    // The union frontier starts at what the receiver already retains, because a
-    // newly admitted record may claim any coordinate the receiver holds. Only the
-    // imported suffixes advance it.
+    // The union frontier is the receiver's retained lengths joined with every
+    // imported suffix's final length, and it is completed before a single record
+    // is validated. Bounded range coverage compares a record's context against
+    // the union, so a record from one imported writer may legitimately name a
+    // coordinate of another imported writer whose suffix has not been read yet;
+    // validating against the acquisition-order prefix would reject a well-formed,
+    // causally closed source merely because of writer-name order.
     /** @type {JournalFrontier} */
     let frontier = empty;
     for (const author of receiver.writers()) {
@@ -314,6 +318,25 @@ function planForeignSuffixImport(plan) {
             continue;
         }
         const advanced = advanceFrontier(frontier, author, length);
+        if (advanced instanceof Error) {
+            return { error: advanced };
+        }
+        frontier = advanced;
+    }
+    for (const author of source.writers()) {
+        if (journalAuthorToString(author) === localName) {
+            continue;
+        }
+        const sourceLength = source.retainedLengthOf(author);
+        if (sourceLength === undefined) {
+            continue;
+        }
+        const receiverLength = receiver.retainedLengthOf(author);
+        const after = receiverLength === undefined ? ZERO_JOURNAL_SEQUENCE : receiverLength;
+        if (compareJournalSequence(sourceLength, after) <= 0) {
+            continue;
+        }
+        const advanced = advanceFrontier(frontier, author, sourceLength);
         if (advanced instanceof Error) {
             return { error: advanced };
         }
@@ -344,7 +367,6 @@ function planForeignSuffixImport(plan) {
         if ("error" in acquired) {
             return { error: acquired.error };
         }
-        frontier = acquired.frontier;
         suffixes.push(acquired.suffix);
     }
     return new ImportPlanClass(suffixes, frontier);
