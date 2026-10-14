@@ -55,7 +55,12 @@ const { migrationCallback } = require('./migration');
 const { synchronizeNoLock } = require('./database');
 const { prepareIncrementalGraphStorage } = require('./prepare_graph_storage');
 const { runCanonicalBootstrapGate } = require('./journal_bootstrap_gate');
-const { isCohortBootstrapSource, makeJournalPublicationError } = require('./journal');
+const {
+    isCohortBootstrapSource,
+    isJournalVersionCompatibilityError,
+    makeJournalPublicationError,
+} = require('./journal');
+const { makeIdentityJournalFormatCodec } = require('./migration_codec');
 const { resetJournalReceiverToSnapshot, syncJournalReceiverToSource } = require('./journal_publish');
 const {
     makeCanonicalMigrationChain,
@@ -80,7 +85,9 @@ const {
 
 module.exports = {
     isCohortBootstrapSource,
+    isJournalVersionCompatibilityError,
     makeJournalPublicationError,
+    makeIdentityJournalFormatCodec,
     makeRootDatabase,
     getRootDatabase,
     LIVE_DATABASE_WORKING_PATH,
