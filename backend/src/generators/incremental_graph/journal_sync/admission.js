@@ -72,6 +72,10 @@ function referenceIsObserved(event, referenced) {
 /**
  * The ValueId coordinates one record names, or an empty array when it names none.
  *
+ * Both occurrence-referencing invalidation scopes name a ValueId: a value scope
+ * and a proof scope both retire something about the named occurrence. Only the
+ * node scope names no coordinate.
+ *
  * @param {JournalRecord} record
  * @returns {ReadonlyArray<JournalRecordId>}
  */
@@ -79,7 +83,7 @@ function referencedIdsOf(record) {
     if (isValidateEvent(record)) {
         return [record.value];
     }
-    if (record.kind === "invalidate" && record.scope.kind === "value") {
+    if (record.kind === "invalidate" && record.scope.kind !== "node") {
         return [record.scope.value];
     }
     return [];

@@ -71,7 +71,7 @@ JournalSyncSource {
 
 Synchronization/reset obtain compatibility metadata from the returned held snapshot itself. Earlier mutable metadata is insufficient.
 
-For ordinary synchronization/reset, the receiver and held source snapshot must belong to the same supported compatibility domain. By `incremental-graph-journal-lifecycle.md` §5 and `incremental-graph-journal-theorems.md` Laws 8/8a, their shared writer prefixes are already identical and prefix-comparable. `JournalSyncSource` is not an API for proving arbitrary untrusted historical bytes fork-free by rescanning retained overlap.
+For ordinary synchronization/reset, the receiver and held source snapshot must belong to the same supported compatibility domain. By `database-lifecycle.md` §5 and `incremental-graph-journal-theorems.md` Laws 8/8a, their shared writer prefixes are already identical and prefix-comparable. `JournalSyncSource` is not an API for proving arbitrary untrusted historical bytes fork-free by rescanning retained overlap.
 
 If explicit validation encounters same-ID disagreement, that evidence is unsupported corruption and is reported as `JournalForkError`; ordinary change-bounded sync/reset need not search unrelated old overlap for it.
 
@@ -149,7 +149,7 @@ SyncResult {
 
 Success means source compatibility came from the held snapshot, imported records were retained unchanged, normalization was complete, and active graph equals Journal replay.
 
-If the source is ahead for the receiver's own writer, synchronization follows the failure rule in `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is unsupported state, whose lifecycle classification is owned by `incremental-graph-journal-lifecycle.md` §5.
+If the source is ahead for the receiver's own writer, synchronization follows the failure rule in `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is unsupported state, whose lifecycle classification is owned by `database-lifecycle.md` §5.
 
 A fully absent installation cannot call this operation because no receiver writer identity exists yet.
 
@@ -170,11 +170,11 @@ This semantic interface intentionally contains no hostname, Git branch name, rep
 
 `InstallationRecoverySource` does not imply a single server, branch, authority, or storage location. An implementation may consult one source, several sources, replicated metadata, a transport-specific publication path, or another backend protocol. Journal code only consumes the semantic answer.
 
-`ContinuationSafeSnapshot` contains an ordinary stable Journal snapshot plus the absent-restoration guarantee. Continuation safety is defined in `incremental-graph-journal-lifecycle.md` §4.1. A source may return `Exists(ContinuationSafeSnapshot)` only when its backend-specific guarantees establish that lifecycle condition; otherwise it returns `IndeterminateOrError`.
+`ContinuationSafeSnapshot` contains an ordinary stable Journal snapshot plus the absent-restoration guarantee. Continuation safety is defined in `database-lifecycle.md` §4.1. A source may return `Exists(ContinuationSafeSnapshot)` only when its backend-specific guarantees establish that lifecycle condition; otherwise it returns `IndeterminateOrError`.
 
 This source is **not** an API for repairing an existing local database that is truncated, rolled back, partially restored, or otherwise missing some of its own writer history. Those states are outside the supported lifecycle model under `$id-6158827469032147`.
 
-The current Git-backed flow is one possible implementation of this abstraction; `incremental-graph-journal-lifecycle.md` §4.1 explains why its normal publication model can establish absent-restoration safety without storing transport locators in the database. That transport shape is not part of this API contract.
+The current Git-backed flow is one possible implementation of this abstraction; `database-lifecycle.md` §4.1 explains why its normal publication model can establish absent-restoration safety without storing transport locators in the database. That transport shape is not part of this API contract.
 
 ## Receiver-less absent restore
 
@@ -207,7 +207,7 @@ Reset requires an established writable receiver and one held compatible snapshot
 
 `ResetResult.changed` is false only when the receiver already retains the complete source snapshot frontier and reset authors no semantic repair records. Importing any missing source record counts as a persistent reset change even when the projected graph is unchanged.
 
-If that snapshot is ahead for the receiver's own writer, reset follows `incremental-graph-journal-reset.md` §Preconditions and the shared lifecycle boundary in `incremental-graph-journal-lifecycle.md` §5.
+If that snapshot is ahead for the receiver's own writer, reset follows `incremental-graph-journal-reset.md` §Preconditions and the shared lifecycle boundary in `database-lifecycle.md` §5.
 
 Reset may form a compatible raw receiver/source union whose selected Value/Delete heads are temporarily not dependency-closed. It inspects that staging union through `selectedHeads(J0)` and does not require full `project(J0)` before Pass 1 occurrence/presence repair. Full projection begins only after Pass 1 has restored the source target's dependency-closed selected presence.
 
@@ -325,7 +325,7 @@ SchemaCompatibilityError
 InvalidMigrationDecisionError
 ```
 
-`JournalWriterBehindError` denotes the established-writer rollback condition owned by `incremental-graph-journal-lifecycle.md` §5; operation-specific behavior is defined by the synchronization/reset specs.
+`JournalWriterBehindError` denotes the established-writer rollback condition owned by `database-lifecycle.md` §5; operation-specific behavior is defined by the synchronization/reset specs.
 
 ## Locking ownership
 
