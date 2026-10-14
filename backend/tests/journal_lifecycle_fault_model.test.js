@@ -352,25 +352,21 @@ describe("Journal 3 §7 lifecycle fault model: physical damage of the local stor
         expect(calls.queries).toBe(0);
 
         const { db, entries } = await rawLiveDatabase(capabilities);
-        const fingerprint = String(entries.find(([key]) => key === globalKey(entries, "fingerprint"))[1]);
-        // Truncate the database's format-selecting metadata while the directory and the
-        // structured graph/journal state remain. The directory still exists, so this is
+        // Partially delete the database's format-selecting metadata while the directory and
+        // the structured graph/journal state remain. The directory still exists, so this is
         // an existing damaged database rather than complete disappearance.
         await db._rawDel(globalKey(entries, "version"));
         await db._rawDel(globalKey(entries, "graph_scheme"));
         await db.close();
 
         const second = makeInterface(() => capabilities);
-        await second.ensureInitialized();
-
-        // The absent-state decision is not taken for an existing local database, and no
-        // fresh identity is adopted: the fingerprint and the persisted events survive.
-        expect(calls.queries).toBe(0);
-        expect(second._database.getFingerprint()).toBe(fingerprint);
-        const events = await second.getAllEvents();
-        expect(events.map((event) => event.id.identifier)).toEqual(
-            eventsBefore.map((event) => event.id.identifier)
+        // An existing local database is never routed through the absent-state decision:
+        // the directory exists, so the recovery source is not queried. Partial deletion of
+        // the format-selecting metadata is corrupted/unsupported state, so startup fails
+        // closed rather than re-initializing the existing replica as fresh.
+        await expect(second.ensureInitialized()).rejects.toThrow(
+            /refusing to re-initialize an existing replica as fresh/
         );
-        await second._database.close();
+        expect(calls.queries).toBe(0);
     });
 });
