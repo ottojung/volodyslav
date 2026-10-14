@@ -37,11 +37,22 @@ function isPlainRecord(value) {
 /**
  * A canonical whole-millisecond instant. The two persisted value timestamps are
  * physical data with no ordering invariant, so a skewed occurrence is valid.
+ *
+ * The shape alone does not denote an instant: `2020-13-45T99:99:99.999Z` matches
+ * the pattern but is not a calendar instant, and accepting it would persist a
+ * timestamp that later lowers `NaN` into graph time. A value is accepted only
+ * when it parses to an instant whose exact ISO representation is that same
+ * string, so an out-of-range component, a rolled-over day, or a leap second is
+ * rejected rather than silently normalised into a different instant.
  * @param {unknown} value
  * @returns {value is string}
  */
 function isCanonicalTimestamp(value) {
-    return typeof value === "string" && TIMESTAMP_PATTERN.test(value);
+    if (typeof value !== "string" || !TIMESTAMP_PATTERN.test(value)) {
+        return false;
+    }
+    const instant = new Date(value);
+    return !Number.isNaN(instant.getTime()) && instant.toISOString() === value;
 }
 
 /**
