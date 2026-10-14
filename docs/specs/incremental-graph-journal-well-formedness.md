@@ -261,7 +261,7 @@ later WriterStateRecord.lastNodeIndex
 
 Replay rejects a decreasing watermark.
 
-NodeIdentifier allocation/reuse semantics are owned by `incremental-graph-journal-types.md` §NodeIdentifier uniqueness basis, including the continuation-safe absent-restoration exception in `incremental-graph-journal-lifecycle.md` §4.1.
+NodeIdentifier allocation/reuse semantics are owned by `incremental-graph-journal-types.md` §NodeIdentifier uniqueness basis, including the continuation-safe absent-restoration exception in `database-lifecycle.md` §4.1.
 
 ## Imported-record validation
 
