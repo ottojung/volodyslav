@@ -11,6 +11,7 @@ const { isValidationBasisEntry } = require("./basis");
 const { deepFrozenCopy } = require("./immutable");
 const { computedValueViolation, isValidFingerprint } = require("../database");
 const { makeJournalRecordValidationError } = require("./errors");
+const { fromISOString } = require("../../../datetime");
 const {
     isJournalRecordId,
     journalAuthorToString,
@@ -41,9 +42,10 @@ function isPlainRecord(value) {
  * The shape alone does not denote an instant: `2020-13-45T99:99:99.999Z` matches
  * the pattern but is not a calendar instant, and accepting it would persist a
  * timestamp that later lowers `NaN` into graph time. A value is accepted only
- * when it parses to an instant whose exact ISO representation is that same
- * string, so an out-of-range component, a rolled-over day, or a leap second is
- * rejected rather than silently normalised into a different instant.
+ * when the project's datetime facility reads it as valid and its exact ISO
+ * representation is that same string, so an out-of-range component, a
+ * rolled-over day, or a leap second is rejected rather than silently normalised
+ * into a different instant.
  * @param {unknown} value
  * @returns {value is string}
  */
@@ -51,8 +53,8 @@ function isCanonicalTimestamp(value) {
     if (typeof value !== "string" || !TIMESTAMP_PATTERN.test(value)) {
         return false;
     }
-    const instant = new Date(value);
-    return !Number.isNaN(instant.getTime()) && instant.toISOString() === value;
+    const instant = fromISOString(value);
+    return instant.isValid && instant.toISOString() === value;
 }
 
 /**
