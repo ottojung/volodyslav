@@ -336,9 +336,15 @@ function resetToSource(request) {
     };
 
     // ---- Pass 2: target validity and proof -------------------------------
-    // The union is a count read, not a fold: the retained state already holds the
-    // imported and Pass 1 records, and its selected occurrences are the ones Pass 1
-    // settled, so nothing below revisits retained certificate history.
+    // The proof union is read at the fixed post-value-repair cut: Pass 1 has
+    // staged its records, so take the cut now to settle the selected occurrences
+    // the union read and barrier plan must be computed from. Reading the summary
+    // before this cut would use the receiver's pre-reset selected occurrence and
+    // under-approximate the required proof barriers.
+    const afterPassOne = cut();
+    if ("error" in afterPassOne) {
+        return afterPassOne;
+    }
     const unions = eligibleEffectiveProofUnion({
         summary: retainedState.proofs,
         targetOccurrences: [...targetOccurrences()],

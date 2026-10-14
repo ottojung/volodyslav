@@ -2,12 +2,13 @@
  * How many projections reset reads, and which pass reads each.
  *
  * Every cut `resetToSource` takes is a projection of the retained replay state, so
- * a cut no pass reads is a projection built and discarded. The passes which read a
- * cut are Pass 2, which plans the barriers and the target validations against it,
- * and Pass 3, which plans the freshness markers against it and hands the final one
- * to the committed-result check. Pass 1 settles occurrences from the raw union's
- * selected heads and authors from the target's projection, so it reads no cut of
- * its own.
+ * a cut no pass reads is a projection built and discarded. Pass 2 reads two cuts:
+ * the fixed post-value-repair cut which settles the selected occurrences that the
+ * proof union and the barrier plan are computed from, and the post-barrier cut
+ * which the target validations are planned against. Pass 3 reads the
+ * post-validation cut for its freshness markers and hands the final cut to the
+ * committed-result check. Pass 1 settles occurrences from the raw union's selected
+ * heads and authors from the target's projection, so it reads no cut of its own.
  */
 
 const RETAINED_MODULE =
@@ -139,10 +140,10 @@ beforeEach(() => {
 });
 
 describe("resetToSource, the projections its passes read", () => {
-    test("one cut is read per pass which reads a cut, and Pass 1 reads none", () => {
+    test("Pass 2 reads the post-value-repair cut and the post-barrier cut, and Pass 1 reads none", () => {
         const result = resetToLeaf();
 
         expect("outcome" in result).toBe(true);
-        expect(mockProjectionCount).toBe(3);
+        expect(mockProjectionCount).toBe(4);
     });
 });
