@@ -40,7 +40,8 @@ transitions.
 
 Complete disappearance of the local database is the supported external-loss
 case. It produces the **Absent** lifecycle state and may enter the controlled
-restore/fresh-creation path.
+restore/fresh-creation path. This fault-model boundary is
+`$id-6158827469032147`.
 
 ## 2. Lifecycle states
 
@@ -126,7 +127,7 @@ repository locator, or other transport identity for this source. Outer
 transport/lifecycle code may use deployment configuration such as a hostname
 to construct or locate the source, but those locators stay outside the
 persisted database and outside the `InstallationRecoverySource` semantic
-interface.
+interface, consistent with `$id-4373538486707762`.
 
 ### 4.1 Query the installation recovery source
 
@@ -173,13 +174,13 @@ that no surviving copy can later reintroduce it. Conversely, if a higher A
 record remains admissible under the supported backend model and can later
 re-enter retained history, q is not continuation-safe.
 
-This is also the recovery boundary required by record-id uniqueness: a writer
-coordinate beyond q may be reused only when its previous record cannot later
-coexist with, or be combined with, the restored continuation in a supported
-execution.
+This is also the recovery boundary required by `$id-2567281946348705`: a
+writer coordinate beyond q may be reused only when its previous record cannot
+later coexist with, or be combined with, the restored continuation in a
+supported execution.
 
 The system does not require contacting or discovering every possible peer to
-establish continuation safety.
+establish continuation safety, consistent with `$id-4719065396881648`.
 
 #### Current Git-backed transport as an example
 
@@ -214,9 +215,9 @@ coordinates. The recoverable writer prefix carries the `last_node_index`
 watermark that remains reserved. If a higher allocation can later re-enter
 supported retained history, the older recovery point is not safe; if the
 higher allocation existed only in the discarded suffix and cannot re-enter,
-its index may be allocated again. This is the supported-history uniqueness
-rule: reuse is allowed only when the two meanings cannot coexist in, or later
-join, any supported retained state.
+its index may be allocated again. This is the supported-history uniqueness rule
+of `$id-4173361406347342`: reuse is allowed only when the two meanings cannot
+coexist in, or later join, any supported retained state.
 
 ### 4.2 Receiver-less restore
 
@@ -306,11 +307,13 @@ This follows from serialized append-only authoring, immutable foreign-record
 import, continuation-safe absent restoration, canonical bootstrap arbitration,
 deterministic canonical migration, and the exclusion of
 rollback/cloning/external mutation. The accepted fingerprint-collision tradeoff
-does not weaken this supported-state rule: an actually observed
-same-fingerprint divergent pair is classified unsupported.
+in `$id-9051842763146802` does not weaken this supported-state rule: an actually
+observed same-fingerprint divergent pair is classified unsupported.
 
 Ordinary sync/reset may rely on this lifecycle consequence and need not rescan
-unrelated historical overlap merely to re-prove it.
+unrelated historical overlap merely to re-prove it;
+`incremental-graph-journal-theorems.md` Laws 8 and 8a state the derived proof
+obligations.
 
 Two independently live installations intentionally authoring under one
 fingerprint are unsupported.
@@ -334,8 +337,9 @@ satisfy contiguous writer streams, current-format decoding, causal/reference
 validity, replay equivalence, and allocator/authority invariants. Routine open
 does not re-prove those facts by scanning retained history.
 
-Routine Journal-specific open work for an already-current supported database
-is `O(1 + G)`, where G is current materialized graph plus graph-bounded
+Under `$id-7429043816351276`, routine Journal-specific open work for an
+already-current supported database is `O(1 + G)`, where G is current
+materialized graph plus graph-bounded
 current-state metadata and excludes retained history/history-proportional
 Journal indexes. The bound is independent of retained Journal size H. Routine
 open checks only current version/schema compatibility,
@@ -593,7 +597,7 @@ Unsupported operations/states include:
 - replacing an existing local database with an older snapshot or backup;
 - restoring an existing local database from an earlier checkpoint, or
   rewinding its remote publication, as release rollback; release recovery is
-  forward-only;
+  forward-only per `$id-5083197642258146`;
 - mixing records/files from different database moments;
 - partially restoring local storage while retaining some old state;
 - mixed record formats in one active replica;
@@ -637,8 +641,8 @@ writer history in a backend model that assumes monotonic publication—are
 likewise outside ordinary lifecycle recovery.
 
 Any future recovery/import behavior for a currently unsupported storage-damage
-case must first change the lifecycle fault-model boundary and then introduce
-an explicit controlled transition with stated invariants.
+case must first change `$id-6158827469032147` and then introduce an explicit
+controlled transition with stated invariants.
 
 ## 15. Corruption versus incompatibility
 
