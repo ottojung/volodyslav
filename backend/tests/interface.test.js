@@ -17,6 +17,7 @@ const { fromISOString } = require("../src/datetime");
 const { transaction } = require("../src/event_log_storage");
 const {
     stubIncrementalDatabaseRemote,
+    stubIncrementalDatabaseRemoteBranches,
 } = require("./stub_incremental_database_remote");
 const { readRetainedJournal, readCommittedWriterState } = require("../src/generators/incremental_graph/journal_store");
 const { makeReplicaSource, projectRetainedJournal } = require("../src/generators/incremental_graph/journal/oracle");
@@ -646,6 +647,46 @@ describe("generators/interface", () => {
                 'Bootstrap: installation recovery source reports definite absence; creating fresh'
             );
             expect(isInterface(iface)).toBe(true);
+            await iface._database.close();
+        });
+
+        test("DefinitelyAbsent fresh creation ignores a foreign Journal-state host branch", async () => {
+            const capabilities = getMockedRootCapabilities();
+            stubEnvironment(capabilities);
+            stubLogger(capabilities);
+            stubDatetime(capabilities);
+
+            // The remote holds only another host's branch, which carries Journal
+            // state. `database-lifecycle.md` §4.3 requires a fresh replica to retain
+            // no foreign history, and `database-boot-sequence.md` §7.1 deletes the
+            // fallback to normal synchronization from an empty local database, so
+            // fresh creation must neither merge this branch nor fail on it.
+            await stubIncrementalDatabaseRemoteBranches(capabilities, [
+                { hostname: "other-host", fixtureName: "populated" },
+            ]);
+
+            ensureLiveDatabaseDirectory(capabilities);
+            const liveDbPath = path.join(
+                capabilities.environment.workingDirectory(),
+                LIVE_DATABASE_WORKING_PATH
+            );
+            await capabilities.deleter.deleteDirectory(liveDbPath);
+            capabilities.installationRecoverySource = recoverySourceReturning(null);
+
+            const iface = makeInterface(() => capabilities);
+            await iface.ensureInitialized();
+
+            expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
+                expect.objectContaining({}),
+                'Bootstrap: installation recovery source reports definite absence; creating fresh'
+            );
+            expect(isInterface(iface)).toBe(true);
+
+            const replica = await readRetainedJournal(iface._database.getSchemaStorage().journal);
+            if (replica instanceof Error) {
+                throw replica;
+            }
+            expect([...replica.values()].flat()).toHaveLength(0);
             await iface._database.close();
         });
 
