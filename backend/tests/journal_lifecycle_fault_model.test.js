@@ -1,7 +1,7 @@
 /**
- * The §7 lifecycle fault model: physical damage of the local persistent store.
+ * The §13 lifecycle fault model: physical damage of the local persistent store.
  *
- * `incremental-graph-journal-lifecycle.md` §7 and `incremental-graph-journal-testing.md`
+ * `database-lifecycle.md` §13 and `incremental-graph-journal-testing.md`
  * §Lifecycle fault-model tests make the supported external-loss case exactly one thing —
  * complete disappearance of the local database, which yields `Absent` and enters the §4
  * decision. Everything else is corrupted/unsupported:
