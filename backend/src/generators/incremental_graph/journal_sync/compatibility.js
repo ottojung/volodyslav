@@ -65,8 +65,8 @@ function assertCompatibleIdentity(receiver, source) {
     if (receiver.graphSchemeString !== source.graphSchemeString) {
         return makeJournalVersionCompatibilityError(
             "the held source snapshot declares a different graph scheme than the receiver",
-            receiver.databaseVersion,
-            source.databaseVersion
+            receiver.graphSchemeString,
+            source.graphSchemeString
         );
     }
     return undefined;
