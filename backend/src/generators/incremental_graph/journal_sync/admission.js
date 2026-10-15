@@ -8,9 +8,29 @@
  * reads no retained history beyond the coordinates the record itself claims or
  * names.
  *
- * Transitive context closure and authority extension are not re-derived here,
- * because `incremental-graph-journal-theorems.md` Law 8a supplies them for the
- * causally closed frontier the importing writer observed.
+ * Transitive context closure and authority extension are not re-derived here by
+ * reading retained history.
+ *
+ * `incremental-graph-journal-sync.md` §Final replay and validation requires
+ * contexts of newly admitted records to be transitively closed against retained
+ * context summaries/indexes. `incremental-graph-journal-storage.md` §Derived
+ * indexes defines a context-closure summary as an optional, incrementally
+ * maintained derived index, and §Synchronization/reset validation makes the check
+ * change-bounded: the claimed prefixes are not rescanned. Import operates only
+ * between compatible supported sources, and a supported source's retained history
+ * is causally closed by construction, so the closure requirement is discharged by
+ * that supported-source boundary rather than by a per-record re-derivation. A
+ * source whose context is actually unclosed is unsupported/corrupt and is
+ * rejected by the whole-history validator on explicit rebuild or maintenance
+ * (`incremental-graph-journal-well-formedness.md` §Imported-record validation).
+ * Establishing closure on the bounded path without rescanning therefore needs the
+ * optional context-closure summary index, which the receiver does not currently
+ * maintain.
+ *
+ * `incremental-graph-journal-theorems.md` Law 8a proves shared-prefix identity —
+ * no writer forks — for compatible supported inputs; it does not prove context
+ * closure, and it is not the reason closure is skipped here. Authority extension
+ * is likewise a property of the whole-history authority ordering.
  */
 
 /** @typedef {import('../journal/errors').AnyJournalError} JournalError */
