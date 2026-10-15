@@ -12,6 +12,10 @@ The IncrementalGraph system stores its state in two layers:
 2. **Volatile layer** (`_computed`) — an in-memory mirror of the persisted layer. Lives inside
    `RootDatabase`. Provides fast in-process access to the current committed state.
 
+Under Journal 3, the persisted layer described here is the materialized graph projection
+`project(Journal)`; retained Journal records are the semantic authority from which replay lowers
+that projection.
+
 The consistency guarantee is:
 
 > **At every observable point, the volatile layer is exactly isomorphic to the persisted layer.**
@@ -51,7 +55,6 @@ Metadata is stored separately in sublevels keyed by fixed string keys:
 | `global` | `'identifiers_keys_map'` | identifier ↔ key bijection |
 | `global` | `'last_node_index'` | greatest durably-retired allocation index |
 | `global` | `'fingerprint'` | local allocation fingerprint |
-| `_meta` | `'current_replica'` | active replica name (`'x'` or `'y'`) |
 
 ### Derived volatile state (`_computed`)
 
@@ -61,7 +64,7 @@ It mirrors the persisted state:
 
 | Field | Type | Meaning |
 |-------|------|---------|
-| `replicaName` | `'x' \| 'y'` | Active replica name. |
+| `replicaName` | `ReplicaName` | Active replica name. |
 | `namespaceSublevel` | `SchemaSublevelType` | LevelDB sublevel handle for the active replica. |
 | `globalSublevel` | `GlobalSublevelType` | Global sublevel handle. |
 | `schemaStorage` | `SchemaStorage` | Typed accessors for all node-data sublevels. |
@@ -232,7 +235,7 @@ and only then replaces `_computed.identifierLookup` (step 3 above).
 
 When the database is first opened:
 
-1. Read the replica pointer from `_meta/current_replica`. This is the authoritative record of
+1. Read the persisted replica pointer. This is the authoritative record of
    which replica is active.
 2. Construct the `namespaceSublevel`, `globalSublevel`, and `schemaStorage` for that replica.
 3. Load from the active replica's global sublevel:
@@ -259,7 +262,7 @@ Steps:
 
 1. Acquire the exclusive lock (all graph activity suspended).
 2. Prepare the new replica's data in the inactive replica's sublevels.
-3. Write the new replica pointer to `_meta/current_replica` durably.
+3. Write the new replica pointer durably.
 4. Load the new replica's metadata from the new `globalSublevel`:
    - `identifiers_keys_map`;
    - `last_node_index`;
