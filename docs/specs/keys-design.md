@@ -167,10 +167,9 @@ persisted identity:
 - `nodeKeyToId(nodeKey) -> id`
 - `nodeIdToKey(id) -> nodeKey`
 
-These functions operate on the `/${current_replica}/global/identifiers_keys_map` database value.
-Here `${current_replica}` is the replica name of the current database instance, for example `x` or `y`.
+These functions operate on the active representation's `global/identifiers_keys_map` database value.
 
-`NodeKeyString` may remain persisted only in this lookup table at `/${current_replica}/global/identifiers_keys_map`.
+`NodeKeyString` may remain persisted only in this lookup table.
 
 The map is the materialized-node identity table, with a strict invariant:
 
@@ -227,10 +226,9 @@ sorting operates on `NodeIdentifier` values directly.
 
 ## Bijection cache
 
-The full contents of the lookup table (`/${current_replica}/global/identifiers_keys_map`)
-are loaded into RAM and kept synchronized as an in-memory cache. All lookups between
-`NodeKey` and `NodeIdentifier` go through this cache, not through direct database
-reads at call time.
+The full contents of the lookup table are loaded into RAM and kept synchronized as an in-memory
+cache. All lookups between `NodeKey` and `NodeIdentifier` go through this cache, not through direct
+database reads at call time.
 
 The cache is authoritative for the bijection while the database is open. Writes to
 the lookup sublevels and updates to the cache are atomic from the perspective of the
@@ -252,7 +250,7 @@ and analogously for the other graph-state sublevels:
 
 Lookup metadata remains explicit and separate:
 
-- `/${current_replica}/global/identifiers_keys_map`
+- the active representation's `global/identifiers_keys_map`
 
 The snapshot format therefore exposes graph-state records directly by identifier and
 uses the lookup table for semantic readability.
@@ -273,7 +271,7 @@ This prohibition applies to graph-state addressing and covers both:
 
 The following lookup-metadata path is explicitly exempt from this prohibition:
 
-- `/${current_replica}/global/identifiers_keys_map`
+- the active representation's `global/identifiers_keys_map`
 
 This path may encode or decode `NodeKey` values for the sole purpose of reading and
 writing the lookup tables. They must not be treated as a general filesystem addressing
