@@ -5,4 +5,4 @@ set -e
 SELF="${0}"
 SELF=$(readlink -f -- "$SELF")
 
-node -- "$SELF"/../../backend/src/index.js "$@"
+node -- "$SELF"/../../scripts/run-entry.js "$@"
