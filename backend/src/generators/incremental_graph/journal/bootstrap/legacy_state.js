@@ -292,9 +292,15 @@ function readLegacyNode(observed, label) {
         if (inputKey instanceof Error) {
             return inputKey;
         }
-        if (!directInputKeys.some((seen) => nodeKeyToCanonicalString(seen) === input)) {
-            directInputKeys.push(inputKey);
+        if (directInputKeys.some((seen) => nodeKeyToCanonicalString(seen) === input)) {
+            return unsupportedSource(
+                label +
+                    " names the direct legacy input " +
+                    JSON.stringify(input) +
+                    " more than once, which the validation-basis contract does not permit"
+            );
         }
+        directInputKeys.push(inputKey);
     }
     directInputKeys.sort((left, right) =>
         compareNodeKeyStringByNodeKey(

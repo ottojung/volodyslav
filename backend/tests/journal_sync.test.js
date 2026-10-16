@@ -497,6 +497,27 @@ describe("synchronizeRetainedJournal, acquiring foreign-writer suffixes", () => 
         }
         expect(isJournalVersionCompatibilityError(result.error)).toBe(true);
     });
+
+    test("a graph-scheme mismatch diagnoses the two schemes, not the equal database versions", () => {
+        const result = synchronize({
+            receiver: receiverChain(),
+            source: [],
+            authorityPhysical: 400,
+            sourceIdentity: new SnapshotIdentityClass("v1", "other-scheme"),
+        });
+
+        expect("outcome" in result).toBe(false);
+        if ("outcome" in result) {
+            return;
+        }
+        expect(isJournalVersionCompatibilityError(result.error)).toBe(true);
+        if (!isJournalVersionCompatibilityError(result.error)) {
+            return;
+        }
+        expect(result.error.expectedVersion).toBe("scheme");
+        expect(result.error.foundVersion).toBe("other-scheme");
+        expect(result.error.message).toContain("expected scheme, found other-scheme");
+    });
 });
 
 describe("synchronizeRetainedJournal, removing the dependency closure a union leaves open", () => {

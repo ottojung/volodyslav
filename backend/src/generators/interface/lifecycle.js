@@ -30,7 +30,6 @@ const {
     makeIdentityJournalFormatCodec,
     isJournalVersionCompatibilityError,
     LIVE_DATABASE_WORKING_PATH,
-    CHECKPOINT_WORKING_PATH,
     syncJournalReceiverToSource,
     runCanonicalBootstrapGate,
     queryInstallationRecovery,
@@ -40,7 +39,6 @@ const {
     isRecoveryIndeterminate,
     makeJournalPublicationError,
 } = require("../incremental_graph");
-const { workingRepository } = require("../../gitstore");
 const { createDefaultGraphDefinition } = require("./default_graph");
 const { makeSynchronizeDatabaseError, makeUnresolvedCanonicalBootstrapError } = require("./errors");
 const { allEvents, config, diarySummary, ontology } = require("../individual");
@@ -123,7 +121,7 @@ async function internalEnsureInitialized(interfaceInstance) {
  * decision queries the transport-neutral `InstallationRecoverySource` and follows
  * exactly one of its answers:
  *  - `Exists(ContinuationSafeSnapshot)` → receiver-less restore of the held snapshot;
- *  - `DefinitelyAbsent` → fresh creation (normal sync from an empty local database);
+ *  - `DefinitelyAbsent` → fresh creation of the empty local database;
  *  - `IndeterminateOrError` → fatal, with no fallback to fresh creation.
  *
  * A deployment which configures no recovery source fails closed: an absent local
@@ -161,18 +159,13 @@ async function internalBootstrap(capabilities) {
             {},
             'Bootstrap: installation recovery source reports definite absence; creating fresh'
         );
-        // Fresh creation from an empty local database. Pre-initialize the checkpoint
-        // repo before calling synchronizeNoLock so that its checkpointDatabase step
-        // does not attempt to clone the remote with a `--branch` that does not exist
-        // yet. With a local repo already present, workingRepository.synchronize falls
-        // into the pull+push path, where pull returns early when the remote branch
-        // does not exist yet, and push creates the branch for the first time.
-        await internalInitCheckpointRepoForFallback(capabilities);
-        await synchronizeNoLock(capabilities);
-        capabilities.logger.logInfo(
-            {},
-            'Bootstrap: fresh creation completed'
-        );
+        // Fresh creation is local and direct. Opening the absent database creates
+        // the empty live replica, and the startup gate that follows initializes its
+        // fingerprint, version/schema metadata and empty graph. `database-lifecycle.md`
+        // §4.3 and `database-boot-sequence.md` §7.1 forbid falling back to normal
+        // synchronization from an empty local database, so no host-branch merge runs
+        // here and this fresh replica retains no foreign history. The first ordinary
+        // synchronization publishes this installation's branch.
         return;
     }
 
@@ -186,49 +179,6 @@ async function internalBootstrap(capabilities) {
     throw makeJournalPublicationError(
         'the installation recovery query returned an unrecognized answer'
     );
-}
-
-/**
- * Ensure the checkpoint git repository exists locally and has the origin
- * remote configured.  Called before the V4 fallback sync so that
- * `synchronizeNoLock` does not try to clone the remote with a
- * `--branch=<hostname>-main` that doesn't exist yet.
- *
- * The operation is idempotent: if the repo already exists and already has
- * an origin remote, this is a no-op.
- *
- * @param {GeneratorsCapabilities} capabilities
- * @returns {Promise<void>}
- */
-async function internalInitCheckpointRepoForFallback(capabilities) {
-    const remotePath = capabilities.environment.generatorsRepository();
-    const checkpointDir = path.join(
-        capabilities.environment.workingDirectory(),
-        CHECKPOINT_WORKING_PATH
-    );
-
-    // Ensure the local checkpoint repo exists (idempotent).
-    await workingRepository.getRepository(capabilities, CHECKPOINT_WORKING_PATH, "empty");
-
-    // Add the origin remote so workingRepository.synchronize uses the
-    // pull+push path instead of the fetchAndReconcile path (needsRemoteSetup).
-    const hasOrigin = await capabilities.git.call(
-        "-C", checkpointDir, "-c", "safe.directory=*",
-        "remote", "get-url", "origin"
-    ).then(() => true).catch((err) => {
-        capabilities.logger.logDebug(
-            { checkpointDir, err: String(err) },
-            'Bootstrap: git remote get-url origin returned non-zero (treating as absent)'
-        );
-        return false;
-    });
-
-    if (!hasOrigin) {
-        await capabilities.git.call(
-            "-C", checkpointDir, "-c", "safe.directory=*",
-            "remote", "add", "origin", remotePath
-        );
-    }
 }
 
 /**

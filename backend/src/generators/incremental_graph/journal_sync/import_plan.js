@@ -31,10 +31,19 @@
  * - an admitted `ValidateEvent`'s basis is the current canonical shape of its
  *   node, with no duplicate semantic input.
  *
- * Transitive closure of a context and authority extension follow from the
- * causally closed retained frontier the imported writer observed, which the
- * prefix identity theorem supplies. Re-deriving them here would be the
- * whole-history rescan that `sync.md` §Immutable overlap law forbids.
+ * Transitive closure of a context and authority extension are not re-derived
+ * here by reading retained history. `incremental-graph-journal-theorems.md` Laws
+ * 8 and 8a prove shared-prefix identity — no writer forks — for compatible
+ * supported inputs; they do not prove context closure. Closure is discharged by
+ * the supported-source boundary: import operates only between compatible
+ * supported sources, whose retained history is causally closed, so an unclosed
+ * context is unsupported/corrupt and is rejected by the whole-history validator
+ * on explicit rebuild or maintenance. Re-deriving it here by reading the claimed
+ * prefixes would break the change-bounded read bound that `storage.md`
+ * §Synchronization/reset validation requires and that
+ * `journal_sync_retained_state.test.js` pins; a receiver which maintains the
+ * optional context-closure summary index of `storage.md` §Derived indexes could
+ * check it without rescanning.
  */
 
 /** @typedef {import('../journal/errors').AnyJournalError} JournalError */
