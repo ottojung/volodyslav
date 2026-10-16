@@ -285,6 +285,27 @@ describe("the supported pre-Journal source boundary", () => {
         );
         expect(isJournalVersionCompatibilityError(rejection)).toBe(true);
     });
+
+    test("rejects a node whose validInputs names one direct input twice", () => {
+        const rejection = readLegacyBootstrapState(
+            persistedState({
+                nodes: [
+                    {
+                        nodeKeyString: nodeKeyOf(2),
+                        nodeIdentifier: identifierOf(2),
+                        payload: payloadOf(2, {}),
+                        createdAt: CREATED_AT,
+                        modifiedAt: LATE,
+                        upToDate: true,
+                        validInputs: [nodeKeyOf(1), nodeKeyOf(1)],
+                    },
+                ],
+            })
+        );
+        expect(rejection instanceof Error).toBe(true);
+        expect(isJournalVersionCompatibilityError(rejection)).toBe(true);
+        expect(String(rejection)).toContain("more than once");
+    });
 });
 
 describe("deterministic canonical staging of passes C1 through C4", () => {
