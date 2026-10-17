@@ -28,12 +28,16 @@ const {
     isJournalError,
     isSemanticEvent,
     makeJournalAuthor,
-    makeReplicaSource,
+    streamWithReport,
 } = require('../journal');
 const { buildRetainedReplayState, resetToSource } = require('../journal_reset');
 const { SnapshotIdentityClass } = require('../journal_sync');
 const { makeCurrentInputKeysOfNode } = require('../journal_bootstrap_startup');
-const { readCommittedWriterState, readRetainedJournal } = require('../journal_store');
+const {
+    collectRetainedRecords,
+    readCommittedWriterState,
+    readJournalSource,
+} = require('../journal_store');
 
 /** @typedef {import('../database/synchronize').Capabilities} Capabilities */
 /** @typedef {import('../database/root_database').RootDatabase} RootDatabase */
@@ -119,23 +123,29 @@ function requireText(value, what) {
  *
  * The receiver's own committed high-water covers `JR`; the source snapshot's records
  * cover the imported part of `S`. Reset-authored records are allocated strictly above
- * this value, so an unobserved high-water would let an authored record share an
- * authority time with an imported one. This is the same install-time metadata read
- * `journal_bootstrap_install.js` performs over the records it installs.
+ * this value, so an unobserved high-water would let an authored record share an authority
+ * time with an imported one. This is the same install-time metadata read
+ * `journal_bootstrap_install.js` performs over the records it installs. The source is
+ * folded record by record rather than collected, because only its greatest semantic
+ * authority time is read here.
  *
  * @param {AuthorityTime} committedHighWater
- * @param {ReadonlyArray<JournalRecord>} sourceRecords
+ * @param {JournalSource} source
  * @returns {AuthorityTime}
  */
-function observedHighWaterOf(committedHighWater, sourceRecords) {
+function observedHighWaterOf(committedHighWater, source) {
     let greatest = committedHighWater;
-    for (const record of sourceRecords) {
+    const failure = streamWithReport(source, (record) => {
         if (!isSemanticEvent(record)) {
-            continue;
+            return undefined;
         }
         if (compareAuthorityTime(record.authorityTime, greatest) > 0) {
             greatest = record.authorityTime;
         }
+        return undefined;
+    });
+    if (failure !== undefined) {
+        throw failure;
     }
     return greatest;
 }
@@ -155,36 +165,6 @@ function observedHighWaterOf(committedHighWater, sourceRecords) {
 function currentInputKeysOfGraphScheme(graphScheme) {
     const template = makeCurrentInputKeysOfNode(graphScheme);
     return (nodeKeyString) => template(nodeKeyString) ?? [];
-}
-
-/**
- * Every retained record one journal source holds, read through its own readers.
- *
- * The reset needs the snapshot's records once, to read the greatest authority time the
- * observed union carries. The source supplies them through its readers, so the
- * read is the source's own read surface rather than a second traversal of the sublevel.
- *
- * @param {JournalSource} source
- * @returns {ReadonlyArray<JournalRecord>}
- */
-function everyRecordOf(source) {
-    /** @type {JournalRecord[]} */
-    const records = [];
-    for (const author of source.writers()) {
-        const reader = source.prefixReaderOf(author);
-        for (;;) {
-            const record = reader.nextRecord();
-            if (record === undefined) {
-                break;
-            }
-            records.push(record);
-        }
-        const failure = reader.failure();
-        if (failure !== undefined) {
-            throw failure;
-        }
-    }
-    return records;
 }
 
 /**
@@ -254,6 +234,7 @@ async function resetJournalReceiverToSnapshot(request) {
 
     const held = await readHeldResetSource({
         storage: sourceStorage,
+        journalSublevel: database.replicaJournalSublevel(sourceReplica),
         currentInputKeysOfNode,
         fingerprint: sourceFingerprint,
     });
@@ -261,12 +242,16 @@ async function resetJournalReceiverToSnapshot(request) {
         throw held.error;
     }
 
-    const receiverReplica_ = await readRetainedJournal(receiverStorage.journal);
-    if (receiverReplica_ instanceof Error) {
-        throw receiverReplica_;
+    const receiver = await readJournalSource(database.replicaJournalSublevel(receiverReplica));
+    if (receiver instanceof Error) {
+        throw receiver;
+    }
+    const collected = collectRetainedRecords(receiver);
+    if ('error' in collected) {
+        throw collected.error;
     }
     /** @type {ReadonlyArray<JournalRecord>} */
-    const retainedRecords = [...receiverReplica_.values()].flat();
+    const retainedRecords = collected.records;
 
     const committed = await readCommittedWriterState(receiverStorage.journal, receiverFingerprint);
     if (isJournalError(committed)) {
@@ -277,7 +262,6 @@ async function resetJournalReceiverToSnapshot(request) {
         throw localWriter;
     }
 
-    const receiver = makeReplicaSource(receiverReplica_);
     const retained = buildRetainedReplayState({
         source: receiver,
         localWriter,
@@ -287,15 +271,13 @@ async function resetJournalReceiverToSnapshot(request) {
         throw retained.error;
     }
 
-    const sourceRecords = everyRecordOf(held.source.journal);
-
     const result = resetToSource({
         receiver,
         retainedState: retained.state,
         source: held.source,
         localWriter,
         committed,
-        observedHighWater: observedHighWaterOf(committed.authorityHighWater, sourceRecords),
+        observedHighWater: observedHighWaterOf(committed.authorityHighWater, held.source.journal),
         publicationInstant: capabilities.datetime.now().toMillis(),
         currentInputKeysOfNode,
         receiverIdentity: new SnapshotIdentityClass(receiverVersion, receiverGraphScheme),

@@ -26,12 +26,16 @@ const {
     isJournalError,
     isSemanticEvent,
     makeJournalAuthor,
-    makeReplicaSource,
+    streamWithReport,
 } = require('../journal');
 const { buildRetainedReplayState } = require('../journal_reset');
 const { SnapshotIdentityClass, synchronizeRetainedJournal } = require('../journal_sync');
 const { makeCurrentInputKeysOfNode } = require('../journal_bootstrap_startup');
-const { readCommittedWriterState, readRetainedJournal } = require('../journal_store');
+const {
+    collectRetainedRecords,
+    readCommittedWriterState,
+    readJournalSource,
+} = require('../journal_store');
 
 /** @typedef {import('../database/synchronize').Capabilities} Capabilities */
 /** @typedef {import('../database/root_database').RootDatabase} RootDatabase */
@@ -118,21 +122,26 @@ function requireText(value, what) {
  * The receiver's own committed high-water covers `JR`; the source snapshot's records cover
  * the imported part of `S`. Synchronization-authored records are allocated strictly above
  * this value, so an unobserved high-water would let an authored record share an authority
- * time with an imported one.
+ * time with an imported one. The source is folded record by record rather than collected,
+ * because only its greatest semantic authority time is read here.
  *
  * @param {AuthorityTime} committedHighWater
- * @param {ReadonlyArray<JournalRecord>} sourceRecords
+ * @param {JournalSource} source
  * @returns {AuthorityTime}
  */
-function observedHighWaterOf(committedHighWater, sourceRecords) {
+function observedHighWaterOf(committedHighWater, source) {
     let greatest = committedHighWater;
-    for (const record of sourceRecords) {
+    const failure = streamWithReport(source, (record) => {
         if (!isSemanticEvent(record)) {
-            continue;
+            return undefined;
         }
         if (compareAuthorityTime(record.authorityTime, greatest) > 0) {
             greatest = record.authorityTime;
         }
+        return undefined;
+    });
+    if (failure !== undefined) {
+        throw failure;
     }
     return greatest;
 }
@@ -225,12 +234,16 @@ async function syncJournalReceiverToSource(request) {
         'source graph scheme'
     );
 
-    const receiverReplica_ = await readRetainedJournal(receiverStorage.journal);
-    if (receiverReplica_ instanceof Error) {
-        throw receiverReplica_;
+    const receiver = await readJournalSource(database.replicaJournalSublevel(receiverReplica));
+    if (receiver instanceof Error) {
+        throw receiver;
+    }
+    const collected = collectRetainedRecords(receiver);
+    if ('error' in collected) {
+        throw collected.error;
     }
     /** @type {ReadonlyArray<JournalRecord>} */
-    const retainedRecords = [...receiverReplica_.values()].flat();
+    const retainedRecords = collected.records;
 
     const committed = await readCommittedWriterState(receiverStorage.journal, receiverFingerprint);
     if (isJournalError(committed)) {
@@ -241,7 +254,6 @@ async function syncJournalReceiverToSource(request) {
         throw localWriter;
     }
 
-    const receiver = makeReplicaSource(receiverReplica_);
     const retained = buildRetainedReplayState({
         source: receiver,
         localWriter,
@@ -251,12 +263,10 @@ async function syncJournalReceiverToSource(request) {
         throw retained.error;
     }
 
-    const sourceReplica_ = await readRetainedJournal(sourceStorage.journal);
-    if (sourceReplica_ instanceof Error) {
-        throw sourceReplica_;
+    const source = await readJournalSource(database.replicaJournalSublevel(sourceReplica));
+    if (source instanceof Error) {
+        throw source;
     }
-    const source = makeReplicaSource(sourceReplica_);
-    const sourceRecords = [...sourceReplica_.values()].flat();
 
     const result = synchronizeRetainedJournal({
         receiver,
@@ -264,7 +274,7 @@ async function syncJournalReceiverToSource(request) {
         source,
         localWriter,
         committed,
-        observedHighWater: observedHighWaterOf(committed.authorityHighWater, sourceRecords),
+        observedHighWater: observedHighWaterOf(committed.authorityHighWater, source),
         publicationInstant: capabilities.datetime.now().toMillis(),
         currentInputKeysOfNode,
         receiverIdentity: new SnapshotIdentityClass(receiverVersion, receiverGraphScheme),

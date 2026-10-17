@@ -59,6 +59,7 @@ const {
 /** @typedef {import('../database/identifier_lookup').IdentifierLookup} IdentifierLookup */
 /** @typedef {import('../database/node_key').NodeKey} NodeKey */
 /** @typedef {import('../database/root_database').SchemaStorage} SchemaStorage */
+/** @typedef {import('../database/types').SimpleSublevel<import('../database/types').JournalText, import('../database/types').JournalKey>} JournalSublevel */
 /** @typedef {import('../journal_reset').ResetSource} ResetSource */
 /** @typedef {Set<string>} NodeInputKeys */
 /** @typedef {import('../journal_retained/proof_summary').CurrentInputKeysOfNode} CurrentInputKeysOfNode */
@@ -66,13 +67,12 @@ const {
 const {
     makeJournalAuthor,
     makeJournalSourceReadError,
-    makeReplicaSource,
     NodeFreshnessClass,
     parseJournalRecordId,
     ProjectionClass,
 } = require("../journal");
 const { makeResetSource } = require("../journal_reset");
-const { makeJournalOccurrenceKey, readRetainedJournal } = require("../journal_store");
+const { makeJournalOccurrenceKey, readJournalSource } = require("../journal_store");
 
 /** The `freshness` row value which means the occurrence is up to date. */
 const UP_TO_DATE = 'up-to-date';
@@ -172,6 +172,10 @@ async function readOccurrenceOf(storage, node) {
  * @typedef {object} HeldResetSourceRequest
  * @property {SchemaStorage} storage - The replica namespace which holds the held
  *   snapshot's committed rows and retained journal.
+ * @property {JournalSublevel} journalSublevel - The raw `journal` sublevel of the
+ *   snapshot replica, which the streaming source reads through its ordered range
+ *   iterators. The typed `storage.journal` wrapper exposes point reads and key
+ *   iteration only, so the range reader needs the sublevel itself.
  * @property {CurrentInputKeysOfNode} currentInputKeysOfNode - The current schema's
  *   direct inputs per node, which the snapshot's own graph scheme fixes for both sides.
  * @property {string} fingerprint - The snapshot replica's own writer identity, which is
@@ -185,7 +189,7 @@ async function readOccurrenceOf(storage, node) {
  * @returns {Promise<{source: ResetSource} | {error: JournalError}>}
  */
 async function readHeldResetSource(request) {
-    const { storage, currentInputKeysOfNode, fingerprint } = request;
+    const { storage, journalSublevel, currentInputKeysOfNode, fingerprint } = request;
 
     const databaseVersion = requiredText(await storage.global.get('version'), 'database version');
     const graphSchemeString = requiredText(
@@ -206,9 +210,9 @@ async function readHeldResetSource(request) {
         return { error: localWriter };
     }
 
-    const replica = await readRetainedJournal(storage.journal);
-    if (replica instanceof Error) {
-        return { error: replica };
+    const journal = await readJournalSource(journalSublevel);
+    if (journal instanceof Error) {
+        return { error: journal };
     }
 
     const validInputs = await validInputsByNodeKey(storage, lookup);
@@ -287,7 +291,7 @@ async function readHeldResetSource(request) {
         source: makeResetSource({
             databaseVersion,
             graphSchemeString,
-            journal: makeReplicaSource(replica),
+            journal,
             projection: new ProjectionClass(
                 occurrences,
                 freshness,
