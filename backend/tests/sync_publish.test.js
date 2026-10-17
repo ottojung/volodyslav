@@ -57,7 +57,7 @@ const {
 const {
     readRetainedLengths,
     retainedLengthTexts,
-} = require('../src/generators/incremental_graph/database/sync_journal_source');
+} = require('../src/generators/incremental_graph/journal_store');
 
 const {
     SYNC_STAGING_PERSISTED_NAMES,

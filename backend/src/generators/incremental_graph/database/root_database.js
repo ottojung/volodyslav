@@ -52,6 +52,7 @@ const {
 /** @typedef {import('./types').RootLevelType} RootLevelType */
 /** @typedef {import('./types').SchemaSublevelType} SchemaSublevelType */
 /** @typedef {import('./types').GlobalSublevelType} GlobalSublevelType */
+/** @typedef {import('./types').SimpleSublevel<import('./types').JournalText, import('./types').JournalKey>} JournalSublevelType */
 /** @typedef {import('./types').SublevelFormat} SublevelFormat */
 /** @typedef {import('./types').ComputedValue} ComputedValue */
 /** @typedef {import('./types').Freshness} Freshness */
@@ -883,6 +884,20 @@ class RootDatabaseClass {
      */
     replicaGlobalSublevel(name) {
         return this.replicaNamespaceSublevel(name).sublevel('global', { valueEncoding: declaredValueEncodingForSublevelName('global') });
+    }
+
+    /**
+     * The raw `journal` sublevel of one replica.
+     *
+     * A reader which needs ordered range iteration over a writer's own record keys, such
+     * as the streaming synchronization/reset source, reads this sublevel rather than the
+     * typed `journal` wrapper: the wrapper exposes point reads and key iteration, and the
+     * range iterator lives on the sublevel the wrapper wraps.
+     * @param {ReplicaName} name
+     * @returns {JournalSublevelType}
+     */
+    replicaJournalSublevel(name) {
+        return this.replicaNamespaceSublevel(name).sublevel('journal', { valueEncoding: declaredValueEncodingForSublevelName('journal') });
     }
 
     /**

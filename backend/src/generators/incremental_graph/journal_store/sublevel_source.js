@@ -38,12 +38,12 @@
 /** @typedef {import('../journal/types').JournalSequence} JournalSequence */
 /** @typedef {import('../journal/oracle/record_source').JournalSource} JournalSource */
 /** @typedef {import('../journal/oracle/record_source').PrefixReader} PrefixReader */
-/** @typedef {import('./types').JournalKey} JournalKey */
-/** @typedef {import('./types').JournalText} JournalText */
+/** @typedef {import('../database/types').JournalKey} JournalKey */
+/** @typedef {import('../database/types').JournalText} JournalText */
 /**
  * @template T
- * @template [K=import('./types').DatabaseKey]
- * @typedef {import('./types').SimpleSublevel<T, K>} SimpleSublevel
+ * @template [K=import('../database/types').DatabaseKey]
+ * @typedef {import('../database/types').SimpleSublevel<T, K>} SimpleSublevel
  */
 
 const {
@@ -51,9 +51,16 @@ const {
     journalSequenceToString,
     makeJournalAuthor,
     makeJournalSequence,
+    makeJournalSourceReadError,
     readerOverIterable,
+    tryDecodeJournalRecord,
 } = require('../journal');
-const { journalKeyToString, stringToJournalKey } = require('./types');
+const {
+    journalKeyToString,
+    journalTextToString,
+    stringToJournalKey,
+} = require('../database');
+const { makeJournalRecordKey } = require('./journal_database');
 
 const RECORD_KEY_PREFIX = 'record|';
 
@@ -250,9 +257,118 @@ function retainedLengthTexts(lengths) {
         .map(([name, sequence]) => [name, journalSequenceToString(sequence)]);
 }
 
+/**
+ * One writer's retained records, read out of that writer's own record-key range.
+ *
+ * The range is the one `readRetainedLengths` measured, so this read never touches another
+ * writer's records and never scans the whole sublevel. Each stored key is required to
+ * agree with the record it holds, so a record filed under a coordinate other than the one
+ * its key names is rejected here rather than reaching replay as a prefix the source's
+ * declared length contradicts.
+ *
+ * @param {SimpleSublevel<JournalText, JournalKey>} journalSublevel
+ * @param {JournalAuthor} author
+ * @returns {Promise<ReadonlyArray<JournalRecord> | JournalError>}
+ */
+async function readWriterRecords(journalSublevel, author) {
+    const { gte, lte } = recordRangeOf(author);
+    /** @type {JournalRecord[]} */
+    const records = [];
+    for await (const entry of journalSublevel.iterator({ gte, lte })) {
+        const [key, text] = entry;
+        const record = tryDecodeJournalRecord(journalTextToString(text));
+        if (record instanceof Error) {
+            return record;
+        }
+        const expectedKey = makeJournalRecordKey(author, record.id.sequence);
+        if (expectedKey instanceof Error) {
+            return expectedKey;
+        }
+        if (journalKeyToString(expectedKey) !== journalKeyToString(key)) {
+            return makeJournalSourceReadError(
+                'the journal sublevel key ' + journalKeyToString(key) + ' disagrees with the record it stores'
+            );
+        }
+        records.push(record);
+    }
+    return records;
+}
+
+/**
+ * A `JournalSource` over one replica's journal sublevel, as the production front supplies it.
+ *
+ * This is the production deployment of `makeSyncJournalSource`: the retained lengths come
+ * from `readRetainedLengths`, which is one reverse range read per writer, and each writer's
+ * records come from `readWriterRecords`, which is one range read over that writer's own key
+ * family. A caller reaches a writer's records only through `prefixReaderOf`, and the
+ * complete retained history is never exposed as one collection, so synchronization and
+ * reset consume records through the per-writer streaming interface rather than through a
+ * materialized `JournalReplica`.
+ *
+ * @param {SimpleSublevel<JournalText, JournalKey>} journalSublevel - The `journal` sublevel
+ *   of the replica to read, which a caller reaches through
+ *   `RootDatabase.replicaJournalSublevel(name)`.
+ * @returns {Promise<JournalSource | JournalError>}
+ */
+async function readJournalSource(journalSublevel) {
+    const lengths = await readRetainedLengths(journalSublevel);
+    if (lengths instanceof Error) {
+        return lengths;
+    }
+    /** @type {Map<string, ReadonlyArray<JournalRecord>>} */
+    const recordsByAuthor = new Map();
+    for (const name of [...lengths.keys()].sort()) {
+        const author = makeJournalAuthor(name);
+        if (author instanceof Error) {
+            return author;
+        }
+        const records = await readWriterRecords(journalSublevel, author);
+        if (records instanceof Error) {
+            return records;
+        }
+        recordsByAuthor.set(name, records);
+    }
+    return makeSyncJournalSource(lengths, (author) =>
+        recordsByAuthor.get(journalAuthorToString(author)) ?? []
+    );
+}
+
+/**
+ * Every record one source retains, read through the source's own per-writer readers.
+ *
+ * The publication write names the receiver's retained journal as records to keep, so the
+ * front needs them once as the operation list it lowers. The read is the source's own read
+ * surface rather than a second traversal of the sublevel, so it cannot disagree with what
+ * the oracle saw.
+ *
+ * @param {JournalSource} source
+ * @returns {{records: ReadonlyArray<JournalRecord>} | {error: JournalError}}
+ */
+function collectRetainedRecords(source) {
+    /** @type {JournalRecord[]} */
+    const records = [];
+    for (const author of source.writers()) {
+        const reader = source.prefixReaderOf(author);
+        for (;;) {
+            const record = reader.nextRecord();
+            if (record === undefined) {
+                break;
+            }
+            records.push(record);
+        }
+        const failure = reader.failure();
+        if (failure !== undefined) {
+            return { error: failure };
+        }
+    }
+    return { records };
+}
+
 module.exports = {
+    collectRetainedRecords,
     coordinateTextOf,
     makeSyncJournalSource,
+    readJournalSource,
     readRetainedLengths,
     recordRangeOf,
     retainedLengthTexts,
