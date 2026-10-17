@@ -38,8 +38,6 @@ const { holidayActivity } = require('./lock');
 const {
     makeDecisionConflictError,
     isDecisionConflict,
-    makeOverrideConflictError,
-    isOverrideConflict,
     makeUndecidedNodesError,
     isUndecidedNodes,
     makeSchemaCompatibilityError,
@@ -50,16 +48,46 @@ const {
     isMissingDependencyMetadata,
     makeCreateExistingNodeError,
     isCreateExistingNode,
+    makeUnsupportedPersistedIdentifierError,
+    isUnsupportedPersistedIdentifierError,
 } = require('./migration_errors');
 const { migrationCallback } = require('./migration');
 const { synchronizeNoLock } = require('./database');
 const { prepareIncrementalGraphStorage } = require('./prepare_graph_storage');
+const { runCanonicalBootstrapGate } = require('./journal_bootstrap_gate');
+const {
+    isCohortBootstrapSource,
+    isJournalVersionCompatibilityError,
+    makeJournalPublicationError,
+} = require('./journal');
+const { makeIdentityJournalFormatCodec } = require('./migration_codec');
+const { resetJournalReceiverToSnapshot, syncJournalReceiverToSource } = require('./journal_publish');
+const {
+    makeCanonicalMigrationChain,
+    canonicalNextJournalVersion,
+    resolveCanonicalMigrationChain,
+} = require('./journal_migration_chain');
+const {
+    isContinuationSafeSnapshot,
+    isInstallationRecoverySource,
+    isRecoveryDefinitelyAbsent,
+    isRecoveryExists,
+    isRecoveryIndeterminate,
+    makeContinuationSafeSnapshot,
+    makeInstallationRecoverySource,
+    queryInstallationRecovery,
+    restoreAbsentFrom,
+} = require('./journal_recovery_source');
 
 /** @typedef {import('./types').IncrementalGraphCapabilities} IncrementalGraphCapabilities */
 /** @typedef {import('./class').IncrementalGraph} IncrementalGraph */
 /** @typedef {import('./unchanged').Unchanged} Unchanged */
 
 module.exports = {
+    isCohortBootstrapSource,
+    isJournalVersionCompatibilityError,
+    makeJournalPublicationError,
+    makeIdentityJournalFormatCodec,
     makeRootDatabase,
     getRootDatabase,
     LIVE_DATABASE_WORKING_PATH,
@@ -99,8 +127,6 @@ module.exports = {
     runMigrationUnsafe,
     makeDecisionConflictError,
     isDecisionConflict,
-    makeOverrideConflictError,
-    isOverrideConflict,
     makeUndecidedNodesError,
     isUndecidedNodes,
     makeSchemaCompatibilityError,
@@ -111,8 +137,25 @@ module.exports = {
     isMissingDependencyMetadata,
     makeCreateExistingNodeError,
     isCreateExistingNode,
+    makeUnsupportedPersistedIdentifierError,
+    isUnsupportedPersistedIdentifierError,
     holidayActivity,
     migrationCallback,
     synchronizeNoLock,
     prepareIncrementalGraphStorage,
+    resetJournalReceiverToSnapshot,
+    syncJournalReceiverToSource,
+    runCanonicalBootstrapGate,
+    makeCanonicalMigrationChain,
+    canonicalNextJournalVersion,
+    resolveCanonicalMigrationChain,
+    isContinuationSafeSnapshot,
+    isInstallationRecoverySource,
+    isRecoveryDefinitelyAbsent,
+    isRecoveryExists,
+    isRecoveryIndeterminate,
+    makeContinuationSafeSnapshot,
+    makeInstallationRecoverySource,
+    queryInstallationRecovery,
+    restoreAbsentFrom,
 };

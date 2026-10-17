@@ -32,7 +32,7 @@ valid                : Map<NodeIdentifier, Array<NodeIdentifier>>
 - `identifiers_keys_map`, `values`, `freshness`, and `timestamps` share the same key set. A materialized node is exactly a cached node.
 - `values` is cached value storage.
 - `freshness` is the total materialized-node freshness table.
-- `timestamps` is the total materialized-node timestamp table. `createdAt` is when the materialized node identity was first created; `modifiedAt` is a version timestamp for the stored semantic value (it advances only when the semantic value changes, not when freshness, validity, or other record metadata changes).
+- `timestamps` is the total materialized-node timestamp table. `createdAt` is when the materialized node identity was first created; `modifiedAt` is a version timestamp for the stored semantic value (it is updated only when the semantic value changes, not when freshness, validity, or other record metadata changes; successive values are not required to increase numerically — see REQ-IFACE-08 in `incremental-graph.md`).
 - `valid` is the inverse proof relation for up-to-date cached values. `valid[D]` contains dependents `N` whose current cached value has a proof with respect to `D`'s current cached value; `valid[D]` is also the outgoing frontier traversed when `D` is invalidated.
 
 Terminology:
@@ -161,7 +161,7 @@ If `freshness[N] === "up-to-date"`, then:
 - `freshness[D] === "up-to-date"`;
 - `N ∈ valid[D]`.
 
-This invariant is maintained by writers (`handleUnchanged`, `handleChanged`), sync merge validity
+This invariant is maintained by writers (`handleUnchanged`, `handleChanged`), synchronization validity
 rebuild, migration, and final validation. The pull fast path does not re-check `valid[D].has(N)`
 for an up-to-date node — it relies on the invariant being enforced by mutation paths.
 
@@ -385,7 +385,7 @@ the transaction are consistent with the transaction's uncommitted changes.
 - Invalidation propagation sees the correct committed validity frontier.
 - Failed transactions do not mutate `valid`.
 - Raw `SchemaStorage.valid.putOp` / `SchemaStorage.valid.delOp` are only safe in isolated rebuild
-  contexts such as migration or sync merge, not in live graph transactions.
+  contexts such as migration or synchronization, not in live graph transactions.
 
 ## Transactional Semantics
 
@@ -417,14 +417,17 @@ to refresh validity.
 Sorting of `valid[D]` is required for stable storage, stable rendered output, snapshots, merges,
 and diffs.
 
-## Sync Merge and Migration
+## Synchronization and Migration
 
-Sync merge and migration may rebuild `valid` in isolated replica contexts where no concurrent graph
+Synchronization and migration may rebuild `valid` in isolated target contexts where no concurrent graph
 transactions are active. In these contexts, raw full-array writes to `valid[D]` are acceptable.
 
-### Sync merge
+### Synchronization
 
-After applying precise merge decisions, the merge flow:
+Journal 3 synchronization imports missing foreign-writer Journal history; the resulting graph is the
+materialized `project(Jfinal)`. It does not merge `valid` fieldwise from the source replicas as an
+independent authority. The retained pre-Journal fieldwise fallback, which applies only when a replica
+carries no Journal state, reconstructs `valid` with these decisions:
 
 1. Transports compatible `valid` entries from both source sides where provenance, value identity,
    and structural compatibility justify preserving the exact proof.
@@ -444,7 +447,7 @@ Migration rebuilds `valid` from the final migrated graph state:
 
 - `create` nodes marked `up-to-date` receive incoming valid flags for their current derived inputs because the migration callback supplies an up-to-date value.
 - `create` nodes marked `potentially-outdated` receive no incoming valid flags.
-- `override` and `keep` nodes preserve incoming valid flags when previous proof, schema compatibility, value identity, and freshness rules justify preserving that exact proof.
+- `keep` nodes preserve incoming valid flags when previous proof, schema compatibility, value identity, and freshness rules justify preserving that exact proof. Representation-only changes are handled by `keep` plus the canonical format codec; see `migration.md`.
 - **Explicit `invalidate`** nodes receive no incoming valid flags. Outgoing proofs from the explicitly invalidated node to its dependents survive when structurally and semantically transportable.
 - **Propagated `invalidate`** nodes preserve all historical incoming and outgoing proofs subject to normal structural compatibility and endpoint survival. Propagated invalidation changes freshness only.
 - `delete` nodes do not appear in `valid`.
@@ -518,9 +521,9 @@ This theorem is about runtime cache invalidation, not about structural graph ope
 
 Document this explicitly because it prevents a future reader from treating `valid` as a renamed reverse-dependency index.
 
-### Theorem 6: Merge validity reconstruction preserves soundness
+### Theorem 6: Synchronization validity reconstruction preserves soundness
 
-**Claim:** After sync merge validity reconstruction, the final state satisfies:
+**Claim:** After synchronization validity reconstruction, the final state satisfies:
 
 - every `valid[D]` entry points only to known identifiers;
 - every validity edge is compatible with the derived `inputEdges`;
@@ -529,7 +532,7 @@ Document this explicitly because it prevents a future reader from treating `vali
 
 **Proof sketch:**
 
-The merge validity algorithm (`rebuildMergedValidity`) does **not** mint proofs. It
+The retained fieldwise reconstruction algorithm (`rebuildMergedValidity`) does **not** mint proofs. It
 only transports preexisting proofs from either source side when provenance
 supports it, and it classifies nodes without a full proof set as direct roots.
 
