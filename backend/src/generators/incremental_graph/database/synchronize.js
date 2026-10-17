@@ -225,7 +225,7 @@ async function mergeRemoteHostBranches(capabilities, state) {
                 );
                 capabilities.logger.logInfo(
                     { hostname, error: cleanupErr },
-                    'Failed to clear hostname storage during cleanup'
+                    'Failed to clear synchronization staging during cleanup'
                 );
             }
         }
