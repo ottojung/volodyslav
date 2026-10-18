@@ -31,6 +31,7 @@ const {
     isJournalVersionCompatibilityError,
     LIVE_DATABASE_WORKING_PATH,
     syncJournalReceiverToSource,
+    resetJournalReceiverToSnapshot,
     runCanonicalBootstrapGate,
     queryInstallationRecovery,
     restoreAbsentFrom,
@@ -44,18 +45,21 @@ const { makeSynchronizeDatabaseError, makeUnresolvedCanonicalBootstrapError } = 
 const { allEvents, config, diarySummary, ontology } = require("../individual");
 
 /**
- * The synchronization options a normal synchronization is performed with.
+ * The Journal front an operation is performed with.
  *
- * A synchronization of a receiver which retains Journal records is performed by the Journal
- * synchronization rather than by a fieldwise merge, so the operation is given that
- * synchronization.
+ * A synchronization of a receiver which retains Journal records is performed by the
+ * Journal synchronization rather than by a fieldwise merge, and a reset of such a
+ * receiver is performed by the Journal reset rather than by adopting the snapshot's
+ * rows. The operation is given the front its mode names, so a reset which reaches a
+ * Journal receiver resets it through the Journal instead of stopping at the missing
+ * front.
  *
  * @param {{ resetToHostname?: string } | undefined} options
- * @returns {{ resetToHostname?: string, journalSync?: import('../incremental_graph/journal_publish').SyncReceiverToSource } | undefined}
+ * @returns {{ resetToHostname?: string, journalReset?: import('../incremental_graph/journal_publish').ResetReceiverToSnapshot, journalSync?: import('../incremental_graph/journal_publish').SyncReceiverToSource } | undefined}
  */
 function withJournalSync(options) {
     if (options?.resetToHostname !== undefined) {
-        return options;
+        return { ...options, journalReset: resetJournalReceiverToSnapshot };
     }
     return { ...options, journalSync: syncJournalReceiverToSource };
 }
