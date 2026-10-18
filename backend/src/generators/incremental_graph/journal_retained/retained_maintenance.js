@@ -47,9 +47,9 @@ const {
  * @param {JournalSource} request.source - The receiver's retained journal.
  * @param {JournalAuthor} request.localWriter
  * @param {CurrentInputKeysOfNode} request.currentInputKeysOfNode
- * @returns {{state: RetainedReplayState} | {error: JournalError}}
+ * @returns {Promise<{state: RetainedReplayState} | {error: JournalError}>}
  */
-function buildRetainedReplayState(request) {
+async function buildRetainedReplayState(request) {
     const { source, localWriter, currentInputKeysOfNode } = request;
     /** @type {Map<string, HeadSelection>} */
     const heads = new Map();
@@ -59,7 +59,7 @@ function buildRetainedReplayState(request) {
     const admittedLengths = new Map();
     const localName = journalAuthorToString(localWriter);
     let lastNodeIndex = 0;
-    const failure = streamWithReport(source, (record) => {
+    const failure = await streamWithReport(source, (record) => {
         const name = journalAuthorToString(record.id.author);
         writers.set(name, record.id.author);
         raiseAdmittedLength(admittedLengths, name, record.id.sequence);
@@ -75,7 +75,7 @@ function buildRetainedReplayState(request) {
     if (failure !== undefined) {
         return { error: failure };
     }
-    const proofs = buildProofSummary({
+    const proofs = await buildProofSummary({
         source,
         occurrences: new Map(),
         currentInputKeysOfNode,

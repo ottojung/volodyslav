@@ -168,9 +168,9 @@ function isSyncOutcome(value) {
  * Perform one pairwise synchronization of a retained journal.
  *
  * @param {SynchronizeRequest} request
- * @returns {{outcome: SyncOutcome} | {error: JournalError}}
+ * @returns {Promise<{outcome: SyncOutcome} | {error: JournalError}>}
  */
-function synchronizeRetainedJournal(request) {
+async function synchronizeRetainedJournal(request) {
     const {
         receiver,
         source,
@@ -234,7 +234,7 @@ function synchronizeRetainedJournal(request) {
         return { error: incompatible };
     }
 
-    const plan = planForeignSuffixImport({
+    const plan = await planForeignSuffixImport({
         receiver,
         source,
         localWriter,

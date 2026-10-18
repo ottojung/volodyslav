@@ -294,8 +294,8 @@ function committedAfter(records, authorityPhysical) {
  * @param {ReadonlyArray<import("../src/generators/incremental_graph/journal").JournalRecord>} records
  * @returns {import("../src/generators/incremental_graph/journal_retained").RetainedReplayState}
  */
-function rebuiltStateOf(records) {
-    const built = buildRetainedReplayState({
+async function rebuiltStateOf(records) {
+    const built = await buildRetainedReplayState({
         source: makeReplicaSource(replicaOf(records)),
         localWriter: makeJournalAuthor(WRITER_LOCAL),
         currentInputKeysOfNode: chainInputs,
@@ -338,12 +338,12 @@ function resolutionOf(state) {
  * @param {number} [options.publicationInstant]
  * @param {import("../src/generators/incremental_graph/journal_retained").RetainedReplayState | undefined} [options.retainedState]
  */
-function synchronize(options) {
+async function synchronize(options) {
     const identity = new SnapshotIdentityClass("v1", "scheme");
     const staged = options.retainedState === undefined
-        ? rebuiltStateOf(options.receiver)
+        ? await rebuiltStateOf(options.receiver)
         : options.retainedState;
-    return synchronizeRetainedJournal({
+    return await synchronizeRetainedJournal({
         receiver: makeReplicaSource(replicaOf(options.receiver)),
         source: makeReplicaSource(replicaOf(options.source)),
         localWriter: makeJournalAuthor(WRITER_LOCAL),
@@ -468,11 +468,11 @@ function localLeafHistory(firstSequence, count) {
 }
 
 describe("synchronizeRetainedJournal, the retained replay state it stages", () => {
-    test("the outcome carries the very state the operation extended", () => {
+    test("the outcome carries the very state the operation extended", async () => {
         const receiver = receiverChain();
-        const staged = rebuiltStateOf(receiver);
+        const staged = await rebuiltStateOf(receiver);
 
-        const outcome = outcomeOf(synchronize({
+        const outcome = outcomeOf(await synchronize({
             receiver,
             source: peerAddsC(undefined),
             authorityPhysical: 700,
@@ -483,11 +483,11 @@ describe("synchronizeRetainedJournal, the retained replay state it stages", () =
         expect(outcome.retainedState).toBe(staged);
     });
 
-    test("a receiver which supplies no retained replay state is refused rather than scanned", () => {
+    test("a receiver which supplies no retained replay state is refused rather than scanned", async () => {
         const receiver = receiverChain();
         const identity = new SnapshotIdentityClass("v1", "scheme");
 
-        const result = synchronizeRetainedJournal({
+        const result = await synchronizeRetainedJournal({
             receiver: makeReplicaSource(replicaOf(receiver)),
             source: makeReplicaSource(replicaOf(peerAddsC(undefined))),
             localWriter: makeJournalAuthor(WRITER_LOCAL),
@@ -508,10 +508,10 @@ describe("synchronizeRetainedJournal, the retained replay state it stages", () =
         expect(result.error.message).toContain("does not fall back");
     });
 
-    test("an impostor which is not a retained replay state is refused", () => {
+    test("an impostor which is not a retained replay state is refused", async () => {
         const receiver = receiverChain();
 
-        const result = synchronize({
+        const result = await synchronize({
             receiver,
             source: peerAddsC(undefined),
             authorityPhysical: 700,
@@ -521,9 +521,9 @@ describe("synchronizeRetainedJournal, the retained replay state it stages", () =
         expect("outcome" in result).toBe(false);
     });
 
-    test("an import-only synchronization stages exactly Jfinal", () => {
+    test("an import-only synchronization stages exactly Jfinal", async () => {
         const receiver = receiverChain();
-        const outcome = outcomeOf(synchronize({
+        const outcome = outcomeOf(await synchronize({
             receiver,
             source: peerAddsC(undefined),
             authorityPhysical: 700,
@@ -531,14 +531,14 @@ describe("synchronizeRetainedJournal, the retained replay state it stages", () =
 
         expect(outcome.retainedState.proofs).toBeDefined();
         expect(resolutionOf(outcome.retainedState)).toEqual(
-            resolutionOf(rebuiltStateOf([...receiver, ...outcome.records]))
+            resolutionOf(await rebuiltStateOf([...receiver, ...outcome.records]))
         );
         expect(proofSummaryOf(outcome.retainedState)).toEqual(
-            proofSummaryOf(rebuiltStateOf([...receiver, ...outcome.records]))
+            proofSummaryOf(await rebuiltStateOf([...receiver, ...outcome.records]))
         );
     });
 
-    test("a synchronization which authors structural removals stages exactly Jfinal", () => {
+    test("a synchronization which authors structural removals stages exactly Jfinal", async () => {
         const receiver = receiverChain();
         const peerDeletesA = made(makeDeleteEvent(
             {
@@ -550,7 +550,7 @@ describe("synchronizeRetainedJournal, the retained replay state it stages", () =
             "operation"
         ));
 
-        const outcome = outcomeOf(synchronize({
+        const outcome = outcomeOf(await synchronize({
             receiver,
             source: [peerDeletesA],
             authorityPhysical: 700,
@@ -559,13 +559,13 @@ describe("synchronizeRetainedJournal, the retained replay state it stages", () =
         expect(outcome.publication.records.filter((record) => record.kind === "delete").length)
             .toBeGreaterThan(0);
         expect(resolutionOf(outcome.retainedState)).toEqual(
-            resolutionOf(rebuiltStateOf([...receiver, ...outcome.records]))
+            resolutionOf(await rebuiltStateOf([...receiver, ...outcome.records]))
         );
     });
 
-    test("a synchronization which authors stale markers stages exactly Jfinal", () => {
+    test("a synchronization which authors stale markers stages exactly Jfinal", async () => {
         const receiver = receiverWithUnprovenRoot();
-        const outcome = outcomeOf(synchronize({
+        const outcome = outcomeOf(await synchronize({
             receiver,
             source: peerAddsC("2"),
             authorityPhysical: 700,
@@ -574,16 +574,16 @@ describe("synchronizeRetainedJournal, the retained replay state it stages", () =
         expect(outcome.publication.records.filter((record) => record.kind === "invalidate").length)
             .toBeGreaterThan(0);
         expect(resolutionOf(outcome.retainedState)).toEqual(
-            resolutionOf(rebuiltStateOf([...receiver, ...outcome.records]))
+            resolutionOf(await rebuiltStateOf([...receiver, ...outcome.records]))
         );
         expect(proofSummaryOf(outcome.retainedState)).toEqual(
-            proofSummaryOf(rebuiltStateOf([...receiver, ...outcome.records]))
+            proofSummaryOf(await rebuiltStateOf([...receiver, ...outcome.records]))
         );
     });
 
-    test("a synchronization which changes nothing still stages exactly Jfinal", () => {
+    test("a synchronization which changes nothing still stages exactly Jfinal", async () => {
         const receiver = receiverChain();
-        const outcome = outcomeOf(synchronize({
+        const outcome = outcomeOf(await synchronize({
             receiver,
             source: [],
             authorityPhysical: 700,
@@ -591,10 +591,10 @@ describe("synchronizeRetainedJournal, the retained replay state it stages", () =
 
         expect(outcome.records).toEqual([]);
         expect(outcome.stateAdvancing).toBe(false);
-        expect(resolutionOf(outcome.retainedState)).toEqual(resolutionOf(rebuiltStateOf(receiver)));
+        expect(resolutionOf(outcome.retainedState)).toEqual(resolutionOf(await rebuiltStateOf(receiver)));
     });
 
-    test("the staged head selection names the imported occurrence, not the superseded one", () => {
+    test("the staged head selection names the imported occurrence, not the superseded one", async () => {
         const receiver = receiverChain();
         const peerRewritesA = materializeOnly({
             writer: WRITER_PEER,
@@ -603,7 +603,7 @@ describe("synchronizeRetainedJournal, the retained replay state it stages", () =
             context: [[WRITER_LOCAL, "4"]],
         });
 
-        const outcome = outcomeOf(synchronize({
+        const outcome = outcomeOf(await synchronize({
             receiver,
             source: [peerRewritesA],
             authorityPhysical: 700,
@@ -614,11 +614,11 @@ describe("synchronizeRetainedJournal, the retained replay state it stages", () =
         expect(journalRecordIdToString(selected.get(KEY_B).valueId)).toBe(WRITER_LOCAL + ":3");
     });
 
-    test("the staged allocator watermark is the receiver's own, unchanged by an import", () => {
+    test("the staged allocator watermark is the receiver's own, unchanged by an import", async () => {
         const receiver = receiverChain();
         const writerState = made(makeWriterStateRecord(WRITER_LOCAL + ":5", 42));
 
-        const outcome = outcomeOf(synchronize({
+        const outcome = outcomeOf(await synchronize({
             receiver: [...receiver, writerState],
             source: peerAddsC(undefined),
             authorityPhysical: 700,
@@ -627,27 +627,27 @@ describe("synchronizeRetainedJournal, the retained replay state it stages", () =
         expect(outcome.retainedState.lastNodeIndex).toBe(42);
         expect(outcome.projection.lastNodeIndex).toBe(42);
         expect(resolutionOf(outcome.retainedState)).toEqual(
-            resolutionOf(rebuiltStateOf([...receiver, writerState, ...outcome.records]))
+            resolutionOf(await rebuiltStateOf([...receiver, writerState, ...outcome.records]))
         );
     });
 
-    test("a second synchronization against an already incorporated source stages the same state again", () => {
+    test("a second synchronization against an already incorporated source stages the same state again", async () => {
         const receiver = receiverChain();
-        const first = outcomeOf(synchronize({
+        const first = outcomeOf(await synchronize({
             receiver,
             source: peerAddsC(undefined),
             authorityPhysical: 700,
         }));
         const incorporated = [...receiver, ...first.records];
 
-        const second = outcomeOf(synchronize({
+        const second = outcomeOf(await synchronize({
             receiver: incorporated,
             source: peerAddsC(undefined),
             authorityPhysical: 900,
         }));
 
         expect(second.stateAdvancing).toBe(false);
-        expect(resolutionOf(second.retainedState)).toEqual(resolutionOf(rebuiltStateOf(incorporated)));
+        expect(resolutionOf(second.retainedState)).toEqual(resolutionOf(await rebuiltStateOf(incorporated)));
     });
 });
 
@@ -658,11 +658,11 @@ describe("synchronizeRetainedJournal, the retained history it does not re-read",
      * @param {ReadonlyArray<import("../src/generators/incremental_graph/journal").JournalRecord>} options.source
      * @param {number} options.authorityPhysical
      */
-    function counted(options) {
+    async function counted(options) {
         const identity = new SnapshotIdentityClass("v1", "scheme");
         const receiver = countingSource(makeReplicaSource(replicaOf(options.receiver)));
         const source = countingSource(makeReplicaSource(replicaOf(options.source)));
-        const result = synchronizeRetainedJournal({
+        const result = await synchronizeRetainedJournal({
             receiver,
             source,
             localWriter: makeJournalAuthor(WRITER_LOCAL),
@@ -672,7 +672,7 @@ describe("synchronizeRetainedJournal, the retained history it does not re-read",
             currentInputKeysOfNode: chainInputs,
             receiverIdentity: identity,
             sourceIdentity: identity,
-            retainedState: rebuiltStateOf(options.receiver),
+            retainedState: await rebuiltStateOf(options.receiver),
         });
         return {
             result,
@@ -683,8 +683,8 @@ describe("synchronizeRetainedJournal, the retained history it does not re-read",
         };
     }
 
-    test("an import reads no retained receiver record at all", () => {
-        const countedResult = counted({
+    test("an import reads no retained receiver record at all", async () => {
+        const countedResult = await counted({
             receiver: receiverChain(),
             source: peerAddsC(undefined),
             authorityPhysical: 700,
@@ -694,7 +694,7 @@ describe("synchronizeRetainedJournal, the retained history it does not re-read",
         expect(countedResult.receiverReads).toBe(0);
     });
 
-    test("the retained reads do not grow with the receiver's retained history", () => {
+    test("the retained reads do not grow with the receiver's retained history", async () => {
         // The same change to the same node, against receivers whose retained history
         // differs by a prefix of an unrelated leaf the operation has no reason to
         // visit. A bound in terms of the retained journal makes the second count
@@ -708,12 +708,12 @@ describe("synchronizeRetainedJournal, the retained history it does not re-read",
             context: [[WRITER_LOCAL, String(head)]],
         })];
 
-        const onShort = counted({
+        const onShort = await counted({
             receiver: short,
             source: rewritesA(4),
             authorityPhysical: 9000,
         });
-        const onLong = counted({
+        const onLong = await counted({
             receiver: long,
             source: rewritesA(12),
             authorityPhysical: 9000,
@@ -726,9 +726,9 @@ describe("synchronizeRetainedJournal, the retained history it does not re-read",
         expect(onLong.receiverReads).toBe(0);
     });
 
-    test("a source is read exactly its missing suffix, never the receiver's history again", () => {
+    test("a source is read exactly its missing suffix, never the receiver's history again", async () => {
         const source = peerAddsC(undefined);
-        const countedResult = counted({
+        const countedResult = await counted({
             receiver: receiverChain(),
             source,
             authorityPhysical: 700,
@@ -745,7 +745,7 @@ describe("synchronizeRetainedJournal, the retained history it does not re-read",
         expect(countedResult.sourceReads).toBe(source.length + 1);
     });
 
-    test("the stale-state correspondence costs one enumeration per writer, not one", () => {
+    test("the stale-state correspondence costs one enumeration per writer, not one", async () => {
         // The state names `W` admitted writers and the receiver reports `W` of its
         // own, and the check resolves an admitted writer name against the receiver's
         // writer set once per admitted writer plus once for the writers the state has
@@ -770,7 +770,7 @@ describe("synchronizeRetainedJournal, the retained history it does not re-read",
         expect(admittedWriters).toBeGreaterThan(1);
 
         const refused = refuseStaleRetainedState(
-            rebuiltStateOf(receiver),
+            await rebuiltStateOf(receiver),
             countedReceiver,
             makeJournalAuthor(WRITER_LOCAL)
         );
@@ -817,7 +817,7 @@ describe("forkRetainedReplayState, the containers it hands the fold", () => {
         ].flatMap((value) => containersOf(value));
     }
 
-    test("the fork holds no container of the state it was taken from", () => {
+    test("the fork holds no container of the state it was taken from", async () => {
         // Every scope map of the counted summary is filled by invalidations of all
         // three scope kinds, so the fork has to copy the node-scoped, value-scoped
         // and proof-scoped coordinate maxima themselves rather than only the scopes
@@ -856,7 +856,7 @@ describe("forkRetainedReplayState, the containers it hands the fold", () => {
                 "reset"
             )),
         ];
-        const state = rebuiltStateOf(receiver);
+        const state = await rebuiltStateOf(receiver);
         expect(state.proofs.proofScoped.size).toBeGreaterThan(0);
         expect(state.proofs.valueScoped.size).toBeGreaterThan(0);
 

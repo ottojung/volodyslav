@@ -157,7 +157,7 @@ function importedFrontier() {
  * @param {ReadonlyArray<import("../src/generators/incremental_graph/journal").JournalRecord>} records
  * @returns {import("../src/generators/incremental_graph/journal/oracle").Projection | Error}
  */
-function projectUnion(records) {
+async function projectUnion(records) {
     const streams = [
         [made(makeJournalAuthor(LOCAL)), records.filter((record) => journalAuthorToString(record.id.author) === LOCAL)],
         [made(makeJournalAuthor(PEER)), records.filter((record) => journalAuthorToString(record.id.author) === PEER)],
@@ -166,7 +166,7 @@ function projectUnion(records) {
     if (replica instanceof Error) {
         throw new Error("the fixture union is not a well-formed replica: " + replica.message);
     }
-    return projectRetainedJournal({
+    return await projectRetainedJournal({
         source: makeReplicaSource(replica),
         localWriter: made(makeJournalAuthor(LOCAL)),
         currentInputKeysOfNode: leafSchema,
@@ -178,8 +178,8 @@ function projectUnion(records) {
  * @param {string} nodeKeyString
  * @returns {boolean | undefined}
  */
-function freshnessOf(records, nodeKeyString) {
-    const projection = projectUnion(records);
+async function freshnessOf(records, nodeKeyString) {
+    const projection = await projectUnion(records);
     if (projection instanceof Error) {
         throw new Error("replay rejected the fixture union: " + projection.message);
     }
@@ -188,14 +188,14 @@ function freshnessOf(records, nodeKeyString) {
 }
 
 describe("ordinary emission observes the complete committed retained frontier", () => {
-    test("the foreign node invalidation is effective before the local revalidation", () => {
+    test("the foreign node invalidation is effective before the local revalidation", async () => {
         // The local certificate does not causally observe the concurrent foreign
         // node invalidation, so it is ineligible and `K` is not fresh.
-        expect(freshnessOf([localMaterializationOfK(), foreignInvalidationOfK(), unrelatedForeignRecord()], KEY_K))
+        expect(await freshnessOf([localMaterializationOfK(), foreignInvalidationOfK(), unrelatedForeignRecord()], KEY_K))
             .toBe(false);
     });
 
-    test("a revalidation from the complete frontier covers the invalidation and freshens K", () => {
+    test("a revalidation from the complete frontier covers the invalidation and freshens K", async () => {
         const state = {
             localWriter: made(makeJournalAuthor(LOCAL)),
             writerHead: made(makeJournalSequence("1")),
@@ -233,18 +233,18 @@ describe("ordinary emission observes the complete committed retained frontier", 
 
         // Replaying the union makes the semantic consequence observable: the
         // complete context causally covers `PEER:1`, so `K` is fresh again.
-        expect(freshnessOf(
+        expect(await freshnessOf(
             [localMaterializationOfK(), foreignInvalidationOfK(), unrelatedForeignRecord(), revalidation],
             KEY_K
         )).toBe(true);
         // The unrelated foreign node stays untouched by the revalidation.
-        expect(freshnessOf(
+        expect(await freshnessOf(
             [localMaterializationOfK(), foreignInvalidationOfK(), unrelatedForeignRecord(), revalidation],
             KEY_D
         )).toBe(false);
     });
 
-    test("a context built only from the referenced records leaves K stale", () => {
+    test("a context built only from the referenced records leaves K stale", async () => {
         // The counterfactual the specification forbids: the revalidation's
         // context names only the ValueId it references, so it does not observe
         // the foreign node invalidation and cannot freshen `K`.
@@ -259,7 +259,7 @@ describe("ordinary emission observes the complete committed retained frontier", 
             [],
             "compute"
         ));
-        expect(freshnessOf(
+        expect(await freshnessOf(
             [localMaterializationOfK(), foreignInvalidationOfK(), unrelatedForeignRecord(), narrow],
             KEY_K
         )).toBe(false);

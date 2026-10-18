@@ -161,9 +161,9 @@ function isJoinedCanonicalBootstrap(value) {
  * pre-Journal graph.
  *
  * @param {JoinCanonicalBootstrapRequest} request
- * @returns {JoinedCanonicalBootstrap | JournalError}
+ * @returns {Promise<JoinedCanonicalBootstrap | JournalError>}
  */
-function joinCanonicalBootstrap(request) {
+async function joinCanonicalBootstrap(request) {
     const { legacyState, artifact, joiningWriter, currentInputKeysOfNode } = request;
     if (!isLegacyBootstrapState(legacyState)) {
         return makeJournalPublicationError(
@@ -212,14 +212,14 @@ function joinCanonicalBootstrap(request) {
 
     /**
      * Replay the canonical cut together with the joining records authored so far.
-     * @returns {Projection | JournalError}
+     * @returns {Promise<Projection | JournalError>}
      */
-    function replayJoined() {
+    async function replayJoined() {
         const joiningReplica = makeJournalReplica([[joiningWriter, cursor.records]]);
         if (joiningReplica instanceof Error) {
             return joiningReplica;
         }
-        return projectRetainedJournal({
+        return await projectRetainedJournal({
             source: makeUnionSource([
                 makeReplicaSource(canonicalReplica),
                 makeReplicaSource(joiningReplica),
@@ -229,7 +229,7 @@ function joinCanonicalBootstrap(request) {
         });
     }
 
-    const canonicalProjection = projectRetainedJournal({
+    const canonicalProjection = await projectRetainedJournal({
         source: makeReplicaSource(canonicalReplica),
         localWriter: joiningWriter,
         currentInputKeysOfNode,
@@ -241,7 +241,7 @@ function joinCanonicalBootstrap(request) {
         canonicalProjection.occurrences.map((occurrence) => [occurrence.nodeKeyString, occurrence])
     );
     // Pass J1: one occurrence per materialized joining node.
-    const occurrences = establishJoiningOccurrences({
+    const occurrences = await establishJoiningOccurrences({
         legacyState,
         canonicalOccurrences,
         cursor,
@@ -266,7 +266,7 @@ function joinCanonicalBootstrap(request) {
     }
 
     // Pass J2b: persist recursive-only staleness at the cut J2 reached.
-    const afterProof = replayJoined();
+    const afterProof = await replayJoined();
     if (afterProof instanceof Error) {
         return afterProof;
     }
@@ -330,7 +330,7 @@ function joinCanonicalBootstrap(request) {
         cursor.lastSequence = sequence;
     }
 
-    const joined = replayJoined();
+    const joined = await replayJoined();
     if (joined instanceof Error) {
         return joined;
     }

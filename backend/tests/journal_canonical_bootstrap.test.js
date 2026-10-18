@@ -406,10 +406,10 @@ describe("deterministic canonical staging of passes C1 through C4", () => {
         expect([...second.bootstrapFrontier]).toEqual([...first.bootstrapFrontier]);
     });
 
-    test("replays to the legacy occurrences the source persists", () => {
+    test("replays to the legacy occurrences the source persists", async () => {
         const state = sourceState({});
         const candidate = stagedOf(state, CREATOR);
-        const projection = projectRetainedJournal({
+        const projection = await projectRetainedJournal({
             source: makeReplicaSource(canonicalArtifactReplica(artifactOf(candidate))),
             localWriter: candidate.creatorWriter,
             currentInputKeysOfNode: (nodeKeyString) => {

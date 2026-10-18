@@ -166,9 +166,9 @@ function isResetOutcome(value) {
  * Perform one controlled reset of a retained journal to a held source snapshot.
  *
  * @param {ResetRequestBody} request
- * @returns {{outcome: ResetOutcome} | {error: JournalError}}
+ * @returns {Promise<{outcome: ResetOutcome} | {error: JournalError}>}
  */
-function resetToSource(request) {
+async function resetToSource(request) {
     const {
         receiver,
         source,
@@ -209,7 +209,7 @@ function resetToSource(request) {
     // J0 = union(JR, S). The own-writer rollback boundary is the shared one: a
     // source ahead of the receiver for the receiver's own writer is refused here,
     // before any record is admitted and before any authorship is allocated.
-    const plan = planForeignSuffixImport({
+    const plan = await planForeignSuffixImport({
         receiver,
         source: source.journal,
         localWriter,

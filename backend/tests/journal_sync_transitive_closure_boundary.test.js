@@ -105,8 +105,8 @@ function closedHistory() {
 /**
  * @param {{a1: object, b1: object, c1: object}} history
  */
-function planOf(history) {
-    return planForeignSuffixImport({
+async function planOf(history) {
+    return await planForeignSuffixImport({
         receiver: makeReplicaSource(makeJournalReplica([])),
         source: makeReplicaSource(makeJournalReplica([
             [makeJournalAuthor(WRITER_A), [history.a1]],
@@ -138,13 +138,13 @@ describe("the bounded import path's transitive-closure boundary", () => {
         ]))).toBeUndefined();
     });
 
-    test("the bounded import path accepts the closed history", () => {
-        const plan = planOf(closedHistory());
+    test("the bounded import path accepts the closed history", async () => {
+        const plan = await planOf(closedHistory());
         expect("error" in plan).toBe(false);
     });
 
-    test("the bounded import path rejects the malformed history from the admitted change set", () => {
-        const plan = planOf(malformedHistory());
+    test("the bounded import path rejects the malformed history from the admitted change set", async () => {
+        const plan = await planOf(malformedHistory());
         expect("error" in plan).toBe(true);
         if (!("error" in plan)) {
             throw new Error("expected the malformed history to be rejected");

@@ -194,12 +194,12 @@ function advanceFrontier(frontier, author, sequence) {
  * @param {JournalSequence} afterSequence - The receiver's retained length.
  * @param {JournalFrontier} frontier - The union frontier before this writer.
  * @param {(nodeKeyString: string) => ReadonlyArray<string>} currentInputKeysOfNode
- * @returns {{suffix: ImportedSuffix, frontier: JournalFrontier} | {error: JournalError}}
+ * @returns {Promise<{suffix: ImportedSuffix, frontier: JournalFrontier} | {error: JournalError}>}
  */
-function acquireSuffix(source, receiver, author, afterSequence, frontier, currentInputKeysOfNode) {
+async function acquireSuffix(source, receiver, author, afterSequence, frontier, currentInputKeysOfNode) {
     const reader = source.prefixReaderOf(author);
     const authorName = journalAuthorToString(author);
-    const overlap = readRetainedOverlap(
+    const overlap = await readRetainedOverlap(
         reader,
         receiver.prefixReaderOf(author),
         authorName,
@@ -221,7 +221,7 @@ function acquireSuffix(source, receiver, author, afterSequence, frontier, curren
 
     let next = overlap.pending;
     for (;;) {
-        const record = next === undefined ? reader.nextRecord() : next;
+        const record = next === undefined ? await reader.nextRecord() : next;
         next = undefined;
         if (record === undefined) {
             const failure = reader.failure();
@@ -283,9 +283,9 @@ function acquireSuffix(source, receiver, author, afterSequence, frontier, curren
  * @param {JournalSource} plan.source - The one held compatible source snapshot.
  * @param {JournalAuthor} plan.localWriter - The receiver's own writer.
  * @param {(nodeKeyString: string) => ReadonlyArray<string>} plan.currentInputKeysOfNode
- * @returns {ImportPlan | {error: JournalError}}
+ * @returns {Promise<ImportPlan | {error: JournalError}>}
  */
-function planForeignSuffixImport(plan) {
+async function planForeignSuffixImport(plan) {
     const { receiver, source, localWriter, currentInputKeysOfNode } = plan;
     const localName = journalAuthorToString(localWriter);
 
@@ -369,7 +369,7 @@ function planForeignSuffixImport(plan) {
         if (compareJournalSequence(sourceLength, after) <= 0) {
             continue;
         }
-        const acquired = acquireSuffix(
+        const acquired = await acquireSuffix(
             source,
             receiver,
             author,

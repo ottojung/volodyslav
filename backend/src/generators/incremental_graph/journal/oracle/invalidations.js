@@ -114,9 +114,9 @@ function summaryIsCovered(summary, observer, authorOf) {
  * make relevant.
  * @param {JournalSource} source
  * @param {Map<string, {node: import("../types").NodeKey, valueId: import("../types").JournalRecordId}>} selectedOccurrences
- * @returns {{summaries: Map<string, InvalidationSummary>} | {error: JournalError}}
+ * @returns {Promise<{summaries: Map<string, InvalidationSummary>} | {error: JournalError}>}
  */
-function summarizeInvalidations(source, selectedOccurrences) {
+async function summarizeInvalidations(source, selectedOccurrences) {
     /** @type {Map<string, InvalidationSummary>} */
     const summaries = new Map();
     /**
@@ -132,7 +132,7 @@ function summarizeInvalidations(source, selectedOccurrences) {
         summaries.set(nodeKeyString, created);
         return created;
     }
-    const failure = streamEveryRecord(source, (record) => {
+    const failure = await streamEveryRecord(source, (record) => {
         if (!isInvalidateEvent(record)) {
             return;
         }

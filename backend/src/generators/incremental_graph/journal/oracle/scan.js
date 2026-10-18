@@ -125,10 +125,10 @@ function raiseCoordinate(summaries, event) {
  * Stream every retained record once, folding each into `visit`.
  * @param {JournalSource} source
  * @param {(record: JournalRecord) => void} visit
- * @returns {JournalError | undefined}
+ * @returns {Promise<JournalError | undefined>}
  */
-function streamEveryRecord(source, visit) {
-    return streamWithReport(source, (record) => {
+async function streamEveryRecord(source, visit) {
+    return await streamWithReport(source, (record) => {
         visit(record);
         return undefined;
     });
@@ -170,15 +170,19 @@ function canonicalWriterOrder(source) {
  * the walk ends where the visitor reports a failure. Which writer's failure is
  * reported is decided by `canonicalWriterOrder`, not by the source's
  * enumeration.
+ *
+ * The walk awaits each record, so a durable source is consumed one record at a
+ * time rather than materialised. `visit` stays synchronous because every fold it
+ * feeds is a pure in-memory update.
  * @param {JournalSource} source
  * @param {(record: JournalRecord) => JournalError | undefined} visit
- * @returns {JournalError | undefined}
+ * @returns {Promise<JournalError | undefined>}
  */
-function streamWithReport(source, visit) {
+async function streamWithReport(source, visit) {
     for (const author of canonicalWriterOrder(source)) {
         const reader = source.prefixReaderOf(author);
         for (;;) {
-            const record = reader.nextRecord();
+            const record = await reader.nextRecord();
             if (record === undefined) {
                 break;
             }

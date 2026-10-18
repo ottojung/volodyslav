@@ -233,9 +233,9 @@ function sameKeySet(left, right) {
  * the same occurrence.
  *
  * @param {CreatorResumeRequest} request
- * @returns {ResumedCanonicalCreator | JournalError}
+ * @returns {Promise<ResumedCanonicalCreator | JournalError>}
  */
-function resumeCanonicalBootstrapCreator(request) {
+async function resumeCanonicalBootstrapCreator(request) {
     const { legacyState, artifact, localWriter, currentInputKeysOfNode } = request;
     if (!isLegacyBootstrapState(legacyState)) {
         return makeJournalPublicationError(
@@ -265,7 +265,7 @@ function resumeCanonicalBootstrapCreator(request) {
     }
 
     const replica = canonicalArtifactReplica(artifact);
-    const projection = projectRetainedJournal({
+    const projection = await projectRetainedJournal({
         source: makeReplicaSource(replica),
         localWriter: artifact.creatorWriter,
         currentInputKeysOfNode,

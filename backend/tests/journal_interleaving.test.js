@@ -131,8 +131,8 @@ function summarize(projection) {
  * @param {string} options.localWriterName
  * @returns {{accepted: boolean, value: string, error: import("../src/generators/incremental_graph/journal").AnyJournalError | undefined}}
  */
-function runOnce(options) {
-    const projection = projectRetainedJournal({
+async function runOnce(options) {
+    const projection = await projectRetainedJournal({
         source: options.source,
         localWriter: makeJournalAuthorFromName(options.localWriterName),
         currentInputKeysOfNode: schemaOf,
@@ -180,11 +180,16 @@ const DIFFERENTIAL_SPACE = [3, 2];
  * @param {import("./interleaving_space").GeneratedJournal} journal
  * @returns {Array<{label: string, outcome: ReturnType<typeof runOnce>}>}
  */
-function outcomesOf(journal) {
-    return presentationsOf(journal).map((presentation) => ({
-        label: presentation.label,
-        outcome: runOnce({ source: presentation.source, localWriterName: LOCAL_WRITER }),
-    }));
+async function outcomesOf(journal) {
+    /** @type {Array<{label: string, outcome: Awaited<ReturnType<typeof runOnce>>}>} */
+    const outcomes = [];
+    for (const presentation of presentationsOf(journal)) {
+        outcomes.push({
+            label: presentation.label,
+            outcome: await runOnce({ source: presentation.source, localWriterName: LOCAL_WRITER }),
+        });
+    }
+    return outcomes;
 }
 
 /**
@@ -192,14 +197,14 @@ function outcomesOf(journal) {
  * whole journal as one source per writer, writers in ascending name order, one
  * record buffered at a time.
  * @param {import("./interleaving_space").GeneratedJournal} journal
- * @returns {{label: string, outcome: ReturnType<typeof runOnce>}}
+ * @returns {Promise<{label: string, outcome: Awaited<ReturnType<typeof runOnce>>}>}
  */
-function canonicalOutcomeOf(journal) {
+async function canonicalOutcomeOf(journal) {
     const first = presentationsOf(journal, { chunkSizes: [1] })[0];
     if (first === undefined) {
         throw new Error("a journal with no presentation cannot be projected");
     }
-    return { label: first.label, outcome: runOnce({ source: first.source, localWriterName: LOCAL_WRITER }) };
+    return { label: first.label, outcome: await runOnce({ source: first.source, localWriterName: LOCAL_WRITER }) };
 }
 
 describe("the interleaving space the Journal record layer and the project oracle admit", () => {
@@ -276,7 +281,7 @@ describe("the projection is confluent over every presentation of a fixed journal
      * single-contributor presentations. That space is enumerated in full; nothing
      * here is sampled.
      */
-    test("acceptance and the projected value are both invariant, over the whole enumerated space", () => {
+    test("acceptance and the projected value are both invariant, over the whole enumerated space", async () => {
         const space = enumerateJournals({ lengths: SPACE });
         const supported = space.journals.filter(
             (journal) => validateJournalReplica(replicaOf(journal)) === undefined
@@ -287,8 +292,8 @@ describe("the projection is confluent over every presentation of a fixed journal
         /** @type {string[]} */
         const disagreements = [];
         for (const journal of supported) {
-            const canonical = canonicalOutcomeOf(journal);
-            for (const candidate of outcomesOf(journal)) {
+            const canonical = await canonicalOutcomeOf(journal);
+            for (const candidate of await outcomesOf(journal)) {
                 presentationsChecked += 1;
                 if (candidate.outcome.accepted !== canonical.outcome.accepted) {
                     disagreements.push(
@@ -334,7 +339,7 @@ describe("the projection is confluent over every presentation of a fixed journal
         expect(presentationsOfLarge.length).toBeGreaterThan(presentationsOfSmall.length);
     });
 
-    test("rejection is a function of the journal, and the reader chunk size is not one of its causes", () => {
+    test("rejection is a function of the journal, and the reader chunk size is not one of its causes", async () => {
         // A source which buffers its records differently is the same source. If
         // chunk size could change the outcome, the streaming claim in
         // `incremental-graph-journal-testing.md` §Streaming correctness would be
@@ -348,18 +353,17 @@ describe("the projection is confluent over every presentation of a fixed journal
         );
         expect(withWriterState.length).toBeGreaterThan(0);
         for (const journal of withWriterState) {
-            const values = new Set(
-                presentationsOf(journal, { chunkSizes: [1, 2, 3, 7, 1000] }).map(
-                    (presentation) => runOnce({ source: presentation.source, localWriterName: LOCAL_WRITER }).value
-                )
-            );
+            const values = new Set();
+            for (const presentation of presentationsOf(journal, { chunkSizes: [1, 2, 3, 7, 1000] })) {
+                values.add((await runOnce({ source: presentation.source, localWriterName: LOCAL_WRITER })).value);
+            }
             expect([...values]).toHaveLength(1);
         }
     });
 });
 
 describe("the oracle agrees with the declarative reference model across the interleaving space", () => {
-    test("agreement on acceptance and on the projected value, over the whole enumerated space", () => {
+    test("agreement on acceptance and on the projected value, over the whole enumerated space", async () => {
         // The differential is the only thing standing between this file and a
         // self-consistent restatement of the oracle, so it runs over the whole
         // enumerated space rather than over a fixture per named regression.
@@ -373,7 +377,7 @@ describe("the oracle agrees with the declarative reference model across the inte
         const disagreements = [];
         let agreed = 0;
         for (const journal of supported) {
-            const oracle = runOnce({
+            const oracle = await runOnce({
                 source: presentationsOf(journal, { chunkSizes: [1] })[0].source,
                 localWriterName: LOCAL_WRITER,
             });
@@ -531,7 +535,7 @@ describe("the premises which make confluence hold by construction", () => {
 });
 
 describe("the authority tiebreak is observable only in the selected certificate, not in the projection", () => {
-    test("the certificate pass selects the greater authority when every earlier key ties", () => {
+    test("the certificate pass selects the greater authority when every earlier key ties", async () => {
         // This limit is worth stating rather than papering over. When two eligible
         // certificates have equal effective basis and equal invalidation coverage,
         // the authority tiebreak is the only thing which separates them — and
@@ -551,7 +555,7 @@ describe("the authority tiebreak is observable only in the selected certificate,
             throw new Error("the authority-tiebreak fixture is missing");
         }
         const source = makeReplicaSource(replicaOf(fixture.journal));
-        const heads = selectSemanticHeads(source);
+        const heads = await selectSemanticHeads(source);
         expect("error" in heads).toBe(false);
         if ("error" in heads) {
             throw new Error("head selection failed on a supported journal");
@@ -566,7 +570,7 @@ describe("the authority tiebreak is observable only in the selected certificate,
             }
             selectedOccurrences.set(nodeKeyString, { node: selection.nodeKey, valueId });
         }
-        const invalidations = summarizeInvalidations(source, selectedOccurrences);
+        const invalidations = await summarizeInvalidations(source, selectedOccurrences);
         expect("error" in invalidations).toBe(false);
         if ("error" in invalidations) {
             throw new Error("invalidation summarisation failed on a supported journal");
@@ -576,7 +580,7 @@ describe("the authority tiebreak is observable only in the selected certificate,
         for (const author of source.writers()) {
             names.set(journalAuthorToString(author), author);
         }
-        const certificates = selectCertificates(source, {
+        const certificates = await selectCertificates(source, {
             occurrences: {
                 valueIdOf: (nodeKeyString) => selectedValueId(heads.selections, nodeKeyString),
                 authorOf: (name) => names.get(name),
@@ -709,7 +713,7 @@ describe("which defect is reported", () => {
         ccccccccc: [value("ccccccccc", 1, 3, [["ccccccccc", "2"]], 400)],
     });
 
-    test("a journal with two independent defects reports the same defect in either order", () => {
+    test("a journal with two independent defects reports the same defect in either order", async () => {
         // The counterexample this front found, repaired rather than deleted. With
         // a hole in `A` and a non-closed context in `B`, the two enumeration
         // orders used to name different defects of the same retained journal:
@@ -729,8 +733,8 @@ describe("which defect is reported", () => {
             ],
             bbbbbbbbb: [value("bbbbbbbbb", 1, 2, [["zzzzzzzzz", "9"]], 200)],
         };
-        const holeFirst = runOnce({ source: sourceOver(streams, ["aaaaaaaaa", "bbbbbbbbb"]), localWriterName: LOCAL_WRITER });
-        const closureFirst = runOnce({ source: sourceOver(streams, ["bbbbbbbbb", "aaaaaaaaa"]), localWriterName: LOCAL_WRITER });
+        const holeFirst = await runOnce({ source: sourceOver(streams, ["aaaaaaaaa", "bbbbbbbbb"]), localWriterName: LOCAL_WRITER });
+        const closureFirst = await runOnce({ source: sourceOver(streams, ["bbbbbbbbb", "aaaaaaaaa"]), localWriterName: LOCAL_WRITER });
 
         // The decision is invariant, which is the claim the confluence test above
         // makes and the reason the finding was a diagnosability defect rather
@@ -744,7 +748,7 @@ describe("which defect is reported", () => {
         expect(holeFirst.error?.message).toBe(closureFirst.error?.message);
     });
 
-    test("every enumeration order of a three-defect journal reports one defect", () => {
+    test("every enumeration order of a three-defect journal reports one defect", async () => {
         // The regression the finding calls for, and the assertion which goes red
         // on a walk that reads the source's enumeration order. Three writers with
         // three different defects, read in all six orders: every order must reject
@@ -759,7 +763,7 @@ describe("which defect is reported", () => {
         /** @type {string[]} */
         const reports = [];
         for (const order of allOrders("aaaaaaaaa", "bbbbbbbbb", "ccccccccc")) {
-            const outcome = runOnce({ source: sourceOver(streams, order), localWriterName: LOCAL_WRITER });
+            const outcome = await runOnce({ source: sourceOver(streams, order), localWriterName: LOCAL_WRITER });
             expect([order.join(""), outcome.accepted]).toEqual([order.join(""), false]);
             if (outcome.error === undefined) {
                 throw new Error("a defective journal was rejected without an error");
@@ -775,14 +779,14 @@ describe("which defect is reported", () => {
         expect(reports[0]).toBe(reports[5]);
     });
 
-    test("the reported defect is the canonical-earliest writer's, not the first enumerated", () => {
+    test("the reported defect is the canonical-earliest writer's, not the first enumerated", async () => {
         // Which single defect the canonical walk reports, asserted directly, so
         // the invariance above cannot be satisfied by reporting one fixed
         // unrelated error for every order. The canonical-earliest writer is `A`
         // and the order the source enumerates here is reverse-canonical, so the
         // first writer the fold reaches is the last writer a caller would expect.
         const streams = threeDefectiveStreams();
-        const outcome = runOnce({
+        const outcome = await runOnce({
             source: sourceOver(streams, ["ccccccccc", "bbbbbbbbb", "aaaaaaaaa"]),
             localWriterName: LOCAL_WRITER,
         });
@@ -795,7 +799,7 @@ describe("which defect is reported", () => {
 
         // The same journal read in canonical order reports the same defect, so
         // the two differ only in what the source enumerated.
-        const canonical = runOnce({
+        const canonical = await runOnce({
             source: sourceOver(streams, ["aaaaaaaaa", "bbbbbbbbb", "ccccccccc"]),
             localWriterName: LOCAL_WRITER,
         });
@@ -805,7 +809,7 @@ describe("which defect is reported", () => {
         expect(canonical.error.message).toBe(outcome.error.message);
     });
 
-    test("the order-dependence cannot turn a rejection into an acceptance", () => {
+    test("the order-dependence cannot turn a rejection into an acceptance", async () => {
         // The stronger question, and the one which decides whether the finding
         // above is a diagnosability defect or a correctness defect. A source which
         // enumerates its writers in an order the specification does not require is
@@ -817,7 +821,7 @@ describe("which defect is reported", () => {
         /** @type {string[]} */
         const flipped = [];
         for (const journal of space.journals) {
-            const outcomes = outcomesOf(journal);
+            const outcomes = await outcomesOf(journal);
             const accepted = outcomes.filter((entry) => entry.outcome.accepted);
             if (accepted.length !== 0 && accepted.length !== outcomes.length) {
                 flipped.push(
@@ -871,7 +875,7 @@ describe("the adversarial fixtures isolate one projection rule each", () => {
         expect(wrong).toEqual([]);
     });
 
-    test("each fixture produces the outcome the record layer's own rules demand", () => {
+    test("each fixture produces the outcome the record layer's own rules demand", async () => {
         // The record layer's validators and the oracle's checks are two independent
         // expressions of the same conditions, so for the fixtures which deliberately
         // violate one of them, both must reject and the tests must assert both. A
@@ -880,7 +884,7 @@ describe("the adversarial fixtures isolate one projection rule each", () => {
         // the validator would miss, and the "produces the outcome it declares"
         // test above is such a test on its own.
         for (const fixture of adversarialFixtures()) {
-            const outcome = canonicalOutcomeOf(fixture.journal);
+            const outcome = await canonicalOutcomeOf(fixture.journal);
             // `projectable` rather than `supported`, because being well formed and
             // being projectable are different questions and conflating them would
             // make a dependency-closure rejection look like a well-formedness
@@ -892,7 +896,7 @@ describe("the adversarial fixtures isolate one projection rule each", () => {
         }
     });
 
-    test("a fork between two retained prefixes is reported, and contributor order does not change that", () => {
+    test("a fork between two retained prefixes is reported, and contributor order does not change that", async () => {
         // The no-forks condition is a consequence of the merge comparing canonical
         // meaning where two contributors meet, so the only way to observe it is to
         // supply two contributors which meet and disagree. Contributor order is
@@ -903,7 +907,7 @@ describe("the adversarial fixtures isolate one projection rule each", () => {
                 makeReplicaSource(replicaOf(which === "left" ? fork.agreeing : fork.disagreeing))
             );
         for (const order of [["left", "right"], ["right", "left"]]) {
-            const outcome = runOnce({
+            const outcome = await runOnce({
                 source: makeUnionSource(sources(order)),
                 localWriterName: LOCAL_WRITER,
             });
@@ -921,12 +925,12 @@ describe("the adversarial fixtures isolate one projection rule each", () => {
         expect(isolated.length).toBeGreaterThanOrEqual(10);
     });
 
-    test("each fixture is confluent over its own presentation space, and agrees with the model", () => {
+    test("each fixture is confluent over its own presentation space, and agrees with the model", async () => {
         /** @type {string[]} */
         const wrong = [];
         for (const fixture of adversarialFixtures()) {
-            const canonical = canonicalOutcomeOf(fixture.journal);
-            for (const candidate of outcomesOf(fixture.journal)) {
+            const canonical = await canonicalOutcomeOf(fixture.journal);
+            for (const candidate of await outcomesOf(fixture.journal)) {
                 if (candidate.outcome.accepted !== canonical.outcome.accepted) {
                     wrong.push(
                         fixture.name +
@@ -989,7 +993,7 @@ describe("the adversarial fixtures isolate one projection rule each", () => {
         expect(wrong).toEqual([]);
     });
 
-    test("each ordering key's fixture detects its own mutation, in the field that key decides", () => {
+    test("each ordering key's fixture detects its own mutation, in the field that key decides", async () => {
         // Read as the executable statement of what each isolating fixture is for.
         //
         // The basis-strength and coverage keys are both invisible in the projected
@@ -1006,12 +1010,12 @@ describe("the adversarial fixtures isolate one projection rule each", () => {
          * @param {string} name
          * @returns {{selfProofReady: string[], unmarked: string[]}}
          */
-        const report = (name) => {
+        const report = async (name) => {
             const fixture = byName.get(name);
             if (fixture === undefined) {
                 throw new Error("fixture not found: " + name);
             }
-            const outcome = canonicalOutcomeOf(fixture.journal);
+            const outcome = await canonicalOutcomeOf(fixture.journal);
             if (!outcome.outcome.accepted) {
                 throw new Error("fixture was rejected: " + name);
             }
@@ -1025,17 +1029,17 @@ describe("the adversarial fixtures isolate one projection rule each", () => {
         // Basis strength: the stale-valued certificate has far greater authority,
         // and if the strength key were dropped it would win, leaving the root
         // occurrence without a certificate that covers its value invalidations.
-        const basis = report("effective basis strength beats clock authority");
+        const basis = await report("effective basis strength beats clock authority");
         expect(basis.selfProofReady).toContain(keyAt(0));
 
         // Value-invalidation coverage: the covering certificate has the lesser
         // authority, and if the coverage key were dropped the concurrent one would
         // win, so the root would stop being self-proof-ready.
-        const coverage = report("value-invalidation coverage beats clock authority");
+        const coverage = await report("value-invalidation coverage beats clock authority");
         expect(coverage.selfProofReady).toContain(keyAt(0));
     });
 
-    test("the ordering keys are each the sole differentiator in their own fixture", () => {
+    test("the ordering keys are each the sole differentiator in their own fixture", async () => {
         // Read as executable statements of what each isolating fixture asserts: the
         // occurrence the oracle projects is the one the isolated rule names, and
         // not the one the remaining rules would select.
@@ -1049,7 +1053,7 @@ describe("the adversarial fixtures isolate one projection rule each", () => {
             throw new Error("the basis-strength fixture is missing");
         }
         const basisOccurrences = JSON.parse(
-            canonicalOutcomeOf(basis.journal).outcome.value
+            (await canonicalOutcomeOf(basis.journal)).outcome.value
         ).occurrences;
         expect(basisOccurrences[0][6]).toEqual([keyAt(1)]);
 
@@ -1061,7 +1065,7 @@ describe("the adversarial fixtures isolate one projection rule each", () => {
             throw new Error("the authority-tiebreak fixture is missing");
         }
         const tiebreakOccurrences = JSON.parse(
-            canonicalOutcomeOf(tiebreak.journal).outcome.value
+            (await canonicalOutcomeOf(tiebreak.journal)).outcome.value
         ).occurrences;
         expect(tiebreakOccurrences[0][6]).toEqual([keyAt(1)]);
 
@@ -1073,7 +1077,7 @@ describe("the adversarial fixtures isolate one projection rule each", () => {
             throw new Error("the proof-barrier fixture is missing");
         }
         const barrierOccurrences = JSON.parse(
-            canonicalOutcomeOf(barrier.journal).outcome.value
+            (await canonicalOutcomeOf(barrier.journal)).outcome.value
         ).occurrences;
         const edgesByNode = new Map(
             barrierOccurrences.map((occurrence) => [occurrence[0], occurrence[6]])
@@ -1090,7 +1094,7 @@ describe("the adversarial fixtures isolate one projection rule each", () => {
         if (watermark === undefined) {
             throw new Error("the watermark fixture is missing");
         }
-        expect(JSON.parse(canonicalOutcomeOf(watermark.journal).outcome.value).lastNodeIndex).toBe(
+        expect(JSON.parse((await canonicalOutcomeOf(watermark.journal)).outcome.value).lastNodeIndex).toBe(
             42
         );
     });

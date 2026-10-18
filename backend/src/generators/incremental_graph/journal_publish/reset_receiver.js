@@ -34,7 +34,6 @@ const { buildRetainedReplayState, resetToSource } = require('../journal_reset');
 const { SnapshotIdentityClass } = require('../journal_sync');
 const { makeCurrentInputKeysOfNode } = require('../journal_bootstrap_startup');
 const {
-    collectRetainedRecords,
     readCommittedWriterState,
     readJournalSource,
 } = require('../journal_store');
@@ -131,11 +130,11 @@ function requireText(value, what) {
  *
  * @param {AuthorityTime} committedHighWater
  * @param {JournalSource} source
- * @returns {AuthorityTime}
+ * @returns {Promise<AuthorityTime>}
  */
-function observedHighWaterOf(committedHighWater, source) {
+async function observedHighWaterOf(committedHighWater, source) {
     let greatest = committedHighWater;
-    const failure = streamWithReport(source, (record) => {
+    const failure = await streamWithReport(source, (record) => {
         if (!isSemanticEvent(record)) {
             return undefined;
         }
@@ -258,14 +257,7 @@ async function resetJournalReceiverToSnapshot(request) {
     if (receiver instanceof Error) {
         throw receiver;
     }
-    const collected = collectRetainedRecords(receiver);
-    if ('error' in collected) {
-        throw collected.error;
-    }
-    /** @type {ReadonlyArray<JournalRecord>} */
-    const retainedRecords = collected.records;
-
-    const retained = buildRetainedReplayState({
+    const retained = await buildRetainedReplayState({
         source: receiver,
         localWriter,
         currentInputKeysOfNode,
@@ -274,13 +266,13 @@ async function resetJournalReceiverToSnapshot(request) {
         throw retained.error;
     }
 
-    const result = resetToSource({
+    const result = await resetToSource({
         receiver,
         retainedState: retained.state,
         source: held.source,
         localWriter,
         committed,
-        observedHighWater: observedHighWaterOf(committed.authorityHighWater, held.source.journal),
+        observedHighWater: await observedHighWaterOf(committed.authorityHighWater, held.source.journal),
         publicationInstant: capabilities.datetime.now().toMillis(),
         currentInputKeysOfNode,
         receiverIdentity: new SnapshotIdentityClass(receiverVersion, receiverGraphScheme),
@@ -294,7 +286,7 @@ async function resetJournalReceiverToSnapshot(request) {
         targetReplica: sourceReplica,
         publication: {
             target: sourceStorage,
-            retainedRecords,
+            retainedSource: receiver,
             receiverVersion,
             receiverGraphScheme,
             receiverFingerprint,

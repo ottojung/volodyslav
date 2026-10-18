@@ -230,13 +230,13 @@ function compareCertificates(incumbent, challenger) {
  * @param {SelectedOccurrences} options.occurrences
  * @param {ReadonlyMap<string, InvalidationSummary>} options.summaries
  * @param {CurrentInputKeysOfNode} options.currentInputKeysOfNode
- * @returns {{certificates: Map<string, SelectedCertificate>} | {error: JournalError}}
+ * @returns {Promise<{certificates: Map<string, SelectedCertificate>} | {error: JournalError}>}
  */
-function selectCertificates(source, options) {
+async function selectCertificates(source, options) {
     const { occurrences, summaries, currentInputKeysOfNode } = options;
     /** @type {Map<string, SelectedCertificate>} */
     const certificates = new Map();
-    const failure = streamWithReport(source, (record) => {
+    const failure = await streamWithReport(source, (record) => {
         if (!isValidateEvent(record)) {
             return undefined;
         }

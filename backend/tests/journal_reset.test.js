@@ -287,10 +287,10 @@ function committedAfter(records, authority) {
  * @param {string} [options.databaseVersion]
  * @param {string} [options.graphSchemeString]
  */
-function sourceSnapshotOf(records, options) {
+async function sourceSnapshotOf(records, options) {
     const settings = options === undefined ? {} : options;
     const journal = makeReplicaSource(replicaOf(records));
-    const projection = projectRetainedJournal({
+    const projection = await projectRetainedJournal({
         source: journal,
         localWriter: PEER_AUTHOR,
         currentInputKeysOfNode: twoInputSchema,
@@ -320,8 +320,8 @@ function sourceSnapshotOf(records, options) {
  * @param {(nodeKeyString: string) => ReadonlyArray<string>} currentInputKeysOfNode
  * @returns {import("../src/generators/incremental_graph/journal_reset").RetainedReplayState}
  */
-function retainedReplayState(source, currentInputKeysOfNode) {
-    const built = buildRetainedReplayState({
+async function retainedReplayState(source, currentInputKeysOfNode) {
+    const built = await buildRetainedReplayState({
         source,
         localWriter: LOCAL_AUTHOR,
         currentInputKeysOfNode,
@@ -341,11 +341,11 @@ function retainedReplayState(source, currentInputKeysOfNode) {
  * @param {import("../src/generators/incremental_graph/journal_sync").SnapshotIdentity} [options.receiverIdentity]
  * @param {number} [options.publicationInstant]
  */
-function reset(options) {
+async function reset(options) {
     const receiver = makeReplicaSource(replicaOf(options.receiver));
-    return resetToSource({
+    return await resetToSource({
         receiver,
-        retainedState: retainedReplayState(
+        retainedState: await retainedReplayState(
             receiver,
             options.currentInputKeysOfNode === undefined ? twoInputSchema : options.currentInputKeysOfNode
         ),
@@ -520,10 +520,10 @@ function sourcePair(bBasis, options) {
 }
 
 describe("resetToSource, refusing incompatible sources before touching history", () => {
-    test("a source which declares a different database version is refused", () => {
-        const result = reset({
+    test("a source which declares a different database version is refused", async () => {
+        const result = await reset({
             receiver: receiverProvenPair(),
-            source: sourceSnapshotOf(sourcePair([
+            source: await sourceSnapshotOf(sourcePair([
                 { node: NODE_A, value: WRITER_PEER + ":1" },
                 { node: NODE_D, value: WRITER_PEER + ":3" },
             ]), { databaseVersion: "v2" }),
@@ -536,10 +536,10 @@ describe("resetToSource, refusing incompatible sources before touching history",
         expect(isJournalVersionCompatibilityError(result.error)).toBe(true);
     });
 
-    test("a source which declares a different graph scheme is refused", () => {
-        const result = reset({
+    test("a source which declares a different graph scheme is refused", async () => {
+        const result = await reset({
             receiver: receiverProvenPair(),
-            source: sourceSnapshotOf(sourcePair([
+            source: await sourceSnapshotOf(sourcePair([
                 { node: NODE_A, value: WRITER_PEER + ":1" },
                 { node: NODE_D, value: WRITER_PEER + ":3" },
             ]), { graphSchemeString: "other-scheme" }),
@@ -552,7 +552,7 @@ describe("resetToSource, refusing incompatible sources before touching history",
         expect(isJournalVersionCompatibilityError(result.error)).toBe(true);
     });
 
-    test("a source ahead of the receiver for its own writer is refused before anything is authored", () => {
+    test("a source ahead of the receiver for its own writer is refused before anything is authored", async () => {
         const receiver = receiverProvenPair();
         const longerLocalPrefix = materialize({
             writer: WRITER_LOCAL,
@@ -562,9 +562,9 @@ describe("resetToSource, refusing incompatible sources before touching history",
             authority: 900,
         });
 
-        const result = reset({
+        const result = await reset({
             receiver,
-            source: sourceSnapshotOf([...receiver, longerLocalPrefix]),
+            source: await sourceSnapshotOf([...receiver, longerLocalPrefix]),
         });
 
         expect("outcome" in result).toBe(false);
@@ -576,7 +576,7 @@ describe("resetToSource, refusing incompatible sources before touching history",
 });
 
 describe("resetToSource, establishing target presence over the raw union", () => {
-    test("a union whose selected heads are not dependency-closed is repaired rather than rejected", () => {
+    test("a union whose selected heads are not dependency-closed is repaired rather than rejected", async () => {
         const receiver = receiverProvenPair();
         const peerDeletesA = deletionOf({
             writer: WRITER_PEER,
@@ -585,9 +585,9 @@ describe("resetToSource, establishing target presence over the raw union", () =>
             context: [],
             authority: 5000,
         });
-        const source = sourceSnapshotOf([peerDeletesA]);
+        const source = await sourceSnapshotOf([peerDeletesA]);
 
-        const result = reset({ receiver, source });
+        const result = await reset({ receiver, source });
 
         const outcome = outcomeOf(result);
         const removals = authoredOf(outcome).filter((record) => record.kind === "delete");
@@ -597,7 +597,7 @@ describe("resetToSource, establishing target presence over the raw union", () =>
         expect(outcome.projection.occurrences).toEqual([]);
     });
 
-    test("a target absence is deleted once, and a repeated reset to it authors nothing", () => {
+    test("a target absence is deleted once, and a repeated reset to it authors nothing", async () => {
         const receiver = receiverProvenPair();
         const peerDeletesA = deletionOf({
             writer: WRITER_PEER,
@@ -606,14 +606,14 @@ describe("resetToSource, establishing target presence over the raw union", () =>
             context: [],
             authority: 5000,
         });
-        const source = sourceSnapshotOf([peerDeletesA]);
-        const first = outcomeOf(reset({ receiver, source }));
+        const source = await sourceSnapshotOf([peerDeletesA]);
+        const first = outcomeOf(await reset({ receiver, source }));
 
         const retained = [...receiver, ...first.records];
         const secondReceiver = makeReplicaSource(replicaOf(retained));
-        const second = resetToSource({
+        const second = await resetToSource({
             receiver: secondReceiver,
-            retainedState: retainedReplayState(secondReceiver, twoInputSchema),
+            retainedState: await retainedReplayState(secondReceiver, twoInputSchema),
             source,
             localWriter: LOCAL_AUTHOR,
             committed: first.publication.writerState,
@@ -628,7 +628,7 @@ describe("resetToSource, establishing target presence over the raw union", () =>
         expect(repeated.changed).toBe(false);
     });
 
-    test("a key which is historically present but selected-absent and absent from the target is left alone", () => {
+    test("a key which is historically present but selected-absent and absent from the target is left alone", async () => {
         const receiver = [
             materialize({
                 writer: WRITER_LOCAL,
@@ -660,9 +660,9 @@ describe("resetToSource, establishing target presence over the raw union", () =>
                 basis: [],
             }),
         ];
-        const source = sourceSnapshotOf(receiver);
+        const source = await sourceSnapshotOf(receiver);
 
-        const outcome = outcomeOf(reset({ receiver, source }));
+        const outcome = outcomeOf(await reset({ receiver, source }));
 
         expect(authoredOf(outcome)).toHaveLength(0);
         expect(outcome.changed).toBe(false);
@@ -672,14 +672,14 @@ describe("resetToSource, establishing target presence over the raw union", () =>
 });
 
 describe("resetToSource, the core identity rule", () => {
-    test("an occurrence which already has the target state keeps its own ValueId", () => {
+    test("an occurrence which already has the target state keeps its own ValueId", async () => {
         const receiver = receiverProvenPair();
-        const source = sourceSnapshotOf(sourcePair([
+        const source = await sourceSnapshotOf(sourcePair([
             { node: NODE_A, value: WRITER_PEER + ":1" },
             { node: NODE_D, value: WRITER_PEER + ":3" },
         ]));
 
-        const outcome = outcomeOf(reset({ receiver, source }));
+        const outcome = outcomeOf(await reset({ receiver, source }));
 
         expect(authoredOf(outcome)).toHaveLength(0);
         expect(journalRecordIdToString(outcome.valueIds.get(KEY_B))).toBe(WRITER_LOCAL + ":5");
@@ -692,14 +692,14 @@ describe("resetToSource, the core identity rule", () => {
         expect(outcome.projection.occurrences.every((occurrence) => occurrence.fresh)).toBe(true);
     });
 
-    test("an import which changes no semantics still reports a persistent change", () => {
+    test("an import which changes no semantics still reports a persistent change", async () => {
         const receiver = receiverProvenPair();
-        const source = sourceSnapshotOf(sourcePair([
+        const source = await sourceSnapshotOf(sourcePair([
             { node: NODE_A, value: WRITER_PEER + ":1" },
             { node: NODE_D, value: WRITER_PEER + ":3" },
         ]));
 
-        const outcome = outcomeOf(reset({ receiver, source }));
+        const outcome = outcomeOf(await reset({ receiver, source }));
 
         expect(outcome.records.map((record) => journalRecordIdToString(record.id))).toEqual([
             WRITER_PEER + ":1",
@@ -712,9 +712,9 @@ describe("resetToSource, the core identity rule", () => {
         expect(outcome.changed).toBe(true);
     });
 
-    test("an occurrence which does not have the target state is replaced once and proved", () => {
+    test("an occurrence which does not have the target state is replaced once and proved", async () => {
         const receiver = receiverProvenPair();
-        const source = sourceSnapshotOf(sourcePair(
+        const source = await sourceSnapshotOf(sourcePair(
             [
                 { node: NODE_A, value: WRITER_PEER + ":1" },
                 { node: NODE_D, value: WRITER_PEER + ":3" },
@@ -722,7 +722,7 @@ describe("resetToSource, the core identity rule", () => {
             { payload: OTHER_PAYLOAD }
         ));
 
-        const outcome = outcomeOf(reset({ receiver, source }));
+        const outcome = outcomeOf(await reset({ receiver, source }));
 
         const authored = authoredOf(outcome);
         const occurrences = authored.filter((record) => record.kind === "value");
@@ -742,14 +742,14 @@ describe("resetToSource, the core identity rule", () => {
         expect(proofs.every((record) => record.reason === "reset")).toBe(true);
     });
 
-    test("reset authors under the receiver's own writer and imports keep theirs", () => {
+    test("reset authors under the receiver's own writer and imports keep theirs", async () => {
         const receiver = receiverProvenPair();
-        const source = sourceSnapshotOf(sourcePair([
+        const source = await sourceSnapshotOf(sourcePair([
             { node: NODE_A, value: WRITER_PEER + ":1" },
             { node: NODE_D, value: WRITER_PEER + ":3" },
         ]));
 
-        const outcome = outcomeOf(reset({ receiver, source }));
+        const outcome = outcomeOf(await reset({ receiver, source }));
 
         for (const record of authoredOf(outcome)) {
             expect(journalAuthorToString(record.id.author)).toBe(WRITER_LOCAL);
@@ -764,14 +764,14 @@ describe("resetToSource, the core identity rule", () => {
 });
 
 describe("resetToSource, weakening proof with occurrence-scoped barriers", () => {
-    test("every edge an eligible certificate could expose and the target does not want is barriered", () => {
+    test("every edge an eligible certificate could expose and the target does not want is barriered", async () => {
         const receiver = receiverProvenPair();
-        const source = sourceSnapshotOf(sourcePair(
+        const source = await sourceSnapshotOf(sourcePair(
             [{ node: NODE_A, value: "unknown" }, { node: NODE_D, value: "unknown" }],
             { reason: "migration" }
         ));
 
-        const outcome = outcomeOf(reset({ receiver, source }));
+        const outcome = outcomeOf(await reset({ receiver, source }));
 
         const barriers = authoredOf(outcome).filter((record) => record.kind === "invalidate");
         const proofBarriers = barriers.filter((record) => record.scope.kind === "proof");
@@ -793,14 +793,14 @@ describe("resetToSource, weakening proof with occurrence-scoped barriers", () =>
         expect(authoredOf(outcome).filter((record) => record.kind === "validate")).toHaveLength(0);
     });
 
-    test("a barrier for one edge leaves the other edge of that certificate intact", () => {
+    test("a barrier for one edge leaves the other edge of that certificate intact", async () => {
         const receiver = receiverProvenPair();
-        const source = sourceSnapshotOf(sourcePair([
+        const source = await sourceSnapshotOf(sourcePair([
             { node: NODE_A, value: "unknown" },
             { node: NODE_D, value: WRITER_PEER + ":3" },
         ], { reason: "migration" }));
 
-        const outcome = outcomeOf(reset({ receiver, source }));
+        const outcome = outcomeOf(await reset({ receiver, source }));
 
         const proofBarriers = authoredOf(outcome).filter(
             (record) => record.kind === "invalidate" && record.scope.kind === "proof"
@@ -813,11 +813,11 @@ describe("resetToSource, weakening proof with occurrence-scoped barriers", () =>
         expect(committed === undefined ? undefined : [...committed.validInputs]).toEqual([KEY_D]);
     });
 
-    test("a later reset barriers the edges the earlier one left, and accumulates none twice", () => {
+    test("a later reset barriers the edges the earlier one left, and accumulates none twice", async () => {
         const receiver = receiverProvenPair();
-        const first = outcomeOf(reset({
+        const first = outcomeOf(await reset({
             receiver,
-            source: sourceSnapshotOf(sourcePair([
+            source: await sourceSnapshotOf(sourcePair([
                 { node: NODE_A, value: "unknown" },
                 { node: NODE_D, value: WRITER_PEER + ":3" },
             ], { reason: "migration" })),
@@ -825,10 +825,10 @@ describe("resetToSource, weakening proof with occurrence-scoped barriers", () =>
         const retained = [...receiver, ...first.records];
 
         const secondReceiver = makeReplicaSource(replicaOf(retained));
-        const second = outcomeOf(resetToSource({
+        const second = outcomeOf(await resetToSource({
             receiver: secondReceiver,
-            retainedState: retainedReplayState(secondReceiver, twoInputSchema),
-            source: sourceSnapshotOf(sourcePair(
+            retainedState: await retainedReplayState(secondReceiver, twoInputSchema),
+            source: await sourceSnapshotOf(sourcePair(
                 [{ node: NODE_A, value: "unknown" }, { node: NODE_D, value: "unknown" }],
                 { reason: "migration" }
             )),
@@ -849,9 +849,9 @@ describe("resetToSource, weakening proof with occurrence-scoped barriers", () =>
         expect(second.publication.records.filter((record) => record.kind === "validate")).toHaveLength(0);
     });
 
-    test("a target which adds proof needs no barrier", () => {
+    test("a target which adds proof needs no barrier", async () => {
         const receiver = receiverProvenPair();
-        const source = sourceSnapshotOf(sourcePair(
+        const source = await sourceSnapshotOf(sourcePair(
             [
                 { node: NODE_A, value: WRITER_PEER + ":1" },
                 { node: NODE_D, value: WRITER_PEER + ":3" },
@@ -859,14 +859,14 @@ describe("resetToSource, weakening proof with occurrence-scoped barriers", () =>
             { payload: OTHER_PAYLOAD }
         ));
 
-        const outcome = outcomeOf(reset({ receiver, source }));
+        const outcome = outcomeOf(await reset({ receiver, source }));
 
         expect(authoredOf(outcome).filter((record) => record.kind === "invalidate")).toHaveLength(0);
     });
 
-    test("a target certificate names the settled occurrences of its own edges", () => {
+    test("a target certificate names the settled occurrences of its own edges", async () => {
         const receiver = receiverProvenPair();
-        const source = sourceSnapshotOf(sourcePair(
+        const source = await sourceSnapshotOf(sourcePair(
             [
                 { node: NODE_A, value: WRITER_PEER + ":1" },
                 { node: NODE_D, value: "unknown" },
@@ -874,7 +874,7 @@ describe("resetToSource, weakening proof with occurrence-scoped barriers", () =>
             { payload: OTHER_PAYLOAD, reason: "migration" }
         ));
 
-        const outcome = outcomeOf(reset({ receiver, source }));
+        const outcome = outcomeOf(await reset({ receiver, source }));
 
         const proofs = authoredOf(outcome).filter((record) => record.kind === "validate");
         const proofOfB = proofs.find(
@@ -968,14 +968,14 @@ describe("resetToSource, weakening proof with occurrence-scoped barriers", () =>
         ].sort((left, right) => sequenceOf(left) - sequenceOf(right));
     }
 
-    test("a barrier for the settled ValueId leaves a replaced occurrence's certificate untainted", () => {
+    test("a barrier for the settled ValueId leaves a replaced occurrence's certificate untainted", async () => {
         const receiver = receiverWithReplacedOccurrence();
-        const source = sourceSnapshotOf(sourcePair(
+        const source = await sourceSnapshotOf(sourcePair(
             [{ node: NODE_A, value: "unknown" }, { node: NODE_D, value: "unknown" }],
             { reason: "migration" }
         ));
 
-        const outcome = outcomeOf(reset({ receiver, source }));
+        const outcome = outcomeOf(await reset({ receiver, source }));
 
         // The settled occurrence is the receiver's second materialization, so the
         // barrier names it and not the occurrence it replaced. Only `D` is
@@ -1006,7 +1006,7 @@ describe("resetToSource, weakening proof with occurrence-scoped barriers", () =>
         // edges back requires binding the node to the occurrence the certificate
         // names, which is what "for another ValueId" means operationally.
         const retained = makeReplicaSource(replicaOf([...receiver, ...outcome.records]));
-        const replaced = projectRetainedJournal({
+        const replaced = await projectRetainedJournal({
             source: retained,
             localWriter: LOCAL_AUTHOR,
             currentInputKeysOfNode: twoInputSchema,
@@ -1022,7 +1022,7 @@ describe("resetToSource, weakening proof with occurrence-scoped barriers", () =>
             node: NODE_B,
             valueId: made(makeJournalRecordId(LOCAL_AUTHOR, makeJournalSequence("5"))),
         });
-        const summaries = summarizeInvalidations(retained, occurrences);
+        const summaries = await summarizeInvalidations(retained, occurrences);
         if ("error" in summaries) {
             throw new Error("the committed journal does not summarize: " + summaries.error.message);
         }
@@ -1148,14 +1148,14 @@ describe("resetToSource, weakening proof with occurrence-scoped barriers", () =>
         ].sort((left, right) => sequenceOf(left) - sequenceOf(right));
     }
 
-    test("an edge one certificate re-establishes after a barrier is still barriered", () => {
+    test("an edge one certificate re-establishes after a barrier is still barriered", async () => {
         const receiver = receiverWithReestablishedEdge();
-        const source = sourceSnapshotOf(sourcePair(
+        const source = await sourceSnapshotOf(sourcePair(
             [{ node: NODE_A, value: "unknown" }, { node: NODE_D, value: "unknown" }],
             { reason: "migration" }
         ));
 
-        const outcome = outcomeOf(reset({ receiver, source }));
+        const outcome = outcomeOf(await reset({ receiver, source }));
 
         // The count of `D -> B` is one, contributed by the certificate which
         // observed the retained barrier and proved the edge again, so the edge is
@@ -1181,7 +1181,7 @@ describe("resetToSource, weakening proof with occurrence-scoped barriers", () =>
         // both certificates, `D` only by the one which observed the barrier and
         // proved it again. Both are positive, and `D`'s is positive because it is a
         // count rather than a flag the earlier barrier cleared.
-        const before = retainedReplayState(makeReplicaSource(replicaOf(receiver)), twoInputSchema).proofs;
+        const before = (await retainedReplayState(makeReplicaSource(replicaOf(receiver)), twoInputSchema)).proofs;
         const authorOf = (name) => (name === WRITER_LOCAL ? LOCAL_AUTHOR : undefined);
         expect(countEligibleProofEdges({
             summary: before,
@@ -1221,9 +1221,9 @@ describe("resetToSource, weakening proof with occurrence-scoped barriers", () =>
  * @param {ReadonlyArray<import("../src/generators/incremental_graph/journal").JournalRecord>} receiver
  * @param {import("../src/generators/incremental_graph/journal_reset").ResetOutcome} outcome
  */
-function expectStagedSummaryIsTheCommittedSummary(receiver, outcome) {
+async function expectStagedSummaryIsTheCommittedSummary(receiver, outcome) {
     const committed = makeReplicaSource(replicaOf([...receiver, ...outcome.records]));
-    const rebuilt = retainedReplayState(committed, twoInputSchema).proofs;
+    const rebuilt = (await retainedReplayState(committed, twoInputSchema)).proofs;
     const authorOf = (name) => (name === WRITER_LOCAL ? LOCAL_AUTHOR : PEER_AUTHOR);
     for (const occurrence of outcome.projection.occurrences) {
         const nodeKeyString = occurrence.nodeKeyString;
@@ -1347,11 +1347,11 @@ describe("resetToSource, making the target's staleness durable", () => {
         ];
     }
 
-    test("a self-proof-ready target-stale node receives a value-scoped reset marker", () => {
+    test("a self-proof-ready target-stale node receives a value-scoped reset marker", async () => {
         const receiver = receiverWithStaleInput();
-        const source = sourceSnapshotOf(sourceWithStaleInput());
+        const source = await sourceSnapshotOf(sourceWithStaleInput());
 
-        const outcome = outcomeOf(reset({ receiver, source }));
+        const outcome = outcomeOf(await reset({ receiver, source }));
 
         const markers = authoredOf(outcome).filter(
             (record) => record.kind === "invalidate" && record.scope.kind === "value"
@@ -1363,10 +1363,10 @@ describe("resetToSource, making the target's staleness durable", () => {
         expect(outcome.projection.occurrences.every((occurrence) => !occurrence.fresh)).toBe(true);
     });
 
-    test("a later upstream revalidation does not freshen a node the target holds stale", () => {
+    test("a later upstream revalidation does not freshen a node the target holds stale", async () => {
         const receiver = receiverWithStaleInput();
-        const source = sourceSnapshotOf(sourceWithStaleInput());
-        const outcome = outcomeOf(reset({ receiver, source }));
+        const source = await sourceSnapshotOf(sourceWithStaleInput());
+        const outcome = outcomeOf(await reset({ receiver, source }));
         const head = Number(journalSequenceToString(outcome.publication.writerState.writerHead));
 
         const laterRevalidation = made(makeValidateEvent(
@@ -1383,7 +1383,7 @@ describe("resetToSource, making the target's staleness durable", () => {
             [],
             "unchanged"
         ));
-        const afterUpstream = projectRetainedJournal({
+        const afterUpstream = await projectRetainedJournal({
             source: makeReplicaSource(replicaOf([...receiver, ...outcome.records, laterRevalidation])),
             localWriter: LOCAL_AUTHOR,
             currentInputKeysOfNode: twoInputSchema,
@@ -1399,11 +1399,11 @@ describe("resetToSource, making the target's staleness durable", () => {
         expect(byKey.get(KEY_B).fresh).toBe(false);
     });
 
-    test("a node whose own proof is not ready receives no duplicate marker", () => {
+    test("a node whose own proof is not ready receives no duplicate marker", async () => {
         const receiver = receiverWithStaleInput();
-        const source = sourceSnapshotOf(sourceWithStaleInput());
+        const source = await sourceSnapshotOf(sourceWithStaleInput());
 
-        const outcome = outcomeOf(reset({ receiver, source }));
+        const outcome = outcomeOf(await reset({ receiver, source }));
 
         expect(authoredOf(outcome).filter((record) => record.kind === "value")).toHaveLength(0);
         expect(authoredOf(outcome).filter((record) => record.kind === "validate")).toHaveLength(0);
@@ -1419,11 +1419,11 @@ describe("resetToSource, making the target's staleness durable", () => {
  * against the production reset in `journal_reset_atomicity.test.js`.
  */
 describe("resetToSource, maintaining the counted proof summary", () => {
-    test("the staged summary is the summary of the committed journal when the target adds proof", () => {
+    test("the staged summary is the summary of the committed journal when the target adds proof", async () => {
         const receiver = receiverProvenPair();
-        const outcome = outcomeOf(reset({
+        const outcome = outcomeOf(await reset({
             receiver,
-            source: sourceSnapshotOf(sourcePair(
+            source: await sourceSnapshotOf(sourcePair(
                 [
                     { node: NODE_A, value: WRITER_PEER + ":1" },
                     { node: NODE_D, value: WRITER_PEER + ":3" },
@@ -1436,11 +1436,11 @@ describe("resetToSource, maintaining the counted proof summary", () => {
         expectStagedSummaryIsTheCommittedSummary(receiver, outcome);
     });
 
-    test("the staged summary is the summary of the committed journal when an occurrence is replaced", () => {
+    test("the staged summary is the summary of the committed journal when an occurrence is replaced", async () => {
         const receiver = receiverProvenPair();
-        const outcome = outcomeOf(reset({
+        const outcome = outcomeOf(await reset({
             receiver,
-            source: sourceSnapshotOf(sourcePair(
+            source: await sourceSnapshotOf(sourcePair(
                 [
                     { node: NODE_A, value: WRITER_PEER + ":1" },
                     { node: NODE_D, value: WRITER_PEER + ":3" },
@@ -1453,7 +1453,7 @@ describe("resetToSource, maintaining the counted proof summary", () => {
         expectStagedSummaryIsTheCommittedSummary(receiver, outcome);
     });
 
-    test("the staged summary counts no certificate of the occurrence reset replaced", () => {
+    test("the staged summary counts no certificate of the occurrence reset replaced", async () => {
         // The receiver proves `B` against both inputs, the target replaces `B`'s
         // occurrence and proves nothing, so at the post-value-repair cut no
         // eligible certificate names the settled occurrence and the union is empty.
@@ -1461,9 +1461,9 @@ describe("resetToSource, maintaining the counted proof summary", () => {
         // receiver's own certificate from it and author barriers the target does
         // not need.
         const receiver = receiverProvenPair();
-        const outcome = outcomeOf(reset({
+        const outcome = outcomeOf(await reset({
             receiver,
-            source: sourceSnapshotOf(sourcePair(
+            source: await sourceSnapshotOf(sourcePair(
                 [{ node: NODE_A, value: "unknown" }, { node: NODE_D, value: "unknown" }],
                 { payload: OTHER_PAYLOAD, reason: "migration" }
             )),
@@ -1477,11 +1477,11 @@ describe("resetToSource, maintaining the counted proof summary", () => {
         expectStagedSummaryIsTheCommittedSummary(receiver, outcome);
     });
 
-    test("the staged summary is the summary of the committed journal when proof is weakened", () => {
+    test("the staged summary is the summary of the committed journal when proof is weakened", async () => {
         const receiver = receiverProvenPair();
-        const outcome = outcomeOf(reset({
+        const outcome = outcomeOf(await reset({
             receiver,
-            source: sourceSnapshotOf(sourcePair(
+            source: await sourceSnapshotOf(sourcePair(
                 [{ node: NODE_A, value: "unknown" }, { node: NODE_D, value: "unknown" }],
                 { reason: "migration" }
             )),
@@ -1574,19 +1574,19 @@ function sourcePairPayloadOf(nodeKeyString, payload, bBasis) {
 }
 
 describe("resetToSource, reading each cut as a delta over the retained state", () => {
-    test("reset reads no retained record, so retained history which changes no state authors the same records", () => {
+    test("reset reads no retained record, so retained history which changes no state authors the same records", async () => {
         const shallowRecords = receiverWithRetainedRevalidations(1);
         const deepRecords = receiverWithRetainedRevalidations(40);
         const shallow = countingSource(makeReplicaSource(replicaOf(shallowRecords)));
         const deep = countingSource(makeReplicaSource(replicaOf(deepRecords)));
-        const target = sourceSnapshotOf(sourcePair([
+        const target = await sourceSnapshotOf(sourcePair([
             { node: NODE_A, value: "unknown" },
             { node: NODE_D, value: "unknown" },
         ], { reason: "migration" }));
 
-        const firstOutcome = outcomeOf(resetToSource({
+        const firstOutcome = outcomeOf(await resetToSource({
             receiver: shallow.source,
-            retainedState: retainedReplayState(makeReplicaSource(replicaOf(shallowRecords)), twoInputSchema),
+            retainedState: await retainedReplayState(makeReplicaSource(replicaOf(shallowRecords)), twoInputSchema),
             source: target,
             localWriter: LOCAL_AUTHOR,
             committed: committedAfter(receiverWithRetainedRevalidations(1), 500),
@@ -1595,9 +1595,9 @@ describe("resetToSource, reading each cut as a delta over the retained state", (
             currentInputKeysOfNode: twoInputSchema,
             receiverIdentity: new SnapshotIdentityClass("v1", "scheme"),
         }));
-        const deepOutcome = outcomeOf(resetToSource({
+        const deepOutcome = outcomeOf(await resetToSource({
             receiver: deep.source,
-            retainedState: retainedReplayState(makeReplicaSource(replicaOf(deepRecords)), twoInputSchema),
+            retainedState: await retainedReplayState(makeReplicaSource(replicaOf(deepRecords)), twoInputSchema),
             source: target,
             localWriter: LOCAL_AUTHOR,
             committed: committedAfter(receiverWithRetainedRevalidations(40), 500),
@@ -1613,10 +1613,10 @@ describe("resetToSource, reading each cut as a delta over the retained state", (
         expect(shallow.reads()).toBe(0);
     });
 
-    test("a cut resolves only its affected closure, so an unaffected node keeps the certificate the previous cut stored", () => {
-        const first = outcomeOf(reset({
+    test("a cut resolves only its affected closure, so an unaffected node keeps the certificate the previous cut stored", async () => {
+        const first = outcomeOf(await reset({
             receiver: receiverProvenPair(),
-            source: sourceSnapshotOf(sourcePair([
+            source: await sourceSnapshotOf(sourcePair([
                 { node: NODE_A, value: WRITER_PEER + ":1" },
                 { node: NODE_D, value: WRITER_PEER + ":3" },
             ], { reason: "migration" })),
@@ -1632,10 +1632,10 @@ describe("resetToSource, reading each cut as a delta over the retained state", (
         const receiver = makeReplicaSource(
             replicaOf([...receiverProvenPair(), ...first.records])
         );
-        const second = outcomeOf(resetToSource({
+        const second = outcomeOf(await resetToSource({
             receiver,
             retainedState: first.retainedState,
-            source: sourceSnapshotOf(sourcePairPayloadOf(KEY_D, OTHER_PAYLOAD, [
+            source: await sourceSnapshotOf(sourcePairPayloadOf(KEY_D, OTHER_PAYLOAD, [
                 { node: NODE_A, value: WRITER_PEER + ":1" },
                 { node: NODE_D, value: WRITER_PEER + ":3" },
             ])),
@@ -1652,16 +1652,16 @@ describe("resetToSource, reading each cut as a delta over the retained state", (
         expect(secondCertificates.get(KEY_A)).toBe(firstCertificates.get(KEY_A));
     });
 
-    test("the committed result equals the projection of the retained journal it will publish", () => {
+    test("the committed result equals the projection of the retained journal it will publish", async () => {
         const receiver = receiverProvenPair();
-        const outcome = outcomeOf(reset({
+        const outcome = outcomeOf(await reset({
             receiver,
-            source: sourceSnapshotOf(sourcePair(
+            source: await sourceSnapshotOf(sourcePair(
                 [{ node: NODE_A, value: "unknown" }, { node: NODE_D, value: "unknown" }],
                 { reason: "migration" }
             )),
         }));
-        const committed = projectRetainedJournal({
+        const committed = await projectRetainedJournal({
             source: makeReplicaSource(replicaOf([...receiver, ...outcome.records])),
             localWriter: LOCAL_AUTHOR,
             currentInputKeysOfNode: twoInputSchema,
@@ -1676,12 +1676,12 @@ describe("resetToSource, reading each cut as a delta over the retained state", (
             .toEqual([...committed.unmarkedPropagatedStaleness].sort());
     });
 
-    test("a receiver without retained replay state is refused rather than replayed", () => {
+    test("a receiver without retained replay state is refused rather than replayed", async () => {
         const receiver = makeReplicaSource(replicaOf(receiverProvenPair()));
-        const result = resetToSource({
+        const result = await resetToSource({
             receiver,
             retainedState: undefined,
-            source: sourceSnapshotOf(sourcePair([
+            source: await sourceSnapshotOf(sourcePair([
                 { node: NODE_A, value: "unknown" },
                 { node: NODE_D, value: "unknown" },
             ], { reason: "migration" })),

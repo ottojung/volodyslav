@@ -228,7 +228,7 @@ describe("canonical bootstrap passes a skewed legacy occurrence through unchange
         expect(values[1].modifiedAt).toBe(LATE);
     });
 
-    test("the artifact replays to the skewed occurrence with both timestamps", () => {
+    test("the artifact replays to the skewed occurrence with both timestamps", async () => {
         const legacyState = sourceOf(
             persistedState([
                 persistedNode(1, {
@@ -240,7 +240,7 @@ describe("canonical bootstrap passes a skewed legacy occurrence through unchange
             ])
         );
         const candidate = stagedOf(legacyState, CREATOR);
-        const projection = projectRetainedJournal({
+        const projection = await projectRetainedJournal({
             source: makeReplicaSource(canonicalArtifactReplica(artifactOf(candidate))),
             localWriter: candidate.creatorWriter,
             currentInputKeysOfNode: (nodeKeyString) => {
@@ -291,7 +291,7 @@ describe("joining bootstrap passes a skewed joining occurrence through unchanged
                 9
             )
         );
-        const losingJoin = joinCanonicalBootstrap({
+        const losingJoin = await joinCanonicalBootstrap({
             legacyState: losing,
             artifact,
             joiningWriter: makeJournalAuthor(JOINER),
@@ -335,7 +335,7 @@ describe("joining bootstrap passes a skewed joining occurrence through unchanged
                 9
             )
         );
-        const winningJoin = joinCanonicalBootstrap({
+        const winningJoin = await joinCanonicalBootstrap({
             legacyState: winning,
             artifact,
             joiningWriter: makeJournalAuthor(JOINER),

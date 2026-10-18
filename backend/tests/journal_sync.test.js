@@ -280,8 +280,8 @@ function committedAfter(records, authorityPhysical) {
  * @param {(nodeKeyString: string) => ReadonlyArray<string>} currentInputKeysOfNode
  * @returns {import("../src/generators/incremental_graph/journal_retained").RetainedReplayState}
  */
-function retainedStateOf(receiver, currentInputKeysOfNode) {
-    const built = buildRetainedReplayState({
+async function retainedStateOf(receiver, currentInputKeysOfNode) {
+    const built = await buildRetainedReplayState({
         source: makeReplicaSource(replicaOf(receiver)),
         localWriter: makeJournalAuthor(WRITER_LOCAL),
         currentInputKeysOfNode,
@@ -303,12 +303,12 @@ function retainedStateOf(receiver, currentInputKeysOfNode) {
  * @param {import("../src/generators/incremental_graph/journal_sync").SnapshotIdentity} [options.sourceIdentity]
  * @param {number} [options.publicationInstant]
  */
-function synchronize(options) {
+async function synchronize(options) {
     const identity = new SnapshotIdentityClass("v1", "scheme");
     const currentInputKeysOfNode = options.currentInputKeysOfNode === undefined
         ? chainInputs
         : options.currentInputKeysOfNode;
-    return synchronizeRetainedJournal({
+    return await synchronizeRetainedJournal({
         receiver: makeReplicaSource(replicaOf(options.receiver)),
         source: makeReplicaSource(replicaOf(options.source)),
         localWriter: makeJournalAuthor(WRITER_LOCAL),
@@ -320,7 +320,7 @@ function synchronize(options) {
         currentInputKeysOfNode,
         receiverIdentity: options.receiverIdentity === undefined ? identity : options.receiverIdentity,
         sourceIdentity: options.sourceIdentity === undefined ? identity : options.sourceIdentity,
-        retainedState: retainedStateOf(options.receiver, currentInputKeysOfNode),
+        retainedState: await retainedStateOf(options.receiver, currentInputKeysOfNode),
     });
 }
 
@@ -347,7 +347,7 @@ function receiverChain() {
 }
 
 describe("synchronizeRetainedJournal, acquiring foreign-writer suffixes", () => {
-    test("an imported occurrence arrives as its own writer's record, and the receiver authors no value", () => {
+    test("an imported occurrence arrives as its own writer's record, and the receiver authors no value", async () => {
         const receiver = receiverChain();
         const peerMaterialization = materialize({
             writer: WRITER_PEER,
@@ -357,7 +357,7 @@ describe("synchronizeRetainedJournal, acquiring foreign-writer suffixes", () => 
             basis: [{ node: NODE_B, value: WRITER_LOCAL + ":3" }],
         });
 
-        const result = synchronize({
+        const result = await synchronize({
             receiver,
             source: peerMaterialization,
             authorityPhysical: 400,
@@ -381,7 +381,7 @@ describe("synchronizeRetainedJournal, acquiring foreign-writer suffixes", () => 
         expect(outcome.projection.occurrences.every((occurrence) => occurrence.fresh)).toBe(true);
     });
 
-    test("a repeated synchronization against the same source authors nothing and does not advance state", () => {
+    test("a repeated synchronization against the same source authors nothing and does not advance state", async () => {
         const receiver = receiverChain();
         const peerMaterialization = materialize({
             writer: WRITER_PEER,
@@ -390,7 +390,7 @@ describe("synchronizeRetainedJournal, acquiring foreign-writer suffixes", () => 
             context: [[WRITER_LOCAL, "4"]],
             basis: [{ node: NODE_B, value: WRITER_LOCAL + ":3" }],
         });
-        const first = synchronize({ receiver, source: peerMaterialization, authorityPhysical: 400 });
+        const first = await synchronize({ receiver, source: peerMaterialization, authorityPhysical: 400 });
         expect("outcome" in first).toBe(true);
         if (!("outcome" in first)) {
             return;
@@ -399,7 +399,7 @@ describe("synchronizeRetainedJournal, acquiring foreign-writer suffixes", () => 
 
         const identity = new SnapshotIdentityClass("v1", "scheme");
         const secondRecords = [...receiver, ...first.outcome.records];
-        const second = synchronizeRetainedJournal({
+        const second = await synchronizeRetainedJournal({
             receiver: makeReplicaSource(replicaOf(secondRecords)),
             source: makeReplicaSource(replicaOf(peerMaterialization)),
             localWriter: makeJournalAuthor(WRITER_LOCAL),
@@ -409,7 +409,7 @@ describe("synchronizeRetainedJournal, acquiring foreign-writer suffixes", () => 
             currentInputKeysOfNode: chainInputs,
             receiverIdentity: identity,
             sourceIdentity: identity,
-            retainedState: retainedStateOf(secondRecords, chainInputs),
+            retainedState: await retainedStateOf(secondRecords, chainInputs),
         });
 
         const repeated = outcomeOf(second);
@@ -419,7 +419,7 @@ describe("synchronizeRetainedJournal, acquiring foreign-writer suffixes", () => 
             .toEqual([KEY_A, KEY_B, KEY_C]);
     });
 
-    test("a source which is ahead for the receiver's own writer is refused before anything is admitted", () => {
+    test("a source which is ahead for the receiver's own writer is refused before anything is admitted", async () => {
         const receiver = receiverChain();
         const longerLocalPrefix = materialize({
             writer: WRITER_LOCAL,
@@ -429,7 +429,7 @@ describe("synchronizeRetainedJournal, acquiring foreign-writer suffixes", () => 
             basis: [],
         });
 
-        const result = synchronize({
+        const result = await synchronize({
             receiver,
             source: longerLocalPrefix,
             authorityPhysical: 400,
@@ -442,7 +442,7 @@ describe("synchronizeRetainedJournal, acquiring foreign-writer suffixes", () => 
         expect(isJournalWriterBehindError(result.error)).toBe(true);
     });
 
-    test("a source ahead for the receiver's own writer is refused when the receiver retains no own-writer record", () => {
+    test("a source ahead for the receiver's own writer is refused when the receiver retains no own-writer record", async () => {
         // The receiver has no record for its own writer, so `retainedLengthOf`
         // reports `undefined`. That is length zero, not "unknown", and a source
         // which retains a longer prefix of the receiver's own writer is still
@@ -455,7 +455,7 @@ describe("synchronizeRetainedJournal, acquiring foreign-writer suffixes", () => 
             basis: [],
         });
 
-        const result = synchronize({
+        const result = await synchronize({
             receiver: [],
             source,
             authorityPhysical: 400,
@@ -468,8 +468,8 @@ describe("synchronizeRetainedJournal, acquiring foreign-writer suffixes", () => 
         expect(isJournalWriterBehindError(result.error)).toBe(true);
     });
 
-    test("a source which declares a different database version is refused before anything is admitted", () => {
-        const result = synchronize({
+    test("a source which declares a different database version is refused before anything is admitted", async () => {
+        const result = await synchronize({
             receiver: receiverChain(),
             source: [],
             authorityPhysical: 400,
@@ -483,8 +483,8 @@ describe("synchronizeRetainedJournal, acquiring foreign-writer suffixes", () => 
         expect(isJournalVersionCompatibilityError(result.error)).toBe(true);
     });
 
-    test("a source which declares a different graph scheme is refused before anything is admitted", () => {
-        const result = synchronize({
+    test("a source which declares a different graph scheme is refused before anything is admitted", async () => {
+        const result = await synchronize({
             receiver: receiverChain(),
             source: [],
             authorityPhysical: 400,
@@ -498,8 +498,8 @@ describe("synchronizeRetainedJournal, acquiring foreign-writer suffixes", () => 
         expect(isJournalVersionCompatibilityError(result.error)).toBe(true);
     });
 
-    test("a graph-scheme mismatch diagnoses the two schemes, not the equal database versions", () => {
-        const result = synchronize({
+    test("a graph-scheme mismatch diagnoses the two schemes, not the equal database versions", async () => {
+        const result = await synchronize({
             receiver: receiverChain(),
             source: [],
             authorityPhysical: 400,
@@ -521,7 +521,7 @@ describe("synchronizeRetainedJournal, acquiring foreign-writer suffixes", () => 
 });
 
 describe("synchronizeRetainedJournal, removing the dependency closure a union leaves open", () => {
-    test("an occurrence whose required direct input the union no longer selects is removed for sync", () => {
+    test("an occurrence whose required direct input the union no longer selects is removed for sync", async () => {
         const receiver = receiverChain();
         const peerDeletesA = deletionOf({
             writer: WRITER_PEER,
@@ -530,7 +530,7 @@ describe("synchronizeRetainedJournal, removing the dependency closure a union le
             context: [[WRITER_LOCAL, "4"]],
         });
 
-        const result = synchronize({
+        const result = await synchronize({
             receiver,
             source: [peerDeletesA],
             authorityPhysical: 700,
@@ -546,7 +546,7 @@ describe("synchronizeRetainedJournal, removing the dependency closure a union le
         expect(outcome.projection.occurrences).toEqual([]);
     });
 
-    test("the closure is ordered cause before dependent", () => {
+    test("the closure is ordered cause before dependent", async () => {
         const receiver = receiverChain();
         const peerAddsC = materialize({
             writer: WRITER_PEER,
@@ -562,7 +562,7 @@ describe("synchronizeRetainedJournal, removing the dependency closure a union le
             context: [[WRITER_LOCAL, "4"], [WRITER_PEER, "2"]],
         });
 
-        const result = synchronize({
+        const result = await synchronize({
             receiver,
             source: [...peerAddsC, peerDeletesA],
             authorityPhysical: 700,
@@ -579,7 +579,7 @@ describe("synchronizeRetainedJournal, removing the dependency closure a union le
         expect(removals.every((record) => record.reason === "sync")).toBe(true);
     });
 
-    test("an occurrence whose required direct inputs the union still selects is left alone", () => {
+    test("an occurrence whose required direct inputs the union still selects is left alone", async () => {
         const receiver = receiverChain();
         const peerAddsC = materialize({
             writer: WRITER_PEER,
@@ -589,7 +589,7 @@ describe("synchronizeRetainedJournal, removing the dependency closure a union le
             basis: [{ node: NODE_B, value: WRITER_LOCAL + ":3" }],
         });
 
-        const result = synchronize({
+        const result = await synchronize({
             receiver,
             source: peerAddsC,
             authorityPhysical: 700,
@@ -625,7 +625,7 @@ describe("synchronizeRetainedJournal, persisting propagated staleness", () => {
         return [a, ...b];
     }
 
-    test("a self-proof-ready occurrence stale only through its inputs is marked for sync", () => {
+    test("a self-proof-ready occurrence stale only through its inputs is marked for sync", async () => {
         const receiver = receiverWithUnprovenRoot();
         const peerAddsC = materialize({
             writer: WRITER_PEER,
@@ -635,7 +635,7 @@ describe("synchronizeRetainedJournal, persisting propagated staleness", () => {
             basis: [{ node: NODE_B, value: WRITER_LOCAL + ":2" }],
         });
 
-        const result = synchronize({
+        const result = await synchronize({
             receiver,
             source: peerAddsC,
             authorityPhysical: 700,
@@ -654,10 +654,10 @@ describe("synchronizeRetainedJournal, persisting propagated staleness", () => {
         expect(outcome.projection.unmarkedPropagatedStaleness.size).toBe(0);
     });
 
-    test("an occurrence whose own proof is incomplete is not marked, because the deficit is its own", () => {
+    test("an occurrence whose own proof is incomplete is not marked, because the deficit is its own", async () => {
         const receiver = receiverWithUnprovenRoot();
 
-        const result = synchronize({
+        const result = await synchronize({
             receiver,
             source: [],
             authorityPhysical: 400,
@@ -673,7 +673,7 @@ describe("synchronizeRetainedJournal, persisting propagated staleness", () => {
         ])).toEqual([[KEY_A, false], [KEY_B, false]]);
     });
 
-    test("a peer occurrence which supersedes a proven input leaves its own basis deficit uncompensated", () => {
+    test("a peer occurrence which supersedes a proven input leaves its own basis deficit uncompensated", async () => {
         const receiver = receiverChain();
         const peerRewritesA = materializeOnly({
             writer: WRITER_PEER,
@@ -682,7 +682,7 @@ describe("synchronizeRetainedJournal, persisting propagated staleness", () => {
             context: [[WRITER_LOCAL, "4"]],
         });
 
-        const result = synchronize({
+        const result = await synchronize({
             receiver,
             source: [peerRewritesA],
             authorityPhysical: 700,
@@ -701,7 +701,7 @@ describe("synchronizeRetainedJournal, persisting propagated staleness", () => {
         ])).toEqual([[KEY_A, false, []], [KEY_B, false, []]]);
     });
 
-    test("every marker names the occurrence the projection selected, not a superseded one", () => {
+    test("every marker names the occurrence the projection selected, not a superseded one", async () => {
         const receiver = receiverWithUnprovenRoot();
         const peerAddsC = materialize({
             writer: WRITER_PEER,
@@ -711,7 +711,7 @@ describe("synchronizeRetainedJournal, persisting propagated staleness", () => {
             basis: [{ node: NODE_B, value: WRITER_LOCAL + ":2" }],
         });
 
-        const result = synchronize({
+        const result = await synchronize({
             receiver,
             source: peerAddsC,
             authorityPhysical: 700,
@@ -735,7 +735,7 @@ describe("synchronizeRetainedJournal, persisting propagated staleness", () => {
 });
 
 describe("synchronizeRetainedJournal, the allocation of the records it authors", () => {
-    test("every authored record consumes the next receiver coordinate and is contiguous", () => {
+    test("every authored record consumes the next receiver coordinate and is contiguous", async () => {
         const receiver = receiverChain();
         const peerAddsC = materialize({
             writer: WRITER_PEER,
@@ -751,7 +751,7 @@ describe("synchronizeRetainedJournal, the allocation of the records it authors",
             context: [[WRITER_LOCAL, "4"], [WRITER_PEER, "2"]],
         });
 
-        const result = synchronize({
+        const result = await synchronize({
             receiver,
             source: [...peerAddsC, peerDeletesA],
             authorityPhysical: 700,
@@ -767,7 +767,7 @@ describe("synchronizeRetainedJournal, the allocation of the records it authors",
             .toBe(String(4 + authored.length));
     });
 
-    test("every authored context observes the complete imported frontier with an exact own prefix", () => {
+    test("every authored context observes the complete imported frontier with an exact own prefix", async () => {
         const receiver = receiverChain();
         const peerAddsC = materialize({
             writer: WRITER_PEER,
@@ -783,7 +783,7 @@ describe("synchronizeRetainedJournal, the allocation of the records it authors",
             context: [[WRITER_LOCAL, "4"], [WRITER_PEER, "2"]],
         });
 
-        const result = synchronize({
+        const result = await synchronize({
             receiver,
             source: [...peerAddsC, peerDeletesA],
             authorityPhysical: 700,
@@ -809,7 +809,7 @@ describe("synchronizeRetainedJournal, the allocation of the records it authors",
         }
     });
 
-    test("authored authority strictly extends the greatest observed authority time", () => {
+    test("authored authority strictly extends the greatest observed authority time", async () => {
         const receiver = receiverChain();
         const peerAddsC = materialize({
             writer: WRITER_PEER,
@@ -825,7 +825,7 @@ describe("synchronizeRetainedJournal, the allocation of the records it authors",
             context: [[WRITER_LOCAL, "4"], [WRITER_PEER, "2"]],
         });
 
-        const result = synchronize({
+        const result = await synchronize({
             receiver,
             source: [...peerAddsC, peerDeletesA],
             authorityPhysical: 700,
@@ -839,7 +839,7 @@ describe("synchronizeRetainedJournal, the allocation of the records it authors",
         expect(Math.min(...physical)).toBeGreaterThan(700);
     });
 
-    test("a synchronization authors no record kind other than the two structural reasons", () => {
+    test("a synchronization authors no record kind other than the two structural reasons", async () => {
         const receiver = receiverChain();
         const peerAddsC = materialize({
             writer: WRITER_PEER,
@@ -855,7 +855,7 @@ describe("synchronizeRetainedJournal, the allocation of the records it authors",
             context: [[WRITER_LOCAL, "4"], [WRITER_PEER, "2"]],
         });
 
-        const result = synchronize({
+        const result = await synchronize({
             receiver,
             source: [...peerAddsC, peerDeletesA],
             authorityPhysical: 700,

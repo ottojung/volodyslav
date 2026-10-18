@@ -27,15 +27,12 @@
  */
 
 const {
-    makeJournalForkError,
     makeJournalGapError,
     makeJournalRecordValidationError,
 } = require("../errors");
-const { encodeJournalRecord } = require("../codec");
 const { isJournalRecord } = require("../records");
 const {
     compareJournalSequence,
-    isSameJournalAuthor,
     journalAuthorToString,
     journalRecordIdToString,
     journalSequenceToString,
@@ -73,9 +70,14 @@ function canonicalSequence(digits) {
  * Reading is destructive: `nextRecord` advances. Every pass the oracle makes
  * therefore asks the source for a fresh reader rather than keeping one.
  *
+ * `nextRecord` is asynchronous because a durable source reads a LevelDB range one
+ * entry at a time and every such read is a promise. The oracle's passes await each
+ * record, so a source is consumed incrementally and no writer's history is
+ * materialised as one collection.
+ *
  * @typedef {object} PrefixReader
- * @property {() => JournalRecord | undefined} nextRecord - The next retained
- *   record, or `undefined` at the end of the retained prefix.
+ * @property {() => Promise<JournalRecord | undefined>} nextRecord - The next
+ *   retained record, or `undefined` at the end of the retained prefix.
  * @property {() => JournalError | undefined} failure - The structural failure
  *   which ended the prefix, or `undefined` while the prefix is intact. A
  *   non-`undefined` failure means the reader delivered a partial prefix, and the
@@ -156,8 +158,7 @@ function validateContributorRecord(record, authorName) {
 }
 
 /**
- * A reader over one writer's retained records which decides the no-holes
- * condition as it goes.
+ * The no-holes and no-overrun decision one retained prefix is admitted through.
  *
  * The declared retained length bounds the walk in both directions, so a prefix
  * which skips a coordinate, a prefix which ends before the length it claims, and
@@ -167,19 +168,23 @@ function validateContributorRecord(record, authorName) {
  * replay is measured against: a reader which delivered a coordinate past it
  * would hand replay a record whose own coordinate contradicts the frontier the
  * source published for that writer.
+ *
+ * The decision is shared by every reader constructor so that an in-memory supply
+ * and a durable range iterator decide the same prefix by the same rule. A reader
+ * feeds one record at a time into `accept`, reports a storage-layer failure
+ * through `fail`, and reports the end of the supply through `end`.
+ *
  * @param {string} authorName
- * @param {Iterable<JournalRecord>} iterable
  * @param {JournalSequence} claimedLength
- * @param {JournalSequence} [startSequence] - The first coordinate this reader
- *   offers, for a prefix which begins part-way through a writer's stream. It
- *   defaults to the canonical first coordinate, so a whole retained prefix is
+ * @param {JournalSequence | undefined} startSequence - The first coordinate this
+ *   reader offers, for a prefix which begins part-way through a writer's stream.
+ *   It defaults to the canonical first coordinate, so a whole retained prefix is
  *   read as before. A reader over a suffix admits nothing before this
  *   coordinate, which is what lets a receiver's own retained prefix and an
  *   imported suffix of the same writer be unioned into one contiguous stream.
- * @returns {PrefixReader}
+ * @returns {{accept: (record: JournalRecord) => JournalRecord | undefined, end: () => void, fail: (error: JournalError) => void, failure: () => JournalError | undefined}}
  */
-function readerOverIterable(authorName, iterable, claimedLength, startSequence) {
-    const iterator = iterable[Symbol.iterator]();
+function makeAdmissionState(authorName, claimedLength, startSequence) {
     let expected = startSequence === undefined ? canonicalSequence("1") : startSequence;
     let lastRead = ZERO_JOURNAL_SEQUENCE;
     /** @type {JournalError | undefined} */
@@ -197,320 +202,130 @@ function readerOverIterable(authorName, iterable, claimedLength, startSequence) 
         );
     }
 
-    /**
-     * @returns {JournalRecord | undefined}
-     */
-    function admit() {
-        const step = iterator.next();
-        if (step.done === true) {
-            if (compareJournalSequence(lastRead, claimedLength) < 0) {
-                failure = gapAt(journalSequenceToString(expected));
-            }
-            return undefined;
-        }
-        const record = step.value;
-        const invalid = validateContributorRecord(record, authorName);
-        if (invalid !== undefined) {
-            failure = invalid;
-            return undefined;
-        }
-        const position = compareJournalSequence(record.id.sequence, expected);
-        if (position < 0) {
-            failure = makeJournalRecordValidationError(
-                "a retained prefix is not in strictly increasing writer-stream order",
-                journalRecordIdToString(record.id)
-            );
-            return undefined;
-        }
-        if (position > 0) {
-            failure = gapAt(journalSequenceToString(expected));
-            return undefined;
-        }
-        if (compareJournalSequence(expected, claimedLength) > 0) {
-            failure = makeJournalRecordValidationError(
-                "a retained prefix offers " +
-                    journalRecordIdToString(record.id) +
-                    ", which is beyond the retained length " +
-                    journalSequenceToString(claimedLength) +
-                    " the source declared",
-                journalRecordIdToString(record.id)
-            );
-            return undefined;
-        }
-        lastRead = expected;
-        expected = successorJournalSequence(expected);
-        return record;
-    }
-
     return {
-        nextRecord: () => (failure === undefined ? admit() : undefined),
-        failure: () => failure,
-    };
-}
-
-/**
- * A cursor with one record of lookahead over a pull function.
- * @param {() => JournalRecord | undefined} next
- * @returns {{peek: () => JournalRecord | undefined, advance: () => void}}
- */
-function makeCursor(next) {
-    /** @type {JournalRecord | undefined} */
-    let buffered;
-    let exhausted = false;
-    return {
-        peek() {
-            if (buffered !== undefined || exhausted) {
-                return buffered;
-            }
-            const record = next();
-            if (record === undefined) {
-                exhausted = true;
+        /**
+         * @param {JournalRecord} record
+         * @returns {JournalRecord | undefined}
+         */
+        accept(record) {
+            if (failure !== undefined) {
                 return undefined;
             }
-            buffered = record;
-            return record;
-        },
-        advance() {
-            buffered = undefined;
-        },
-    };
-}
-
-/**
- * One contributor to a prefix union, read through its own reader so that a
- * contributor's own structural failure reaches the merge instead of being
- * swallowed by it.
- *
- * A failed contributor stops contributing and reports through `failureOf`, so a
- * caller's error is returned through the reader's own error channel rather than
- * thrown past it. A `PrefixReader` is an error-as-value boundary, and a union of
- * readers which threw would break that for every consumer of the union.
- * @param {PrefixReader} reader
- * @returns {{cursor: {peek: () => JournalRecord | undefined, advance: () => void}, failureOf: () => JournalError | undefined}}
- */
-function cursorOverReader(reader) {
-    /** @type {JournalError | undefined} */
-    let contributorFailure;
-    const cursor = makeCursor(() => {
-        if (contributorFailure !== undefined) {
-            return undefined;
-        }
-        const record = reader.nextRecord();
-        if (record === undefined) {
-            contributorFailure = reader.failure();
-        }
-        return record;
-    });
-    return { cursor, failureOf: () => contributorFailure };
-}
-
-/**
- * A reader over the streaming prefix union of several retained prefixes of one
- * writer.
- *
- * The merge is driven by an expected coordinate. A contributor whose next record
- * is beyond that coordinate waits. Agreement between contributors is decided
- * where they meet, so the merge is the only place which needs the canonical
- * meaning of a record.
- * @param {string} authorName
- * @param {ReadonlyArray<PrefixReader>} contributors
- * @returns {PrefixReader}
- */
-function mergePrefixUnion(authorName, contributors) {
-    const admitted = contributors.map((contributor) => cursorOverReader(contributor));
-    let expected = canonicalSequence("1");
-    /** @type {JournalError | undefined} */
-    let failure;
-
-    /**
-     * Collect every contributor's record at the expected coordinate, or report
-     * the failure which prevents one.
-     * @returns {JournalRecord | undefined}
-     */
-    function admitAtExpectedCoordinate() {
-        /** @type {JournalRecord[]} */
-        const atCoordinate = [];
-        for (const contributor of admitted) {
-            const head = contributor.cursor.peek();
-            if (head === undefined) {
-                const contributorFailure = contributor.failureOf();
-                if (contributorFailure !== undefined) {
-                    failure = contributorFailure;
-                    return undefined;
-                }
-                continue;
-            }
-            const invalid = validateContributorRecord(head, authorName);
+            const invalid = validateContributorRecord(record, authorName);
             if (invalid !== undefined) {
                 failure = invalid;
                 return undefined;
             }
-            const position = compareJournalSequence(head.id.sequence, expected);
+            const position = compareJournalSequence(record.id.sequence, expected);
             if (position < 0) {
                 failure = makeJournalRecordValidationError(
                     "a retained prefix is not in strictly increasing writer-stream order",
-                    journalRecordIdToString(head.id)
+                    journalRecordIdToString(record.id)
                 );
                 return undefined;
             }
             if (position > 0) {
-                continue;
+                failure = gapAt(journalSequenceToString(expected));
+                return undefined;
             }
-            atCoordinate.push(head);
-            contributor.cursor.advance();
-        }
-        const first = atCoordinate[0];
-        if (first === undefined) {
-            // Every contributor is a `PrefixReader` which bounds itself by the
-            // length its own source declares, so a contributor which ends has
-            // already reported its own shortfall there. The union therefore never
-            // falls short of the greatest declared length on its own, and an
-            // exhausted merge is not by itself evidence of a hole.
-            return undefined;
-        }
-        const meaning = encodeJournalRecord(first);
-        for (const other of atCoordinate.slice(1)) {
-            if (encodeJournalRecord(other) !== meaning) {
-                failure = makeJournalForkError(
-                    journalRecordIdToString(first.id),
-                    meaning,
-                    encodeJournalRecord(other)
+            if (compareJournalSequence(expected, claimedLength) > 0) {
+                failure = makeJournalRecordValidationError(
+                    "a retained prefix offers " +
+                        journalRecordIdToString(record.id) +
+                        ", which is beyond the retained length " +
+                        journalSequenceToString(claimedLength) +
+                        " the source declared",
+                    journalRecordIdToString(record.id)
                 );
                 return undefined;
             }
-        }
-        return first;
-    }
-
-    return {
-        nextRecord() {
-            if (failure !== undefined) {
-                return undefined;
-            }
-            const record = admitAtExpectedCoordinate();
-            if (record === undefined) {
-                return undefined;
-            }
+            lastRead = expected;
             expected = successorJournalSequence(expected);
             return record;
+        },
+        /**
+         * The supply ended; a prefix which stopped before its declared length is a
+         * hole at the coordinate it failed to reach.
+         * @returns {void}
+         */
+        end() {
+            if (failure === undefined && compareJournalSequence(lastRead, claimedLength) < 0) {
+                failure = gapAt(journalSequenceToString(expected));
+            }
+        },
+        /**
+         * @param {JournalError} error
+         * @returns {void}
+         */
+        fail(error) {
+            failure = error;
         },
         failure: () => failure,
     };
 }
 
 /**
- * A source backed by one already-materialised replica, for callers which hold
- * history in memory. The oracle consumes it through the same per-writer
- * interface as every other source, so holding a replica is a property of the
- * caller and not of the oracle.
- * @param {import("../replica").JournalReplica} replica
- * @returns {JournalSource}
+ * A reader over a supply of records pulled one at a time.
+ *
+ * The supply reports a record, `undefined` at its end, or a `JournalError` when
+ * the storage layer could not produce the next record. The reader is an
+ * error-as-value boundary: a supply failure is delivered through `failure`
+ * rather than thrown past the reader, exactly as a structural prefix failure is.
+ *
+ * @param {string} authorName
+ * @param {() => Promise<JournalRecord | JournalError | undefined>} next
+ * @param {JournalSequence} claimedLength
+ * @param {JournalSequence} [startSequence]
+ * @returns {PrefixReader}
  */
-function makeReplicaSource(replica) {
-    const writers = [...replica.keys()].sort((a, b) => {
-        const left = journalAuthorToString(a);
-        const right = journalAuthorToString(b);
-        return left < right ? -1 : left > right ? 1 : 0;
-    });
-    /**
-     * @param {JournalAuthor} author
-     * @returns {ReadonlyArray<JournalRecord>}
-     */
-    function streamOfAuthor(author) {
-        const direct = replica.get(author);
-        if (direct !== undefined) {
-            return direct;
-        }
-        for (const entry of replica) {
-            if (isSameJournalAuthor(entry[0], author)) {
-                return entry[1];
-            }
-        }
-        return [];
-    }
+function readerOverRecordSupply(authorName, next, claimedLength, startSequence) {
+    const state = makeAdmissionState(authorName, claimedLength, startSequence);
     return {
-        writers: () => writers,
-        retainedLengthOf(author) {
-            const stream = streamOfAuthor(author);
-            const last = stream[stream.length - 1];
-            return last === undefined ? undefined : last.id.sequence;
+        async nextRecord() {
+            if (state.failure() !== undefined) {
+                return undefined;
+            }
+            const value = await next();
+            if (value === undefined) {
+                state.end();
+                return undefined;
+            }
+            if (value instanceof Error) {
+                state.fail(value);
+                return undefined;
+            }
+            return state.accept(value);
         },
-        prefixReaderOf(author) {
-            const stream = streamOfAuthor(author);
-            const last = stream[stream.length - 1];
-            const length = last === undefined ? ZERO_JOURNAL_SEQUENCE : last.id.sequence;
-            return readerOverIterable(journalAuthorToString(author), stream, length);
-        },
+        failure: () => state.failure(),
     };
 }
 
 /**
- * The prefix union of several sources, merged per writer.
+ * A reader over one writer's retained records which decides the no-holes
+ * condition as it goes.
  *
- * This is how the oracle is handed a fork or a hole fixture: a source which is a
- * union of disagreeing retained prefixes is not a supported journal, and the
- * merge reports that rather than the oracle discovering it later.
- * @param {ReadonlyArray<JournalSource>} sources
- * @returns {JournalSource}
+ * The supply is an in-memory iterable; a durable source supplies records through
+ * `readerOverRecordSupply` directly, so this function never sees an async
+ * iterable and does not need to distinguish one.
+ * @param {string} authorName
+ * @param {Iterable<JournalRecord>} iterable
+ * @param {JournalSequence} claimedLength
+ * @param {JournalSequence} [startSequence]
+ * @returns {PrefixReader}
  */
-function makeUnionSource(sources) {
-    /** @type {Map<string, JournalAuthor>} */
-    const byName = new Map();
-    for (const source of sources) {
-        for (const author of source.writers()) {
-            const name = journalAuthorToString(author);
-            if (!byName.has(name)) {
-                byName.set(name, author);
-            }
-        }
-    }
-    const writers = [...byName.values()].sort((a, b) => {
-        const left = journalAuthorToString(a);
-        const right = journalAuthorToString(b);
-        return left < right ? -1 : left > right ? 1 : 0;
-    });
-    /**
-     * @param {JournalAuthor} author
-     * @returns {ReadonlyArray<JournalSource>}
-     */
-    function sourcesHolding(author) {
-        return sources.filter((source) =>
-            source.writers().some((held) => isSameJournalAuthor(held, author))
-        );
-    }
-    /**
-     * @param {JournalAuthor} author
-     * @returns {JournalSequence}
-     */
-    function unionLengthOf(author) {
-        let greatest = ZERO_JOURNAL_SEQUENCE;
-        for (const source of sourcesHolding(author)) {
-            const length = source.retainedLengthOf(author);
-            if (length !== undefined && compareJournalSequence(length, greatest) > 0) {
-                greatest = length;
-            }
-        }
-        return greatest;
-    }
-    return {
-        writers: () => writers,
-        retainedLengthOf(author) {
-            const length = unionLengthOf(author);
-            return compareJournalSequence(length, ZERO_JOURNAL_SEQUENCE) === 0 ? undefined : length;
-        },
-        prefixReaderOf(author) {
-            const contributors = sourcesHolding(author).map((source) =>
-                source.prefixReaderOf(author)
-            );
-            return mergePrefixUnion(journalAuthorToString(author), contributors);
-        },
-    };
+function readerOverIterable(authorName, iterable, claimedLength, startSequence) {
+    const iterator = iterable[Symbol.iterator]();
+    return readerOverRecordSupply(authorName, async () => {
+        const step = iterator.next();
+        return step.done === true ? undefined : step.value;
+    }, claimedLength, startSequence);
 }
 
+
 module.exports = {
-    makeReplicaSource,
-    makeUnionSource,
-    mergePrefixUnion,
+    canonicalSequence,
     readerOverIterable,
+    readerOverRecordSupply,
     successorJournalSequence,
+    validateContributorRecord,
 };

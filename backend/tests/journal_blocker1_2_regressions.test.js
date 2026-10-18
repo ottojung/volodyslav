@@ -567,7 +567,7 @@ describe("blocker 2: the current-shape rule is one rule, not two", () => {
         ).toBe(false);
     });
 
-    test("replay does not select a certificate which names a retired input, whatever its reason", () => {
+    test("replay does not select a certificate which names a retired input, whatever its reason", async () => {
         // The consequence the review described: if the baseline-reason exemption
         // survives anywhere, a `reset` certificate naming a retired input set is
         // admissible proof about a graph it was not computed from, and replay
@@ -577,7 +577,7 @@ describe("blocker 2: the current-shape rule is one rule, not two", () => {
         for (const reason of ["compute", "unchanged", "cache-revalidate", "bootstrap", "reset", "migration"]) {
             const replica = replicaOf(historyWithCertificate(reason, true));
             expect(validateJournalReplica(replica)).toBeUndefined();
-            const projection = projectRetainedJournal({
+            const projection = await projectRetainedJournal({
                 source: makeReplicaSource(replica),
                 localWriter: makeJournalAuthor(WRITER_A),
                 currentInputKeysOfNode: currentInputsOfK,
@@ -591,14 +591,14 @@ describe("blocker 2: the current-shape rule is one rule, not two", () => {
         }
     });
 
-    test("replay does select a certificate which names the current input, whatever its reason", () => {
+    test("replay does select a certificate which names the current input, whatever its reason", async () => {
         // The rejection above has to be about the shape of the certificate and not
         // about the projection refusing to look at `K` at all, so the same history
         // with the current input named must come out fresh for every reason.
         for (const reason of ["compute", "unchanged", "cache-revalidate", "bootstrap", "reset", "migration"]) {
             const replica = replicaOf(historyWithCertificate(reason, false));
             expect(validateJournalReplica(replica)).toBeUndefined();
-            const projection = projectRetainedJournal({
+            const projection = await projectRetainedJournal({
                 source: makeReplicaSource(replica),
                 localWriter: makeJournalAuthor(WRITER_A),
                 currentInputKeysOfNode: currentInputsOfK,
