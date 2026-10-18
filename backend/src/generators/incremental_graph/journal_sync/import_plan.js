@@ -303,7 +303,8 @@ async function admitSuffix(suffix, frontier, currentInputKeysOfNode, index) {
 
 /**
  * Re-read one writer's missing suffix and check each admitted record's transitive
- * closure and authority extension against the complete index.
+ * closure, authority extension and self-described references against the complete
+ * index.
  *
  * The suffix is re-read from its first coordinate rather than retained, so the
  * relation-shaped half of the validation contract costs one more streaming pass
@@ -312,16 +313,17 @@ async function admitSuffix(suffix, frontier, currentInputKeysOfNode, index) {
  *
  * @param {ImportedSuffix} suffix
  * @param {AdmittedIndex} index
+ * @param {JournalFrontier} frontier - The complete union frontier.
  * @returns {Promise<JournalError | undefined>}
  */
-async function checkSuffixRelations(suffix, index) {
+async function checkSuffixRelations(suffix, index, frontier) {
     const reader = suffix.reader();
     for (;;) {
         const record = await reader.nextRecord();
         if (record === undefined) {
             return reader.failure();
         }
-        const relations = validateAdmittedRelations(record, index);
+        const relations = validateAdmittedRelations(record, index, frontier);
         if (relations !== undefined) {
             return relations;
         }
@@ -453,7 +455,7 @@ async function planForeignSuffixImport(plan) {
     }
 
     for (const suffix of suffixes) {
-        const relations = await checkSuffixRelations(suffix, index);
+        const relations = await checkSuffixRelations(suffix, index, frontier);
         if (relations !== undefined) {
             return { error: relations };
         }

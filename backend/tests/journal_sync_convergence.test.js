@@ -420,7 +420,7 @@ function generateQuiescentState(count, random) {
                 context: [],
                 basis,
             }));
-            valueIdOfNode.set(nodeKey, writer + ":" + String(sequence));
+            valueIdOfNode.set(nodeKey, writer + ":" + String(sequence * 2 - 1));
         }
         return { writer, records };
     });
