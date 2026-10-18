@@ -8,9 +8,19 @@
  * order, and every imported record is retained unchanged.
  *
  * This module is the executable form of that rule. It is pure: it reads two
- * `JournalSource`s and returns the retained suffix to admit together with the
- * union frontier those records extend, so it performs no I/O, holds no locks and
- * owns no lifecycle.
+ * `JournalSource`s and returns the imported range of each writer together with
+ * the union frontier those records extend, so it performs no I/O, holds no locks
+ * and owns no lifecycle.
+ *
+ * ## Streaming
+ *
+ * The plan carries no copy of the admitted suffix. Each `ImportedSuffix` names
+ * the range `A:(FR[A]+1) .. FS[A]` and exposes a fresh, positioned reader over
+ * the held source, so `$id-4924739474925738` holds here: the complete newly
+ * transferred suffix is consumed incrementally and is never held as one in-RAM
+ * collection. The relation-shaped validation re-reads the change set against a
+ * complete admitted-relations index rather than against an admitted-records
+ * array, so the only derived state that spans the change set is the index itself.
  *
  * ## What is checked here, and what is not
  *
@@ -54,9 +64,11 @@
 /** @typedef {import('../journal/types').JournalRecordId} JournalRecordId */
 /** @typedef {import('../journal/types').JournalSequence} JournalSequence */
 /** @typedef {import('../journal/oracle/record_source').JournalSource} JournalSource */
+/** @typedef {import('../journal/oracle/record_source').PrefixReader} PrefixReader */
 /** @typedef {import('../journal/types').NodeKey} NodeKey */
+/** @typedef {import('./admission').AdmittedIndex} AdmittedIndex */
 
-const { validateAdmittedRecords, validateImportedRecord } = require("./admission");
+const { makeAdmittedIndex, validateAdmittedRelations, validateImportedRecord } = require("./admission");
 const { readRetainedOverlap } = require("./retained_overlap");
 
 const {
@@ -72,41 +84,56 @@ const {
     makeJournalWriterBehindError,
     readerOverIterable,
     requireSuccessorJournalSequence,
+    suffixReaderOf,
     ZERO_JOURNAL_SEQUENCE,
 } = require("../journal");
 
 
 /**
  * The properties that this class carries are:
- * - `records` is exactly `A:(FR[A]+1) .. FS[A]` for one imported writer `A`, in
- *   ascending writer-local sequence order, with every record's own `id` the
- *   coordinate it occupies; and
- * - `to` is the greatest imported coordinate, which is the length that writer's
- *   retained prefix has after the import.
+ * - `from` is one past the receiver's retained length for `author`, and `to` is
+ *   the source's retained length for `author`, so the imported range is exactly
+ *   `A:(FR[A]+1) .. FS[A]`; and
+ * - `reader()` returns a fresh reader over exactly that range, in ascending
+ *   writer-local sequence order, so the suffix is consumed incrementally and is
+ *   never held as one in-RAM collection.
  *
  * The proof of those properties is guaranteed by:
- * - `planForeignSuffixImport(...)`: it names the range from the two frontiers and
- *   admits only a record whose own coordinate is exactly the next one expected,
- *   so the admitted range is contiguous and starts one past the receiver's
- *   retained length.
+ * - `planForeignSuffixImport(...)`: it admits `author` only when the source's
+ *   retained length strictly exceeds the receiver's, names `from` as the
+ *   successor of the receiver's length and `to` as the source's length, and
+ *   consumes the very range `reader()` reproduces during admission, so the range
+ *   is contiguous and starts one past the receiver's retained length.
+ * - `reader()`: it asks the source for a positioned suffix reader at `from`,
+ *   bounded by the writer's declared retained length, so every call reproduces
+ *   the same contiguous range without materialising it.
  *
  * @param {JournalAuthor} author
  * @param {JournalSequence} from - The first imported coordinate.
- * @param {ReadonlyArray<JournalRecord>} records
+ * @param {JournalSequence} to - The source's retained length for `author`.
+ * @param {JournalSource} source - The held source snapshot the suffix is read from.
  */
 class ImportedSuffixClass {
     /**
      * @param {JournalAuthor} author
      * @param {JournalSequence} from
-     * @param {ReadonlyArray<JournalRecord>} records
+     * @param {JournalSequence} to
+     * @param {JournalSource} source
      */
-    constructor(author, from, records) {
+    constructor(author, from, to, source) {
         this.author = author;
         this.from = from;
-        this.records = records;
-        const last = records[records.length - 1];
-        /** @type {JournalSequence} */
-        this.to = last === undefined ? ZERO_JOURNAL_SEQUENCE : last.id.sequence;
+        this.to = to;
+        this.source = source;
+    }
+
+    /**
+     * A fresh reader over this suffix's records, from `from` through `to`.
+     *
+     * @returns {import('../journal/oracle/record_source').PrefixReader}
+     */
+    reader() {
+        return suffixReaderOf(this.source, this.author, this.from);
     }
 }
 
@@ -179,50 +206,57 @@ function advanceFrontier(frontier, author, sequence) {
 }
 
 /**
- * Read one writer's missing suffix out of the source, admitting only a record at
- * exactly the next expected coordinate, and validate it as it is admitted.
+ * Validate the same-ID evidence at one writer's retained seam.
  *
  * A coordinate the source offers at or below `afterSequence` is evidence about a
  * coordinate the receiver already retains, so it is compared against the
  * receiver's own record rather than admitted, and two records which claim that
  * identity with different canonical meaning are refused as a writer fork. A
- * source which opens above `afterSequence` reaches none of this.
+ * source which opens above `afterSequence` reaches none of this. The first
+ * missing record the seam reports is discarded: the acquisition re-reads the
+ * suffix from its first coordinate through `ImportedSuffix.reader()`, so the
+ * suffix is not carried out of the seam check.
  *
  * @param {JournalSource} source
  * @param {JournalSource} receiver
  * @param {JournalAuthor} author
  * @param {JournalSequence} afterSequence - The receiver's retained length.
- * @param {JournalFrontier} frontier - The union frontier before this writer.
- * @param {(nodeKeyString: string) => ReadonlyArray<string>} currentInputKeysOfNode
- * @returns {Promise<{suffix: ImportedSuffix, frontier: JournalFrontier} | {error: JournalError}>}
+ * @returns {Promise<JournalError | undefined>}
  */
-async function acquireSuffix(source, receiver, author, afterSequence, frontier, currentInputKeysOfNode) {
-    const reader = source.prefixReaderOf(author);
-    const authorName = journalAuthorToString(author);
+async function validateSuffixSeam(source, receiver, author, afterSequence) {
     const overlap = await readRetainedOverlap(
-        reader,
+        source.prefixReaderOf(author),
         receiver.prefixReaderOf(author),
-        authorName,
+        journalAuthorToString(author),
         afterSequence
     );
-    if ("error" in overlap) {
-        return overlap;
-    }
-    /** @type {JournalRecord[]} */
-    const records = [];
+    return "error" in overlap ? overlap.error : undefined;
+}
+
+/**
+ * Admit one writer's missing suffix into the running admitted-relations index,
+ * validating each record as it is read.
+ *
+ * The suffix is consumed one record at a time through `suffix.reader()` and is
+ * never held as a collection. Each admitted record is validated against the union
+ * frontier as that record extends it, and folded into the index the relation
+ * checks later re-read the change set against.
+ *
+ * @param {ImportedSuffix} suffix
+ * @param {JournalFrontier} frontier - The complete union frontier.
+ * @param {(nodeKeyString: string) => ReadonlyArray<string>} currentInputKeysOfNode
+ * @param {AdmittedIndex} index
+ * @returns {Promise<{frontier: JournalFrontier} | {error: JournalError}>}
+ */
+async function admitSuffix(suffix, frontier, currentInputKeysOfNode, index) {
+    const authorName = journalAuthorToString(suffix.author);
+    const reader = suffix.reader();
     /** @type {JournalFrontier} */
     let current = frontier;
-    const firstExpected = requireSuccessorJournalSequence(afterSequence);
-    if (isJournalError(firstExpected)) {
-        return { error: firstExpected };
-    }
-    /** @type {import('../journal/types').JournalSequence} */
-    let expected = firstExpected;
-
-    let next = overlap.pending;
+    /** @type {JournalSequence} */
+    let expected = suffix.from;
     for (;;) {
-        const record = next === undefined ? await reader.nextRecord() : next;
-        next = undefined;
+        const record = await reader.nextRecord();
         if (record === undefined) {
             const failure = reader.failure();
             if (failure !== undefined) {
@@ -248,7 +282,7 @@ async function acquireSuffix(source, receiver, author, afterSequence, frontier, 
                 ),
             };
         }
-        const advanced = advanceFrontier(current, author, expected);
+        const advanced = advanceFrontier(current, suffix.author, expected);
         if (advanced instanceof Error) {
             return { error: advanced };
         }
@@ -257,17 +291,41 @@ async function acquireSuffix(source, receiver, author, afterSequence, frontier, 
         if (invalid !== undefined) {
             return { error: invalid };
         }
-        records.push(record);
+        index.add(record);
         const following = requireSuccessorJournalSequence(expected);
         if (isJournalError(following)) {
             return { error: following };
         }
         expected = following;
     }
-    return {
-        suffix: new ImportedSuffixClass(author, firstExpected, records),
-        frontier: current,
-    };
+    return { frontier: current };
+}
+
+/**
+ * Re-read one writer's missing suffix and check each admitted record's transitive
+ * closure and authority extension against the complete index.
+ *
+ * The suffix is re-read from its first coordinate rather than retained, so the
+ * relation-shaped half of the validation contract costs one more streaming pass
+ * and no in-RAM copy of the change set. The index is complete because every
+ * suffix was admitted before any relation was checked.
+ *
+ * @param {ImportedSuffix} suffix
+ * @param {AdmittedIndex} index
+ * @returns {Promise<JournalError | undefined>}
+ */
+async function checkSuffixRelations(suffix, index) {
+    const reader = suffix.reader();
+    for (;;) {
+        const record = await reader.nextRecord();
+        if (record === undefined) {
+            return reader.failure();
+        }
+        const relations = validateAdmittedRelations(record, index);
+        if (relations !== undefined) {
+            return relations;
+        }
+    }
 }
 
 /**
@@ -356,6 +414,15 @@ async function planForeignSuffixImport(plan) {
         frontier = advanced;
     }
 
+    // Transitive closure and authority extension are relations between a record and
+    // every event it claims to have observed, so they are checked over the complete
+    // admitted change set rather than as each suffix is read. Every suffix is
+    // therefore admitted first into one running index, and then re-read to check
+    // each record against that complete index. The index is the only derived state
+    // which spans the change set; the records themselves are streamed twice and
+    // never held as one collection.
+    const index = makeAdmittedIndex();
+
     for (const author of source.writers()) {
         if (journalAuthorToString(author) === localName) {
             continue;
@@ -369,34 +436,27 @@ async function planForeignSuffixImport(plan) {
         if (compareJournalSequence(sourceLength, after) <= 0) {
             continue;
         }
-        const acquired = await acquireSuffix(
-            source,
-            receiver,
-            author,
-            after,
-            frontier,
-            currentInputKeysOfNode
-        );
-        if ("error" in acquired) {
-            return { error: acquired.error };
+        const seam = await validateSuffixSeam(source, receiver, author, after);
+        if (seam !== undefined) {
+            return { error: seam };
         }
-        suffixes.push(acquired.suffix);
+        const firstExpected = requireSuccessorJournalSequence(after);
+        if (isJournalError(firstExpected)) {
+            return { error: firstExpected };
+        }
+        const suffix = new ImportedSuffixClass(author, firstExpected, sourceLength, source);
+        const admitted = await admitSuffix(suffix, frontier, currentInputKeysOfNode, index);
+        if ("error" in admitted) {
+            return { error: admitted.error };
+        }
+        suffixes.push(suffix);
     }
 
-    // Transitive closure and authority extension are relations between a record and
-    // every event it claims to have observed, so they are checked over the complete
-    // admitted change set rather than as each suffix is read. This is the relation-
-    // shaped half of `sync.md` §Final replay and validation; the per-record checks in
-    // `validateImportedRecord` are the other half. Only admitted records are visited,
-    // so the check stays within the change-bounded read bound.
-    /** @type {JournalRecord[]} */
-    const admitted = [];
     for (const suffix of suffixes) {
-        admitted.push(...suffix.records);
-    }
-    const relations = validateAdmittedRecords(admitted);
-    if (relations !== undefined) {
-        return { error: relations };
+        const relations = await checkSuffixRelations(suffix, index);
+        if (relations !== undefined) {
+            return { error: relations };
+        }
     }
 
     return new ImportPlanClass(suffixes, frontier);
@@ -434,12 +494,22 @@ function importedSourceOf(plan) {
                     ZERO_JOURNAL_SEQUENCE
                 );
             }
-            return readerOverIterable(
-                journalAuthorToString(author),
-                suffix.records,
-                suffix.to,
-                suffix.from
-            );
+            return suffix.reader();
+        },
+        suffixReaderOf: (author, fromSequence) => {
+            const suffix = byName.get(journalAuthorToString(author));
+            if (suffix === undefined) {
+                return readerOverIterable(
+                    journalAuthorToString(author),
+                    [],
+                    ZERO_JOURNAL_SEQUENCE,
+                    fromSequence
+                );
+            }
+            const start = compareJournalSequence(fromSequence, suffix.from) < 0
+                ? suffix.from
+                : fromSequence;
+            return suffixReaderOf(suffix.source, suffix.author, start);
         },
     };
 }

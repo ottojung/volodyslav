@@ -108,6 +108,14 @@ function canonicalSequence(digits) {
  * @property {(author: JournalAuthor) => PrefixReader} prefixReaderOf - A fresh
  *   reader over one writer's retained records in writer-stream order. Each call
  *   is an independent traversal, because the oracle makes several passes.
+ * @property {(author: JournalAuthor, fromSequence: JournalSequence) => PrefixReader} [suffixReaderOf] -
+ *   A fresh reader over one writer's retained records from `fromSequence`
+ *   (inclusive) through the writer's declared retained length, in writer-stream
+ *   order. It is the mid-prefix form of `prefixReaderOf`: the same independent
+ *   traversal, positioned at the first missing coordinate, so a consumer can
+ *   re-read one writer's missing suffix without reading the retained prefix the
+ *   receiver already holds. A source which does not implement it is read through
+ *   `suffixReaderOf(source, ...)`, which skips the prefix with the same reader.
  */
 
 /**
@@ -321,11 +329,48 @@ function readerOverIterable(authorName, iterable, claimedLength, startSequence) 
     }, claimedLength, startSequence);
 }
 
+/**
+ * A fresh reader over one writer's records from `fromSequence` through the
+ * writer's declared retained length.
+ *
+ * A source which offers the positioned traversal directly is asked for it, so a
+ * durable source opens its range at `fromSequence` and never reads the prefix
+ * before it. A source which only offers a whole-prefix reader is read through
+ * that reader and the coordinates below `fromSequence` are discarded, which is
+ * the same rule over the same records, one traversal deeper.
+ *
+ * @param {JournalSource} source
+ * @param {JournalAuthor} author
+ * @param {JournalSequence} fromSequence
+ * @returns {PrefixReader}
+ */
+function suffixReaderOf(source, author, fromSequence) {
+    if (source.suffixReaderOf !== undefined) {
+        return source.suffixReaderOf(author, fromSequence);
+    }
+    const name = journalAuthorToString(author);
+    const length = source.retainedLengthOf(author);
+    const inner = source.prefixReaderOf(author);
+    return readerOverRecordSupply(name, async () => {
+        for (;;) {
+            const record = await inner.nextRecord();
+            if (record === undefined) {
+                const failure = inner.failure();
+                return failure === undefined ? undefined : failure;
+            }
+            if (compareJournalSequence(record.id.sequence, fromSequence) >= 0) {
+                return record;
+            }
+        }
+    }, length === undefined ? ZERO_JOURNAL_SEQUENCE : length, fromSequence);
+}
+
 
 module.exports = {
     canonicalSequence,
     readerOverIterable,
     readerOverRecordSupply,
+    suffixReaderOf,
     successorJournalSequence,
     validateContributorRecord,
 };

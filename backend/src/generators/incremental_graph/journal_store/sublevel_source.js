@@ -48,6 +48,7 @@
  */
 
 const {
+    compareJournalSequence,
     journalAuthorToString,
     journalSequenceToString,
     makeJournalAuthor,
@@ -90,6 +91,27 @@ function recordRangeOf(author) {
         gte: stringToJournalKey(prefix),
         lte: stringToJournalKey(prefix + RANGE_UPPER_BOUND),
     };
+}
+
+/**
+ * The key range one writer's records from `fromSequence` occupy.
+ *
+ * The lower bound is the padded key of the first coordinate, so a reader which
+ * opens this range reads the writer's missing suffix without reading the prefix
+ * before it. The upper bound is the same writer-family bound `recordRangeOf`
+ * uses, so the range is exactly the coordinates at or above `fromSequence`.
+ *
+ * @param {JournalAuthor} author
+ * @param {JournalSequence} fromSequence
+ * @returns {{gte: JournalKey, lte: JournalKey} | JournalError}
+ */
+function recordRangeFromOf(author, fromSequence) {
+    const gte = makeJournalRecordKey(author, fromSequence);
+    if (gte instanceof Error) {
+        return gte;
+    }
+    const prefix = RECORD_KEY_PREFIX + journalAuthorToString(author) + '|';
+    return { gte, lte: stringToJournalKey(prefix + RANGE_UPPER_BOUND) };
 }
 
 /**
@@ -216,6 +238,21 @@ function makeSyncJournalSource(lengths, recordsOf) {
             const length = lengths.get(name);
             return readerOverIterable(name, recordsOf(author), length ?? recordsLengthFallback(recordsOf, author));
         },
+        suffixReaderOf(author, fromSequence) {
+            const name = journalAuthorToString(author);
+            const length = lengths.get(name);
+            const stream = recordsOf(author);
+            const first = stream.findIndex(
+                (record) => compareJournalSequence(record.id.sequence, fromSequence) >= 0
+            );
+            const slice = first < 0 ? [] : stream.slice(first);
+            return readerOverIterable(
+                name,
+                slice,
+                length ?? recordsLengthFallback(recordsOf, author),
+                fromSequence
+            );
+        },
     };
 }
 
@@ -262,6 +299,50 @@ function retainedLengthTexts(lengths) {
 }
 
 /**
+ * A reader over one writer's record-key range, decoding and key-checking one entry
+ * at a time as the consumer pulls it.
+ *
+ * This is the one place a durable record range becomes a `PrefixReader`, shared by
+ * the whole-prefix reader and the positioned suffix reader so both decide the
+ * no-holes/no-overrun rule by the same `readerOverRecordSupply` state.
+ *
+ * @param {string} name
+ * @param {SimpleSublevel<JournalText, JournalKey>} journalSublevel
+ * @param {JournalAuthor} author
+ * @param {JournalKey} gte
+ * @param {JournalKey} lte
+ * @param {JournalSequence} claimed
+ * @param {JournalSequence} [startSequence]
+ * @returns {PrefixReader}
+ */
+function readerOverRange(name, journalSublevel, author, gte, lte, claimed, startSequence) {
+    const iterator = journalSublevel.iterator({ gte, lte })[Symbol.asyncIterator]();
+    return readerOverRecordSupply(name, async () => {
+        const step = await iterator.next();
+        if (step.done === true) {
+            return undefined;
+        }
+        const [key, text] = step.value;
+        const record = tryDecodeJournalRecord(journalTextToString(text));
+        if (record instanceof Error) {
+            return record;
+        }
+        const expectedKey = makeJournalRecordKey(author, record.id.sequence);
+        if (expectedKey instanceof Error) {
+            return expectedKey;
+        }
+        if (journalKeyToString(expectedKey) !== journalKeyToString(key)) {
+            return makeJournalSourceReadError(
+                'the journal sublevel key ' +
+                    journalKeyToString(key) +
+                    ' disagrees with the record it stores'
+            );
+        }
+        return record;
+    }, claimed, startSequence);
+}
+
+/**
  * A `JournalSource` over one replica's journal sublevel which streams.
  *
  * The retained lengths come from `readRetainedLengths`, which is one reverse range read
@@ -270,7 +351,9 @@ function retainedLengthTexts(lengths) {
  * it, so no writer's records are materialised as a collection and the complete retained
  * history is never in RAM at once. A reader bounds itself by the length the source
  * declared, so a prefix with a hole, a short prefix or an over-long prefix fails inside
- * the reader exactly as it does over an in-memory supply.
+ * the reader exactly as it does over an in-memory supply. `suffixReaderOf` opens the
+ * same range at the first missing coordinate, so a consumer can re-read a writer's
+ * missing suffix without reading the retained prefix before it.
  *
  * @param {Map<string, JournalSequence>} lengths
  * @param {SimpleSublevel<JournalText, JournalKey>} journalSublevel
@@ -301,30 +384,24 @@ function makeStreamingJournalSource(lengths, journalSublevel) {
                 );
             }
             const { gte, lte } = recordRangeOf(author);
-            const iterator = journalSublevel.iterator({ gte, lte })[Symbol.asyncIterator]();
-            return readerOverRecordSupply(name, async () => {
-                const step = await iterator.next();
-                if (step.done === true) {
-                    return undefined;
-                }
-                const [key, text] = step.value;
-                const record = tryDecodeJournalRecord(journalTextToString(text));
-                if (record instanceof Error) {
-                    return record;
-                }
-                const expectedKey = makeJournalRecordKey(author, record.id.sequence);
-                if (expectedKey instanceof Error) {
-                    return expectedKey;
-                }
-                if (journalKeyToString(expectedKey) !== journalKeyToString(key)) {
-                    return makeJournalSourceReadError(
-                        'the journal sublevel key ' +
-                            journalKeyToString(key) +
-                            ' disagrees with the record it stores'
-                    );
-                }
-                return record;
-            }, claimed);
+            return readerOverRange(name, journalSublevel, author, gte, lte, claimed);
+        },
+        suffixReaderOf(author, fromSequence) {
+            const name = journalAuthorToString(author);
+            const claimed = lengths.get(name);
+            if (claimed === undefined) {
+                return readerOverRecordSupply(
+                    name,
+                    async () => undefined,
+                    ZERO_JOURNAL_SEQUENCE,
+                    fromSequence
+                );
+            }
+            const range = recordRangeFromOf(author, fromSequence);
+            if (range instanceof Error) {
+                return readerOverRecordSupply(name, async () => range, claimed, fromSequence);
+            }
+            return readerOverRange(name, journalSublevel, author, range.gte, range.lte, claimed, fromSequence);
         },
     };
 }

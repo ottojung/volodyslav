@@ -24,6 +24,7 @@ const {
 const {
     canonicalSequence,
     readerOverIterable,
+    suffixReaderOf,
     successorJournalSequence,
     validateContributorRecord,
 } = require("./record_source");
@@ -101,11 +102,14 @@ function cursorOverReader(reader) {
  * meaning of a record.
  * @param {string} authorName
  * @param {ReadonlyArray<PrefixReader>} contributors
+ * @param {JournalSequence} [startSequence] - The first coordinate the merge admits,
+ *   for a union of mid-prefix readers. It defaults to the canonical first
+ *   coordinate, so a whole retained prefix is merged as before.
  * @returns {PrefixReader}
  */
-function mergePrefixUnion(authorName, contributors) {
+function mergePrefixUnion(authorName, contributors, startSequence) {
     const admitted = contributors.map((contributor) => cursorOverReader(contributor));
-    let expected = canonicalSequence("1");
+    let expected = startSequence === undefined ? canonicalSequence("1") : startSequence;
     /** @type {JournalError | undefined} */
     let failure;
 
@@ -228,6 +232,21 @@ function makeReplicaSource(replica) {
             const length = last === undefined ? ZERO_JOURNAL_SEQUENCE : last.id.sequence;
             return readerOverIterable(journalAuthorToString(author), stream, length);
         },
+        suffixReaderOf(author, fromSequence) {
+            const stream = streamOfAuthor(author);
+            const last = stream[stream.length - 1];
+            const length = last === undefined ? ZERO_JOURNAL_SEQUENCE : last.id.sequence;
+            const first = stream.findIndex(
+                (record) => compareJournalSequence(record.id.sequence, fromSequence) >= 0
+            );
+            const slice = first < 0 ? [] : stream.slice(first);
+            return readerOverIterable(
+                journalAuthorToString(author),
+                slice,
+                length,
+                fromSequence
+            );
+        },
     };
 }
 
@@ -290,6 +309,16 @@ function makeUnionSource(sources) {
                 source.prefixReaderOf(author)
             );
             return mergePrefixUnion(journalAuthorToString(author), contributors);
+        },
+        suffixReaderOf(author, fromSequence) {
+            const contributors = sourcesHolding(author).map((source) =>
+                suffixReaderOf(source, author, fromSequence)
+            );
+            return mergePrefixUnion(
+                journalAuthorToString(author),
+                contributors,
+                fromSequence
+            );
         },
     };
 }
