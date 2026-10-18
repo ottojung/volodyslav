@@ -49,9 +49,11 @@
 const {
     authorityCompare,
     compareJournalSequence,
+    isInvalidateEvent,
     isSameJournalAuthor,
     isSemanticEvent,
     isValidateEvent,
+    isValueEvent,
     journalAuthorToString,
     journalRecordIdToString,
     journalSequenceAtFrontier,
@@ -240,6 +242,19 @@ class AdmittedIndexClass {
     constructor() {
         /** @type {Map<string, Array<AdmittedWriterMaximum>>} */
         this.byWriter = new Map();
+        /** @type {Map<string, JournalRecord>} */
+        this.byId = new Map();
+    }
+
+    /**
+     * The admitted record at one coordinate, or `undefined` when the change set
+     * does not hold it.
+     *
+     * @param {JournalRecordId} id
+     * @returns {JournalRecord | undefined}
+     */
+    recordOf(id) {
+        return this.byId.get(journalRecordIdToString(id));
     }
 
     /**
@@ -247,6 +262,7 @@ class AdmittedIndexClass {
      * @returns {void}
      */
     add(record) {
+        this.byId.set(journalRecordIdToString(record.id), record);
         if (!isSemanticEvent(record)) {
             return;
         }
@@ -369,19 +385,107 @@ function validateAdmittedAuthority(event, index) {
 }
 
 /**
- * Check the transitive closure and authority extension of the records one
- * operation admits.
+ * Check that a ValueId one admitted record names resolves to a `ValueEvent` of
+ * the expected node.
+ *
+ * A coordinate beyond the union frontier is not retained at all, so the
+ * reference is impossible and is rejected. A coordinate at or below the frontier
+ * which the change set does not hold is a retained-prefix coordinate whose
+ * record was validated when the receiver admitted it, so this operation does not
+ * rescan it. A coordinate the change set does hold is resolved directly: it must
+ * be a `ValueEvent` of the node the reference declares, exactly as whole-history
+ * validation requires. Resolving an admitted coordinate visits one admitted
+ * record and never retained history, so the check stays change-bounded.
+ *
+ * @param {SemanticEvent} event
+ * @param {JournalRecordId} referenceId
+ * @param {NodeKey} expectedNode
+ * @param {JournalFrontier} frontier
+ * @param {AdmittedIndexClass} index
+ * @returns {JournalError | undefined}
+ */
+function validateAdmittedReference(event, referenceId, expectedNode, frontier, index) {
+    const label = journalRecordIdToString(event.id);
+    if (compareJournalSequence(
+        referenceId.sequence,
+        journalSequenceAtFrontier(frontier, referenceId.author)
+    ) > 0) {
+        return makeJournalRecordValidationError("referenced ValueId is not retained", label);
+    }
+    const resolved = index.recordOf(referenceId);
+    if (resolved === undefined) {
+        return undefined;
+    }
+    if (!isValueEvent(resolved)) {
+        return makeJournalRecordValidationError(
+            "referenced ValueId is not a ValueEvent",
+            label
+        );
+    }
+    if (nodeKeyToCanonicalString(resolved.node) !== nodeKeyToCanonicalString(expectedNode)) {
+        return makeJournalRecordValidationError(
+            "referenced ValueId belongs to another semantic node",
+            label
+        );
+    }
+    return undefined;
+}
+
+/**
+ * Check the self-described references of one admitted record against the
+ * admitted change set.
+ *
+ * A validation names its target occurrence and, for each explicit input, the
+ * occurrence it used as that input; a value- or proof-scoped invalidation names
+ * the occurrence it retires. Each is a `ValueEvent` of the record's own node (or
+ * of the named input) in whole-history well-formedness, so each is resolved here
+ * for the coordinates the change set holds.
+ *
+ * @param {SemanticEvent} event
+ * @param {JournalFrontier} frontier
+ * @param {AdmittedIndexClass} index
+ * @returns {JournalError | undefined}
+ */
+function validateAdmittedReferences(event, frontier, index) {
+    if (isValidateEvent(event)) {
+        const target = validateAdmittedReference(event, event.value, event.node, frontier, index);
+        if (target !== undefined) {
+            return target;
+        }
+        for (const entry of event.basis) {
+            if (entry.value === "unknown") {
+                continue;
+            }
+            const basis = validateAdmittedReference(event, entry.value, entry.input, frontier, index);
+            if (basis !== undefined) {
+                return basis;
+            }
+        }
+        return undefined;
+    }
+    if (isInvalidateEvent(event) && event.scope.kind !== "node") {
+        return validateAdmittedReference(event, event.scope.value, event.node, frontier, index);
+    }
+    return undefined;
+}
+
+/**
+ * Check the transitive closure, authority extension and self-described
+ * references of the records one operation admits.
  *
  * This is the relation-shaped half of the bounded validation contract; the
  * per-record half is `validateImportedRecord`. It is evaluated over the complete
  * admitted change set so a record which claims a coordinate of a writer admitted
  * later in the same operation is checked against it, and it visits only admitted
- * records.
+ * records. The union frontier is the receiver's retained lengths joined with the
+ * imported suffixes, so a reference the change set does not hold can still be
+ * classified as retained-prefix or unretained.
  *
  * @param {ReadonlyArray<JournalRecord>} records
+ * @param {JournalFrontier} frontier - The union frontier including every admitted suffix.
  * @returns {JournalError | undefined}
  */
-function validateAdmittedRecords(records) {
+function validateAdmittedRecords(records, frontier) {
     const index = new AdmittedIndexClass();
     for (const record of records) {
         index.add(record);
@@ -397,6 +501,10 @@ function validateAdmittedRecords(records) {
         const authority = validateAdmittedAuthority(record, index);
         if (authority !== undefined) {
             return authority;
+        }
+        const references = validateAdmittedReferences(record, frontier, index);
+        if (references !== undefined) {
+            return references;
         }
     }
     return undefined;

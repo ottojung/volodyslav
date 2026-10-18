@@ -394,7 +394,7 @@ function planForeignSuffixImport(plan) {
     for (const suffix of suffixes) {
         admitted.push(...suffix.records);
     }
-    const relations = validateAdmittedRecords(admitted);
+    const relations = validateAdmittedRecords(admitted, frontier);
     if (relations !== undefined) {
         return { error: relations };
     }
