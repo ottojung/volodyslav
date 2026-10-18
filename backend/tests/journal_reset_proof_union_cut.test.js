@@ -129,7 +129,12 @@ function sourceRecords() {
             "compute"
         ),
         makeValidateEvent(
-            { id: "bbbbbbbbb:2", context: ctx([["bbbbbbbbb", "1"]]), authorityTime: authority(200, 1), node: NODE_K },
+            {
+                id: "bbbbbbbbb:2",
+                context: ctx([["aaaaaaaaa", "1"], ["bbbbbbbbb", "1"]]),
+                authorityTime: authority(200, 1),
+                node: NODE_K,
+            },
             "bbbbbbbbb:1",
             [makeValidationBasisEntry(NODE_D, "aaaaaaaaa:1")],
             "compute"
