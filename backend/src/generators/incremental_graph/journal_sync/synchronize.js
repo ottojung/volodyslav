@@ -65,8 +65,8 @@
 const {
     makeJournalProjectionError,
     makeJournalPublicationError,
-    reconcileRetainedWriterHead,
 } = require("../journal");
+const { reconcileRetainedWriterHead } = require("../journal_store");
 const {
     commitRetainedReplayState,
     forkRetainedReplayState,

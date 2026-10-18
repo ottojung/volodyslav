@@ -54,9 +54,9 @@ const {
     makeJournalSequence,
     makeJournalSourceReadError,
     readerOverIterable,
-    reconcileRetainedWriterHead,
     tryDecodeJournalRecord,
 } = require('../journal');
+const { reconcileRetainedWriterHead } = require('./writer_head');
 const {
     journalKeyToString,
     journalTextToString,

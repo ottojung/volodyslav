@@ -61,10 +61,10 @@ const {
     makeReplicaSource,
     nodeKeyToCanonicalString,
     parseJournalRecordId,
-    reconcileRetainedWriterHead,
     tryDecodeJournalRecord,
     ZERO_JOURNAL_SEQUENCE,
 } = require("../journal");
+const { reconcileRetainedWriterHead } = require("./writer_head");
 const {
     journalKeyToString,
     journalTextToString,

@@ -26,11 +26,11 @@ const {
     readCommittedWriterState,
     readJournalSource,
     readRetainedJournal,
+    reconcileRetainedWriterHead,
 } = require("../src/generators/incremental_graph/journal_store");
 const {
     isJournalWriterBehindError,
     journalAuthorToString,
-    journalSequenceToString,
     makeAuthorityTime,
     makeJournalAuthor,
     makeJournalFrontierFromText,
@@ -42,7 +42,6 @@ const {
     makeValidationBasisEntry,
     makeDeleteEvent,
     nodeKeyToCanonicalString,
-    reconcileRetainedWriterHead,
 } = require("../src/generators/incremental_graph/journal");
 
 const {

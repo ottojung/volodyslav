@@ -1,23 +1,22 @@
 /**
- * The documented boundary of the bounded import path's transitive-closure check.
+ * The bounded import path's transitive-closure check.
  *
  * `incremental-graph-journal-well-formedness.md` §Transitive closure (L192-204)
  * gives this exact malformed history: a context may not include `B:1` while
  * omitting the `A:1` that `B:1` observed. The whole-history validator rejects it.
  *
  * `incremental-graph-journal-sync.md` §Final replay and validation requires
- * contexts of newly admitted records to be transitively closed against retained
- * context summaries/indexes. `incremental-graph-journal-storage.md` §Derived
- * indexes defines a context-closure summary as an optional, incrementally
- * maintained index, and §Synchronization/reset validation makes the check
- * change-bounded: the claimed prefixes are not rescanned. The receiver does not
- * maintain that optional index, so the bounded import path discharges closure
- * through the supported-source boundary instead of re-deriving it per record.
+ * contexts of newly admitted records to be transitively closed. The bounded import
+ * path discharges that requirement over the admitted change set: it keeps a
+ * per-writer running maximum of the admitted contexts and authority, and each
+ * admitted record is compared against the maximum of the writers it claims. A
+ * coordinate whose writer retains nothing in the change set is a retained-prefix
+ * coordinate and is not rescanned, which is the change-bounded form
+ * `incremental-graph-journal-storage.md` §Synchronization/reset validation permits.
  *
- * This test pins both sides of that boundary so the reconciliation is explicit
- * rather than silent. If a context-closure summary index is added later, the
- * bounded path should reject the malformed history and this test must be updated
- * together with the boundary comment in journal_sync/admission.js.
+ * This test pins both directions: the malformed history is rejected because its
+ * offending records are all part of the admitted suffix, and the closed history is
+ * accepted.
  */
 
 const {
@@ -144,13 +143,12 @@ describe("the bounded import path's transitive-closure boundary", () => {
         expect("error" in plan).toBe(false);
     });
 
-    test("the bounded import path trusts a supported source rather than rescanning claimed prefixes", () => {
-        // The reconciliation: the malformed history is a corrupt/unsupported
-        // source, which the whole-history validator rejects on rebuild or
-        // maintenance. The bounded path cannot re-derive closure without reading
-        // the claimed prefixes, which the change-bounded read bound forbids, so it
-        // accepts the source on trust. This assertion makes that boundary explicit.
+    test("the bounded import path rejects the malformed history from the admitted change set", () => {
         const plan = planOf(malformedHistory());
-        expect("error" in plan).toBe(false);
+        expect("error" in plan).toBe(true);
+        if (!("error" in plan)) {
+            throw new Error("expected the malformed history to be rejected");
+        }
+        expect(isJournalCausalClosureError(plan.error)).toBe(true);
     });
 });

@@ -57,8 +57,8 @@ const {
     isValueEvent,
     makeJournalProjectionError,
     nodeKeyToCanonicalString,
-    reconcileRetainedWriterHead,
 } = require("../journal");
+const { reconcileRetainedWriterHead } = require("../journal_store");
 const { assertCompatibleIdentity, planForeignSuffixImport } = require("../journal_sync");
 const { finalizeResetRecords, ResetPublicationClass } = require("./authoring");
 const { verifyTargetEquivalence } = require("./equivalence");

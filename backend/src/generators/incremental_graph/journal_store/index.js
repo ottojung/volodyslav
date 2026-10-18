@@ -42,6 +42,8 @@ const {
     retainedLengthTexts,
 } = require("./sublevel_source");
 
+const { reconcileRetainedWriterHead } = require("./writer_head");
+
 /** @typedef {import('./record_store').RecordStoreClass} RecordStore */
 /** @typedef {import('./record_store').StoreCapabilities} StoreCapabilities */
 
@@ -64,6 +66,7 @@ module.exports = {
     readJournalSource,
     readRetainedJournal,
     readRetainedLengths,
+    reconcileRetainedWriterHead,
     recordPath,
     recordRangeOf,
     retainedLengthTexts,

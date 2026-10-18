@@ -56,7 +56,7 @@
 /** @typedef {import('../journal/oracle/record_source').JournalSource} JournalSource */
 /** @typedef {import('../journal/types').NodeKey} NodeKey */
 
-const { validateImportedRecord } = require("./admission");
+const { validateAdmittedRecords, validateImportedRecord } = require("./admission");
 const { readRetainedOverlap } = require("./retained_overlap");
 
 const {
@@ -382,6 +382,23 @@ function planForeignSuffixImport(plan) {
         }
         suffixes.push(acquired.suffix);
     }
+
+    // Transitive closure and authority extension are relations between a record and
+    // every event it claims to have observed, so they are checked over the complete
+    // admitted change set rather than as each suffix is read. This is the relation-
+    // shaped half of `sync.md` §Final replay and validation; the per-record checks in
+    // `validateImportedRecord` are the other half. Only admitted records are visited,
+    // so the check stays within the change-bounded read bound.
+    /** @type {JournalRecord[]} */
+    const admitted = [];
+    for (const suffix of suffixes) {
+        admitted.push(...suffix.records);
+    }
+    const relations = validateAdmittedRecords(admitted);
+    if (relations !== undefined) {
+        return { error: relations };
+    }
+
     return new ImportPlanClass(suffixes, frontier);
 }
 
