@@ -19,11 +19,11 @@
  *
  * Transitive closure and authority extension are relations between a record and
  * every event it claims to have observed, so they are checked by
- * `validateAdmittedRecords` over the complete set of records one operation
+ * `validateAdmittedRelations` against the complete set of records one operation
  * admits. The set is the change set `C`, not the retained history: the check
- * builds a per-writer running maximum of the admitted records' contexts and
- * authority, and each record is compared against the maximum of the writers it
- * claims. A claimed coordinate whose writer retains nothing in this operation's
+ * folds the admitted records into a per-writer running maximum of their contexts
+ * and authority (`makeAdmittedIndex`), and each record is compared against the
+ * maximum of the writers it claims. A claimed coordinate whose writer retains nothing in this operation's
  * change set is a retained-prefix coordinate; its context and authority belong to
  * the receiver's already validated history and are not rescanned here. This is
  * the bounded form `incremental-graph-journal-storage.md` §Synchronization/reset
@@ -425,36 +425,8 @@ function validateAdmittedRelations(record, index) {
     return validateAdmittedAuthority(record, index);
 }
 
-/**
- * Check the transitive closure and authority extension of the records one
- * operation admits.
- *
- * This is the relation-shaped half of the bounded validation contract; the
- * per-record half is `validateImportedRecord`. It is evaluated over the complete
- * admitted change set so a record which claims a coordinate of a writer admitted
- * later in the same operation is checked against it, and it visits only admitted
- * records.
- *
- * @param {ReadonlyArray<JournalRecord>} records
- * @returns {JournalError | undefined}
- */
-function validateAdmittedRecords(records) {
-    const index = makeAdmittedIndex();
-    for (const record of records) {
-        index.add(record);
-    }
-    for (const record of records) {
-        const failure = validateAdmittedRelations(record, index);
-        if (failure !== undefined) {
-            return failure;
-        }
-    }
-    return undefined;
-}
-
 module.exports = {
     makeAdmittedIndex,
-    validateAdmittedRecords,
     validateAdmittedRelations,
     validateImportedRecord,
 };
