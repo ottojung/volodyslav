@@ -82,9 +82,7 @@ fail hard instead of being silently accepted or replaced.
   `r/global/fingerprint` becomes the local allocation fingerprint.
 - On non-first-boot reset, the pre-import local fingerprint is written back
   to the target replica's global sublevel before the replica switch.
-  The normative Journal 3 statement of this rule, including the single
-  completely-absent-receiver exception, is
-  `incremental-graph-journal-reset.md` §Writer identity.
+  This rule is stated in `incremental-graph-volatile-consistency.md` §P10 — Replica cutover preserves local fingerprint during reset/import. The single completely-absent-receiver exception — there is no pre-import local fingerprint when the receiver is absent, so absent-state restoration applies instead — is stated in `incremental-graph-journal-reset.md` §Preconditions and `database-lifecycle.md` §4.
 
 ## Render and scan
 
