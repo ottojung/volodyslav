@@ -58,8 +58,10 @@ const {
     makeJournalSourceReadError,
     makeJournalReplica,
     makeJournalSequence,
+    makeReplicaSource,
     nodeKeyToCanonicalString,
     parseJournalRecordId,
+    reconcileRetainedWriterHead,
     tryDecodeJournalRecord,
     ZERO_JOURNAL_SEQUENCE,
 } = require("../journal");
@@ -323,10 +325,17 @@ function appendJournalPublicationOps(journalDatabase, operations, publication) {
  * Read every retained record back, grouped by writer in writer-stream order, through
  * the same current-format reader the filesystem record store uses.
  *
+ * When the caller supplies the database's committed-pair metadata, the retained
+ * own-writer length is reconciled against the committed writer head before the replica
+ * is returned, so a database which has lost a surviving suffix of its own writer
+ * history is refused rather than replayed.
+ *
  * @param {JournalDatabase} journalDatabase
+ * @param {CommittedWriterState | undefined} [committed] - The database's committed-pair
+ *   metadata, when the caller holds it.
  * @returns {Promise<JournalReplica | JournalError>}
  */
-async function readRetainedJournal(journalDatabase) {
+async function readRetainedJournal(journalDatabase, committed) {
     /** @type {Map<string, {author: JournalAuthor, records: Array<JournalRecord>}>} */
     const byAuthor = new Map();
     for await (const journalKey of journalDatabase.keys()) {
@@ -377,6 +386,12 @@ async function readRetainedJournal(journalDatabase) {
     const replica = makeJournalReplica(streams);
     if (replica instanceof Error) {
         return makeJournalSourceReadError("the journal sublevel could not assemble a retained replica: " + replica.message);
+    }
+    if (committed !== undefined) {
+        const lost = reconcileRetainedWriterHead(makeReplicaSource(replica), committed);
+        if (lost !== undefined) {
+            return lost;
+        }
     }
     return replica;
 }

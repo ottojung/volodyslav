@@ -33,6 +33,7 @@
  */
 
 /** @typedef {import('../journal/errors').AnyJournalError} JournalError */
+/** @typedef {import('../journal/emission').CommittedWriterState} CommittedWriterState */
 /** @typedef {import('../journal/records').JournalRecord} JournalRecord */
 /** @typedef {import('../journal/types').JournalAuthor} JournalAuthor */
 /** @typedef {import('../journal/types').JournalSequence} JournalSequence */
@@ -53,6 +54,7 @@ const {
     makeJournalSequence,
     makeJournalSourceReadError,
     readerOverIterable,
+    reconcileRetainedWriterHead,
     tryDecodeJournalRecord,
 } = require('../journal');
 const {
@@ -308,12 +310,22 @@ async function readWriterRecords(journalSublevel, author) {
  * @param {SimpleSublevel<JournalText, JournalKey>} journalSublevel - The `journal` sublevel
  *   of the replica to read, which a caller reaches through
  *   `RootDatabase.replicaJournalSublevel(name)`.
+ * @param {CommittedWriterState | undefined} [committed] - The replica's committed-pair
+ *   metadata, when the caller holds it. Supplying it reconciles the retained own-writer
+ *   length against the committed writer head here, so a replica which has lost a
+ *   surviving suffix of its own writer history is refused before any record is read.
  * @returns {Promise<JournalSource | JournalError>}
  */
-async function readJournalSource(journalSublevel) {
+async function readJournalSource(journalSublevel, committed) {
     const lengths = await readRetainedLengths(journalSublevel);
     if (lengths instanceof Error) {
         return lengths;
+    }
+    if (committed !== undefined) {
+        const lost = reconcileRetainedWriterHead(makeSyncJournalSource(lengths, () => []), committed);
+        if (lost !== undefined) {
+            return lost;
+        }
     }
     /** @type {Map<string, ReadonlyArray<JournalRecord>>} */
     const recordsByAuthor = new Map();

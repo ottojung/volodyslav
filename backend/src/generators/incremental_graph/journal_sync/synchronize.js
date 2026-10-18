@@ -65,6 +65,7 @@
 const {
     makeJournalProjectionError,
     makeJournalPublicationError,
+    reconcileRetainedWriterHead,
 } = require("../journal");
 const {
     commitRetainedReplayState,
@@ -208,6 +209,18 @@ function synchronizeRetainedJournal(request) {
     const stale = refuseStaleRetainedState(retainedState, receiver, localWriter);
     if (stale !== undefined) {
         return stale;
+    }
+
+    // A receiver whose committed writer head is ahead of what it retains has lost a
+    // surviving suffix of its own writer history. `incremental-graph-journal-testing.md`
+    // §Corruption tests requires that evidence to be rejected, and
+    // `incremental-graph-journal-sync.md` §Receiver-local writer ahead in the source is
+    // unsupported state gives the receiver no supported same-writer recovery, so this
+    // fails closed before any suffix is imported or any record authored. The check is
+    // one `retainedLengthOf` read and visits no record.
+    const lost = reconcileRetainedWriterHead(receiver, committed);
+    if (lost !== undefined) {
+        return { error: lost };
     }
 
     // Every record this operation admits is staged into a fork, and the fork's

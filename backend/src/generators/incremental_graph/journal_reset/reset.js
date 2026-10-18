@@ -57,6 +57,7 @@ const {
     isValueEvent,
     makeJournalProjectionError,
     nodeKeyToCanonicalString,
+    reconcileRetainedWriterHead,
 } = require("../journal");
 const { assertCompatibleIdentity, planForeignSuffixImport } = require("../journal_sync");
 const { finalizeResetRecords, ResetPublicationClass } = require("./authoring");
@@ -188,6 +189,16 @@ function resetToSource(request) {
                 ""
             ),
         };
+    }
+
+    // A receiver whose committed writer head is ahead of what it retains has lost a
+    // surviving suffix of its own writer history, which
+    // `incremental-graph-journal-testing.md` §Corruption tests requires to be rejected
+    // rather than repaired. The check is one `retainedLengthOf` read and visits no
+    // record, so it precedes every import and every authorship allocation.
+    const lost = reconcileRetainedWriterHead(receiver, committed);
+    if (lost !== undefined) {
+        return { error: lost };
     }
 
     const incompatible = assertCompatibleIdentity(receiverIdentity, source.identity());

@@ -81,7 +81,7 @@ async function repairMigrationJournal(request) {
     let state = request.state;
     const currentInputKeysOfNode = makeCurrentInputKeysOfNode(graphScheme);
 
-    const retained = await readRetainedJournal(targetStorage.journal);
+    const retained = await readRetainedJournal(targetStorage.journal, state);
     if (retained instanceof Error) {
         return { error: retained };
     }

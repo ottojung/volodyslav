@@ -234,7 +234,19 @@ async function syncJournalReceiverToSource(request) {
         'source graph scheme'
     );
 
-    const receiver = await readJournalSource(database.replicaJournalSublevel(receiverReplica));
+    const committed = await readCommittedWriterState(receiverStorage.journal, receiverFingerprint);
+    if (isJournalError(committed)) {
+        throw committed;
+    }
+    const localWriter = makeJournalAuthor(receiverFingerprint);
+    if (isJournalError(localWriter)) {
+        throw localWriter;
+    }
+
+    const receiver = await readJournalSource(
+        database.replicaJournalSublevel(receiverReplica),
+        committed
+    );
     if (receiver instanceof Error) {
         throw receiver;
     }
@@ -244,15 +256,6 @@ async function syncJournalReceiverToSource(request) {
     }
     /** @type {ReadonlyArray<JournalRecord>} */
     const retainedRecords = collected.records;
-
-    const committed = await readCommittedWriterState(receiverStorage.journal, receiverFingerprint);
-    if (isJournalError(committed)) {
-        throw committed;
-    }
-    const localWriter = makeJournalAuthor(receiverFingerprint);
-    if (isJournalError(localWriter)) {
-        throw localWriter;
-    }
 
     const retained = buildRetainedReplayState({
         source: receiver,

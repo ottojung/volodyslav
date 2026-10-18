@@ -30,6 +30,7 @@ const {
     makeJournalForkError,
     makeJournalGapError,
     makeJournalRecordValidationError,
+    makeJournalWriterBehindError,
 } = require("../errors");
 const { encodeJournalRecord } = require("../codec");
 const { isJournalRecord } = require("../records");
@@ -44,6 +45,7 @@ const {
 } = require("../types");
 
 /** @typedef {import("../errors").AnyJournalError} JournalError */
+/** @typedef {import("../emission").CommittedWriterState} CommittedWriterState */
 /** @typedef {import("../records").JournalRecord} JournalRecord */
 /** @typedef {import("../types").JournalAuthor} JournalAuthor */
 /** @typedef {import("../types").JournalSequence} JournalSequence */
@@ -507,10 +509,43 @@ function makeUnionSource(sources) {
     };
 }
 
+/**
+ * Refuse a source whose retained own-writer length is behind its committed writer head.
+ *
+ * A replica publishes its committed-pair metadata in the same atomic write as the
+ * records it names, so its retained length for its own local writer is exactly the
+ * committed `writerHead`. A retained length below the committed head is evidence that
+ * an existing local writer has lost a surviving suffix, which
+ * `incremental-graph-journal-testing.md` §Corruption tests lists among the defects a
+ * boundary which newly admits state must reject. The lifecycle fault model has no
+ * supported partial rollback, so the condition fails closed rather than being repaired.
+ *
+ * The read is one `retainedLengthOf` call for the local writer, so the check is
+ * constant-size and does not visit a record.
+ *
+ * @param {JournalSource} source - The replica's retained journal, read under its own
+ *   committed metadata.
+ * @param {CommittedWriterState} committed - The replica's committed-pair metadata.
+ * @returns {JournalError | undefined}
+ */
+function reconcileRetainedWriterHead(source, committed) {
+    const retained = source.retainedLengthOf(committed.localWriter);
+    const retainedSequence = retained === undefined ? ZERO_JOURNAL_SEQUENCE : retained;
+    if (compareJournalSequence(committed.writerHead, retainedSequence) <= 0) {
+        return undefined;
+    }
+    return makeJournalWriterBehindError(
+        journalAuthorToString(committed.localWriter),
+        journalSequenceToString(retainedSequence),
+        journalSequenceToString(committed.writerHead)
+    );
+}
+
 module.exports = {
     makeReplicaSource,
     makeUnionSource,
     mergePrefixUnion,
     readerOverIterable,
+    reconcileRetainedWriterHead,
     successorJournalSequence,
 };

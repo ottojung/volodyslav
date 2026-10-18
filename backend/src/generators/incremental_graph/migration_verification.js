@@ -28,6 +28,8 @@
  */
 
 const {
+    isJournalError,
+    journalAuthorToString,
     journalRecordIdToString,
     makeJournalProjectionError,
     makeJournalSourceReadError,
@@ -36,7 +38,7 @@ const {
     projectRetainedJournal,
 } = require("./journal");
 
-const { readRetainedJournal } = require("./journal_store");
+const { readCommittedWriterState, readRetainedJournal } = require("./journal_store");
 const { deriveInputPositions, nodeIdentifierToString, nodeKeyStringToString, stringToNodeKeyString } = require("./database");
 
 /** @typedef {import('./journal/errors').AnyJournalError} JournalError */
@@ -151,7 +153,16 @@ async function readTargetOccurrences(targetStorage, targetLookup, graphScheme) {
  * @returns {Promise<void>}
  */
 async function verifyTargetReplica(targetStorage, targetLookup, graphScheme, localWriter, replicaName) {
-    const retained = await readRetainedJournal(targetStorage.journal);
+    const committed = await readCommittedWriterState(
+        targetStorage.journal,
+        journalAuthorToString(localWriter)
+    );
+    if (isJournalError(committed)) {
+        throw makeJournalSourceReadError(
+            "the migration target replica (" + replicaName + ") committed writer state could not be read: " + committed.message
+        );
+    }
+    const retained = await readRetainedJournal(targetStorage.journal, committed);
     if (retained instanceof Error) {
         throw makeJournalSourceReadError(
             "the migration target replica (" + replicaName + ") retained history could not be read: " + retained.message

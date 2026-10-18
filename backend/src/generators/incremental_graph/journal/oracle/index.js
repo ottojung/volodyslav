@@ -22,6 +22,7 @@ const {
     makeReplicaSource,
     makeUnionSource,
     readerOverIterable,
+    reconcileRetainedWriterHead,
     successorJournalSequence,
 } = require("./record_source");
 const { streamEveryRecord, streamWithReport, validateContextClaim } = require("./scan");
@@ -72,6 +73,7 @@ module.exports = {
     projectRetainedJournal,
     readContextAndWatermark,
     readerOverIterable,
+    reconcileRetainedWriterHead,
     selectCertificates,
     selectSemanticHeads,
     selectedValueId,
