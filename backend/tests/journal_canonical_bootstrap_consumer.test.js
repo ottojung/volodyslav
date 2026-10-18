@@ -543,6 +543,96 @@ describe("joining the canonical bootstrap of §7", () => {
         expect([...selectedSecond.validInputs]).toEqual([]);
     });
 
+    test("an exact-shared occurrence whose input advanced by legacy Unchanged is hard stale", async () => {
+        // testing.md §Exact shared K with changed input and legacy Unchanged.
+        const canonical = sourceOf(
+            persistedState([
+                persistedNode(1, { modifiedAt: EARLY }),
+                persistedNode(2, { modifiedAt: LATE, validInputs: [nodeKeyOf(1)] }),
+            ])
+        );
+        const { artifact } = artifactFrom(canonical, CREATOR);
+        // The joining legacy graph recomputed the exact same immutable K occurrence
+        // against a newer D1 and returned Unchanged, so K's occurrence is identical
+        // while its proof provenance names the D1 occurrence.
+        const joining = sourceOf(
+            persistedState(
+                [
+                    persistedNode(1, { modifiedAt: NEWER, payload: payloadOf(1, "newer input") }),
+                    persistedNode(2, { modifiedAt: LATE, validInputs: [nodeKeyOf(1)] }),
+                ],
+                9
+            )
+        );
+        const joined = await joinCanonicalBootstrap({
+            legacyState: joining,
+            artifact,
+            joiningWriter: makeJournalAuthor(JOINER),
+            currentInputKeysOfNode: schemaOf([joining, canonical]),
+        });
+        if (joined instanceof Error) {
+            throw joined;
+        }
+        // K reuses the canonical ValueId V.
+        const canonicalValue = artifact.records.find(
+            (record) =>
+                record.kind === "value" && nodeKeyToCanonicalString(record.node) === nodeKeyOf(2)
+        );
+        const selectedSecond = joined.projection.occurrences.find(
+            (occurrence) => occurrence.nodeKeyString === nodeKeyOf(2)
+        );
+        expect(journalAuthorToString(selectedSecond.valueId.author)).toBe(CREATOR);
+        expect(journalRecordIdToString(selectedSecond.valueId)).toBe(
+            journalRecordIdToString(canonicalValue.id)
+        );
+        // D1 wins current D selection by ordinary bootstrap authority.
+        const selectedFirst = joined.projection.occurrences.find(
+            (occurrence) => occurrence.nodeKeyString === nodeKeyOf(1)
+        );
+        expect(selectedFirst.modifiedAt).toBe(NEWER);
+        // Bootstrap does not retarget V's canonical certificate from D0 to D1, so no
+        // joining strengthening validation exists for the exact-shared occurrence.
+        expect(
+            joined.records.some(
+                (record) =>
+                    record.kind === "validate" &&
+                    journalAuthorToString(record.id.author) === JOINER &&
+                    nodeKeyToCanonicalString(record.node) === nodeKeyOf(2)
+            )
+        ).toBe(false);
+        // The retained canonical certificate still names the D0 occurrence, so its
+        // provenance is preserved rather than rewritten to the selected D1.
+        const canonicalFirstValue = artifact.records.find(
+            (record) =>
+                record.kind === "value" && nodeKeyToCanonicalString(record.node) === nodeKeyOf(1)
+        );
+        const canonicalCertificate = joined.records.find(
+            (record) =>
+                record.kind === "validate" &&
+                journalAuthorToString(record.id.author) === CREATOR &&
+                nodeKeyToCanonicalString(record.node) === nodeKeyOf(2)
+        );
+        expect(journalRecordIdToString(canonicalCertificate.basis[0].value)).toBe(
+            journalRecordIdToString(canonicalFirstValue.id)
+        );
+        // Final replay sees the canonical basis D0 mismatch the selected D1, so the
+        // D -> K edge is invalid and K is hard stale.
+        expect(selectedSecond.fresh).toBe(false);
+        expect([...selectedSecond.validInputs]).toEqual([]);
+        // Neither legacy side stored direct stale state, so the join authors no
+        // value-scoped stale marker for the exact-shared occurrence: the staleness is
+        // produced by replay, not persisted as shared stale evidence.
+        expect(
+            joined.records.some(
+                (record) =>
+                    record.kind === "invalidate" &&
+                    record.scope.kind === "value" &&
+                    journalRecordIdToString(record.scope.value) ===
+                        journalRecordIdToString(canonicalValue.id)
+            )
+        ).toBe(false);
+    });
+
     test("a locally authored stale occurrence carries its own persisted stale evidence", async () => {
         const { artifact } = canonicalCohort();
         const joining = sourceOf(
