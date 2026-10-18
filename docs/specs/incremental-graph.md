@@ -629,8 +629,9 @@ Formally: For any sequence of operations `Op₁, Op₂, ..., Opₙ` where each `
 **REQ-PERSIST-02:** Implementations MAY use any persistence strategy (storing values, freshness markers, dependency graphs, etc.) as long as REQ-PERSIST-01 is satisfied. The specific mechanism is implementation-defined.
 
 **REQ-PERSIST-SYNC-REF-01 (Synchronization):** Synchronization of persisted
-graph state across host branches is specified in a separate document:
-[Specification for Incremental Graph Synchronization](incremental-graph-synchronization.md).
+graph state across host branches is specified in the canonical Journal 3
+synchronization specification:
+[IncrementalGraph Journal 3 Synchronization](incremental-graph-journal-sync.md).
 
 ### 4.2 Invariants
 

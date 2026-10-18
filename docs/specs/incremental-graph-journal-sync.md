@@ -17,6 +17,32 @@ atomically publish Journal + projection
 
 A completely absent installation uses the receiver-less restoration lifecycle in `database-lifecycle.md` before ordinary synchronization.
 
+## Scope and non-goals
+
+Synchronization is an administrative procedure over Journal history and derived
+projection state; it is not a public computation operation.
+
+- Synchronization MUST NOT invoke computors. It may import, delete, or
+  invalidate stored graph state, but it must not compute new node values.
+- Synchronization must preserve the public operational semantics of
+  IncrementalGraph for all future `pull()`, `invalidate()`, and inspection-API
+  calls.
+- Synchronization is allowed to be conservative: it may mark nodes
+  "potentially-outdated" even when a stronger proof could have preserved them.
+  It must not invent cache-validity facts that are not justified by source
+  provenance and final graph structure.
+
+Non-goals:
+
+- This specification does not cover transport internals beyond the observable
+  stable-snapshot and absent-installation restoration roles required by
+  synchronization.
+- This specification does not establish associativity across three or more
+  replicas or arbitrary sequential host-order independence unless those
+  properties are separately proven.
+- This specification does not specify exact LevelDB key formats except where
+  semantic lookup invariants require it.
+
 ## Semantic API
 
 ```text

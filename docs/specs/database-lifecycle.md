@@ -489,7 +489,7 @@ snapshot.databaseVersion == receiver global/version
 snapshot.graphSchemeString == receiver global/graph_scheme
 ```
 
-The procedure is specified by `incremental-graph-synchronization.md`.
+The procedure is specified by `incremental-graph-journal-sync.md`.
 
 No computor executes during sync.
 
