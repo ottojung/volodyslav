@@ -37,23 +37,25 @@
  * - every coordinate its context claims is retained by the union, including the
  *   record itself;
  * - every coordinate it references is either covered by its own context or an
- *   earlier coordinate of the same writer's publication; and
+ *   earlier coordinate of the same writer's publication;
+ * - a `ValidateEvent`'s target and each non-`"unknown"` basis value, and a value-
+ *   or proof-scoped `InvalidateEvent`'s scope value, resolve in the admitted change
+ *   set to a `ValueEvent` of the expected node; and
  * - an admitted `ValidateEvent`'s basis is the current canonical shape of its
  *   node, with no duplicate semantic input.
  *
- * Transitive closure of a context and authority extension are not re-derived
- * here by reading retained history. `incremental-graph-journal-theorems.md` Laws
- * 8 and 8a prove shared-prefix identity — no writer forks — for compatible
- * supported inputs; they do not prove context closure. Closure is discharged by
- * the supported-source boundary: import operates only between compatible
- * supported sources, whose retained history is causally closed, so an unclosed
- * context is unsupported/corrupt and is rejected by the whole-history validator
- * on explicit rebuild or maintenance. Re-deriving it here by reading the claimed
- * prefixes would break the change-bounded read bound that `storage.md`
+ * Transitive closure of a context and authority extension are relations over the
+ * complete admitted change set, so they are checked by `validateAdmittedRelations`
+ * against a per-writer running maximum of the admitted records, not by reading
+ * retained history. A coordinate the change set does not hold is a retained-prefix
+ * coordinate whose closure and authority were established when the receiver
+ * admitted it, so this module does not rescan it. `incremental-graph-journal-
+ * theorems.md` Laws 8 and 8a prove shared-prefix identity — no writer forks — for
+ * compatible supported inputs; they do not prove context closure, so closure is
+ * checked here rather than assumed. Re-deriving it by reading the claimed prefixes
+ * would break the change-bounded read bound that `storage.md`
  * §Synchronization/reset validation requires and that
- * `journal_sync_retained_state.test.js` pins; a receiver which maintains the
- * optional context-closure summary index of `storage.md` §Derived indexes could
- * check it without rescanning.
+ * `journal_sync_retained_state.test.js` pins.
  */
 
 /** @typedef {import('../journal/errors').AnyJournalError} JournalError */
