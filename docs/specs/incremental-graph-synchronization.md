@@ -8,6 +8,8 @@ Synchronization replicates immutable Journal history and materializes
 deterministic replay. Mutable graph sublevels are not independent
 synchronization authority.
 
+The Journal 3 reading order (`incremental-graph-journal-README.md`) names `incremental-graph-journal-sync.md` as the Journal 3 synchronization owner and entry point; that file cross-links back to this one.
+
 ---
 
 ## 1. Scope and non-goals

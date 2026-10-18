@@ -17,6 +17,8 @@ atomically publish Journal + projection
 
 A completely absent installation uses the receiver-less restoration lifecycle in `database-lifecycle.md` before ordinary synchronization.
 
+The Journal 3 reading order (`incremental-graph-journal-README.md`) names this file as the Journal 3 normative owner and entry point for synchronization. A separate full specification, `incremental-graph-synchronization.md`, also covers synchronization and is referenced by `database-lifecycle.md` §9; it cross-links back to this file.
+
 ## Semantic API
 
 ```text
