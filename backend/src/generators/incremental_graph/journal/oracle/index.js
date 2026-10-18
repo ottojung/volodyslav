@@ -21,6 +21,7 @@
 const {
     readerOverIterable,
     readerOverRecordSupply,
+    suffixReaderOf,
     successorJournalSequence,
 } = require("./record_source");
 const { makeReplicaSource, makeUnionSource } = require("./union_source");
@@ -79,6 +80,7 @@ module.exports = {
     selfProofReady,
     streamEveryRecord,
     streamWithReport,
+    suffixReaderOf,
     successorJournalSequence,
     summarizeInvalidations,
     summaryIsCovered,

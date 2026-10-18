@@ -244,10 +244,25 @@ async function synchronizeRetainedJournal(request) {
         return plan;
     }
 
+    // The plan validated each suffix and holds no copy of it, so the records are
+    // streamed back out of the source one at a time as they are staged. The batch
+    // which publishes them is the one bounded buffer the cutover keeps; the plan's
+    // own validation never materialises the suffix.
     /** @type {JournalRecord[]} */
     const imported = [];
     for (const suffix of plan.suffixes) {
-        imported.push(...suffix.records);
+        const reader = suffix.reader();
+        for (;;) {
+            const record = await reader.nextRecord();
+            if (record === undefined) {
+                break;
+            }
+            imported.push(record);
+        }
+        const failure = reader.failure();
+        if (failure !== undefined) {
+            return { error: failure };
+        }
     }
 
     // The raw maintenance view of `J0`. `project(J0)` is deliberately not taken: a

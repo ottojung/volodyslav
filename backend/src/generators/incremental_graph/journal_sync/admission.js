@@ -19,11 +19,11 @@
  *
  * Transitive closure and authority extension are relations between a record and
  * every event it claims to have observed, so they are checked by
- * `validateAdmittedRecords` over the complete set of records one operation
+ * `validateAdmittedRelations` against the complete set of records one operation
  * admits. The set is the change set `C`, not the retained history: the check
- * builds a per-writer running maximum of the admitted records' contexts and
- * authority, and each record is compared against the maximum of the writers it
- * claims. A claimed coordinate whose writer retains nothing in this operation's
+ * folds the admitted records into a per-writer running maximum of their contexts
+ * and authority (`makeAdmittedIndex`), and each record is compared against the
+ * maximum of the writers it claims. A claimed coordinate whose writer retains nothing in this operation's
  * change set is a retained-prefix coordinate; its context and authority belong to
  * the receiver's already validated history and are not rescanned here. This is
  * the bounded form `incremental-graph-journal-storage.md` §Synchronization/reset
@@ -369,40 +369,64 @@ function validateAdmittedAuthority(event, index) {
 }
 
 /**
- * Check the transitive closure and authority extension of the records one
- * operation admits.
+ * The incremental admitted-relations index one operation's validation folds into.
+ *
+ * The properties this type carries are:
+ * - it holds exactly the per-writer running maxima of the records `add` has been
+ *   given, and nothing about any record it was not given.
+ *
+ * The proof of those properties is guaranteed by:
+ * - This type can only be introduced through `makeAdmittedIndex()`, which returns
+ *   an empty index, and it is extended only through `add(record)`, which folds one
+ *   semantic record into its writer's running maximum. A record added is one the
+ *   caller admitted; no other introduction path exists.
+ *
+ * @typedef {AdmittedIndexClass} AdmittedIndex
+ */
+
+/**
+ * An empty admitted-relations index.
+ *
+ * The relation-shaped half of the bounded validation contract is a relation over
+ * the complete admitted change set, so a streaming acquisition builds this index
+ * as it admits each record, then re-reads the same change set to evaluate
+ * `validateAdmittedRelations` against the completed index. The index is the only
+ * derived state that needs to span the change set; the records themselves are not
+ * retained.
+ *
+ * @returns {AdmittedIndex}
+ */
+function makeAdmittedIndex() {
+    return new AdmittedIndexClass();
+}
+
+/**
+ * Check one admitted record's transitive closure and authority extension against
+ * the complete admitted-relations index.
  *
  * This is the relation-shaped half of the bounded validation contract; the
- * per-record half is `validateImportedRecord`. It is evaluated over the complete
- * admitted change set so a record which claims a coordinate of a writer admitted
- * later in the same operation is checked against it, and it visits only admitted
- * records.
+ * per-record half is `validateImportedRecord`. It must be evaluated against an
+ * index built from the complete admitted change set, so a record which claims a
+ * coordinate of a writer admitted later in the same operation is checked against
+ * it. It visits only the one record and the index.
  *
- * @param {ReadonlyArray<JournalRecord>} records
+ * @param {JournalRecord} record
+ * @param {AdmittedIndex} index
  * @returns {JournalError | undefined}
  */
-function validateAdmittedRecords(records) {
-    const index = new AdmittedIndexClass();
-    for (const record of records) {
-        index.add(record);
+function validateAdmittedRelations(record, index) {
+    if (!isSemanticEvent(record)) {
+        return undefined;
     }
-    for (const record of records) {
-        if (!isSemanticEvent(record)) {
-            continue;
-        }
-        const closure = validateAdmittedClosure(record, index);
-        if (closure !== undefined) {
-            return closure;
-        }
-        const authority = validateAdmittedAuthority(record, index);
-        if (authority !== undefined) {
-            return authority;
-        }
+    const closure = validateAdmittedClosure(record, index);
+    if (closure !== undefined) {
+        return closure;
     }
-    return undefined;
+    return validateAdmittedAuthority(record, index);
 }
 
 module.exports = {
-    validateAdmittedRecords,
+    makeAdmittedIndex,
+    validateAdmittedRelations,
     validateImportedRecord,
 };

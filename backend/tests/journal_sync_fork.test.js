@@ -146,6 +146,28 @@ function errorOf(result) {
     return result.error;
 }
 
+/**
+ * Every imported coordinate, read out of each lazy suffix reader.
+ *
+ * @param {import("../src/generators/incremental_graph/journal_sync").ImportPlan} result
+ * @returns {Promise<ReadonlyArray<string>>}
+ */
+async function importedIdsOf(result) {
+    /** @type {Array<string>} */
+    const ids = [];
+    for (const suffix of result.suffixes) {
+        const reader = suffix.reader();
+        for (;;) {
+            const record = await reader.nextRecord();
+            if (record === undefined) {
+                break;
+            }
+            ids.push(journalRecordIdToString(record.id));
+        }
+    }
+    return ids;
+}
+
 /** The peer records the receiver and the source both hold, plus the one the source adds. */
 function peerA() {
     return valueOf({ writer: WRITER_PEER, sequence: "1", context: [], node: NODE_A });
@@ -169,9 +191,7 @@ describe("planForeignSuffixImport, the same-ID evidence a source offers", () => 
         if (!("suffixes" in result)) {
             throw new Error("the import failed with " + result.error.name + ": " + result.error.message);
         }
-        expect(result.suffixes.flatMap((suffix) => suffix.records.map(
-            (record) => journalRecordIdToString(record.id)
-        ))).toEqual([WRITER_PEER + ":3"]);
+        expect(await importedIdsOf(result)).toEqual([WRITER_PEER + ":3"]);
     });
 
     test("a source which re-offers the receiver's own records with the same meaning imports nothing extra", async () => {

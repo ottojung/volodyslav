@@ -726,7 +726,7 @@ describe("synchronizeRetainedJournal, the retained history it does not re-read",
         expect(onLong.receiverReads).toBe(0);
     });
 
-    test("a source is read exactly its missing suffix, never the receiver's history again", async () => {
+    test("a source is read its missing suffix and never the receiver's history again", async () => {
         const source = peerAddsC(undefined);
         const countedResult = await counted({
             receiver: receiverChain(),
@@ -739,10 +739,13 @@ describe("synchronizeRetainedJournal, the retained history it does not re-read",
             (record) => journalAuthorToString(record.id.author) === WRITER_PEER
         );
         expect(imported).toHaveLength(source.length);
-        // Each suffix costs its own records plus the one read which reports the end
-        // of the prefix. What the count may not do is grow with the receiver's
-        // history, which is what the sibling case above holds.
-        expect(countedResult.sourceReads).toBe(source.length + 1);
+        // The suffix is streamed, not retained, so it is read once for admission,
+        // once to check closure and authority against the complete admitted index,
+        // and once to stage and publish it. Each pass costs the suffix's own records
+        // plus the one read which reports the end of the prefix, and the seam
+        // evidence is one more read. What the count may not do is grow with the
+        // receiver's retained history, which is what the sibling case above holds.
+        expect(countedResult.sourceReads).toBe(3 * (source.length + 1) + 1);
     });
 
     test("the stale-state correspondence costs one enumeration per writer, not one", async () => {
