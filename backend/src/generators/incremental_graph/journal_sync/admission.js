@@ -104,16 +104,26 @@ function referenceIsObserved(event, referenced) {
 /**
  * The ValueId coordinates one record names, or an empty array when it names none.
  *
- * Both occurrence-referencing invalidation scopes name a ValueId: a value scope
- * and a proof scope both retire something about the named occurrence. Only the
- * node scope names no coordinate.
+ * A validation names its target occurrence and, for every explicit input, the
+ * occurrence it used as that input; `incremental-graph-journal-well-formedness.md`
+ * section Validation basis rules items 4 and 5 require each non-`"unknown"` basis
+ * value to be a retained ValueEvent of the declared input node that happened-before
+ * the validation, so every basis occurrence is a coordinate the record names. A
+ * value scope and a proof scope both name a ValueId: they retire something about
+ * the named occurrence. Only the node scope names no coordinate.
  *
  * @param {JournalRecord} record
  * @returns {ReadonlyArray<JournalRecordId>}
  */
 function referencedIdsOf(record) {
     if (isValidateEvent(record)) {
-        return [record.value];
+        const references = [record.value];
+        for (const entry of record.basis) {
+            if (entry.value !== "unknown") {
+                references.push(entry.value);
+            }
+        }
+        return references;
     }
     if (record.kind === "invalidate" && record.scope.kind !== "node") {
         return [record.scope.value];

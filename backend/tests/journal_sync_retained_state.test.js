@@ -431,16 +431,22 @@ function receiverWithUnprovenRoot() {
  * A peer's materialization of `C` against the receiver's `B` occurrence, observing a
  * receiver which retains `receiverHead` of its own writer's stream.
  *
+ * The basis names the receiver's `B` occurrence at `basisSequence`, which must lie
+ * at or below `receiverHead` so the validation causally observes the input it
+ * names (well-formedness.md section Validation basis rules item 5). The default
+ * names the occurrence `receiverChain` retains.
+ *
  * @param {string} receiverHead
+ * @param {string} [basisSequence]
  * @returns {import("../src/generators/incremental_graph/journal").JournalRecord[]}
  */
-function peerAddsC(receiverHead) {
+function peerAddsC(receiverHead, basisSequence) {
     return materialize({
         writer: WRITER_PEER,
         sequence: "1",
         node: NODE_C,
         context: [[WRITER_LOCAL, receiverHead === undefined ? "4" : receiverHead]],
-        basis: [{ node: NODE_B, value: WRITER_LOCAL + ":3" }],
+        basis: [{ node: NODE_B, value: WRITER_LOCAL + ":" + (basisSequence === undefined ? "3" : basisSequence) }],
     });
 }
 
@@ -567,7 +573,7 @@ describe("synchronizeRetainedJournal, the retained replay state it stages", () =
         const receiver = receiverWithUnprovenRoot();
         const outcome = outcomeOf(await synchronize({
             receiver,
-            source: peerAddsC("2"),
+            source: peerAddsC("2", "2"),
             authorityPhysical: 700,
         }));
 
