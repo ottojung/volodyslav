@@ -121,7 +121,7 @@ function made(value) {
  * @param {string} [options.createdAt]
  * @param {string} [options.modifiedAt]
  */
-function sourceLeaf(options) {
+async function sourceLeaf(options) {
     const settings = options === undefined ? {} : options;
     const record = made(makeValueEvent(
         {
@@ -137,7 +137,7 @@ function sourceLeaf(options) {
         "compute"
     ));
     const journal = makeReplicaSource(made(makeJournalReplica([[WRITER_PEER, [record]]])));
-    const projection = projectRetainedJournal({
+    const projection = await projectRetainedJournal({
         source: journal,
         localWriter: PEER_AUTHOR,
         currentInputKeysOfNode: () => [],
@@ -158,9 +158,9 @@ function sourceLeaf(options) {
  *
  * @param {import("../src/generators/incremental_graph/journal_reset").ResetSource} source
  */
-function resetTo(source) {
+async function resetTo(source) {
     const receiver = makeReplicaSource(made(makeJournalReplica([])));
-    const built = buildRetainedReplayState({
+    const built = await buildRetainedReplayState({
         source: receiver,
         localWriter: LOCAL_AUTHOR,
         currentInputKeysOfNode: () => [],
@@ -168,7 +168,7 @@ function resetTo(source) {
     if ("error" in built) {
         throw new Error("the receiver fixture has no retained replay state: " + built.error.message);
     }
-    return resetToSource({
+    return await resetToSource({
         receiver,
         retainedState: built.state,
         source,
@@ -207,8 +207,8 @@ afterEach(() => {
 });
 
 describe("resetToSource, the committed result against the target occurrence state", () => {
-    test("a committed result which carries the target occurrence state is accepted", () => {
-        const result = resetTo(sourceLeaf());
+    test("a committed result which carries the target occurrence state is accepted", async () => {
+        const result = await resetTo(await sourceLeaf());
 
         expect("outcome" in result).toBe(true);
         if (!("outcome" in result)) {
@@ -221,19 +221,19 @@ describe("resetToSource, the committed result against the target occurrence stat
         expect(occurrence === undefined ? undefined : occurrence.payload).toEqual(PAYLOAD);
     });
 
-    test("a committed payload which is not the target's is refused", () => {
+    test("a committed payload which is not the target's is refused", async () => {
         mockPerturbOccurrence = (occurrence) =>
             occurrence.nodeKeyString === KEY_A
                 ? { ...occurrence, payload: OTHER_PAYLOAD }
                 : occurrence;
 
-        const error = errorOf(resetTo(sourceLeaf()));
+        const error = errorOf(await resetTo(await sourceLeaf()));
 
         expect(error.message).toContain("payload is not the target's");
         expect(error.nodeKeyString).toBe(KEY_A);
     });
 
-    test("a committed node identifier which is not the target's is refused", () => {
+    test("a committed node identifier which is not the target's is refused", async () => {
         mockPerturbOccurrence = (occurrence) =>
             occurrence.nodeKeyString === KEY_A
                 ? {
@@ -242,31 +242,31 @@ describe("resetToSource, the committed result against the target occurrence stat
                   }
                 : occurrence;
 
-        const error = errorOf(resetTo(sourceLeaf()));
+        const error = errorOf(await resetTo(await sourceLeaf()));
 
         expect(error.message).toContain("node identifier is not the target's");
         expect(error.nodeKeyString).toBe(KEY_A);
     });
 
-    test("a committed createdAt which is not the target's is refused", () => {
+    test("a committed createdAt which is not the target's is refused", async () => {
         mockPerturbOccurrence = (occurrence) =>
             occurrence.nodeKeyString === KEY_A
                 ? { ...occurrence, createdAt: "2019-01-01T00:00:00.000Z" }
                 : occurrence;
 
-        const error = errorOf(resetTo(sourceLeaf()));
+        const error = errorOf(await resetTo(await sourceLeaf()));
 
         expect(error.message).toContain("createdAt is not the target's");
         expect(error.nodeKeyString).toBe(KEY_A);
     });
 
-    test("a committed modifiedAt which is not the target's is refused", () => {
+    test("a committed modifiedAt which is not the target's is refused", async () => {
         mockPerturbOccurrence = (occurrence) =>
             occurrence.nodeKeyString === KEY_A
                 ? { ...occurrence, modifiedAt: "2019-01-01T00:00:00.000Z" }
                 : occurrence;
 
-        const error = errorOf(resetTo(sourceLeaf()));
+        const error = errorOf(await resetTo(await sourceLeaf()));
 
         expect(error.message).toContain("modifiedAt is not the target's");
         expect(error.nodeKeyString).toBe(KEY_A);

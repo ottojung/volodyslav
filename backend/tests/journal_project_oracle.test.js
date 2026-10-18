@@ -532,9 +532,9 @@ function twoNodeProvenPair() {
  * @param {(nodeKeyString: string) => ReadonlyArray<string>} schema
  * @returns {object}
  */
-function projectBothWays(records, schema) {
+async function projectBothWays(records, schema) {
     const replica = replicaOf(records);
-    const oracle = projectRetainedJournal({
+    const oracle = await projectRetainedJournal({
         source: makeReplicaSource(replica),
         localWriter: WRITER_A,
         currentInputKeysOfNode: schema,
@@ -559,12 +559,12 @@ function projectBothWays(records, schema) {
 }
 
 describe("the streaming project oracle against a declarative reference", () => {
-    test("generated histories agree with the declarative model, on acceptance too", () => {
+    test("generated histories agree with the declarative model, on acceptance too", async () => {
         const schema = schemaOf([KEY_B, KEY_C]);
         const seeds = [1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987, 1597];
         let compared = 0;
         for (const seed of seeds) {
-            const { differences, declarative } = projectBothWays(generateHistory(seed), schema);
+            const { differences, declarative } = await projectBothWays(generateHistory(seed), schema);
             expect({ seed, differences }).toEqual({ seed, differences: [] });
             if (declarative.publishable) {
                 compared++;
@@ -573,7 +573,7 @@ describe("the streaming project oracle against a declarative reference", () => {
         expect(compared).toBeGreaterThan(0);
     });
 
-    test("the generator really produces all three invalidation scopes", () => {
+    test("the generator really produces all three invalidation scopes", async () => {
         const scopes = new Set();
         for (const seed of [1, 2, 3, 5, 8, 13]) {
             for (const record of generateHistory(seed)) {
@@ -587,13 +587,13 @@ describe("the streaming project oracle against a declarative reference", () => {
 });
 
 describe("the three structural properties follow from the prefix-union merge", () => {
-    test("a hole in a writer prefix is reported by the merge", () => {
+    test("a hole in a writer prefix is reported by the merge", async () => {
         const records = generateHistory(3);
         const withHole = records.filter(
             (record) => journalRecordIdToString(record.id) !== "aaaaaaaaa:2"
         );
         const source = makeReplicaSource(replicaOf(withHole));
-        const projection = projectRetainedJournal({
+        const projection = await projectRetainedJournal({
             source,
             localWriter: WRITER_A,
             currentInputKeysOfNode: schemaOf([KEY_B, KEY_C]),
@@ -602,7 +602,7 @@ describe("the three structural properties follow from the prefix-union merge", (
         expect(String(projection.message)).toMatch(/aaaaaaaaa:2/);
     });
 
-    test("a source which claims a length past the end of its own prefix is a gap", () => {
+    test("a source which claims a length past the end of its own prefix is a gap", async () => {
         // The single-source reader bounds its walk by the claimed retained length
         // in the other direction too. A source which says "writer A retains
         // through A:4" and then delivers only A:1 must not be treated as a whole
@@ -626,7 +626,7 @@ describe("the three structural properties follow from the prefix-union merge", (
             retainedLengthOf: () => makeJournalSequence("4"),
             prefixReaderOf: () => readerOverIterable("aaaaaaaaa", [value], makeJournalSequence("4")),
         };
-        const projection = projectRetainedJournal({
+        const projection = await projectRetainedJournal({
             source: underReporting,
             localWriter: WRITER_A,
             currentInputKeysOfNode: () => [],
@@ -635,7 +635,7 @@ describe("the three structural properties follow from the prefix-union merge", (
         expect(String(projection.message)).toMatch(/aaaaaaaaa:2/);
     });
 
-    test("two prefixes disagreeing at one coordinate are reported as a fork", () => {
+    test("two prefixes disagreeing at one coordinate are reported as a fork", async () => {
         const records = generateHistory(5);
         const left = records.filter((record) => journalRecordIdToString(record.id).startsWith("aaaaaaaaa:"));
         const right = left.map((record) => {
@@ -660,7 +660,7 @@ describe("the three structural properties follow from the prefix-union merge", (
             makeReplicaSource(replicaOf(left)),
             makeReplicaSource(replicaOf(right)),
         ]);
-        const projection = projectRetainedJournal({
+        const projection = await projectRetainedJournal({
             source,
             localWriter: WRITER_A,
             currentInputKeysOfNode: schemaOf([KEY_B, KEY_C]),
@@ -668,14 +668,14 @@ describe("the three structural properties follow from the prefix-union merge", (
         expect(isJournalForkError(projection)).toBe(true);
     });
 
-    test("agreeing prefixes union without a fork and project the same either way", () => {
+    test("agreeing prefixes union without a fork and project the same either way", async () => {
         const records = generateHistory(8);
         // One replica retains only writer A's prefix; the other retains all three.
         // The union is then the whole journal, and its overlap agrees.
         const left = records.filter((record) => journalRecordIdToString(record.id).startsWith("aaaaaaaaa:"));
         const right = records;
         const schema = schemaOf([KEY_B, KEY_C]);
-        const union = projectRetainedJournal({
+        const union = await projectRetainedJournal({
             source: makeUnionSource([
                 makeReplicaSource(replicaOf(left)),
                 makeReplicaSource(replicaOf(right)),
@@ -683,7 +683,7 @@ describe("the three structural properties follow from the prefix-union merge", (
             localWriter: WRITER_A,
             currentInputKeysOfNode: schema,
         });
-        const whole = projectRetainedJournal({
+        const whole = await projectRetainedJournal({
             source: makeReplicaSource(replicaOf(records)),
             localWriter: WRITER_A,
             currentInputKeysOfNode: schema,
@@ -694,7 +694,7 @@ describe("the three structural properties follow from the prefix-union merge", (
         expect(disagreementsBetween(union, whole)).toEqual([]);
     });
 
-    test("a context claiming a coordinate past a writer's retained end is rejected", () => {
+    test("a context claiming a coordinate past a writer's retained end is rejected", async () => {
         // The claiming writer retains only A:1, but the context claims A:2. This
         // is the case a retained-range check which only looked for a wholly
         // unknown writer would miss, and it is the one the source's retained
@@ -712,7 +712,7 @@ describe("the three structural properties follow from the prefix-union merge", (
             LATER,
             "compute"
         );
-        const projection = projectRetainedJournal({
+        const projection = await projectRetainedJournal({
             source: makeReplicaSource(replicaOf([value])),
             localWriter: WRITER_A,
             currentInputKeysOfNode: () => [],
@@ -733,7 +733,7 @@ describe("the three structural properties follow from the prefix-union merge", (
             LATER,
             "compute"
         );
-        const beyondEnd = projectRetainedJournal({
+        const beyondEnd = await projectRetainedJournal({
             source: makeReplicaSource(replicaOf([value, second])),
             localWriter: WRITER_A,
             currentInputKeysOfNode: () => [],
@@ -742,7 +742,7 @@ describe("the three structural properties follow from the prefix-union merge", (
         expect(String(beyondEnd.message)).toMatch(/aaaaaaaaa:2/);
     });
 
-    test("a context claiming a writer which retains nothing is rejected", () => {
+    test("a context claiming a writer which retains nothing is rejected", async () => {
         const context = contextOf([
             ["aaaaaaaaa", "1"],
             ["bbbbbbbbb", "900"],
@@ -751,7 +751,7 @@ describe("the three structural properties follow from the prefix-union merge", (
             { id: "ccccccccc:1", context, authorityTime: authorityOf(5000, 0), node: NODE_A },
             "operation"
         );
-        const projection = projectRetainedJournal({
+        const projection = await projectRetainedJournal({
             source: makeReplicaSource(replicaOf([record])),
             localWriter: WRITER_A,
             currentInputKeysOfNode: schemaOf([KEY_B, KEY_C]),
@@ -759,7 +759,7 @@ describe("the three structural properties follow from the prefix-union merge", (
         expect(isJournalCausalClosureError(projection)).toBe(true);
     });
 
-    test("an own-writer context which is not the exact prefix is rejected", () => {
+    test("an own-writer context which is not the exact prefix is rejected", async () => {
         const first = makeValueEvent(
             {
                 id: "aaaaaaaaa:1",
@@ -787,7 +787,7 @@ describe("the three structural properties follow from the prefix-union merge", (
             LATER,
             "compute"
         );
-        const projection = projectRetainedJournal({
+        const projection = await projectRetainedJournal({
             source: makeReplicaSource(replicaOf([first, second])),
             localWriter: WRITER_A,
             currentInputKeysOfNode: () => [],
@@ -797,9 +797,9 @@ describe("the three structural properties follow from the prefix-union merge", (
 });
 
 describe("the oracle reads replay, not a transcription of it", () => {
-    test("the two models disagree when the declarative model is given a wrong schema", () => {
+    test("the two models disagree when the declarative model is given a wrong schema", async () => {
         const records = twoZeroInputProvenNodes();
-        const oracle = projectRetainedJournal({
+        const oracle = await projectRetainedJournal({
             source: makeReplicaSource(replicaOf(records)),
             localWriter: WRITER_A,
             currentInputKeysOfNode: () => [],
@@ -822,13 +822,13 @@ describe("the oracle reads replay, not a transcription of it", () => {
         expect(differences.join(" ")).toMatch(/fresh|validInputs/);
     });
 
-    test("the oracle reports a cyclic current schema as a projection failure", () => {
+    test("the oracle reports a cyclic current schema as a projection failure", async () => {
         // A and B are each present and each fully proven against the other, so
         // resolving freshness genuinely re-enters A. The specification defines
         // freshness recursively over a DAG, so a cycle has no defined answer and
         // the oracle reports it instead of inventing one.
         const records = twoNodeProvenPair();
-        const projection = projectRetainedJournal({
+        const projection = await projectRetainedJournal({
             source: makeReplicaSource(replicaOf(records)),
             localWriter: WRITER_A,
             currentInputKeysOfNode: (nodeKeyString) => {
@@ -845,7 +845,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
         expect(String(projection.message)).toMatch(/cyclic/);
     });
 
-    test("the oracle reports a non-dependency-closed head set rather than projecting it", () => {
+    test("the oracle reports a non-dependency-closed head set rather than projecting it", async () => {
         const valueA = makeValueEvent(
             {
                 id: "aaaaaaaaa:1",
@@ -859,7 +859,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
             LATER,
             "compute"
         );
-        const projection = projectRetainedJournal({
+        const projection = await projectRetainedJournal({
             source: makeReplicaSource(replicaOf([valueA])),
             localWriter: WRITER_A,
             currentInputKeysOfNode: schemaOf([KEY_B, KEY_C]),
@@ -867,7 +867,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
         expect(isJournalProjectionError(projection)).toBe(true);
     });
 
-    test("a retained union can be self-proof-ready and stale, and the oracle names it", () => {
+    test("a retained union can be self-proof-ready and stale, and the oracle names it", async () => {
         // `incremental-graph-journal-replay.md` §Persistent propagated staleness
         // states the committed implication `selfProofReady(K) => fresh(K)` and
         // then says the value-scoped marker rule which maintains it is
@@ -882,7 +882,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
         /** @type {string[]} */
         const reported = [];
         for (const seed of [1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987, 1597]) {
-            const projection = projectRetainedJournal({
+            const projection = await projectRetainedJournal({
                 source: makeReplicaSource(replicaOf(generateHistory(seed))),
                 localWriter: WRITER_A,
                 currentInputKeysOfNode: schema,
@@ -910,7 +910,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
         expect(reported.length).toBeGreaterThan(0);
     });
 
-    test("a supported committed history reports no unmarked propagated staleness", () => {
+    test("a supported committed history reports no unmarked propagated staleness", async () => {
         // The two hand-built histories below are what an ordinary local operation
         // produces: a value, then a validation which observes it. There is no
         // concurrent marker to add, so the committed implication holds and the
@@ -939,7 +939,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
             [],
             "compute"
         );
-        const projection = projectRetainedJournal({
+        const projection = await projectRetainedJournal({
             source: makeReplicaSource(replicaOf([value, validate])),
             localWriter: WRITER_A,
             currentInputKeysOfNode: () => [],
@@ -950,7 +950,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
         expect([...projection.unmarkedPropagatedStaleness]).toEqual([]);
     });
 
-    test("a certificate which covers the current-value invalidation wins over greater authority", () => {
+    test("a certificate which covers the current-value invalidation wins over greater authority", async () => {
         // `incremental-graph-journal-testing.md` §Certificate-selection regression.
         //
         //   R2: I = Invalidate(K, scope=value(V))
@@ -1008,7 +1008,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
             "compute"
         );
         const records = [value, certificateNotObserving, invalidation, certificateObserving];
-        const oracle = projectRetainedJournal({
+        const oracle = await projectRetainedJournal({
             source: makeReplicaSource(replicaOf(records)),
             localWriter: WRITER_A,
             currentInputKeysOfNode: () => [],
@@ -1025,7 +1025,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
         expect(disagreementsBetween(oracle, declarative)).toEqual([]);
     });
 
-    test("a proof barrier removes exactly its own edge and no other", () => {
+    test("a proof barrier removes exactly its own edge and no other", async () => {
         // `incremental-graph-journal-testing.md` §Invalidation-scope tests: a
         // barrier for (V, A) must not suppress the certificate's B edge, and must
         // not affect a certificate for a replacement ValueId.
@@ -1109,7 +1109,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
         const schema = (nodeKeyString) =>
             nodeKeyString === KEY_B ? [KEY_A] : nodeKeyString === KEY_A ? [KEY_B] : [];
         const records = [valueA, valueB, inputA, valueA2, validateBoth, barrier];
-        const oracle = projectRetainedJournal({
+        const oracle = await projectRetainedJournal({
             source: makeReplicaSource(replicaOf(records)),
             localWriter: WRITER_A,
             currentInputKeysOfNode: schema,
@@ -1125,7 +1125,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
         expect(disagreementsBetween(oracle, declarativeProject(replicaOf(records), "aaaaaaaaa", schema))).toEqual([]);
     });
 
-    test("a proof barrier suppresses one edge of a two-input basis and leaves the other", () => {
+    test("a proof barrier suppresses one edge of a two-input basis and leaves the other", async () => {
         // A schema with two independent zero-input nodes B and C, and a dependent
         // A which depends on both. A's certificate proves both, so its basis has
         // two effective entries; a barrier for (V, B) must remove exactly B's edge
@@ -1202,7 +1202,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
             return [];
         };
         const records = [valueB, valueC, valueA, validateA, barrier];
-        const oracle = projectRetainedJournal({
+        const oracle = await projectRetainedJournal({
             source: makeReplicaSource(replicaOf(records)),
             localWriter: WRITER_A,
             currentInputKeysOfNode: schema,
@@ -1222,7 +1222,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
         );
     });
 
-    test("a proof barrier does not affect a certificate for a replacement occurrence", () => {
+    test("a proof barrier does not affect a certificate for a replacement occurrence", async () => {
         // `incremental-graph-journal-testing.md` §Invalidation-scope tests: a
         // barrier for (V1, B) must not affect a certificate for a later V2 merely
         // because V2 names the same node.
@@ -1299,7 +1299,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
         );
         const schema = (nodeKeyString) => (nodeKeyString === KEY_A ? [KEY_B] : []);
         const records = [valueB, firstA, barrier, secondA, validateSecond, validateB];
-        const oracle = projectRetainedJournal({
+        const oracle = await projectRetainedJournal({
             source: makeReplicaSource(replicaOf(records)),
             localWriter: WRITER_A,
             currentInputKeysOfNode: schema,
@@ -1315,7 +1315,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
         );
     });
 
-    test("authority breaks the tie between two equally applicable certificates", () => {
+    test("authority breaks the tie between two equally applicable certificates", async () => {
         // Two eligible certificates for the same occurrence, both proving the
         // complete current input set, neither covering a current-value marker:
         // the only difference is authority. The greater-authority one must be
@@ -1385,7 +1385,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
         );
         const schema = (nodeKeyString) => (nodeKeyString === KEY_A ? [KEY_B] : []);
         const records = [valueB, valueA, lowAuthority, highAuthority, validateB];
-        const oracle = projectRetainedJournal({
+        const oracle = await projectRetainedJournal({
             source: makeReplicaSource(replicaOf(records)),
             localWriter: WRITER_A,
             currentInputKeysOfNode: schema,
@@ -1404,7 +1404,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
         expect(disagreementsBetween(oracle, declarative)).toEqual([]);
     });
 
-    test("two present nodes selecting one physical identifier are unsupported state", () => {
+    test("two present nodes selecting one physical identifier are unsupported state", async () => {
         // `incremental-graph-journal-replay.md` §Physical identifier consistency:
         // if two distinct present NodeKeys nevertheless select the same physical
         // NodeIdentifier, projection fails as unsupported/corrupt current state.
@@ -1435,7 +1435,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
             LATER,
             "compute"
         );
-        const projection = projectRetainedJournal({
+        const projection = await projectRetainedJournal({
             source: makeReplicaSource(replicaOf([first, second])),
             localWriter: WRITER_A,
             currentInputKeysOfNode: () => [],
@@ -1444,7 +1444,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
         expect(String(projection.message)).toMatch(/same physical node identifier/);
     });
 
-    test("authority selects between two certificates which differ only in which edge a barrier retired", () => {
+    test("authority selects between two certificates which differ only in which edge a barrier retired", async () => {
         // `incremental-graph-journal-testing.md` §Reset losing-certificate proof
         // exposure. Two eligible certificates for one occurrence, each with an
         // effective basis of exactly one edge: C1 keeps A's edge, C2 keeps B's.
@@ -1539,7 +1539,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
             return [];
         };
         const records = [valueA, valueB, valueK, barrier, highAuthority, lowAuthority];
-        const oracle = projectRetainedJournal({
+        const oracle = await projectRetainedJournal({
             source: makeReplicaSource(replicaOf(records)),
             localWriter: WRITER_A,
             currentInputKeysOfNode: schema,
@@ -1556,7 +1556,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
         expect(disagreementsBetween(oracle, declarative)).toEqual([]);
     });
 
-    test("an unknown basis entry contributes no effective edge", () => {
+    test("an unknown basis entry contributes no effective edge", async () => {
         // A maintenance certificate may legitimately carry `"unknown"` for an
         // input. The specification says `"unknown"` never equals a current
         // ValueId, so it can never prove an edge: the node keeps no proof for
@@ -1601,7 +1601,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
         );
         const schema = (nodeKeyString) => (nodeKeyString === KEY_A ? [KEY_B] : []);
         const records = [valueB, valueA, validate];
-        const oracle = projectRetainedJournal({
+        const oracle = await projectRetainedJournal({
             source: makeReplicaSource(replicaOf(records)),
             localWriter: WRITER_A,
             currentInputKeysOfNode: schema,
@@ -1616,7 +1616,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
         expect(disagreementsBetween(oracle, declarative)).toEqual([]);
     });
 
-    test("authority decides between two certificates of equal effective basis strength", () => {
+    test("authority decides between two certificates of equal effective basis strength", async () => {
         // Two barriers, each observed by exactly one of two concurrent
         // certificates. C1 keeps B's edge, C2 keeps A's, so both have an effective
         // basis of exactly one entry, both cover the same (empty) current-value
@@ -1726,7 +1726,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
             return [];
         };
         const records = [valueA, valueB, valueK, barrierA, barrierB, lowAuthority, highAuthority];
-        const oracle = projectRetainedJournal({
+        const oracle = await projectRetainedJournal({
             source: makeReplicaSource(replicaOf(records)),
             localWriter: WRITER_A,
             currentInputKeysOfNode: schema,
@@ -1743,7 +1743,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
         expect(disagreementsBetween(oracle, declarative)).toEqual([]);
     });
 
-    test("a basis naming the wrong inputs is not current-shape-compatible", () => {
+    test("a basis naming the wrong inputs is not current-shape-compatible", async () => {
         // C's current inputs are B and D. One certificate names B and D; another,
         // at greater authority, names B and E, where E is a present node which is
         // not an input of C at all. The second has the right *number* of basis
@@ -1833,7 +1833,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
         );
         records.push(valueC, wrongInputs, rightInputs);
         const schema = (nodeKeyString) => (nodeKeyString === KEY_C ? [KEY_B, KEY_D] : []);
-        const oracle = projectRetainedJournal({
+        const oracle = await projectRetainedJournal({
             source: makeReplicaSource(replicaOf(records)),
             localWriter: WRITER_A,
             currentInputKeysOfNode: schema,
@@ -1852,7 +1852,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
         expect(disagreementsBetween(oracle, declarative)).toEqual([]);
     });
 
-    test("a lone certificate naming the wrong inputs proves nothing", () => {
+    test("a lone certificate naming the wrong inputs proves nothing", async () => {
         // C's current inputs are B and D, but the only certificate for C names B
         // and E. E is present and is a real occurrence, so every per-entry check
         // on the entries it does name passes; what fails is that the *set* of
@@ -1913,7 +1913,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
         );
         records.push(valueC, onlyCertificate);
         const schema = (nodeKeyString) => (nodeKeyString === KEY_C ? [KEY_B, KEY_D] : []);
-        const oracle = projectRetainedJournal({
+        const oracle = await projectRetainedJournal({
             source: makeReplicaSource(replicaOf(records)),
             localWriter: WRITER_A,
             currentInputKeysOfNode: schema,
@@ -1929,7 +1929,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
         expect(disagreementsBetween(oracle, declarative)).toEqual([]);
     });
 
-    test("effective basis strength outranks authority in certificate selection", () => {
+    test("effective basis strength outranks authority in certificate selection", async () => {
         // Two current-shape-compatible certificates for one occurrence. The
         // greater-authority one proves only B (D is "unknown"), the
         // lower-authority one proves B and D. The first ordering key is the
@@ -2008,7 +2008,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
         );
         const schema = (nodeKeyString) => (nodeKeyString === KEY_C ? [KEY_B, KEY_D] : []);
         const records = [valueB, valueD, valueK, partial, complete];
-        const oracle = projectRetainedJournal({
+        const oracle = await projectRetainedJournal({
             source: makeReplicaSource(replicaOf(records)),
             localWriter: WRITER_A,
             currentInputKeysOfNode: schema,
@@ -2026,7 +2026,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
         expect(disagreementsBetween(oracle, declarative)).toEqual([]);
     });
 
-    test("a value-scoped invalidation a certificate did not observe keeps the node stale", () => {
+    test("a value-scoped invalidation a certificate did not observe keeps the node stale", async () => {
         // A:a1 validated, then a concurrent value-scoped invalidation of that same
         // occurrence. The stale marker is uncovered, so the node is not fresh even
         // though its own basis is complete.
@@ -2064,7 +2064,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
             makeValueScope("aaaaaaaaa:1"),
             "propagated"
         );
-        const projection = projectRetainedJournal({
+        const projection = await projectRetainedJournal({
             source: makeReplicaSource(replicaOf([value, validate, invalidate])),
             localWriter: WRITER_A,
             currentInputKeysOfNode: () => [],
@@ -2077,7 +2077,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
         expect(projection.selfProofReadyNodes.has(KEY_A)).toBe(false);
     });
 
-    test("a node whose own basis is complete and uninvalidated is self-proof-ready", () => {
+    test("a node whose own basis is complete and uninvalidated is self-proof-ready", async () => {
         const value = makeValueEvent(
             {
                 id: "aaaaaaaaa:1",
@@ -2102,7 +2102,7 @@ describe("the oracle reads replay, not a transcription of it", () => {
             [],
             "compute"
         );
-        const projection = projectRetainedJournal({
+        const projection = await projectRetainedJournal({
             source: makeReplicaSource(replicaOf([value, validate])),
             localWriter: WRITER_A,
             currentInputKeysOfNode: () => [],

@@ -112,12 +112,12 @@ function authorIndex(source) {
  * the defined initial zero.
  * @param {JournalSource} source
  * @param {JournalAuthor} localWriter
- * @returns {{watermark: number} | {error: JournalError}}
+ * @returns {Promise<{watermark: number} | {error: JournalError}>}
  */
-function readContextAndWatermark(source, localWriter) {
+async function readContextAndWatermark(source, localWriter) {
     const localName = journalAuthorToString(localWriter);
     let watermark = 0;
-    const failure = streamWithReport(source, (record) => {
+    const failure = await streamWithReport(source, (record) => {
         if (isWriterStateRecord(record)) {
             if (journalAuthorToString(record.id.author) === localName) {
                 watermark = record.lastNodeIndex;
@@ -135,9 +135,9 @@ function readContextAndWatermark(source, localWriter) {
 /**
  * Project a retained journal into current graph state.
  * @param {ProjectOptions} options
- * @returns {Projection | JournalError}
+ * @returns {Promise<Projection | JournalError>}
  */
-function projectRetainedJournal(options) {
+async function projectRetainedJournal(options) {
     const { source, localWriter } = options;
     const currentInputKeysOfNode = options.currentInputKeysOfNode;
     /**
@@ -150,12 +150,12 @@ function projectRetainedJournal(options) {
     };
     const names = authorIndex(source);
 
-    const head = readContextAndWatermark(source, localWriter);
+    const head = await readContextAndWatermark(source, localWriter);
     if ("error" in head) {
         return head.error;
     }
 
-    const heads = selectSemanticHeads(source);
+    const heads = await selectSemanticHeads(source);
     if ("error" in heads) {
         return heads.error;
     }
@@ -183,12 +183,12 @@ function projectRetainedJournal(options) {
         selectedOccurrences.set(nodeKeyString, { node: selection.nodeKey, valueId });
     }
 
-    const invalidations = summarizeInvalidations(source, selectedOccurrences);
+    const invalidations = await summarizeInvalidations(source, selectedOccurrences);
     if ("error" in invalidations) {
         return invalidations.error;
     }
 
-    const certificates = selectCertificates(source, {
+    const certificates = await selectCertificates(source, {
         occurrences: {
             valueIdOf: (nodeKeyString) => selectedValueId(heads.selections, nodeKeyString),
             authorOf: (name) => names.get(name),

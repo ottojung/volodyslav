@@ -264,9 +264,9 @@ function admitInvalidation(summary, record) {
  * @param {Map<string, {node: NodeKey, valueId: JournalRecordId}>} request.occurrences
  *   - The selected occurrences of the cut the summary describes.
  * @param {CurrentInputKeysOfNode} request.currentInputKeysOfNode
- * @returns {{summary: ProofSummary} | {error: JournalError}}
+ * @returns {Promise<{summary: ProofSummary} | {error: JournalError}>}
  */
-function buildProofSummary(request) {
+async function buildProofSummary(request) {
     const { source, occurrences, currentInputKeysOfNode } = request;
     /** @type {Map<string, JournalRecordId>} */
     const selected = new Map();
@@ -281,7 +281,7 @@ function buildProofSummary(request) {
         new Map(),
         new Map()
     );
-    const failure = streamWithReport(source, (record) => {
+    const failure = await streamWithReport(source, (record) => {
         admitRecord(summary, record);
         return undefined;
     });

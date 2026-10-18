@@ -60,14 +60,14 @@ const {
  * @param {PrefixReader} retained - A reader over the receiver's own stream.
  * @param {string} authorName
  * @param {JournalSequence} retainedLength - The receiver's retained length.
- * @returns {JournalError | undefined}
+ * @returns {Promise<JournalError | undefined>}
  */
-function validateRetainedOverlapAgreement(offered, retained, authorName, retainedLength) {
+async function validateRetainedOverlapAgreement(offered, retained, authorName, retainedLength) {
     const failure = retained.failure();
     if (failure !== undefined) {
         return failure;
     }
-    const own = retained.nextRecord();
+    const own = await retained.nextRecord();
     if (own === undefined) {
         return makeJournalGapError(
             authorName,
@@ -102,11 +102,11 @@ function validateRetainedOverlapAgreement(offered, retained, authorName, retaine
  * @param {PrefixReader} retained - A reader over the receiver's own stream.
  * @param {string} authorName
  * @param {JournalSequence} retainedLength - The receiver's retained length.
- * @returns {RetainedOverlap | RetainedOverlapFailure}
+ * @returns {Promise<RetainedOverlap | RetainedOverlapFailure>}
  */
-function readRetainedOverlap(reader, retained, authorName, retainedLength) {
+async function readRetainedOverlap(reader, retained, authorName, retainedLength) {
     for (;;) {
-        const record = reader.nextRecord();
+        const record = await reader.nextRecord();
         if (record === undefined) {
             const failure = reader.failure();
             if (failure !== undefined) {
@@ -117,7 +117,7 @@ function readRetainedOverlap(reader, retained, authorName, retainedLength) {
         if (compareJournalSequence(record.id.sequence, retainedLength) > 0) {
             return { pending: record };
         }
-        const agreement = validateRetainedOverlapAgreement(
+        const agreement = await validateRetainedOverlapAgreement(
             record,
             retained,
             authorName,

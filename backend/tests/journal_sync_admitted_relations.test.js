@@ -84,8 +84,8 @@ function sourceOf(streams) {
 /**
  * @param {ReadonlyArray<[string, ReadonlyArray<object>]>} streams
  */
-function planOf(streams) {
-    return planForeignSuffixImport({
+async function planOf(streams) {
+    return await planForeignSuffixImport({
         receiver: makeReplicaSource(makeJournalReplica([])),
         source: sourceOf(streams),
         localWriter: makeJournalAuthor(WRITER_LOCAL),
@@ -94,11 +94,11 @@ function planOf(streams) {
 }
 
 describe("the bounded import path checks admitted closure and authority", () => {
-    test("an unclosed admitted context is rejected", () => {
+    test("an unclosed admitted context is rejected", async () => {
         const a1 = value(WRITER_A, "1", NODE_K, [], 100, "1-abcdefghi");
         const b1 = value(WRITER_B, "1", NODE_X, [[WRITER_A, "1"]], 200, "2-abcdefghi");
         const c1 = value(WRITER_C, "1", NODE_Y, [[WRITER_B, "1"], [WRITER_A, "0"]], 300, "3-abcdefghi");
-        const plan = planOf([
+        const plan = await planOf([
             [WRITER_A, [a1]],
             [WRITER_B, [b1]],
             [WRITER_C, [c1]],
@@ -110,11 +110,11 @@ describe("the bounded import path checks admitted closure and authority", () => 
         expect(isJournalCausalClosureError(plan.error)).toBe(true);
     });
 
-    test("an admitted record whose authority does not extend an observed predecessor is rejected", () => {
+    test("an admitted record whose authority does not extend an observed predecessor is rejected", async () => {
         const a1 = value(WRITER_A, "1", NODE_K, [], 100, "1-abcdefghi");
         const b1 = value(WRITER_B, "1", NODE_X, [[WRITER_A, "1"]], 300, "2-abcdefghi");
         const c1 = value(WRITER_C, "1", NODE_Y, [[WRITER_B, "1"], [WRITER_A, "1"]], 200, "3-abcdefghi");
-        const plan = planOf([
+        const plan = await planOf([
             [WRITER_A, [a1]],
             [WRITER_B, [b1]],
             [WRITER_C, [c1]],
@@ -126,11 +126,11 @@ describe("the bounded import path checks admitted closure and authority", () => 
         expect(isJournalCausalClosureError(plan.error)).toBe(true);
     });
 
-    test("a closed, authority-extending admitted history is accepted", () => {
+    test("a closed, authority-extending admitted history is accepted", async () => {
         const a1 = value(WRITER_A, "1", NODE_K, [], 100, "1-abcdefghi");
         const b1 = value(WRITER_B, "1", NODE_X, [[WRITER_A, "1"]], 200, "2-abcdefghi");
         const c1 = value(WRITER_C, "1", NODE_Y, [[WRITER_B, "1"], [WRITER_A, "1"]], 300, "3-abcdefghi");
-        const plan = planOf([
+        const plan = await planOf([
             [WRITER_A, [a1]],
             [WRITER_B, [b1]],
             [WRITER_C, [c1]],
@@ -138,13 +138,13 @@ describe("the bounded import path checks admitted closure and authority", () => 
         expect("error" in plan).toBe(false);
     });
 
-    test("a claim on a coordinate retained outside the change set is not rescanned", () => {
+    test("a claim on a coordinate retained outside the change set is not rescanned", async () => {
         // The receiver retains A:1; the source imports B:1, whose context claims A:1.
         // The retained A:1 is not part of the change set, so its context is not read
         // here and the import succeeds.
         const a1 = value(WRITER_A, "1", NODE_K, [], 100, "1-abcdefghi");
         const b1 = value(WRITER_B, "1", NODE_X, [[WRITER_A, "1"]], 200, "2-abcdefghi");
-        const plan = planForeignSuffixImport({
+        const plan = await planForeignSuffixImport({
             receiver: sourceOf([[WRITER_A, [a1]]]),
             source: sourceOf([[WRITER_B, [b1]]]),
             localWriter: makeJournalAuthor(WRITER_LOCAL),

@@ -277,9 +277,9 @@ function committedAfter(records, authorityPhysical) {
  * @param {ReadonlyArray<object>} options.source
  * @param {number} options.authorityPhysical
  */
-function synchronize(options) {
+async function synchronize(options) {
     const identity = new SnapshotIdentityClass('v1', 'scheme');
-    return synchronizeRetainedJournal({
+    return await synchronizeRetainedJournal({
         receiver: makeReplicaSource(replicaOf(options.receiver)),
         source: makeReplicaSource(replicaOf(options.source)),
         localWriter: made(makeJournalAuthor(WRITER_LOCAL)),
@@ -289,7 +289,7 @@ function synchronize(options) {
         currentInputKeysOfNode: chainInputs,
         receiverIdentity: identity,
         sourceIdentity: identity,
-        retainedState: made(buildRetainedReplayState({
+        retainedState: made(await buildRetainedReplayState({
             source: makeReplicaSource(replicaOf(options.receiver)),
             localWriter: made(makeJournalAuthor(WRITER_LOCAL)),
             currentInputKeysOfNode: chainInputs,
@@ -369,7 +369,7 @@ describe('publishSyncOutcome, lowering project(Jfinal)', () => {
                 context: [[WRITER_LOCAL, '4']],
                 basis: [{ node: NODE_B, value: WRITER_LOCAL + ':3' }],
                 });
-            const outcome = outcomeOf(synchronize({
+            const outcome = outcomeOf(await synchronize({
                 receiver: receiverChain(),
                 source: peerAddsC,
                 authorityPhysical: 400,
@@ -415,7 +415,7 @@ describe('publishSyncOutcome, lowering project(Jfinal)', () => {
                     basis: [{ node: NODE_A, value: WRITER_LOCAL + ':1' }],
                 }),
             ];
-            const outcome = outcomeOf(synchronize({
+            const outcome = outcomeOf(await synchronize({
                 receiver,
                 source: [],
                 authorityPhysical: 400,
@@ -447,7 +447,7 @@ describe('publishSyncOutcome, lowering project(Jfinal)', () => {
                 context: [[WRITER_LOCAL, '4']],
                 basis: [{ node: NODE_B, value: WRITER_LOCAL + ':3' }],
                 });
-            const outcome = outcomeOf(synchronize({
+            const outcome = outcomeOf(await synchronize({
                 receiver: receiverChain(),
                 source: peerAddsC,
                 authorityPhysical: 400,
@@ -481,7 +481,7 @@ describe('publishSyncOutcome, lowering project(Jfinal)', () => {
         const capabilities = makeTestCapabilities();
         const db = await getRootDatabase(capabilities);
         try {
-            const outcome = outcomeOf(synchronize({
+            const outcome = outcomeOf(await synchronize({
                 receiver: receiverChain(),
                 source: materialize({
                     writer: WRITER_PEER,
@@ -521,7 +521,7 @@ describe('publishSyncOutcome, lowering project(Jfinal)', () => {
                 context: [[WRITER_LOCAL, '4']],
                 basis: [{ node: NODE_B, value: WRITER_LOCAL + ':3' }],
                 });
-            const outcome = outcomeOf(synchronize({
+            const outcome = outcomeOf(await synchronize({
                 receiver: receiverChain(),
                 source: peerAddsC,
                 authorityPhysical: 400,
@@ -575,7 +575,7 @@ describe('publishSyncOutcome, lowering project(Jfinal)', () => {
                 node: NODE_C,
                 context: [[WRITER_LOCAL, '4']],
             });
-            const outcome = outcomeOf(synchronize({
+            const outcome = outcomeOf(await synchronize({
                 receiver: receiverChain(),
                 source: [peerDeletesC],
                 authorityPhysical: 400,
@@ -598,7 +598,7 @@ describe('publishSyncOutcome, lowering project(Jfinal)', () => {
         const capabilities = makeTestCapabilities();
         const db = await getRootDatabase(capabilities);
         try {
-            const outcome = outcomeOf(synchronize({
+            const outcome = outcomeOf(await synchronize({
                 receiver: receiverChain(),
                 source: materialize({
                     writer: WRITER_PEER,
@@ -701,7 +701,7 @@ describe('the synchronization staging surface carries no transport locator', () 
         expect(capabilities.environment.hostname()).toBe(TEST_HOSTNAME);
         const db = await getRootDatabase(capabilities);
         try {
-            const outcome = outcomeOf(synchronize({
+            const outcome = outcomeOf(await synchronize({
                 receiver: receiverChain(),
                 source: materialize({
                     writer: WRITER_PEER,
@@ -745,7 +745,7 @@ describe('the synchronization staging surface carries no transport locator', () 
         const capabilities = makeTestCapabilities();
         const db = await getRootDatabase(capabilities);
         try {
-            const outcome = outcomeOf(synchronize({
+            const outcome = outcomeOf(await synchronize({
                 receiver: receiverChain(),
                 source: materialize({
                     writer: WRITER_PEER,
@@ -776,7 +776,7 @@ describe('the published journal reads back as the operation retained it', () => 
         const capabilities = makeTestCapabilities();
         const db = await getRootDatabase(capabilities);
         try {
-            const outcome = outcomeOf(synchronize({
+            const outcome = outcomeOf(await synchronize({
                 receiver: receiverChain(),
                 source: materialize({
                     writer: WRITER_PEER,

@@ -126,8 +126,8 @@ function sourceOf(records) {
  * @param {import("../src/generators/incremental_graph/journal").JournalSource} receiver
  * @param {import("../src/generators/incremental_graph/journal").JournalSource} source
  */
-function plan(receiver, source) {
-    return planForeignSuffixImport({
+async function plan(receiver, source) {
+    return await planForeignSuffixImport({
         receiver,
         source,
         localWriter: LOCAL_AUTHOR,
@@ -160,8 +160,8 @@ function peerC() {
 }
 
 describe("planForeignSuffixImport, the same-ID evidence a source offers", () => {
-    test("a source which opens above the receiver's retained length imports only its own suffix", () => {
-        const result = plan(
+    test("a source which opens above the receiver's retained length imports only its own suffix", async () => {
+        const result = await plan(
             sourceOf([peerA(), peerB()]),
             sourceOf([peerA(), peerB(), peerC()])
         );
@@ -174,8 +174,8 @@ describe("planForeignSuffixImport, the same-ID evidence a source offers", () => 
         ))).toEqual([WRITER_PEER + ":3"]);
     });
 
-    test("a source which re-offers the receiver's own records with the same meaning imports nothing extra", () => {
-        const result = plan(
+    test("a source which re-offers the receiver's own records with the same meaning imports nothing extra", async () => {
+        const result = await plan(
             sourceOf([peerA(), peerB()]),
             sourceOf([peerA(), peerB()])
         );
@@ -183,7 +183,7 @@ describe("planForeignSuffixImport, the same-ID evidence a source offers", () => 
         expect("suffixes" in result).toBe(true);
     });
 
-    test("a source which re-offers a retained coordinate with a different meaning is refused as a writer fork", () => {
+    test("a source which re-offers a retained coordinate with a different meaning is refused as a writer fork", async () => {
         const forked = valueOf({
             writer: WRITER_PEER,
             sequence: "1",
@@ -192,14 +192,14 @@ describe("planForeignSuffixImport, the same-ID evidence a source offers", () => 
             payload: OTHER_PAYLOAD,
         });
 
-        const error = errorOf(plan(sourceOf([peerA(), peerB()]), sourceOf([forked, peerB(), peerC()])));
+        const error = errorOf(await plan(sourceOf([peerA(), peerB()]), sourceOf([forked, peerB(), peerC()])));
 
         expect(isJournalForkError(error)).toBe(true);
         expect(error.recordId).toBe(WRITER_PEER + ":1");
         expect(error.firstMeaning).not.toBe(error.secondMeaning);
     });
 
-    test("a fork in a retained coordinate is refused before the imported suffix is admitted", () => {
+    test("a fork in a retained coordinate is refused before the imported suffix is admitted", async () => {
         const forked = valueOf({
             writer: WRITER_PEER,
             sequence: "2",
@@ -208,7 +208,7 @@ describe("planForeignSuffixImport, the same-ID evidence a source offers", () => 
             payload: OTHER_PAYLOAD,
         });
 
-        const error = errorOf(plan(sourceOf([peerA(), peerB()]), sourceOf([peerA(), forked, peerC()])));
+        const error = errorOf(await plan(sourceOf([peerA(), peerB()]), sourceOf([peerA(), forked, peerC()])));
 
         expect(isJournalForkError(error)).toBe(true);
         expect(error.recordId).toBe(WRITER_PEER + ":2");

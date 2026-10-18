@@ -354,7 +354,7 @@ describe("the end-to-end Journal path over real computor output", () => {
 
         // Replay the persisted-text records and compare against the intended graph
         // state, which is exactly the real computor output for each node.
-        const projection = projectRetainedJournal({
+        const projection = await projectRetainedJournal({
             source: makeReplicaSource(replica),
             localWriter: writerState.localWriter,
             currentInputKeysOfNode: (nodeKeyString) =>
@@ -393,17 +393,17 @@ describe("the end-to-end Journal path over real computor output", () => {
         }
     });
 
-    test("the replayed result equals the oracle projection computed from the same records", () => {
+    test("the replayed result equals the oracle projection computed from the same records", async () => {
         // Replaying the emitted journal through the streaming oracle must agree with
         // the declarative reference model in the same way the oracle's own suite
         // requires, so the end-to-end result is not an artifact of one projection.
         const store = openStore();
-        return store.readReplica().then((replica) => {
+        return store.readReplica().then(async (replica) => {
             if (replica instanceof Error) {
                 throw new Error("the store could not read its retained replica back: " + replica.message);
             }
             const { declarativeProject } = require("./oracle_declarative_reference");
-            const oracle = projectRetainedJournal({
+            const oracle = await projectRetainedJournal({
                 source: makeReplicaSource(replica),
                 localWriter: writerState.localWriter,
                 currentInputKeysOfNode: (nodeKeyString) =>

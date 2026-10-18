@@ -43,6 +43,7 @@ const { planSyncPublication } = require('./sync_publish');
 /** @typedef {import('../journal/errors').AnyJournalError} JournalError */
 /** @typedef {import('../journal/records').JournalRecord} JournalRecord */
 /** @typedef {import('../journal/types').JournalAuthor} JournalAuthor */
+/** @typedef {import('../journal/oracle/record_source').JournalSource} JournalSource */
 /** @typedef {import('../database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('../database/root_database').ReplicaName} ReplicaName */
 /** @typedef {import('../database/root_database').SchemaStorage} SchemaStorage */
@@ -52,7 +53,7 @@ const {
     encodeJournalRecord,
     journalAuthorToString,
 } = require('../journal');
-const { makeJournalRecordKey } = require('../journal_store');
+const { forEachRetainedRecord, makeJournalRecordKey } = require('../journal_store');
 
 /**
  * Thrown when a reset outcome cannot be lowered into the replica namespace it targets.
@@ -98,19 +99,28 @@ function isResetPublicationError(object) {
  * derives the occurrence index from the projection it lowers, so the target's index
  * names `project(Jreset)` and not the receiver's pre-reset occurrences.
  *
+ * The records are folded out of the receiver's own streaming source one at a time, so the
+ * retained history is never collected as a records array in addition to the operations the
+ * single atomic batch needs.
+ *
  * @param {SchemaStorage} target
- * @param {ReadonlyArray<JournalRecord>} retainedRecords
- * @returns {Array<*>}
+ * @param {JournalSource} retainedSource - The activated replica's retained journal, read
+ *   through its per-writer streaming readers.
+ * @returns {Promise<Array<*>>}
  */
-function retainedRecordOperations(target, retainedRecords) {
+async function retainedRecordOperations(target, retainedSource) {
     /** @type {Array<*>} */
     const operations = [];
-    for (const record of retainedRecords) {
+    const failure = await forEachRetainedRecord(retainedSource, (record) => {
         const key = makeJournalRecordKey(record.id.author, record.id.sequence);
         if (key instanceof Error) {
             throw new ResetPublicationError(journalAuthorToString(record.id.author));
         }
         operations.push(target.journal.putOp(key, stringToJournalText(encodeJournalRecord(record))));
+        return undefined;
+    });
+    if (failure !== undefined) {
+        throw failure;
     }
     return operations;
 }
@@ -118,8 +128,9 @@ function retainedRecordOperations(target, retainedRecords) {
 /**
  * @typedef {object} ResetPublicationRequest
  * @property {SchemaStorage} target - The inactive replica the reset is built into.
- * @property {ReadonlyArray<JournalRecord>} retainedRecords - The activated replica's
- *   retained journal, which reset retains rather than replaces.
+ * @property {JournalSource} retainedSource - The activated replica's retained journal,
+ *   read through its per-writer streaming readers, which reset retains rather than
+ *   replaces.
  * @property {string} receiverVersion - The activated replica's persisted version.
  * @property {string} receiverGraphScheme - The activated replica's persisted graph
  *   scheme.
@@ -130,20 +141,23 @@ function retainedRecordOperations(target, retainedRecords) {
 /**
  * Build the one operation array which turns the inactive replica into `Jreset`.
  *
+ * The retained records are streamed from the receiver's source into the operation list
+ * rather than collected first, so the retained history is not held twice.
+ *
  * @param {ResetPublicationRequest} request
  * @returns {Promise<Array<*>>}
  */
 async function planResetPublication(request) {
     const {
         target,
-        retainedRecords,
+        retainedSource,
         receiverVersion,
         receiverGraphScheme,
         receiverFingerprint,
         outcome,
     } = request;
     return [
-        ...retainedRecordOperations(target, retainedRecords),
+        ...await retainedRecordOperations(target, retainedSource),
         target.global.putOp('version', receiverVersion),
         target.global.putOp(GRAPH_SCHEME_KEY, receiverGraphScheme),
         target.global.putOp('fingerprint', receiverFingerprint),

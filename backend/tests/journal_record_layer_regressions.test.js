@@ -564,14 +564,14 @@ describe("finding 4: the current-format boundary rejects what it does not define
 });
 
 describe("finding 5: a reader is bounded by the retained length it declares", () => {
-    test("a record beyond the declared retained length is a failure, not a delivery", () => {
+    test("a record beyond the declared retained length is a failure, not a delivery", async () => {
         const first = valueAt(WRITER_A + ":1", [], NODE_K, 1000);
         const second = valueAt(WRITER_A + ":2", [[WRITER_A, "1"]], NODE_K, 2000);
         const third = valueAt(WRITER_A + ":3", [[WRITER_A, "2"]], NODE_K, 3000);
         const reader = readerOverIterable(WRITER_A, [first, second, third], makeJournalSequence("2"));
         const delivered = [];
         for (;;) {
-            const record = reader.nextRecord();
+            const record = await reader.nextRecord();
             if (record === undefined) {
                 break;
             }
@@ -582,22 +582,22 @@ describe("finding 5: a reader is bounded by the retained length it declares", ()
         expect(isJournalRecordValidationError(reader.failure())).toBe(true);
     });
 
-    test("a prefix which ends before the length it claims is still a gap", () => {
+    test("a prefix which ends before the length it claims is still a gap", async () => {
         const first = valueAt(WRITER_A + ":1", [], NODE_K, 1000);
         const reader = readerOverIterable(WRITER_A, [first], makeJournalSequence("2"));
-        expect(reader.nextRecord()).toBeDefined();
-        expect(reader.nextRecord()).toBeUndefined();
+        expect(await reader.nextRecord()).toBeDefined();
+        expect(await reader.nextRecord()).toBeUndefined();
         expect(reader.failure()).toBeDefined();
         expect(isJournalCausalClosureError(reader.failure())).toBe(false);
     });
 
-    test("a reader over a prefix which matches its declared length delivers the whole prefix", () => {
+    test("a reader over a prefix which matches its declared length delivers the whole prefix", async () => {
         const first = valueAt(WRITER_A + ":1", [], NODE_K, 1000);
         const second = valueAt(WRITER_A + ":2", [[WRITER_A, "1"]], NODE_K, 2000);
         const reader = readerOverIterable(WRITER_A, [first, second], makeJournalSequence("2"));
         const delivered = [];
         for (;;) {
-            const record = reader.nextRecord();
+            const record = await reader.nextRecord();
             if (record === undefined) {
                 break;
             }
@@ -607,7 +607,7 @@ describe("finding 5: a reader is bounded by the retained length it declares", ()
         expect(reader.failure()).toBeUndefined();
     });
 
-    test("the boundary holds past one digit, where the length itself has several digits", () => {
+    test("the boundary holds past one digit, where the length itself has several digits", async () => {
         const stream = [];
         for (let sequence = 1; sequence <= 12; sequence++) {
             stream.push(
@@ -622,7 +622,7 @@ describe("finding 5: a reader is bounded by the retained length it declares", ()
         const reader = readerOverIterable(WRITER_A, stream, makeJournalSequence("10"));
         let delivered = 0;
         for (;;) {
-            if (reader.nextRecord() === undefined) {
+            if ((await reader.nextRecord()) === undefined) {
                 break;
             }
             delivered++;

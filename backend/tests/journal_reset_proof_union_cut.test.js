@@ -171,10 +171,10 @@ function targetProjection() {
     return new ProjectionClass(occurrences, new Map(), 0, PEER, new Set(), new Set());
 }
 
-function runReset() {
+async function runReset() {
     const records = receiverRecords();
     const receiver = makeReplicaSource(replicaOf(records));
-    const built = buildRetainedReplayState({
+    const built = await buildRetainedReplayState({
         source: receiver,
         localWriter: LOCAL,
         currentInputKeysOfNode: schema,
@@ -192,7 +192,7 @@ function runReset() {
     if (last === undefined) {
         throw new Error("the receiver fixture has no records");
     }
-    return resetToSource({
+    return await resetToSource({
         receiver,
         retainedState: built.state,
         source,
@@ -212,8 +212,8 @@ function runReset() {
 }
 
 describe("reset Pass 2 reads the proof union at the fixed post-value-repair cut", () => {
-    test("a valid reset authors the proof barrier the pre-reset selection would omit", () => {
-        const result = runReset();
+    test("a valid reset authors the proof barrier the pre-reset selection would omit", async () => {
+        const result = await runReset();
 
         expect("error" in result).toBe(false);
         if ("error" in result) {

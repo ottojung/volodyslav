@@ -19,11 +19,11 @@
  */
 
 const {
-    makeReplicaSource,
-    makeUnionSource,
     readerOverIterable,
+    readerOverRecordSupply,
     successorJournalSequence,
 } = require("./record_source");
+const { makeReplicaSource, makeUnionSource } = require("./union_source");
 const { streamEveryRecord, streamWithReport, validateContextClaim } = require("./scan");
 const { HeadSelectionClass, isPresent, selectSemanticHeads, selectedValueId } = require("./heads");
 const { isInvalidationSummary, summarizeInvalidations, summaryIsCovered } = require("./invalidations");
@@ -72,6 +72,7 @@ module.exports = {
     projectRetainedJournal,
     readContextAndWatermark,
     readerOverIterable,
+    readerOverRecordSupply,
     selectCertificates,
     selectSemanticHeads,
     selectedValueId,
