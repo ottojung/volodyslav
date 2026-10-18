@@ -33,8 +33,9 @@ const {
 } = require("./journal_database");
 
 const {
-    collectRetainedRecords,
     coordinateTextOf,
+    forEachRetainedRecord,
+    makeStreamingJournalSource,
     makeSyncJournalSource,
     readJournalSource,
     readRetainedLengths,
@@ -51,14 +52,15 @@ module.exports = {
     JOURNAL_STATE_KEY,
     RecordStoreClass,
     appendJournalPublicationOps,
-    collectRetainedRecords,
     compareCoordinateText,
     coordinateTextOf,
     deserializeWriterState,
+    forEachRetainedRecord,
     isRecordStore,
     makeInitialCommittedWriterState,
     makeJournalOccurrenceKey,
     makeJournalRecordKey,
+    makeStreamingJournalSource,
     makeSyncJournalSource,
     openRecordStore,
     readCommittedWriterState,

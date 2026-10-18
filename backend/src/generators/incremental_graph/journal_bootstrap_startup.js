@@ -300,9 +300,9 @@ async function resolveCanonicalBootstrapForStartup(request) {
         );
     }
     if (arbitration.kind === "use-canonical-artifact" && arbitration.operation === "join-canonical-bootstrap") {
-        return joinResolution(arbitration.artifact, localWriter, legacyState, currentInputKeysOfNode);
+        return await joinResolution(arbitration.artifact, localWriter, legacyState, currentInputKeysOfNode);
     }
-    return resumeResolution(arbitration.artifact, localWriter, legacyState, currentInputKeysOfNode);
+    return await resumeResolution(arbitration.artifact, localWriter, legacyState, currentInputKeysOfNode);
 }
 
 /**
@@ -310,10 +310,10 @@ async function resolveCanonicalBootstrapForStartup(request) {
  * @param {JournalAuthor} localWriter
  * @param {LegacyBootstrapState} legacyState
  * @param {(nodeKeyString: string) => ReadonlyArray<string> | undefined} currentInputKeysOfNode
- * @returns {StartupCanonicalBootstrap | JournalError}
+ * @returns {Promise<StartupCanonicalBootstrap | JournalError>}
  */
-function joinResolution(artifact, localWriter, legacyState, currentInputKeysOfNode) {
-    const joined = joinCanonicalBootstrap({
+async function joinResolution(artifact, localWriter, legacyState, currentInputKeysOfNode) {
+    const joined = await joinCanonicalBootstrap({
         legacyState,
         artifact,
         joiningWriter: localWriter,
@@ -341,10 +341,10 @@ function joinResolution(artifact, localWriter, legacyState, currentInputKeysOfNo
  * @param {JournalAuthor} localWriter
  * @param {LegacyBootstrapState} legacyState
  * @param {(nodeKeyString: string) => ReadonlyArray<string> | undefined} currentInputKeysOfNode
- * @returns {StartupCanonicalBootstrap | JournalError}
+ * @returns {Promise<StartupCanonicalBootstrap | JournalError>}
  */
-function resumeResolution(artifact, localWriter, legacyState, currentInputKeysOfNode) {
-    const resumed = resumeCanonicalBootstrapCreator({
+async function resumeResolution(artifact, localWriter, legacyState, currentInputKeysOfNode) {
+    const resumed = await resumeCanonicalBootstrapCreator({
         legacyState,
         artifact,
         localWriter,

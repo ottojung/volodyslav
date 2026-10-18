@@ -182,8 +182,8 @@ function receiverChain() {
  * @param {string} [localWriter]
  * @returns {import("../src/generators/incremental_graph/journal_retained").RetainedReplayState}
  */
-function rebuiltStateOf(records, localWriter = WRITER_LOCAL) {
-    const built = buildRetainedReplayState({
+async function rebuiltStateOf(records, localWriter = WRITER_LOCAL) {
+    const built = await buildRetainedReplayState({
         source: makeReplicaSource(replicaOf(records)),
         localWriter: makeJournalAuthor(localWriter),
         currentInputKeysOfNode: (nodeKeyString) => (nodeKeyString === KEY_A ? [] : [KEY_A]),
@@ -214,7 +214,7 @@ describe("a lost surviving own-writer suffix is refused", () => {
         expect(reconcileRetainedWriterHead(source, committed)).toBeUndefined();
     });
 
-    test("synchronization refuses a receiver whose committed writerHead exceeds its retained length", () => {
+    test("synchronization refuses a receiver whose committed writerHead exceeds its retained length", async () => {
         const receiver = receiverChain();
         const committed = {
             localWriter: made(makeJournalAuthor(WRITER_LOCAL)),
@@ -235,7 +235,7 @@ describe("a lost surviving own-writer suffix is refused", () => {
             )),
         ];
 
-        const result = synchronizeRetainedJournal({
+        const result = await synchronizeRetainedJournal({
             receiver: makeReplicaSource(replicaOf(receiver)),
             source: makeReplicaSource(replicaOf(source)),
             localWriter: made(makeJournalAuthor(WRITER_LOCAL)),
@@ -245,7 +245,7 @@ describe("a lost surviving own-writer suffix is refused", () => {
             currentInputKeysOfNode: (nodeKeyString) => (nodeKeyString === KEY_A ? [] : [KEY_A]),
             receiverIdentity: new SnapshotIdentityClass("v1", "scheme"),
             sourceIdentity: new SnapshotIdentityClass("v1", "scheme"),
-            retainedState: rebuiltStateOf(receiver),
+            retainedState: await rebuiltStateOf(receiver),
         });
 
         expect("outcome" in result).toBe(false);
@@ -255,7 +255,7 @@ describe("a lost surviving own-writer suffix is refused", () => {
         expect(isJournalWriterBehindError(result.error)).toBe(true);
     });
 
-    test("synchronization accepts a receiver whose committed writerHead matches its retained length", () => {
+    test("synchronization accepts a receiver whose committed writerHead matches its retained length", async () => {
         const receiver = receiverChain();
         const committed = {
             localWriter: made(makeJournalAuthor(WRITER_LOCAL)),
@@ -265,7 +265,7 @@ describe("a lost surviving own-writer suffix is refused", () => {
             allocatorWatermark: 0,
         };
 
-        const result = synchronizeRetainedJournal({
+        const result = await synchronizeRetainedJournal({
             receiver: makeReplicaSource(replicaOf(receiver)),
             source: makeReplicaSource(replicaOf([])),
             localWriter: made(makeJournalAuthor(WRITER_LOCAL)),
@@ -275,7 +275,7 @@ describe("a lost surviving own-writer suffix is refused", () => {
             currentInputKeysOfNode: (nodeKeyString) => (nodeKeyString === KEY_A ? [] : [KEY_A]),
             receiverIdentity: new SnapshotIdentityClass("v1", "scheme"),
             sourceIdentity: new SnapshotIdentityClass("v1", "scheme"),
-            retainedState: rebuiltStateOf(receiver),
+            retainedState: await rebuiltStateOf(receiver),
         });
 
         expect("outcome" in result).toBe(true);

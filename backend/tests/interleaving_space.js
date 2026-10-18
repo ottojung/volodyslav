@@ -876,14 +876,14 @@ function mergeReaders(writerName, contributors) {
      */
     const matchesExpected = (sequence) => compareJournalSequence(sequence, expected) === 0;
     return {
-        nextRecord: () => {
+        nextRecord: async () => {
             if (failure !== undefined) {
                 return undefined;
             }
             /** @type {JournalRecord[]} */
             const atCoordinate = [];
             for (const contributor of contributors) {
-                const record = contributor.nextRecord();
+                const record = await contributor.nextRecord();
                 if (record === undefined) {
                     const contributorFailure = contributor.failure();
                     if (contributorFailure !== undefined) {
@@ -922,28 +922,29 @@ function mergeReaders(writerName, contributors) {
 function chunkedReader(writerName, records, chunkSize) {
     /** @type {JournalRecord[]} */
     let buffer = [];
+    let exhausted = false;
     const plain = readerOverIterable(writerName, records, retainedLengthOf(records));
     /**
      * Draw the next batch from the underlying reader. A chunked iterator over a
      * real sublevel yields a whole batch or nothing, so the buffer is refilled
      * only once it has been drained.
-     * @returns {void}
+     * @returns {Promise<void>}
      */
-    function refill() {
+    async function refill() {
         buffer = [];
         for (let taken = 0; taken < chunkSize; taken++) {
-            const record = plain.nextRecord();
+            const record = await plain.nextRecord();
             if (record === undefined) {
+                exhausted = true;
                 break;
             }
             buffer.push(record);
         }
     }
-    refill();
     return {
-        nextRecord: () => {
-            if (buffer.length === 0) {
-                refill();
+        nextRecord: async () => {
+            if (buffer.length === 0 && !exhausted) {
+                await refill();
             }
             return buffer.shift();
         },

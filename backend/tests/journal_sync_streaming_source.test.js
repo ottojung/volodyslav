@@ -38,10 +38,14 @@ const {
 const {
     makeJournalRecordKey,
     readJournalSource,
+    readRetainedJournal,
 } = require("../src/generators/incremental_graph/journal_store");
 const {
+    journalAuthorToString,
     makeJournalAuthor,
     makeJournalSequence,
+    makeReplicaSource,
+    projectRetainedJournal,
 } = require("../src/generators/incremental_graph/journal");
 
 const allEventsModule = require("../src/generators/individual/all_events/wrapper");
@@ -267,7 +271,296 @@ describe("the production Journal front streams retained records", () => {
             await journal.put(key, stringToJournalText("{}"));
 
             const source = await readJournalSource(journal);
-            expect(source instanceof Error).toBe(true);
+            // A streaming source reads one record at a time, so it cannot report a
+            // stored record it cannot decode before it is asked for one. The
+            // corruption is rejected through the reader's own failure channel when
+            // the source is consumed, which is where every production front reads it.
+            expect(source instanceof Error).toBe(false);
+            if (source instanceof Error) {
+                return;
+            }
+            let failure;
+            for (const writer of source.writers()) {
+                const reader = source.prefixReaderOf(writer);
+                for (;;) {
+                    const record = await reader.nextRecord();
+                    if (record === undefined) {
+                        break;
+                    }
+                }
+                if (reader.failure() !== undefined) {
+                    failure = reader.failure();
+                    break;
+                }
+            }
+            expect(failure).toBeDefined();
+        } finally {
+            await database.close();
+        }
+    });
+});
+
+/**
+ * Count the record-range iterators a sublevel is asked for and the entries they
+ * yield, so a test can tell a materialising read from a streaming one.
+ *
+ * A writer's retained length is one reverse range read with `limit: 1` and the
+ * writer discovery is a `keys()` scan; neither is a record-range read. A reader
+ * over a writer's retained records opens the writer's own forward range
+ * (`gte`/`lte`), and the streaming source pulls its entries one at a time.
+ *
+ * @param {object} journal
+ * @returns {{rangesOpened: number, entriesYielded: number}}
+ */
+function countJournalRecordRanges(journal) {
+    const stats = { rangesOpened: 0, entriesYielded: 0 };
+    const original = journal.iterator.bind(journal);
+    journal.iterator = (options = {}) => {
+        const isRecordRange =
+            options.gte !== undefined && options.lte !== undefined && options.reverse !== true;
+        if (!isRecordRange) {
+            return original(options);
+        }
+        stats.rangesOpened += 1;
+        const inner = original(options)[Symbol.asyncIterator]();
+        return {
+            [Symbol.asyncIterator]() {
+                return this;
+            },
+            async next() {
+                const step = await inner.next();
+                if (step.done !== true) {
+                    stats.entriesYielded += 1;
+                }
+                return step;
+            },
+            async return(...args) {
+                if (typeof inner.return === "function") {
+                    return inner.return(...args);
+                }
+                return { done: true, value: undefined };
+            },
+        };
+    };
+    return stats;
+}
+
+/**
+ * Wrap a `JournalSource` so a test can observe how many of its writers the oracle
+ * has open at once, how many readers it asked for, and how many records it read.
+ *
+ * @param {object} source
+ * @returns {object}
+ */
+function openReaderCountingSource(source) {
+    let open = 0;
+    let maxOpen = 0;
+    let readers = 0;
+    let reads = 0;
+    return {
+        writers: () => source.writers(),
+        retainedLengthOf: (author) => source.retainedLengthOf(author),
+        prefixReaderOf: (author) => {
+            readers += 1;
+            open += 1;
+            maxOpen = Math.max(maxOpen, open);
+            const reader = source.prefixReaderOf(author);
+            let closed = false;
+            const close = () => {
+                if (!closed) {
+                    closed = true;
+                    open -= 1;
+                }
+            };
+            return {
+                nextRecord: async () => {
+                    const record = await reader.nextRecord();
+                    reads += 1;
+                    if (record === undefined) {
+                        close();
+                    }
+                    return record;
+                },
+                failure: () => {
+                    close();
+                    return reader.failure();
+                },
+            };
+        },
+        stats: () => ({ maxOpen, readers, reads }),
+    };
+}
+
+describe("the streaming source materialises no retained history", () => {
+    test("readJournalSource opens no writer's record range before the oracle reads", async () => {
+        const capabilities = testCapabilities();
+        const database = await getRootDatabase(capabilities);
+        try {
+            const graph = await makeRealGraph(capabilities, database, "the receiver wrote this");
+            await graph.pull("event_context");
+
+            const replica = database.currentReplicaName();
+            const journal = database.replicaJournalSublevel(replica);
+            const stats = countJournalRecordRanges(journal);
+
+            const source = await readJournalSource(journal);
+            expect(source instanceof Error).toBe(false);
+            expect(stats.rangesOpened).toBe(0);
+            expect(stats.entriesYielded).toBe(0);
+        } finally {
+            await database.close();
+        }
+    });
+
+    test("a reader pulls one stored record at a time rather than the whole prefix", async () => {
+        const capabilities = testCapabilities();
+        const database = await getRootDatabase(capabilities);
+        try {
+            const graph = await makeRealGraph(capabilities, database, "the receiver wrote this");
+            await graph.pull("event_context");
+
+            const replica = database.currentReplicaName();
+            const storage = database.schemaStorageForReplica(replica);
+            const journal = database.replicaJournalSublevel(replica);
+            const author = makeJournalAuthor(database.getFingerprint());
+            expect(author instanceof Error).toBe(false);
+
+            const retained = await readRetainedJournal(storage.journal);
+            const writerName = journalAuthorToString(author);
+            const writerRecords = [...retained].find(
+                ([held]) => journalAuthorToString(held) === writerName
+            );
+            expect(writerRecords).toBeDefined();
+            const total = writerRecords === undefined ? 0 : writerRecords[1].length;
+            expect(total).toBeGreaterThan(1);
+
+            const stats = countJournalRecordRanges(journal);
+            const source = await readJournalSource(journal);
+            expect(source instanceof Error).toBe(false);
+            if (source instanceof Error) {
+                return;
+            }
+            const reader = source.prefixReaderOf(author);
+            const first = await reader.nextRecord();
+            expect(first instanceof Error).toBe(false);
+            expect(first).toBeDefined();
+            // One pulled record is one yielded entry: the reader is not a scan which
+            // decodes the whole prefix before returning the first record.
+            expect(stats.entriesYielded).toBe(1);
+            expect(stats.entriesYielded).toBeLessThan(total);
+        } finally {
+            await database.close();
+        }
+    });
+
+    test("the streaming source replays identically to the materialized replica", async () => {
+        const capabilities = testCapabilities();
+        const database = await getRootDatabase(capabilities);
+        try {
+            const graph = await makeRealGraph(capabilities, database, "the receiver wrote this");
+            await graph.pull("event_context");
+
+            const replica = database.currentReplicaName();
+            const storage = database.schemaStorageForReplica(replica);
+            const journal = database.replicaJournalSublevel(replica);
+            const localWriter = makeJournalAuthor(database.getFingerprint());
+            expect(localWriter instanceof Error).toBe(false);
+
+            const streamingSource = await readJournalSource(journal);
+            expect(streamingSource instanceof Error).toBe(false);
+            if (streamingSource instanceof Error) {
+                return;
+            }
+            const replicaRead = await readRetainedJournal(storage.journal);
+            expect(replicaRead instanceof Error).toBe(false);
+            if (replicaRead instanceof Error) {
+                return;
+            }
+
+            const streaming = await projectRetainedJournal({
+                source: streamingSource,
+                localWriter,
+                currentInputKeysOfNode: () => [],
+            });
+            const materialized = await projectRetainedJournal({
+                source: makeReplicaSource(replicaRead),
+                localWriter,
+                currentInputKeysOfNode: () => [],
+            });
+            expect(streaming instanceof Error).toBe(false);
+            expect(materialized instanceof Error).toBe(false);
+            expect(streaming).toEqual(materialized);
+        } finally {
+            await database.close();
+        }
+    });
+
+    test("the oracle holds at most one writer's reader open and re-reads per pass", async () => {
+        const capabilities = testCapabilities();
+        const database = await getRootDatabase(capabilities);
+        try {
+            const graph = await makeRealGraph(capabilities, database, "the receiver wrote this");
+            await graph.pull("event_context");
+
+            const replica = database.currentReplicaName();
+            const journal = database.replicaJournalSublevel(replica);
+            const localWriter = makeJournalAuthor(database.getFingerprint());
+            expect(localWriter instanceof Error).toBe(false);
+
+            const streamingSource = await readJournalSource(journal);
+            expect(streamingSource instanceof Error).toBe(false);
+            if (streamingSource instanceof Error) {
+                return;
+            }
+            const writers = streamingSource.writers().length;
+            expect(writers).toBeGreaterThan(0);
+            const counted = openReaderCountingSource(streamingSource);
+
+            const projection = await projectRetainedJournal({
+                source: counted,
+                localWriter,
+                currentInputKeysOfNode: () => [],
+            });
+            expect(projection instanceof Error).toBe(false);
+
+            const stats = counted.stats();
+            // The oracle walks one writer at a time, so it never has the complete
+            // retained journal open as one collection.
+            expect(stats.maxOpen).toBe(1);
+            // It makes several passes and asks for a fresh reader each time, which is
+            // exactly the streaming behaviour a materialising source could not offer.
+            expect(stats.readers).toBeGreaterThan(writers);
+        } finally {
+            await database.close();
+        }
+    });
+
+    test("synchronization publishes the retained records in one atomic batch", async () => {
+        const capabilities = testCapabilities();
+        const levelOf = interceptLevel(capabilities);
+        const { database, receiver, source } = await buildReceiverWithHeldSnapshot(capabilities);
+        const level = levelOf();
+        /** @type {Array<Array<unknown>>} */
+        const batches = [];
+        const originalBatch = level.batch.bind(level);
+        level.batch = (operations, ...rest) => {
+            batches.push(operations);
+            return originalBatch(operations, ...rest);
+        };
+        try {
+            const changed = await syncJournalReceiverToSource({
+                database,
+                capabilities,
+                receiver,
+                source,
+            });
+
+            expect(changed).toBe(true);
+            // The retained records are streamed into the same single batch as the
+            // outcome's own records, so the target is never observed half-written and
+            // the cutover stays one atomic write.
+            expect(batches).toHaveLength(1);
+            expect(batches[0].length).toBeGreaterThan(0);
         } finally {
             await database.close();
         }

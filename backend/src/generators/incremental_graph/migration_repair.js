@@ -85,7 +85,7 @@ async function repairMigrationJournal(request) {
     if (retained instanceof Error) {
         return { error: retained };
     }
-    const built = buildRetainedReplayState({
+    const built = await buildRetainedReplayState({
         source: makeReplicaSource(retained),
         localWriter,
         currentInputKeysOfNode,

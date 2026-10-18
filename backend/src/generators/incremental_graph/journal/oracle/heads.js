@@ -60,12 +60,12 @@ class HeadSelectionClass {
  * identity the validation basis, the invalidation scopes and the current schema
  * all use, so no pass has to re-derive it.
  * @param {JournalSource} source
- * @returns {{selections: Map<string, HeadSelection>} | {error: JournalError}}
+ * @returns {Promise<{selections: Map<string, HeadSelection>} | {error: JournalError}>}
  */
-function selectSemanticHeads(source) {
+async function selectSemanticHeads(source) {
     /** @type {Map<string, HeadSelection>} */
     const selections = new Map();
-    const failure = streamEveryRecord(source, (record) => {
+    const failure = await streamEveryRecord(source, (record) => {
         if (!isValueEvent(record) && !isDeleteEvent(record)) {
             return;
         }

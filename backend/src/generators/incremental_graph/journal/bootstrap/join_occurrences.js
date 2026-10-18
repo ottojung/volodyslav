@@ -62,15 +62,15 @@ const { isExactSharedOccurrence, joiningValueOrder } = require("./joining_suppor
  * @property {Map<string, ProjectedOccurrence>} canonicalOccurrences - The canonical
  *   cut's occurrences, keyed by canonical NodeKey identity.
  * @property {JoiningCursor} cursor - The joining replica's record cursor.
- * @property {() => Projection | JournalError} replay - Replays the canonical cut
- *   together with the joining records authored so far.
+ * @property {() => Promise<Projection | JournalError>} replay - Replays the canonical
+ *   cut together with the joining records authored so far.
  */
 
 /**
  * @param {EstablishJoiningOccurrencesOptions} options
- * @returns {JoiningOccurrences | JournalError}
+ * @returns {Promise<JoiningOccurrences | JournalError>}
  */
-function establishJoiningOccurrences(options) {
+async function establishJoiningOccurrences(options) {
     const { legacyState, canonicalOccurrences, cursor, replay } = options;
     // Pass J1: one occurrence per materialized joining node.
     /** @type {Map<string, JournalRecordId>} */
@@ -118,7 +118,7 @@ function establishJoiningOccurrences(options) {
         locallyAuthored.add(key);
     }
 
-    const afterValues = replay();
+    const afterValues = await replay();
     if (afterValues instanceof Error) {
         return afterValues;
     }

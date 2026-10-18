@@ -90,8 +90,8 @@ function sourceOf(streams) {
  * @param {object} source
  * @returns {object}
  */
-function planAgainst(source) {
-    return planForeignSuffixImport({
+async function planAgainst(source) {
+    return await planForeignSuffixImport({
         receiver: sourceOf([]),
         source,
         localWriter: makeJournalAuthor(WRITER_B),
@@ -100,7 +100,7 @@ function planAgainst(source) {
 }
 
 describe("planForeignSuffixImport, the complete union frontier", () => {
-    test("a record may name a later-sorting imported writer the union will retain", () => {
+    test("a record may name a later-sorting imported writer the union will retain", async () => {
         // `A:1` observes `C:1`, and `C` sorts after `A`. The union of the receiver
         // (empty) and both imported suffixes retains `C:1`, so the plan must accept
         // the source rather than reject it because `C` has not been read yet.
@@ -109,7 +109,7 @@ describe("planForeignSuffixImport, the complete union frontier", () => {
             [WRITER_C, [value(WRITER_C + ":1", [], 90)]],
         ]);
 
-        const plan = planAgainst(source);
+        const plan = await planAgainst(source);
         expect(isImportPlan(plan)).toBe(true);
         if (!isImportPlan(plan)) {
             return;
@@ -117,7 +117,7 @@ describe("planForeignSuffixImport, the complete union frontier", () => {
         expect(plan.suffixes.map((suffix) => suffix.author)).toHaveLength(2);
     });
 
-    test("a context coordinate the union does not retain is still rejected", () => {
+    test("a context coordinate the union does not retain is still rejected", async () => {
         // `A:1` observes `C:5`, but the source retains only `C:1`. Completing the
         // frontier must not turn an out-of-range claim into an accepted one.
         const source = sourceOf([
@@ -125,7 +125,7 @@ describe("planForeignSuffixImport, the complete union frontier", () => {
             [WRITER_C, [value(WRITER_C + ":1", [], 90)]],
         ]);
 
-        const plan = planAgainst(source);
+        const plan = await planAgainst(source);
         expect("error" in plan).toBe(true);
         if (!("error" in plan)) {
             return;

@@ -198,9 +198,9 @@ function canonicalCohort() {
 }
 
 describe("canonical creator resume of the §6 procedure", () => {
-    test("installs exactly the artifact's own cut and reconstructs its state", () => {
+    test("installs exactly the artifact's own cut and reconstructs its state", async () => {
         const { legacyState, artifact } = canonicalCohort();
-        const resumed = resumeCanonicalBootstrapCreator({
+        const resumed = await resumeCanonicalBootstrapCreator({
             legacyState,
             artifact,
             localWriter: makeJournalAuthor(CREATOR),
@@ -220,9 +220,9 @@ describe("canonical creator resume of the §6 procedure", () => {
         ]);
     });
 
-    test("a different fingerprint cannot use creator-resume", () => {
+    test("a different fingerprint cannot use creator-resume", async () => {
         const { legacyState, artifact } = canonicalCohort();
-        const refused = resumeCanonicalBootstrapCreator({
+        const refused = await resumeCanonicalBootstrapCreator({
             legacyState,
             artifact,
             localWriter: makeJournalAuthor(JOINER),
@@ -232,7 +232,7 @@ describe("canonical creator resume of the §6 procedure", () => {
         expect(String(refused)).toContain("joining path");
     });
 
-    test("a persisted payload the artifact does not hold is a fork", () => {
+    test("a persisted payload the artifact does not hold is a fork", async () => {
         const { artifact } = canonicalCohort();
         const divergent = sourceOf(
             persistedState([
@@ -244,7 +244,7 @@ describe("canonical creator resume of the §6 procedure", () => {
                 }),
             ])
         );
-        const forked = resumeCanonicalBootstrapCreator({
+        const forked = await resumeCanonicalBootstrapCreator({
             legacyState: divergent,
             artifact,
             localWriter: makeJournalAuthor(CREATOR),
@@ -254,7 +254,7 @@ describe("canonical creator resume of the §6 procedure", () => {
         expect(String(forked)).toContain("payload");
     });
 
-    test("a persisted allocator watermark the artifact does not reconstruct is a fork", () => {
+    test("a persisted allocator watermark the artifact does not reconstruct is a fork", async () => {
         const { artifact } = canonicalCohort();
         const divergent = sourceOf(
             persistedState(
@@ -265,7 +265,7 @@ describe("canonical creator resume of the §6 procedure", () => {
                 11
             )
         );
-        const forked = resumeCanonicalBootstrapCreator({
+        const forked = await resumeCanonicalBootstrapCreator({
             legacyState: divergent,
             artifact,
             localWriter: makeJournalAuthor(CREATOR),
@@ -275,12 +275,12 @@ describe("canonical creator resume of the §6 procedure", () => {
         expect(String(forked)).toContain("allocator watermark");
     });
 
-    test("derived freshness is compared, so a fresh persisted flag above a stale input is not a fork", () => {
+    test("derived freshness is compared, so a fresh persisted flag above a stale input is not a fork", async () => {
         const { legacyState, artifact } = canonicalCohort();
         // The source persists node 2 as up to date, yet it projects as stale because
         // its only certified input is legacy-stale. Comparing derived freshness keeps
         // the faithful cut resumable.
-        const resumed = resumeCanonicalBootstrapCreator({
+        const resumed = await resumeCanonicalBootstrapCreator({
             legacyState,
             artifact,
             localWriter: makeJournalAuthor(CREATOR),
@@ -295,7 +295,7 @@ describe("canonical creator resume of the §6 procedure", () => {
         ]);
     });
 
-    test("stale evidence the persisted source implies but the artifact does not record is a fork", () => {
+    test("stale evidence the persisted source implies but the artifact does not record is a fork", async () => {
         const freshCut = sourceOf(
             persistedState([
                 persistedNode(1),
@@ -309,7 +309,7 @@ describe("canonical creator resume of the §6 procedure", () => {
                 persistedNode(2, { modifiedAt: LATE, validInputs: [nodeKeyOf(1)] }),
             ])
         );
-        const forked = resumeCanonicalBootstrapCreator({
+        const forked = await resumeCanonicalBootstrapCreator({
             legacyState: staleSource,
             artifact,
             localWriter: makeJournalAuthor(CREATOR),
@@ -319,7 +319,7 @@ describe("canonical creator resume of the §6 procedure", () => {
         expect(String(forked)).toContain("fresh");
     });
 
-    test("a materialization the artifact omits is a fork rather than a cutover", () => {
+    test("a materialization the artifact omits is a fork rather than a cutover", async () => {
         const { artifact } = canonicalCohort();
         const wider = sourceOf(
             persistedState([
@@ -328,7 +328,7 @@ describe("canonical creator resume of the §6 procedure", () => {
                 persistedNode(3, { modifiedAt: MIDDLE }),
             ])
         );
-        const forked = resumeCanonicalBootstrapCreator({
+        const forked = await resumeCanonicalBootstrapCreator({
             legacyState: wider,
             artifact,
             localWriter: makeJournalAuthor(CREATOR),
@@ -340,7 +340,7 @@ describe("canonical creator resume of the §6 procedure", () => {
 });
 
 describe("joining the canonical bootstrap of §7", () => {
-    test("an exact-shared occurrence keeps its canonical ValueId and authors no value", () => {
+    test("an exact-shared occurrence keeps its canonical ValueId and authors no value", async () => {
         const { artifact } = canonicalCohort();
         const joining = sourceOf(
             persistedState(
@@ -351,7 +351,7 @@ describe("joining the canonical bootstrap of §7", () => {
                 9
             )
         );
-        const joined = joinCanonicalBootstrap({
+        const joined = await joinCanonicalBootstrap({
             legacyState: joining,
             artifact,
             joiningWriter: makeJournalAuthor(JOINER),
@@ -377,7 +377,7 @@ describe("joining the canonical bootstrap of §7", () => {
         }
     });
 
-    test("a joining-only node becomes a historical value under the §7.1 context exception", () => {
+    test("a joining-only node becomes a historical value under the §7.1 context exception", async () => {
         const { artifact } = canonicalCohort();
         const joining = sourceOf(
             persistedState(
@@ -390,7 +390,7 @@ describe("joining the canonical bootstrap of §7", () => {
                 9
             )
         );
-        const joined = joinCanonicalBootstrap({
+        const joined = await joinCanonicalBootstrap({
             legacyState: joining,
             artifact,
             joiningWriter: makeJournalAuthor(JOINER),
@@ -437,7 +437,7 @@ describe("joining the canonical bootstrap of §7", () => {
         expect(joined.records.some((record) => record.kind === "delete")).toBe(false);
     });
 
-    test("a conflicting joining occurrence wins ordinary authority and survives", () => {
+    test("a conflicting joining occurrence wins ordinary authority and survives", async () => {
         const { artifact } = canonicalCohort();
         const joining = sourceOf(
             persistedState(
@@ -448,7 +448,7 @@ describe("joining the canonical bootstrap of §7", () => {
                 9
             )
         );
-        const joined = joinCanonicalBootstrap({
+        const joined = await joinCanonicalBootstrap({
             legacyState: joining,
             artifact,
             joiningWriter: makeJournalAuthor(JOINER),
@@ -464,7 +464,7 @@ describe("joining the canonical bootstrap of §7", () => {
         expect(journalAuthorToString(selected.valueId.author)).toBe(JOINER);
     });
 
-    test("local proof names the joining occurrences it depended on, with the source's stale evidence", () => {
+    test("local proof names the joining occurrences it depended on, with the source's stale evidence", async () => {
         const { artifact } = canonicalCohort();
         const joining = sourceOf(
             persistedState([
@@ -476,7 +476,7 @@ describe("joining the canonical bootstrap of §7", () => {
                 }),
             ], 9)
         );
-        const joined = joinCanonicalBootstrap({
+        const joined = await joinCanonicalBootstrap({
             legacyState: joining,
             artifact,
             joiningWriter: makeJournalAuthor(JOINER),
@@ -500,7 +500,7 @@ describe("joining the canonical bootstrap of §7", () => {
         );
     });
 
-    test("a losing joining input occurrence retires the local proof edge instead of manufacturing it", () => {
+    test("a losing joining input occurrence retires the local proof edge instead of manufacturing it", async () => {
         const { artifact } = canonicalCohort();
         const joining = sourceOf(
             persistedState(
@@ -518,7 +518,7 @@ describe("joining the canonical bootstrap of §7", () => {
                 9
             )
         );
-        const joined = joinCanonicalBootstrap({
+        const joined = await joinCanonicalBootstrap({
             legacyState: joining,
             artifact,
             joiningWriter: makeJournalAuthor(JOINER),
@@ -543,7 +543,7 @@ describe("joining the canonical bootstrap of §7", () => {
         expect([...selectedSecond.validInputs]).toEqual([]);
     });
 
-    test("a locally authored stale occurrence carries its own persisted stale evidence", () => {
+    test("a locally authored stale occurrence carries its own persisted stale evidence", async () => {
         const { artifact } = canonicalCohort();
         const joining = sourceOf(
             persistedState(
@@ -559,7 +559,7 @@ describe("joining the canonical bootstrap of §7", () => {
                 9
             )
         );
-        const joined = joinCanonicalBootstrap({
+        const joined = await joinCanonicalBootstrap({
             legacyState: joining,
             artifact,
             joiningWriter: makeJournalAuthor(JOINER),
@@ -592,7 +592,7 @@ describe("joining the canonical bootstrap of §7", () => {
         expect(selected.fresh).toBe(false);
     });
 
-    test("a canonical-only validity edge becomes a proof-scoped barrier", () => {
+    test("a canonical-only validity edge becomes a proof-scoped barrier", async () => {
         const { artifact } = canonicalCohort();
         const joining = sourceOf(
             persistedState(
@@ -603,7 +603,7 @@ describe("joining the canonical bootstrap of §7", () => {
                 9
             )
         );
-        const joined = joinCanonicalBootstrap({
+        const joined = await joinCanonicalBootstrap({
             legacyState: joining,
             artifact,
             joiningWriter: makeJournalAuthor(JOINER),
@@ -624,7 +624,7 @@ describe("joining the canonical bootstrap of §7", () => {
         expect([...selectedSecond.validInputs]).toEqual([]);
     });
 
-    test("shared stale evidence is the conservative OR of both sides", () => {
+    test("shared stale evidence is the conservative OR of both sides", async () => {
         const freshCohort = sourceOf(
             persistedState([
                 persistedNode(1),
@@ -641,7 +641,7 @@ describe("joining the canonical bootstrap of §7", () => {
                 9
             )
         );
-        const joined = joinCanonicalBootstrap({
+        const joined = await joinCanonicalBootstrap({
             legacyState: joining,
             artifact,
             joiningWriter: makeJournalAuthor(JOINER),
@@ -666,7 +666,7 @@ describe("joining the canonical bootstrap of §7", () => {
         ).toBe(true);
     });
 
-    test("recursive-only staleness is persisted for a dependent of a stale occurrence", () => {
+    test("recursive-only staleness is persisted for a dependent of a stale occurrence", async () => {
         const { artifact } = canonicalCohort();
         const joining = sourceOf(
             persistedState(
@@ -677,7 +677,7 @@ describe("joining the canonical bootstrap of §7", () => {
                 9
             )
         );
-        const joined = joinCanonicalBootstrap({
+        const joined = await joinCanonicalBootstrap({
             legacyState: joining,
             artifact,
             joiningWriter: makeJournalAuthor(JOINER),
@@ -696,7 +696,7 @@ describe("joining the canonical bootstrap of §7", () => {
         expect(journalAuthorToString(second[0].scope.value.author)).toBe(CREATOR);
     });
 
-    test("the joining writer keeps its own identity and allocator state", () => {
+    test("the joining writer keeps its own identity and allocator state", async () => {
         const { artifact } = canonicalCohort();
         const joining = sourceOf(
             persistedState(
@@ -708,7 +708,7 @@ describe("joining the canonical bootstrap of §7", () => {
                 9
             )
         );
-        const joined = joinCanonicalBootstrap({
+        const joined = await joinCanonicalBootstrap({
             legacyState: joining,
             artifact,
             joiningWriter: makeJournalAuthor(JOINER),
@@ -730,9 +730,9 @@ describe("joining the canonical bootstrap of §7", () => {
         );
     });
 
-    test("a joining fingerprint which authored the canonical cut cannot join it", () => {
+    test("a joining fingerprint which authored the canonical cut cannot join it", async () => {
         const { legacyState, artifact } = canonicalCohort();
-        const refused = joinCanonicalBootstrap({
+        const refused = await joinCanonicalBootstrap({
             legacyState,
             artifact,
             joiningWriter: makeJournalAuthor(CREATOR),
@@ -762,7 +762,7 @@ describe("what the consumers do with an arbitration outcome", () => {
             },
         });
         expect(outcome.operation).toBe("join-canonical-bootstrap");
-        const refused = resumeCanonicalBootstrapCreator({
+        const refused = await resumeCanonicalBootstrapCreator({
             legacyState,
             artifact: outcome.artifact,
             localWriter: makeJournalAuthor(CREATOR),
@@ -810,7 +810,7 @@ describe("what the consumers do with an arbitration outcome", () => {
             stageCandidate: () => candidate,
         });
         expect(outcome.kind).toBe("cut-over-to-local-creator");
-        const resumed = resumeCanonicalBootstrapCreator({
+        const resumed = await resumeCanonicalBootstrapCreator({
             legacyState,
             artifact: outcome.artifact,
             localWriter: makeJournalAuthor(CREATOR),

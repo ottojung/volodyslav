@@ -22,6 +22,7 @@ const {
     makeJournalAuthor,
     makeJournalFrontierFromText,
     makeJournalReplica,
+    makeReplicaSource,
     makeValidateEvent,
     makeValueEvent,
     makeValidationBasisEntry,
@@ -33,8 +34,6 @@ const {
     SnapshotIdentityClass,
     synchronizeRetainedJournal,
 } = require("../src/generators/incremental_graph/journal_sync");
-
-const { makeReplicaSource } = require("../src/generators/incremental_graph/journal/oracle/record_source");
 
 const {
     buildRetainedReplayState,
@@ -227,8 +226,8 @@ function committedAfter(records, localWriter, authorityPhysical) {
  * @param {string} localWriter
  * @returns {import("../src/generators/incremental_graph/journal_retained").RetainedReplayState}
  */
-function retainedStateOf(receiver, localWriter) {
-    const built = buildRetainedReplayState({
+async function retainedStateOf(receiver, localWriter) {
+    const built = await buildRetainedReplayState({
         source: makeReplicaSource(replicaOf(receiver)),
         localWriter: makeJournalAuthor(localWriter),
         currentInputKeysOfNode: chainInputs,
@@ -265,9 +264,9 @@ function makePublicationClock() {
  * @param {() => number} options.nextInstant
  * @returns {{outcome: import("../src/generators/incremental_graph/journal_sync").SyncOutcome} | {error: import("../src/generators/incremental_graph/journal").JournalError}}
  */
-function synchronize(options) {
+async function synchronize(options) {
     const identity = new SnapshotIdentityClass("v1", "scheme");
-    return synchronizeRetainedJournal({
+    return await synchronizeRetainedJournal({
         receiver: makeReplicaSource(replicaOf(options.receiver)),
         source: makeReplicaSource(replicaOf(options.source)),
         localWriter: makeJournalAuthor(options.localWriter),
@@ -277,7 +276,7 @@ function synchronize(options) {
         currentInputKeysOfNode: chainInputs,
         receiverIdentity: identity,
         sourceIdentity: identity,
-        retainedState: retainedStateOf(options.receiver, options.localWriter),
+        retainedState: await retainedStateOf(options.receiver, options.localWriter),
     });
 }
 
@@ -347,8 +346,8 @@ function projectionsEquivalent(left, right) {
  * @param {string} localWriter
  * @returns {import("../src/generators/incremental_graph/journal/oracle/projection").Projection}
  */
-function projectionOf(records, localWriter) {
-    const state = retainedStateOf(records, localWriter);
+async function projectionOf(records, localWriter) {
+    const state = await retainedStateOf(records, localWriter);
     const { projectRetainedReplay } = require("../src/generators/incremental_graph/journal_retained");
     const projected = projectRetainedReplay(state);
     if ("error" in projected) {
@@ -435,7 +434,7 @@ function generateQuiescentState(count, random) {
  * @param {() => number} nextInstant
  * @returns {{rounds: number, totalSyncs: number}}
  */
-function convergeFair(replicas, nextInstant) {
+async function convergeFair(replicas, nextInstant) {
     let rounds = 0;
     let totalSyncs = 0;
     let changed = true;
@@ -448,7 +447,7 @@ function convergeFair(replicas, nextInstant) {
                     continue;
                 }
                 totalSyncs += 1;
-                const result = synchronize({
+                const result = await synchronize({
                     receiver: replicas[receiver].records,
                     source: replicas[source].records,
                     localWriter: replicas[receiver].writer,
@@ -475,7 +474,7 @@ function convergeFair(replicas, nextInstant) {
  * @param {() => number} nextInstant
  * @returns {{stateAdvancingCount: number, totalSyncs: number}}
  */
-function settlingSchedule(replicas, collectorIndex, nextInstant) {
+async function settlingSchedule(replicas, collectorIndex, nextInstant) {
     let stateAdvancingCount = 0;
     let totalSyncs = 0;
     const count = replicas.length;
@@ -485,7 +484,7 @@ function settlingSchedule(replicas, collectorIndex, nextInstant) {
             continue;
         }
         totalSyncs += 1;
-        const result = synchronize({
+        const result = await synchronize({
             receiver: replicas[collectorIndex].records,
             source: replicas[i].records,
             localWriter: replicas[collectorIndex].writer,
@@ -504,7 +503,7 @@ function settlingSchedule(replicas, collectorIndex, nextInstant) {
             continue;
         }
         totalSyncs += 1;
-        const result = synchronize({
+        const result = await synchronize({
             receiver: replicas[i].records,
             source: replicas[collectorIndex].records,
             localWriter: replicas[i].writer,
@@ -536,53 +535,59 @@ function seededRandom(seed) {
 }
 
 describe("synchronization convergence", () => {
-    test("fair-order synchronization of 2 replicas converges to equivalent projections", () => {
+    test("fair-order synchronization of 2 replicas converges to equivalent projections", async () => {
         const nextInstant = makePublicationClock();
         const replicas = generateQuiescentState(2, seededRandom(42));
-        const { rounds } = convergeFair(replicas, nextInstant);
+        const { rounds } = await convergeFair(replicas, nextInstant);
 
         expect(rounds).toBeGreaterThan(0);
-        const projections = replicas.map((replica) => projectionOf(replica.records, replica.writer));
+        const projections = await Promise.all(
+            replicas.map((replica) => projectionOf(replica.records, replica.writer))
+        );
         for (let i = 1; i < projections.length; i += 1) {
             expect(projectionsEquivalent(projections[0], projections[i])).toBe(true);
         }
     });
 
-    test("fair-order synchronization of 3 replicas converges to equivalent projections", () => {
+    test("fair-order synchronization of 3 replicas converges to equivalent projections", async () => {
         const nextInstant = makePublicationClock();
         const replicas = generateQuiescentState(3, seededRandom(1234));
-        const { rounds } = convergeFair(replicas, nextInstant);
+        const { rounds } = await convergeFair(replicas, nextInstant);
 
         expect(rounds).toBeGreaterThan(0);
-        const projections = replicas.map((replica) => projectionOf(replica.records, replica.writer));
+        const projections = await Promise.all(
+            replicas.map((replica) => projectionOf(replica.records, replica.writer))
+        );
         for (let i = 1; i < projections.length; i += 1) {
             expect(projectionsEquivalent(projections[0], projections[i])).toBe(true);
         }
     });
 
-    test("fair-order synchronization of 4 replicas converges to equivalent projections", () => {
+    test("fair-order synchronization of 4 replicas converges to equivalent projections", async () => {
         const nextInstant = makePublicationClock();
         const replicas = generateQuiescentState(4, seededRandom(9876));
-        const { rounds } = convergeFair(replicas, nextInstant);
+        const { rounds } = await convergeFair(replicas, nextInstant);
 
         expect(rounds).toBeGreaterThan(0);
-        const projections = replicas.map((replica) => projectionOf(replica.records, replica.writer));
+        const projections = await Promise.all(
+            replicas.map((replica) => projectionOf(replica.records, replica.writer))
+        );
         for (let i = 1; i < projections.length; i += 1) {
             expect(projectionsEquivalent(projections[0], projections[i])).toBe(true);
         }
     });
 
-    test("after convergence, every pairwise synchronization is a semantic no-op", () => {
+    test("after convergence, every pairwise synchronization is a semantic no-op", async () => {
         const nextInstant = makePublicationClock();
         const replicas = generateQuiescentState(3, seededRandom(555));
-        convergeFair(replicas, nextInstant);
+        await convergeFair(replicas, nextInstant);
 
         for (let receiver = 0; receiver < replicas.length; receiver += 1) {
             for (let source = 0; source < replicas.length; source += 1) {
                 if (receiver === source) {
                     continue;
                 }
-                const result = synchronize({
+                const result = await synchronize({
                     receiver: replicas[receiver].records,
                     source: replicas[source].records,
                     localWriter: replicas[receiver].writer,
@@ -596,64 +601,72 @@ describe("synchronization convergence", () => {
         }
     });
 
-    test("the settling schedule for H=2 settles within 2 state-advancing synchronizations", () => {
+    test("the settling schedule for H=2 settles within 2 state-advancing synchronizations", async () => {
         const nextInstant = makePublicationClock();
         const replicas = generateQuiescentState(2, seededRandom(777));
-        const { stateAdvancingCount } = settlingSchedule(replicas, 0, nextInstant);
+        const { stateAdvancingCount } = await settlingSchedule(replicas, 0, nextInstant);
 
         expect(stateAdvancingCount).toBeLessThanOrEqual(2);
-        const projections = replicas.map((replica) => projectionOf(replica.records, replica.writer));
+        const projections = await Promise.all(
+            replicas.map((replica) => projectionOf(replica.records, replica.writer))
+        );
         expect(projectionsEquivalent(projections[0], projections[1])).toBe(true);
     });
 
-    test("the settling schedule for H=3 settles within 4 state-advancing synchronizations", () => {
+    test("the settling schedule for H=3 settles within 4 state-advancing synchronizations", async () => {
         const nextInstant = makePublicationClock();
         const replicas = generateQuiescentState(3, seededRandom(888));
-        const { stateAdvancingCount } = settlingSchedule(replicas, 0, nextInstant);
+        const { stateAdvancingCount } = await settlingSchedule(replicas, 0, nextInstant);
 
         expect(stateAdvancingCount).toBeLessThanOrEqual(4);
-        const projections = replicas.map((replica) => projectionOf(replica.records, replica.writer));
+        const projections = await Promise.all(
+            replicas.map((replica) => projectionOf(replica.records, replica.writer))
+        );
         for (let i = 1; i < projections.length; i += 1) {
             expect(projectionsEquivalent(projections[0], projections[i])).toBe(true);
         }
     });
 
-    test("the settling schedule for H=4 settles within 6 state-advancing synchronizations", () => {
+    test("the settling schedule for H=4 settles within 6 state-advancing synchronizations", async () => {
         const nextInstant = makePublicationClock();
         const replicas = generateQuiescentState(4, seededRandom(999));
-        const { stateAdvancingCount } = settlingSchedule(replicas, 0, nextInstant);
+        const { stateAdvancingCount } = await settlingSchedule(replicas, 0, nextInstant);
 
         expect(stateAdvancingCount).toBeLessThanOrEqual(6);
-        const projections = replicas.map((replica) => projectionOf(replica.records, replica.writer));
+        const projections = await Promise.all(
+            replicas.map((replica) => projectionOf(replica.records, replica.writer))
+        );
         for (let i = 1; i < projections.length; i += 1) {
             expect(projectionsEquivalent(projections[0], projections[i])).toBe(true);
         }
     });
 
-    test("the settling schedule reaches equivalent projections for every choice of collector", () => {
+    test("the settling schedule reaches equivalent projections for every choice of collector", async () => {
         for (let collector = 0; collector < 3; collector += 1) {
             const nextInstant = makePublicationClock();
             const replicas = generateQuiescentState(3, seededRandom(1000 + collector));
-            settlingSchedule(replicas, collector, nextInstant);
+            await settlingSchedule(replicas, collector, nextInstant);
 
-            const projections = replicas.map((replica) => projectionOf(replica.records, replica.writer));
+            const projections = await Promise.all(
+            replicas.map((replica) => projectionOf(replica.records, replica.writer))
+        );
             for (let i = 1; i < projections.length; i += 1) {
                 expect(projectionsEquivalent(projections[0], projections[i])).toBe(true);
             }
         }
     });
 
-    test("after the settling schedule, another complete synchronization round is a semantic no-op", () => {
+    test("after the settling schedule, another complete synchronization round is a semantic no-op", async () => {
         const nextInstant = makePublicationClock();
         const replicas = generateQuiescentState(3, seededRandom(1111));
-        settlingSchedule(replicas, 0, nextInstant);
+        await settlingSchedule(replicas, 0, nextInstant);
 
         for (let receiver = 0; receiver < replicas.length; receiver += 1) {
             for (let source = 0; source < replicas.length; source += 1) {
                 if (receiver === source) {
                     continue;
                 }
-                const result = synchronize({
+                const result = await synchronize({
                     receiver: replicas[receiver].records,
                     source: replicas[source].records,
                     localWriter: replicas[receiver].writer,

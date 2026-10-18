@@ -270,7 +270,7 @@ describe("Journal 3 §7 lifecycle fault model: physical damage of the local stor
         // The surviving supported history is ahead for the receiver's own writer. The
         // production import plan must refuse before admitting any record, because this
         // is the unsupported rollback state, not a longer peer prefix.
-        const result = planForeignSuffixImport({
+        const result = await planForeignSuffixImport({
             receiver: makeReplicaSource(rolledBack),
             source: makeReplicaSource(surviving),
             localWriter: makeJournalAuthor(localWriter),
