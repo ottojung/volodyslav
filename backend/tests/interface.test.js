@@ -112,7 +112,7 @@ async function continuationSafeSnapshotOf(db) {
             return [];
         }
     };
-    const projection = projectRetainedJournal({
+    const projection = await projectRetainedJournal({
         source: makeReplicaSource(replica),
         localWriter: committed.localWriter,
         currentInputKeysOfNode,

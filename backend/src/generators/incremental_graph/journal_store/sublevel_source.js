@@ -54,7 +54,9 @@ const {
     makeJournalSequence,
     makeJournalSourceReadError,
     readerOverIterable,
+    readerOverRecordSupply,
     tryDecodeJournalRecord,
+    ZERO_JOURNAL_SEQUENCE,
 } = require('../journal');
 const { reconcileRetainedWriterHead } = require('./writer_head');
 const {
@@ -260,52 +262,82 @@ function retainedLengthTexts(lengths) {
 }
 
 /**
- * One writer's retained records, read out of that writer's own record-key range.
+ * A `JournalSource` over one replica's journal sublevel which streams.
  *
- * The range is the one `readRetainedLengths` measured, so this read never touches another
- * writer's records and never scans the whole sublevel. Each stored key is required to
- * agree with the record it holds, so a record filed under a coordinate other than the one
- * its key names is rejected here rather than reaching replay as a prefix the source's
- * declared length contradicts.
+ * The retained lengths come from `readRetainedLengths`, which is one reverse range read
+ * per writer. `prefixReaderOf` builds a fresh reader directly over that writer's own
+ * record-key range, decoding and key-checking one entry at a time as the oracle pulls
+ * it, so no writer's records are materialised as a collection and the complete retained
+ * history is never in RAM at once. A reader bounds itself by the length the source
+ * declared, so a prefix with a hole, a short prefix or an over-long prefix fails inside
+ * the reader exactly as it does over an in-memory supply.
  *
+ * @param {Map<string, JournalSequence>} lengths
  * @param {SimpleSublevel<JournalText, JournalKey>} journalSublevel
- * @param {JournalAuthor} author
- * @returns {Promise<ReadonlyArray<JournalRecord> | JournalError>}
+ * @returns {JournalSource}
  */
-async function readWriterRecords(journalSublevel, author) {
-    const { gte, lte } = recordRangeOf(author);
-    /** @type {JournalRecord[]} */
-    const records = [];
-    for await (const entry of journalSublevel.iterator({ gte, lte })) {
-        const [key, text] = entry;
-        const record = tryDecodeJournalRecord(journalTextToString(text));
-        if (record instanceof Error) {
-            return record;
+function makeStreamingJournalSource(lengths, journalSublevel) {
+    /** @type {Array<JournalAuthor>} */
+    const writers = [];
+    for (const name of [...lengths.keys()].sort()) {
+        const author = makeJournalAuthor(name);
+        if (!(author instanceof Error)) {
+            writers.push(author);
         }
-        const expectedKey = makeJournalRecordKey(author, record.id.sequence);
-        if (expectedKey instanceof Error) {
-            return expectedKey;
-        }
-        if (journalKeyToString(expectedKey) !== journalKeyToString(key)) {
-            return makeJournalSourceReadError(
-                'the journal sublevel key ' + journalKeyToString(key) + ' disagrees with the record it stores'
-            );
-        }
-        records.push(record);
     }
-    return records;
+    return {
+        writers: () => writers,
+        retainedLengthOf(author) {
+            return lengths.get(journalAuthorToString(author));
+        },
+        prefixReaderOf(author) {
+            const name = journalAuthorToString(author);
+            const claimed = lengths.get(name);
+            if (claimed === undefined) {
+                return readerOverRecordSupply(
+                    name,
+                    async () => undefined,
+                    ZERO_JOURNAL_SEQUENCE
+                );
+            }
+            const { gte, lte } = recordRangeOf(author);
+            const iterator = journalSublevel.iterator({ gte, lte })[Symbol.asyncIterator]();
+            return readerOverRecordSupply(name, async () => {
+                const step = await iterator.next();
+                if (step.done === true) {
+                    return undefined;
+                }
+                const [key, text] = step.value;
+                const record = tryDecodeJournalRecord(journalTextToString(text));
+                if (record instanceof Error) {
+                    return record;
+                }
+                const expectedKey = makeJournalRecordKey(author, record.id.sequence);
+                if (expectedKey instanceof Error) {
+                    return expectedKey;
+                }
+                if (journalKeyToString(expectedKey) !== journalKeyToString(key)) {
+                    return makeJournalSourceReadError(
+                        'the journal sublevel key ' +
+                            journalKeyToString(key) +
+                            ' disagrees with the record it stores'
+                    );
+                }
+                return record;
+            }, claimed);
+        },
+    };
 }
 
 /**
  * A `JournalSource` over one replica's journal sublevel, as the production front supplies it.
  *
- * This is the production deployment of `makeSyncJournalSource`: the retained lengths come
- * from `readRetainedLengths`, which is one reverse range read per writer, and each writer's
- * records come from `readWriterRecords`, which is one range read over that writer's own key
- * family. A caller reaches a writer's records only through `prefixReaderOf`, and the
- * complete retained history is never exposed as one collection, so synchronization and
- * reset consume records through the per-writer streaming interface rather than through a
- * materialized `JournalReplica`.
+ * This is the streaming deployment: the retained lengths come from `readRetainedLengths`
+ * and every writer's records are pulled directly from that writer's own range as the
+ * oracle reads them, so `readJournalSource` returns before any record is read and the
+ * complete retained history is never assembled as one collection. A caller reaches a
+ * writer's records only through `prefixReaderOf`, and each call is an independent
+ * traversal, because the oracle makes several passes.
  *
  * @param {SimpleSublevel<JournalText, JournalKey>} journalSublevel - The `journal` sublevel
  *   of the replica to read, which a caller reaches through
@@ -327,58 +359,50 @@ async function readJournalSource(journalSublevel, committed) {
             return lost;
         }
     }
-    /** @type {Map<string, ReadonlyArray<JournalRecord>>} */
-    const recordsByAuthor = new Map();
-    for (const name of [...lengths.keys()].sort()) {
-        const author = makeJournalAuthor(name);
-        if (author instanceof Error) {
-            return author;
-        }
-        const records = await readWriterRecords(journalSublevel, author);
-        if (records instanceof Error) {
-            return records;
-        }
-        recordsByAuthor.set(name, records);
-    }
-    return makeSyncJournalSource(lengths, (author) =>
-        recordsByAuthor.get(journalAuthorToString(author)) ?? []
-    );
+    return makeStreamingJournalSource(lengths, journalSublevel);
 }
 
 /**
- * Every record one source retains, read through the source's own per-writer readers.
+ * Every retained record of a source, delivered to `visit` one at a time.
  *
  * The publication write names the receiver's retained journal as records to keep, so the
- * front needs them once as the operation list it lowers. The read is the source's own read
- * surface rather than a second traversal of the sublevel, so it cannot disagree with what
- * the oracle saw.
+ * front folds each retained record into the operation list it lowers. The fold streams
+ * through the source's own per-writer readers rather than collecting the records first,
+ * so the retained history is never held as a records collection in addition to the
+ * operations the atomic batch itself needs.
+ *
+ * `visit` reports a failure as a value, and the first failure ends the fold. A reader's
+ * own structural failure is reported the same way.
  *
  * @param {JournalSource} source
- * @returns {{records: ReadonlyArray<JournalRecord>} | {error: JournalError}}
+ * @param {(record: JournalRecord) => JournalError | undefined} visit
+ * @returns {Promise<JournalError | undefined>}
  */
-function collectRetainedRecords(source) {
-    /** @type {JournalRecord[]} */
-    const records = [];
+async function forEachRetainedRecord(source, visit) {
     for (const author of source.writers()) {
         const reader = source.prefixReaderOf(author);
         for (;;) {
-            const record = reader.nextRecord();
+            const record = await reader.nextRecord();
             if (record === undefined) {
                 break;
             }
-            records.push(record);
+            const failure = visit(record);
+            if (failure !== undefined) {
+                return failure;
+            }
         }
         const failure = reader.failure();
         if (failure !== undefined) {
-            return { error: failure };
+            return failure;
         }
     }
-    return { records };
+    return undefined;
 }
 
 module.exports = {
-    collectRetainedRecords,
     coordinateTextOf,
+    forEachRetainedRecord,
+    makeStreamingJournalSource,
     makeSyncJournalSource,
     readJournalSource,
     readRetainedLengths,

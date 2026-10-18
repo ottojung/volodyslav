@@ -74,7 +74,7 @@ function made(value) {
 /**
  * The source's single materialized leaf.
  */
-function sourceLeaf() {
+async function sourceLeaf() {
     const record = made(makeValueEvent(
         {
             id: WRITER_PEER + ":1",
@@ -89,7 +89,7 @@ function sourceLeaf() {
         "compute"
     ));
     const journal = makeReplicaSource(made(makeJournalReplica([[WRITER_PEER, [record]]])));
-    const projection = made(projectRetainedJournal({
+    const projection = made(await projectRetainedJournal({
         source: journal,
         localWriter: PEER_AUTHOR,
         currentInputKeysOfNode: () => [],
@@ -105,9 +105,9 @@ function sourceLeaf() {
 /**
  * A reset of an empty receiver to the source's one leaf.
  */
-function resetToLeaf() {
+async function resetToLeaf() {
     const receiver = makeReplicaSource(made(makeJournalReplica([])));
-    const built = buildRetainedReplayState({
+    const built = await buildRetainedReplayState({
         source: receiver,
         localWriter: LOCAL_AUTHOR,
         currentInputKeysOfNode: () => [],
@@ -116,10 +116,10 @@ function resetToLeaf() {
         throw new Error("the receiver fixture has no retained replay state: " + built.error.message);
     }
     mockProjectionCount = 0;
-    return resetToSource({
+    return await resetToSource({
         receiver,
         retainedState: built.state,
-        source: sourceLeaf(),
+        source: await sourceLeaf(),
         localWriter: LOCAL_AUTHOR,
         committed: {
             localWriter: LOCAL_AUTHOR,
@@ -140,8 +140,8 @@ beforeEach(() => {
 });
 
 describe("resetToSource, the projections its passes read", () => {
-    test("Pass 2 reads the post-value-repair cut and the post-barrier cut, and Pass 1 reads none", () => {
-        const result = resetToLeaf();
+    test("Pass 2 reads the post-value-repair cut and the post-barrier cut, and Pass 1 reads none", async () => {
+        const result = await resetToLeaf();
 
         expect("outcome" in result).toBe(true);
         expect(mockProjectionCount).toBe(4);

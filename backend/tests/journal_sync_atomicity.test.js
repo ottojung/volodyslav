@@ -314,7 +314,7 @@ describe('sync exposes Jsync + project(Jsync) in one write', () => {
                     await reopened.getSchemaStorage().global.get(GRAPH_SCHEME_KEY)
                 )
             );
-            const projected = projectRetainedJournal({
+            const projected = await projectRetainedJournal({
                 source: makeReplicaSource(
                     await readRetainedJournalOrThrow(reopened)
                 ),

@@ -205,7 +205,7 @@ function fixtureIndeterminateCohortSource(answer) {
  * @param {string} replicaPath - The fixture's replica directory.
  * @returns {object | Error}
  */
-function fixtureContinuationSafeSnapshot(replicaPath) {
+async function fixtureContinuationSafeSnapshot(replicaPath) {
     const journalDirectory = path.join(replicaPath, "journal");
     /** @type {Map<string, {author: object, records: Array<object>}>} */
     const byAuthor = new Map();
@@ -256,7 +256,7 @@ function fixtureContinuationSafeSnapshot(replicaPath) {
         return writerState;
     }
     const graphSchemeString = readJson(path.join(replicaPath, "global", "graph_scheme"));
-    const projection = projectRetainedJournal({
+    const projection = await projectRetainedJournal({
         source: makeReplicaSource(replica),
         localWriter: writerState.localWriter,
         currentInputKeysOfNode: fixtureInputKeys(graphSchemeString),

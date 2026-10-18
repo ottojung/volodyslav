@@ -177,7 +177,7 @@ async function verifyTargetReplica(targetStorage, targetLookup, graphScheme, loc
         );
     }
 
-    const projection = projectRetainedJournal({
+    const projection = await projectRetainedJournal({
         source: makeReplicaSource(retained),
         localWriter,
         currentInputKeysOfNode: makeCurrentInputKeysOfNode(graphScheme),

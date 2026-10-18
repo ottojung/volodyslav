@@ -185,8 +185,8 @@ function replicaOf(records) {
  *   defaults to the receiver's own.
  * @returns {import("../src/generators/incremental_graph/journal_retained").RetainedReplayState}
  */
-function rebuiltStateOf(records, localWriter = WRITER_LOCAL) {
-    const built = buildRetainedReplayState({
+async function rebuiltStateOf(records, localWriter = WRITER_LOCAL) {
+    const built = await buildRetainedReplayState({
         source: makeReplicaSource(replicaOf(records)),
         localWriter: makeJournalAuthor(localWriter),
         currentInputKeysOfNode: chainInputs,
@@ -222,9 +222,9 @@ function committedAfter(records, authorityPhysical) {
  * @param {number} options.authorityPhysical
  * @param {import("../src/generators/incremental_graph/journal_retained").RetainedReplayState} options.retainedState
  */
-function synchronize(options) {
+async function synchronize(options) {
     const identity = new SnapshotIdentityClass("v1", "scheme");
-    return synchronizeRetainedJournal({
+    return await synchronizeRetainedJournal({
         receiver: makeReplicaSource(replicaOf(options.receiver)),
         source: makeReplicaSource(replicaOf(options.source)),
         localWriter: makeJournalAuthor(WRITER_LOCAL),
@@ -320,11 +320,11 @@ function stateSnapshot(state) {
 }
 
 describe("synchronizeRetainedJournal, a retained replay state which is not the receiver's", () => {
-    test("a state built from a strict prefix of the receiver is refused", () => {
+    test("a state built from a strict prefix of the receiver is refused", async () => {
         const receiver = receiverChain();
-        const stale = rebuiltStateOf(receiver.slice(0, 2));
+        const stale = await rebuiltStateOf(receiver.slice(0, 2));
 
-        const result = synchronize({
+        const result = await synchronize({
             receiver,
             source: [],
             authorityPhysical: 700,
@@ -340,11 +340,11 @@ describe("synchronizeRetainedJournal, a retained replay state which is not the r
         expect(result.error.message).toContain("rebuild/maintenance");
     });
 
-    test("a state which has never seen any retained record is refused", () => {
+    test("a state which has never seen any retained record is refused", async () => {
         const receiver = receiverChain();
-        const stale = rebuiltStateOf([]);
+        const stale = await rebuiltStateOf([]);
 
-        const result = synchronize({
+        const result = await synchronize({
             receiver,
             source: [],
             authorityPhysical: 700,
@@ -354,9 +354,9 @@ describe("synchronizeRetainedJournal, a retained replay state which is not the r
         expect("outcome" in result).toBe(false);
     });
 
-    test("a state which has seen a longer prefix than the receiver retains is refused", () => {
+    test("a state which has seen a longer prefix than the receiver retains is refused", async () => {
         const receiver = receiverChain();
-        const stale = rebuiltStateOf([...receiver, ...materialize({
+        const stale = await rebuiltStateOf([...receiver, ...materialize({
             writer: WRITER_LOCAL,
             sequence: "5",
             node: NODE_D,
@@ -364,7 +364,7 @@ describe("synchronizeRetainedJournal, a retained replay state which is not the r
             basis: [],
         })]);
 
-        const result = synchronize({
+        const result = await synchronize({
             receiver,
             source: [],
             authorityPhysical: 700,
@@ -374,7 +374,7 @@ describe("synchronizeRetainedJournal, a retained replay state which is not the r
         expect("outcome" in result).toBe(false);
     });
 
-    test("a state built for another local writer is refused", () => {
+    test("a state built for another local writer is refused", async () => {
         // The same journal, rebuilt for the peer as its local writer. Its admitted
         // lengths are therefore identical to the receiver's own and every length
         // agrees, but `incremental-graph-journal-replay.md` §Host-local allocation
@@ -385,9 +385,9 @@ describe("synchronizeRetainedJournal, a retained replay state which is not the r
             ...receiverChain(),
             made(makeWriterStateRecord(WRITER_LOCAL + ":5", 42)),
         ];
-        const foreign = rebuiltStateOf(receiver, WRITER_PEER);
+        const foreign = await rebuiltStateOf(receiver, WRITER_PEER);
 
-        const result = synchronize({
+        const result = await synchronize({
             receiver,
             source: [],
             authorityPhysical: 700,
@@ -402,14 +402,14 @@ describe("synchronizeRetainedJournal, a retained replay state which is not the r
         expect(result.error.message).toContain(WRITER_PEER);
     });
 
-    test("the receiver's own allocator watermark is the one the outcome reports", () => {
+    test("the receiver's own allocator watermark is the one the outcome reports", async () => {
         const receiver = [
             ...receiverChain(),
             made(makeWriterStateRecord(WRITER_LOCAL + ":5", 42)),
         ];
-        const own = rebuiltStateOf(receiver);
+        const own = await rebuiltStateOf(receiver);
 
-        const result = synchronize({
+        const result = await synchronize({
             receiver,
             source: [],
             authorityPhysical: 700,
@@ -423,11 +423,11 @@ describe("synchronizeRetainedJournal, a retained replay state which is not the r
         expect(result.outcome.projection.lastNodeIndex).toBe(42);
     });
 
-    test("success means the retained state is the receiver's own, so no node is omitted", () => {
+    test("success means the retained state is the receiver's own, so no node is omitted", async () => {
         const receiver = receiverChain();
-        const correct = rebuiltStateOf(receiver);
+        const correct = await rebuiltStateOf(receiver);
 
-        const result = synchronize({
+        const result = await synchronize({
             receiver,
             source: [],
             authorityPhysical: 700,
@@ -468,7 +468,7 @@ function invalidateOccurrence(occurrence) {
 }
 
 describe("synchronizeRetainedJournal, a failed operation's effect on the caller's state", () => {
-    test("a value-scoped barrier of the caller's state is unchanged when the operation fails", () => {
+    test("a value-scoped barrier of the caller's state is unchanged when the operation fails", async () => {
         // The receiver already holds a value-scoped invalidation of its own `A`
         // occurrence, so its counted summary has the whole `node -> valueId ->
         // coordinate maximum` chain an imported invalidation is admitted into. The
@@ -505,13 +505,13 @@ describe("synchronizeRetainedJournal, a failed operation's effect on the caller'
                 value: WRITER_LOCAL + ":1",
             }),
         ];
-        const state = rebuiltStateOf(receiver);
+        const state = await rebuiltStateOf(receiver);
         const before = stateSnapshot(state);
         expect(before.valueScoped).toEqual([
             [KEY_A, [[WRITER_LOCAL + ":1", [[WRITER_LOCAL, "5"]]]]],
         ]);
 
-        const result = synchronize({
+        const result = await synchronize({
             receiver,
             source: conflicting,
             authorityPhysical: 700,
@@ -526,7 +526,7 @@ describe("synchronizeRetainedJournal, a failed operation's effect on the caller'
         expect(stateSnapshot(state)).toEqual(before);
     });
 
-    test("a state is unchanged when the operation fails while projecting", () => {
+    test("a state is unchanged when the operation fails while projecting", async () => {
         // The peer materializes the unrelated leaf `D` under the physical identifier
         // the receiver's own `A` already holds, so the cut fails on
         // `validateNodeIdentifierDistinctness` after the import has been staged.
@@ -539,10 +539,10 @@ describe("synchronizeRetainedJournal, a failed operation's effect on the caller'
             basis: [],
             identifier: identifierOf(KEY_A),
         });
-        const state = rebuiltStateOf(receiver);
+        const state = await rebuiltStateOf(receiver);
         const before = stateSnapshot(state);
 
-        const result = synchronize({
+        const result = await synchronize({
             receiver,
             source: conflicting,
             authorityPhysical: 700,
@@ -557,7 +557,7 @@ describe("synchronizeRetainedJournal, a failed operation's effect on the caller'
         expect(stateSnapshot(state)).toEqual(before);
     });
 
-    test("the state a failed operation left behind still describes the receiver", () => {
+    test("the state a failed operation left behind still describes the receiver", async () => {
         const receiver = receiverChain();
         const conflicting = materialize({
             writer: WRITER_PEER,
@@ -567,9 +567,9 @@ describe("synchronizeRetainedJournal, a failed operation's effect on the caller'
             basis: [],
             identifier: identifierOf(KEY_A),
         });
-        const state = rebuiltStateOf(receiver);
+        const state = await rebuiltStateOf(receiver);
 
-        synchronize({
+        await synchronize({
             receiver,
             source: conflicting,
             authorityPhysical: 700,
@@ -579,7 +579,7 @@ describe("synchronizeRetainedJournal, a failed operation's effect on the caller'
         // The same state, handed to a synchronization which has nothing to do, still
         // projects the receiver's own journal rather than the failed operation's
         // partially staged one.
-        const after = synchronize({
+        const after = await synchronize({
             receiver,
             source: [],
             authorityPhysical: 700,
@@ -594,7 +594,7 @@ describe("synchronizeRetainedJournal, a failed operation's effect on the caller'
             .toEqual([KEY_A, KEY_B]);
     });
 
-    test("a successful operation does reach the caller's own state", () => {
+    test("a successful operation does reach the caller's own state", async () => {
         const receiver = receiverChain();
         const peerAddsD = materialize({
             writer: WRITER_PEER,
@@ -603,9 +603,9 @@ describe("synchronizeRetainedJournal, a failed operation's effect on the caller'
             context: [[WRITER_LOCAL, "4"]],
             basis: [],
         });
-        const state = rebuiltStateOf(receiver);
+        const state = await rebuiltStateOf(receiver);
 
-        const result = synchronize({
+        const result = await synchronize({
             receiver,
             source: peerAddsD,
             authorityPhysical: 700,
