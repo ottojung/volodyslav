@@ -46,12 +46,23 @@
 /** @typedef {import('../journal/types').JournalSequence} JournalSequence */
 /** @typedef {import('../journal/types').NodeKey} NodeKey */
 
+/**
+ * The compact summary of one admitted record retained by the index. It records
+ * only what `validateAdmittedReference` needs to resolve a reference — whether
+ * the coordinate holds a `ValueEvent` and, when it does, that event's node — so
+ * the index never retains a record's payload.
+ *
+ * @typedef {{ isValue: true, node: NodeKey } | { isValue: false, node: undefined }} AdmittedRecordSummary
+ */
+
 const {
     authorityCompare,
     compareJournalSequence,
+    isInvalidateEvent,
     isSameJournalAuthor,
     isSemanticEvent,
     isValidateEvent,
+    isValueEvent,
     journalAuthorToString,
     journalRecordIdToString,
     journalSequenceAtFrontier,
@@ -102,16 +113,26 @@ function referenceIsObserved(event, referenced) {
 /**
  * The ValueId coordinates one record names, or an empty array when it names none.
  *
- * Both occurrence-referencing invalidation scopes name a ValueId: a value scope
- * and a proof scope both retire something about the named occurrence. Only the
- * node scope names no coordinate.
+ * A validation names its target occurrence and, for every explicit input, the
+ * occurrence it used as that input; `incremental-graph-journal-well-formedness.md`
+ * section Validation basis rules items 4 and 5 require each non-`"unknown"` basis
+ * value to be a retained ValueEvent of the declared input node that happened-before
+ * the validation, so every basis occurrence is a coordinate the record names. A
+ * value scope and a proof scope both name a ValueId: they retire something about
+ * the named occurrence. Only the node scope names no coordinate.
  *
  * @param {JournalRecord} record
  * @returns {ReadonlyArray<JournalRecordId>}
  */
 function referencedIdsOf(record) {
     if (isValidateEvent(record)) {
-        return [record.value];
+        const references = [record.value];
+        for (const entry of record.basis) {
+            if (entry.value !== "unknown") {
+                references.push(entry.value);
+            }
+        }
+        return references;
     }
     if (record.kind === "invalidate" && record.scope.kind !== "node") {
         return [record.scope.value];
@@ -240,6 +261,19 @@ class AdmittedIndexClass {
     constructor() {
         /** @type {Map<string, Array<AdmittedWriterMaximum>>} */
         this.byWriter = new Map();
+        /** @type {Map<string, AdmittedRecordSummary>} */
+        this.byId = new Map();
+    }
+
+    /**
+     * The compact summary of the admitted record at one coordinate, or `undefined`
+     * when the change set does not hold it.
+     *
+     * @param {JournalRecordId} id
+     * @returns {AdmittedRecordSummary | undefined}
+     */
+    recordOf(id) {
+        return this.byId.get(journalRecordIdToString(id));
     }
 
     /**
@@ -247,6 +281,12 @@ class AdmittedIndexClass {
      * @returns {void}
      */
     add(record) {
+        this.byId.set(
+            journalRecordIdToString(record.id),
+            isValueEvent(record)
+                ? { isValue: true, node: record.node }
+                : { isValue: false, node: undefined }
+        );
         if (!isSemanticEvent(record)) {
             return;
         }
@@ -401,20 +441,109 @@ function makeAdmittedIndex() {
 }
 
 /**
- * Check one admitted record's transitive closure and authority extension against
- * the complete admitted-relations index.
+ * Check that a ValueId one admitted record names resolves to a `ValueEvent` of
+ * the expected node.
+ *
+ * A coordinate beyond the union frontier is not retained at all, so the
+ * reference is impossible and is rejected. A coordinate at or below the frontier
+ * which the change set does not hold is a retained-prefix coordinate whose
+ * record was validated when the receiver admitted it, so this operation does not
+ * rescan it. A coordinate the change set does hold is resolved directly: it must
+ * be a `ValueEvent` of the node the reference declares, exactly as whole-history
+ * validation requires. Resolving an admitted coordinate visits one admitted
+ * record and never retained history, so the check stays change-bounded.
+ *
+ * @param {SemanticEvent} event
+ * @param {JournalRecordId} referenceId
+ * @param {NodeKey} expectedNode
+ * @param {JournalFrontier} frontier
+ * @param {AdmittedIndexClass} index
+ * @returns {JournalError | undefined}
+ */
+function validateAdmittedReference(event, referenceId, expectedNode, frontier, index) {
+    const label = journalRecordIdToString(event.id);
+    if (compareJournalSequence(
+        referenceId.sequence,
+        journalSequenceAtFrontier(frontier, referenceId.author)
+    ) > 0) {
+        return makeJournalRecordValidationError("referenced ValueId is not retained", label);
+    }
+    const resolved = index.recordOf(referenceId);
+    if (resolved === undefined) {
+        return undefined;
+    }
+    if (!resolved.isValue) {
+        return makeJournalRecordValidationError(
+            "referenced ValueId is not a ValueEvent",
+            label
+        );
+    }
+    if (nodeKeyToCanonicalString(resolved.node) !== nodeKeyToCanonicalString(expectedNode)) {
+        return makeJournalRecordValidationError(
+            "referenced ValueId belongs to another semantic node",
+            label
+        );
+    }
+    return undefined;
+}
+
+/**
+ * Check the self-described references of one admitted record against the
+ * admitted change set.
+ *
+ * A validation names its target occurrence and, for each explicit input, the
+ * occurrence it used as that input; a value- or proof-scoped invalidation names
+ * the occurrence it retires. Each is a `ValueEvent` of the record's own node (or
+ * of the named input) in whole-history well-formedness, so each is resolved here
+ * for the coordinates the change set holds.
+ *
+ * @param {SemanticEvent} event
+ * @param {JournalFrontier} frontier
+ * @param {AdmittedIndexClass} index
+ * @returns {JournalError | undefined}
+ */
+function validateAdmittedReferences(event, frontier, index) {
+    if (isValidateEvent(event)) {
+        const target = validateAdmittedReference(event, event.value, event.node, frontier, index);
+        if (target !== undefined) {
+            return target;
+        }
+        for (const entry of event.basis) {
+            if (entry.value === "unknown") {
+                continue;
+            }
+            const basis = validateAdmittedReference(event, entry.value, entry.input, frontier, index);
+            if (basis !== undefined) {
+                return basis;
+            }
+        }
+        return undefined;
+    }
+    if (isInvalidateEvent(event) && event.scope.kind !== "node") {
+        return validateAdmittedReference(event, event.scope.value, event.node, frontier, index);
+    }
+    return undefined;
+}
+
+/**
+ * Check one admitted record's transitive closure, authority extension and
+ * self-described references against the complete admitted-relations index.
  *
  * This is the relation-shaped half of the bounded validation contract; the
  * per-record half is `validateImportedRecord`. It must be evaluated against an
  * index built from the complete admitted change set, so a record which claims a
  * coordinate of a writer admitted later in the same operation is checked against
- * it. It visits only the one record and the index.
+ * it. The union frontier is the receiver's retained lengths joined with the
+ * imported suffixes, so a reference the change set does not hold can still be
+ * classified as retained-prefix or unretained. It visits only the one record and
+ * the index.
  *
  * @param {JournalRecord} record
  * @param {AdmittedIndex} index
+ * @param {JournalFrontier} frontier - The union frontier including every admitted suffix.
  * @returns {JournalError | undefined}
  */
-function validateAdmittedRelations(record, index) {
+function validateAdmittedRelations(record, index, frontier) {
     if (!isSemanticEvent(record)) {
         return undefined;
     }
@@ -422,7 +551,11 @@ function validateAdmittedRelations(record, index) {
     if (closure !== undefined) {
         return closure;
     }
-    return validateAdmittedAuthority(record, index);
+    const authority = validateAdmittedAuthority(record, index);
+    if (authority !== undefined) {
+        return authority;
+    }
+    return validateAdmittedReferences(record, frontier, index);
 }
 
 module.exports = {
