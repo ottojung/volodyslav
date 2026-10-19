@@ -13,18 +13,19 @@ class DateTimeClass {
         if (this.__brand !== undefined) {
             throw new Error("DateTime is nominal");
         }
-        Object.freeze(this);
     }
+
+
 
     /**
      * @returns {string}
      */
     toISOString() {
-        const iso = this._luxonDateTime.toUTC().toISO({ format: 'extended', suppressMilliseconds: false });
+        const iso = this._luxonDateTime.toISO({ format: 'extended', suppressMilliseconds: false });
         if (!iso) {
             throw new Error("Failed to convert DateTime to ISO string");
         }
-        return iso;
+        return iso.replace('+00:00', 'Z');
     }
 
     /**

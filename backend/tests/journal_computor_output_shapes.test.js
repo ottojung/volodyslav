@@ -28,7 +28,7 @@ const {
 const { computedValueViolation } = require("../src/generators/incremental_graph/database");
 
 const { DateTime } = require("luxon");
-const { isDateTime } = require("../src/datetime");
+const { fromISOString, isDateTime } = require("../src/datetime");
 
 const entryDescriptionComputor = require("../src/generators/individual/entry_description/wrapper")
     .computor;
@@ -341,17 +341,19 @@ describe("a record built from a live nominal value keeps its meaning when the ca
     });
 
     test("a later change to the caller's DateTime does not reach the stored record", () => {
-        const liveDate = eventContexts.contexts[0].context[0].date;
-        const record = valueRecordOf(NODE_EVENT_CONTEXT, eventContexts, "21");
+        const liveDate = fromISOString("2020-01-01T09:00:00.000Z");
+        const record = valueRecordOf(NODE_EVENT_CONTEXT, contextsWithDate(liveDate), "21");
         expect(record).not.toBeInstanceOf(Error);
         const encoding = encodeJournalRecord(record);
 
-        const outcome = mutate(liveDate, "_luxonDateTime", DateTime.fromISO("1999-12-31T23:59:59.000Z"));
+        const outcome = mutate(liveDate, "_luxonDateTime", DateTime.fromISO("1999-12-31T23:59:59.000Z", { setZone: true }));
 
-        expect(liveDate.toISOString()).toBe("2020-01-01T09:00:00.000Z");
+        expect(liveDate.toISOString()).toBe("1999-12-31T23:59:59.000Z");
         expect(record.payload.contexts[0].context[0].date.toISOString()).toBe("2020-01-01T09:00:00.000Z");
+        expect(record.payload.contexts[0].context[0].date).not.toBe(liveDate);
+        expect(Object.isFrozen(record.payload.contexts[0].context[0].date)).toBe(true);
         expect(encodeJournalRecord(record)).toBe(encoding);
-        expect(outcome).toBe("threw TypeError: Cannot assign to read only property '_luxonDateTime' of object '#<DateTimeClass>'");
+        expect(outcome).toBe("assigned");
     });
 
     test("the stored EventId is frozen and shared with the caller", () => {

@@ -26,4 +26,4 @@ jobs:
               run: npm run build
 
             - name: Run tests with Jest via Bun
-              run: TZ=Asia/Tokyo sh scripts/check-jest-max-workers && bun jest
+              run: TZ=Asia/Tokyo bun jest

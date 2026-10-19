@@ -20,6 +20,8 @@
  * depend on whether a record had already been built from it.
  */
 
+const { fromISOString, isDateTime } = require("../../../datetime");
+
 /**
  * @param {unknown} value
  * @returns {value is Record<string, unknown>}
@@ -50,6 +52,13 @@ function isPlainObject(value) {
  * @returns {unknown}
  */
 function deepFrozenCopy(value) {
+    if (isDateTime(value)) {
+        const copy = fromISOString(value.toISOString());
+        if (!copy.isValid) {
+            throw new Error("a Journal payload's DateTime could not be copied");
+        }
+        return Object.freeze(copy);
+    }
     if (Array.isArray(value)) {
         return Object.freeze(value.map((element) => deepFrozenCopy(element)));
     }

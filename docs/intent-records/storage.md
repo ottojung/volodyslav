@@ -15,3 +15,16 @@ When the persisted format changes, the transition must happen through an explici
 Historical representations must remain confined to the migration boundary. They must not leak into current-domain types, validators, APIs, persisted outputs, or permanent runtime code.
 
 Do not build permanent decoder ladders, unions of historical storage formats, alternate historical representations, or runtime fallbacks for old database versions. Transitional migration machinery should be removed once it is no longer needed for the coordinated transition.
+
+
+---
+
+$id-7139531086125123
+title: Persisted database key lengths are O(H)
+date: 2026/10/19
+source: @ottojung
+kind: requirement
+
+The length of every persisted database key must be O(H), where H is the
+size of retained authoritative Journal history. This requirement applies
+throughout the database and across all supported database transitions.
