@@ -31,6 +31,7 @@
 
 const { makeInvalidComputorReturnValueError, makeInvalidUnchangedError } = require("./errors");
 const { isUnchanged } = require("./unchanged");
+const { canonicalJournalTimestamp } = require("./journal");
 const {
     nodeIdentifierToString,
     ReplicaStateInvariantError,
@@ -132,7 +133,7 @@ async function handleChanged(incrementalGraph, nodeDefinition, nodeIdentifier, i
     const datetime = incrementalGraph.datetime;
     // Journal ValueEvents require a canonical UTC instant. DateTime itself
     // preserves its caller's timezone, so normalize only at this boundary.
-    const nowIso = new Date(datetime.now().toMillis()).toISOString();
+    const nowIso = canonicalJournalTimestamp(datetime.now().toMillis());
     batch.values.put(nodeIdentifier, newValue);
 
 

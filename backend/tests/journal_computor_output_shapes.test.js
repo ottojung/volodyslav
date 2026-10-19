@@ -346,7 +346,7 @@ describe("a record built from a live nominal value keeps its meaning when the ca
         expect(record).not.toBeInstanceOf(Error);
         const encoding = encodeJournalRecord(record);
 
-        const outcome = mutate(liveDate, "_luxonDateTime", DateTime.fromISO("1999-12-31T23:59:59.000Z"));
+        const outcome = mutate(liveDate, "_luxonDateTime", DateTime.fromISO("1999-12-31T23:59:59.000Z", { setZone: true }));
 
         expect(liveDate.toISOString()).toBe("1999-12-31T23:59:59.000Z");
         expect(record.payload.contexts[0].context[0].date.toISOString()).toBe("2020-01-01T09:00:00.000Z");

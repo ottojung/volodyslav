@@ -38,8 +38,7 @@ const {
 // Identities, authority and frontiers
 const {
     ZERO_JOURNAL_SEQUENCE,
-    compareAuthorityTime,
-    compareJournalSequence,
+    compareAuthorityTime, compareJournalSequence,
     frontierJoin,
     isAuthorityTime,
     isJournalAuthor,
@@ -63,6 +62,7 @@ const {
 const { predecessorJournalSequence, requireSuccessorJournalSequence, successorJournalSequence } = require("./coordinates");
 
 const { authorityCompare, happenedBefore } = require("./ordering");
+const { canonicalJournalTimestamp } = require("./canonical_timestamp");
 
 // Validation basis and invalidation scopes
 const {
@@ -251,9 +251,8 @@ allocateAuthority,
     VALIDATE_REASONS,
     VALUE_REASONS,
     ZERO_JOURNAL_SEQUENCE,
-    canonicalRecordBody,
-    compareAuthorityTime,
-    compareJournalSequence,
+    canonicalJournalTimestamp, canonicalRecordBody,
+    compareAuthorityTime, compareJournalSequence,
     currentFormatDecodeRecord,
     currentFormatValidateRecord,
     encodeJournalRecord,
