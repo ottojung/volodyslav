@@ -202,12 +202,53 @@ describe("planForeignSuffixImport, the missing suffix it streams", () => {
         });
         expect("error" in plan).toBe(false);
 
-        // Every positioned read opens at the first missing coordinate, and the
-        // whole-prefix reader is used only to compare the retained seam through
-        // that first missing coordinate.
+        // Every read opens at the first missing coordinate, including the seam
+        // check, so the retained prefix `A:1` is never read: the whole-prefix
+        // reader yields nothing at all. `incremental-graph-journal-sync.md`
+        // §Immutable overlap law requires exactly this — ordinary synchronization
+        // does not rescan the complete retained overlap.
         expect(source.suffixFroms().length).toBeGreaterThan(0);
         expect(new Set(source.suffixFroms())).toEqual(new Set(["2"]));
-        expect(source.prefixReads()).toEqual([WRITER_A + ":1", WRITER_A + ":2"]);
+        expect(source.prefixReads()).toEqual([]);
+    });
+
+    test("the seam does not rescan a long retained overlap", async () => {
+        // The receiver retains `A:1 .. A:N`; the source retains `A:1 .. A:N+1`.
+        // The seam must compare no retained coordinate and the receiver's retained
+        // journal must not be opened at all, so the plan's read cost is independent
+        // of N. `incremental-graph-journal-sync.md` §Immutable overlap law and the
+        // change-bounded contract `$id-6845129073418625` require this; an
+        // O(overlap) seam would make `source.prefixReads()` and
+        // `receiver.prefixReads()` grow with N.
+        const n = 200;
+        /** @type {Array<object>} */
+        const retained = [];
+        /** @type {Array<object>} */
+        const extended = [];
+        for (let i = 1; i <= n + 1; i += 1) {
+            const context = i === 1 ? [] : [[WRITER_A, String(i - 1)]];
+            const record = value(WRITER_A, String(i), NODE_K, context, 100 + i, "1-abcdefghi");
+            extended.push(record);
+            if (i <= n) {
+                retained.push(record);
+            }
+        }
+        const receiver = recordingSource(sourceOf([[WRITER_A, retained]]));
+        const source = recordingSource(sourceOf([[WRITER_A, extended]]));
+
+        const plan = await planForeignSuffixImport({
+            receiver,
+            source,
+            localWriter: makeJournalAuthor(WRITER_LOCAL),
+            currentInputKeysOfNode: () => [],
+        });
+        expect("error" in plan).toBe(false);
+        if (!("suffixes" in plan)) {
+            throw new Error("the import plan failed unexpectedly");
+        }
+        expect(journalSequenceToString(plan.suffixes[0].from)).toBe(String(n + 1));
+        expect(source.prefixReads()).toEqual([]);
+        expect(receiver.prefixReads()).toEqual([]);
     });
 });
 
