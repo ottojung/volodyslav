@@ -71,9 +71,12 @@ const {
 const { hasUncoveredValueInvalidationOf, planFreshnessMarkers } = require("./pass3");
 const {
     authorLookupOf,
+    commitRetainedReplayState,
+    forkRetainedReplayState,
     invalidationSummaryOf,
     isRetainedReplayState,
     projectRetainedReplay,
+    refuseStaleRetainedState,
     selectedHeadsOf,
     selectedOccurrencesOf,
     stageRetainedRecords,
@@ -191,6 +194,19 @@ async function resetToSource(request) {
         };
     }
 
+    // A state which does not describe the receiver's own retained journal is stale
+    // derived state. `incremental-graph-journal-storage.md` §Change-bounded proof
+    // summary requires a stale summary to be rebuilt or maintained rather than
+    // consumed, so reset refuses it here exactly as synchronization does: staging the
+    // imported records into a state built for another local writer, or for a different
+    // per-writer length set, would report success over a projection of a journal the
+    // receiver does not retain. The receiver's own local writer is part of that
+    // correspondence and not only the per-writer lengths.
+    const stale = refuseStaleRetainedState(retainedState, receiver, localWriter);
+    if (stale !== undefined) {
+        return stale;
+    }
+
     // A receiver whose committed writer head is ahead of what it retains has lost a
     // surviving suffix of its own writer history, which
     // `incremental-graph-journal-testing.md` §Corruption tests requires to be rejected
@@ -205,6 +221,12 @@ async function resetToSource(request) {
     if (incompatible !== undefined) {
         return { error: incompatible };
     }
+
+    // Every record this operation admits or authors is staged into a fork, and the
+    // fork's contents reach the caller's state only once the whole reset has succeeded,
+    // so a failure at any later pass leaves the caller's state exactly as it was found
+    // (`incremental-graph-journal-reset.md` §Atomicity).
+    const staged = forkRetainedReplayState(retainedState);
 
     // J0 = union(JR, S). The own-writer rollback boundary is the shared one: a
     // source ahead of the receiver for the receiver's own writer is refused here,
@@ -244,8 +266,8 @@ async function resetToSource(request) {
     // dependency-closed, and Pass 1 is what repairs that. The head view is the
     // retained one with the imported records folded in, so no retained Value/Delete
     // record is visited again.
-    stageRetainedRecords(retainedState, imported);
-    const rawHeads = selectedHeadsOf(retainedState);
+    stageRetainedRecords(staged, imported);
+    const rawHeads = selectedHeadsOf(staged);
 
     const target = source.projection;
     const domain = iterateResetDomain({ selections: rawHeads, target });
@@ -272,7 +294,7 @@ async function resetToSource(request) {
         if ("error" in allocated) {
             return allocated;
         }
-        stageRetainedRecords(retainedState, allocated.records);
+        stageRetainedRecords(staged, allocated.records);
         authored.push(...allocated.records);
         state = allocated.writerState;
         return { publication: allocated };
@@ -282,7 +304,7 @@ async function resetToSource(request) {
      * The cut the passes have reached, read as a delta over the affected closure.
      * @returns {Projection | {error: JournalError}}
      */
-    const cut = () => projectRetainedReplay(retainedState);
+    const cut = () => projectRetainedReplay(staged);
 
     // ---- Pass 1: target presence and value occurrences -------------------
     /** @type {Map<string, ResetValueId>} */
@@ -372,9 +394,9 @@ async function resetToSource(request) {
         return afterPassOne;
     }
     const unions = eligibleEffectiveProofUnion({
-        summary: retainedState.proofs,
+        summary: staged.proofs,
         targetOccurrences: [...targetOccurrences()],
-        authorOf: authorLookupOf(retainedState),
+        authorOf: authorLookupOf(staged),
     });
     const barriers = planProofBarriers({
         targetOccurrences: targetOccurrences(),
@@ -413,7 +435,7 @@ async function resetToSource(request) {
     }
 
     // ---- Pass 3: target freshness ----------------------------------------
-    const selectedOccurrences = selectedOccurrencesOf(retainedState);
+    const selectedOccurrences = selectedOccurrencesOf(staged);
     const markers = planFreshnessMarkers({
         postValidation: afterValidations,
         targetOccurrences: targetOccurrences(),
@@ -422,12 +444,12 @@ async function resetToSource(request) {
             const freshness = afterValidations.freshness.get(nodeKeyString);
             return hasUncoveredValueInvalidationOf(
                 invalidationSummaryOf(
-                    retainedState,
+                    staged,
                     nodeKeyString,
                     occurrence === undefined ? undefined : occurrence.valueId
                 ),
                 freshness === undefined ? undefined : freshness.certificate,
-                authorLookupOf(retainedState)
+                authorLookupOf(staged)
             );
         },
     });
@@ -444,6 +466,11 @@ async function resetToSource(request) {
     if (mismatch !== undefined) {
         return { error: mismatch };
     }
+
+    // Publish the fork into the caller's own state only now that every pass has
+    // succeeded. The caller keeps the identity of the state it staged, and a failure
+    // above leaves it untouched (`incremental-graph-journal-reset.md` §Atomicity).
+    commitRetainedReplayState(retainedState, staged);
 
     return {
         outcome: new ResetOutcomeClass(
