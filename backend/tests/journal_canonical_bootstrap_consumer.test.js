@@ -437,6 +437,48 @@ describe("joining the canonical bootstrap of §7", () => {
         expect(joined.records.some((record) => record.kind === "delete")).toBe(false);
     });
 
+    test("joining historical values are allocated in nondecreasing (modifiedAt, canonical NodeKey) order", async () => {
+        // testing.md §Joining bootstrap writer-order regression (lines 526-530). The
+        // source reader hands this pass its nodes in canonical NodeKey order, so the
+        // joining-only nodes below deliberately make that order disagree with their
+        // modifiedAt order: node 3 has the smallest key but the latest modifiedAt, and
+        // nodes 4 and 5 tie on the earliest modifiedAt. A pass which allocated in the
+        // order it read them would seed a decreasing same-writer authority; the
+        // supported constructor must instead sort by `(modifiedAt, canonical NodeKey)`.
+        const { artifact } = canonicalCohort();
+        const joining = sourceOf(
+            persistedState(
+                [
+                    persistedNode(1, { upToDate: false }),
+                    persistedNode(2, { modifiedAt: LATE, validInputs: [nodeKeyOf(1)] }),
+                    persistedNode(3, { modifiedAt: LATE }),
+                    persistedNode(4, { modifiedAt: EARLY }),
+                    persistedNode(5, { modifiedAt: EARLY }),
+                ],
+                9
+            )
+        );
+        const joined = await joinCanonicalBootstrap({
+            legacyState: joining,
+            artifact,
+            joiningWriter: makeJournalAuthor(JOINER),
+            currentInputKeysOfNode: schemaOf([joining]),
+        });
+        if (joined instanceof Error) {
+            throw joined;
+        }
+        const historical = joined.records.filter(
+            (record) =>
+                record.kind === "value" && journalAuthorToString(record.id.author) === JOINER
+        );
+        expect(historical.map((record) => nodeKeyToCanonicalString(record.node))).toEqual([
+            nodeKeyOf(4),
+            nodeKeyOf(5),
+            nodeKeyOf(3),
+        ]);
+        expect(historical.map((record) => record.modifiedAt)).toEqual([EARLY, EARLY, LATE]);
+    });
+
     test("a conflicting joining occurrence wins ordinary authority and survives", async () => {
         const { artifact } = canonicalCohort();
         const joining = sourceOf(
