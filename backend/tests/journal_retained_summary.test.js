@@ -22,7 +22,6 @@
 
 const fs = require("fs");
 const path = require("path");
-const os = require("os");
 
 const {
     journalAuthorToString,
@@ -433,8 +432,6 @@ describe("an ordinary publication maintains the persisted summary", () => {
         const capabilities = getMockedRootCapabilities();
         stubLogger(capabilities);
         stubEnvironment(capabilities);
-        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "journal-retained-summary-"));
-        void tmpDir;
         const db = await getRootDatabase(capabilities);
         try {
             const graph = await createIncrementalGraph(capabilities, db, [
