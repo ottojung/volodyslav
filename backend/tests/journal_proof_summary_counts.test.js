@@ -313,6 +313,19 @@ function countOfD(summary, valueId) {
 }
 
 /**
+ * The count the explicit rebuild of a whole journal reproduces, which the
+ * specification permits as an oracle and requires to agree with the maintained
+ * summary.
+ *
+ * @param {ReadonlyArray<import("../src/generators/incremental_graph/journal").JournalRecord>} records
+ * @param {string} valueId
+ * @returns {Promise<number>}
+ */
+async function rebuiltCountOf(records, valueId) {
+    return countOfD((await builtStateOf(records)).proofs, valueId);
+}
+
+/**
  * @param {import("../src/generators/incremental_graph/journal_retained").ProofSummary} summary
  * @param {string} valueId
  * @returns {ReadonlyArray<string>}
@@ -374,10 +387,12 @@ describe("an ordinary publication maintains the counted eligible-proof summary",
         persist(journal, await builtStateOf(base));
 
         // The base retains two independently eligible and effective certificates
-        // which both prove D, so the count is two and D is in the union.
+        // which both prove D, so the count is two and D is in the union. The
+        // explicit rebuild of the same journal reproduces the count.
         const start = await maintainedRetainedState(journal, WRITER_LOCAL, oneInputSchema, []);
         expect(countOfD(start.proofs, WRITER_LOCAL + ":3")).toBe(2);
         expect(unionOfB(start.proofs, WRITER_LOCAL + ":3")).toEqual([KEY_D]);
+        expect(await rebuiltCountOf(base, WRITER_LOCAL + ":3")).toBe(2);
 
         // A publication which invalidates the node and revalidates the same
         // occurrence: the replacement certificate observes the invalidation, the two
@@ -398,6 +413,7 @@ describe("an ordinary publication maintains the counted eligible-proof summary",
         const afterOne = await maintainedRetainedState(journal, WRITER_LOCAL, oneInputSchema, retiredOnce);
         expect(countOfD(afterOne.proofs, WRITER_LOCAL + ":3")).toBe(1);
         expect(unionOfB(afterOne.proofs, WRITER_LOCAL + ":3")).toEqual([KEY_D]);
+        expect(await rebuiltCountOf([...base, ...retiredOnce], WRITER_LOCAL + ":3")).toBe(1);
         persist(journal, afterOne);
 
         // A second publication invalidates the node again with no replacement, so
@@ -408,6 +424,7 @@ describe("an ordinary publication maintains the counted eligible-proof summary",
         const afterTwo = await maintainedRetainedState(journal, WRITER_LOCAL, oneInputSchema, retiredTwice);
         expect(countOfD(afterTwo.proofs, WRITER_LOCAL + ":3")).toBe(0);
         expect(unionOfB(afterTwo.proofs, WRITER_LOCAL + ":3")).toEqual([]);
+        expect(await rebuiltCountOf([...base, ...retiredOnce, ...retiredTwice], WRITER_LOCAL + ":3")).toBe(0);
     });
 });
 
@@ -464,6 +481,7 @@ describe("a staged synchronization cutover maintains the counted eligible-proof 
         const outcomeOne = await sync(base, peerOne, baseState);
         expect(countOfD(outcomeOne.retainedState.proofs, WRITER_LOCAL + ":3")).toBe(1);
         expect(unionOfB(outcomeOne.retainedState.proofs, WRITER_LOCAL + ":3")).toEqual([KEY_D]);
+        expect(await rebuiltCountOf([...base, ...outcomeOne.records], WRITER_LOCAL + ":3")).toBe(1);
 
         // The peer then invalidates `B` again with no replacement, so the remaining
         // contribution is removed: count zero and D leaves the union.
@@ -478,5 +496,9 @@ describe("a staged synchronization cutover maintains the counted eligible-proof 
         );
         expect(countOfD(outcomeTwo.retainedState.proofs, WRITER_LOCAL + ":3")).toBe(0);
         expect(unionOfB(outcomeTwo.retainedState.proofs, WRITER_LOCAL + ":3")).toEqual([]);
+        expect(await rebuiltCountOf(
+            [...base, ...outcomeOne.records, ...outcomeTwo.records],
+            WRITER_LOCAL + ":3"
+        )).toBe(0);
     });
 });
