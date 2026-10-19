@@ -219,6 +219,20 @@ function advanceFrontier(frontier, author, sequence) {
  * suffix from its first coordinate through `ImportedSuffix.reader()`, so the
  * suffix is not carried out of the seam check.
  *
+ * A source which offers positioned reads is opened at the first missing
+ * coordinate `afterSequence + 1` and therefore presents no retained coordinate at
+ * all: `readRetainedOverlap` sees the opening record above the receiver's
+ * retained length immediately and the receiver's stream is never opened. That is
+ * what makes `incremental-graph-journal-sync.md` §Immutable overlap law's
+ * "ordinary synchronization does not rescan or compare the complete retained
+ * overlap" hold for every source the product constructs, all of which implement
+ * `suffixReaderOf` (`makeReplicaSource`, `makeUnionSource`, `makeSyncJournalSource`
+ * and the durable sublevel source). A source which offers only a whole-prefix
+ * reader cannot be positioned, so the seam reads through its prefix and compares
+ * the retained coordinates it necessarily passes, which is the same-ID evidence
+ * such a source actually offers; that path is exercised only by hand-built
+ * `JournalSource`s and costs no production read.
+ *
  * @param {JournalSource} source
  * @param {JournalSource} receiver
  * @param {JournalAuthor} author
@@ -226,8 +240,15 @@ function advanceFrontier(frontier, author, sequence) {
  * @returns {Promise<JournalError | undefined>}
  */
 async function validateSuffixSeam(source, receiver, author, afterSequence) {
+    const firstMissing = requireSuccessorJournalSequence(afterSequence);
+    if (isJournalError(firstMissing)) {
+        return firstMissing;
+    }
+    const sourceReader = source.suffixReaderOf === undefined
+        ? source.prefixReaderOf(author)
+        : source.suffixReaderOf(author, firstMissing);
     const overlap = await readRetainedOverlap(
-        source.prefixReaderOf(author),
+        sourceReader,
         receiver.prefixReaderOf(author),
         journalAuthorToString(author),
         afterSequence
