@@ -45,6 +45,69 @@ const {
     initializeReplicaGlobals,
     assertValidReplicaMaterializationState,
 } = require("./database");
+const {
+    appendRetainedStateOp,
+} = require("./journal_store");
+const {
+    makeEmptyRetainedReplayState,
+} = require("./journal_retained");
+const {
+    makeCurrentInputKeysOfNode,
+} = require("./journal_bootstrap_startup");
+const { makeJournalAuthor } = require("./journal");
+
+/**
+ * The current schema's direct inputs per node, as the retained replay state reads them.
+ *
+ * `makeCurrentInputKeysOfNode` reports a node the scheme does not name as having no
+ * template at all. A node the current schema does not name has no direct inputs in the
+ * current schema either, so its input set is empty.
+ *
+ * @param {GraphScheme} graphScheme
+ * @returns {(nodeKeyString: string) => ReadonlyArray<string>}
+ */
+function currentInputKeysOfGraphScheme(graphScheme) {
+    const template = makeCurrentInputKeysOfNode(graphScheme);
+    return (nodeKeyString) => template(nodeKeyString) ?? [];
+}
+
+/**
+ * Persist the empty retained replay state of a genuinely fresh replica.
+ *
+ * A replica which holds no record has an empty summary, not a missing one, so writing
+ * it here is initialization rather than a scan of retained history, and it is what lets
+ * the first ordinary publication maintain the summary incrementally instead of having
+ * to rebuild it by traversal.
+ *
+ * `incremental-graph-journal-storage.md` §Startup validation bounds routine open by the
+ * current state rather than by retained history: a non-empty replica's summary is not
+ * read here, because it is derived state rather than committed-pair metadata. A
+ * non-empty replica whose summary is absent or stale is the missing/stale case
+ * §Change-bounded proof summary reserves for explicit rebuild/maintenance, and the
+ * first operation which would consume it fails closed rather than scanning.
+ *
+ * @param {RootDatabase} rootDatabase
+ * @param {SchemaStorage} schemaStorage
+ * @param {GraphScheme} graphScheme
+ * @returns {Promise<void>}
+ */
+async function initializeRetainedReplayState(rootDatabase, schemaStorage, graphScheme) {
+    const localWriter = makeJournalAuthor(rootDatabase.getFingerprint());
+    if (localWriter instanceof Error) {
+        throw localWriter;
+    }
+    const state = makeEmptyRetainedReplayState(
+        localWriter,
+        currentInputKeysOfGraphScheme(graphScheme)
+    );
+    /** @type {Array<*>} */
+    const operations = [];
+    const rejected = appendRetainedStateOp(schemaStorage.journal, operations, state);
+    if (rejected !== undefined) {
+        throw rejected;
+    }
+    await schemaStorage.batch(operations);
+}
 
 /**
  * @typedef {object} PreparedGraphStorage
@@ -139,6 +202,7 @@ async function prepareIncrementalGraphStorage(rootDatabase, nodeDefs) {
             version: currentVersion,
             graphSchemeString,
         });
+        await initializeRetainedReplayState(rootDatabase, schemaStorage, graphScheme);
     } else if (storedVersion === undefined && storedScheme !== undefined) {
         throw new GraphSchemeError(
             "Invalid graph storage: graph_scheme exists but version is missing"
@@ -178,5 +242,6 @@ async function prepareIncrementalGraphStorage(rootDatabase, nodeDefs) {
 }
 
 module.exports = {
+    currentInputKeysOfGraphScheme,
     prepareIncrementalGraphStorage,
 };

@@ -22,8 +22,11 @@
 /** @typedef {import('./retained').RetainedReplayState} RetainedReplayState */
 
 const {
+    compareJournalSequence,
     isWriterStateRecord,
     journalAuthorToString,
+    makeJournalReplica,
+    makeReplicaSource,
     streamWithReport,
 } = require("../journal");
 const { buildProofSummary } = require("./proof_summary");
@@ -102,6 +105,59 @@ async function buildRetainedReplayState(request) {
     return { state };
 }
 
+/**
+ * Build the retained replay state of one explicit record set.
+ *
+ * This is the in-memory form of `buildRetainedReplayState` for a maintenance transition
+ * which already holds the records it is installing — a canonical bootstrap or an
+ * absent-state restore — and therefore does not have a `JournalSource` to traverse.
+ * The records are grouped by writer in writer-stream order, which is the shape a
+ * replica source requires, so the resulting state is built by exactly the same
+ * traversal an explicit rebuild uses.
+ *
+ * @param {object} request
+ * @param {ReadonlyArray<JournalRecord>} request.records
+ * @param {JournalAuthor} request.localWriter
+ * @param {import('./proof_summary').CurrentInputKeysOfNode} request.currentInputKeysOfNode
+ * @returns {Promise<{state: RetainedReplayState} | {error: JournalError}>}
+ */
+async function buildRetainedReplayStateFromRecords(request) {
+    const { records, localWriter, currentInputKeysOfNode } = request;
+    /** @type {Map<string, {author: JournalAuthor, records: Array<JournalRecord>}>} */
+    const byWriter = new Map();
+    for (const record of records) {
+        const name = journalAuthorToString(record.id.author);
+        const existing = byWriter.get(name);
+        if (existing === undefined) {
+            byWriter.set(name, { author: record.id.author, records: [record] });
+        } else {
+            existing.records.push(record);
+        }
+    }
+    /** @type {Array<[JournalAuthor, ReadonlyArray<JournalRecord>]>} */
+    const streams = [];
+    for (const name of [...byWriter.keys()].sort()) {
+        const stream = byWriter.get(name);
+        if (stream === undefined) {
+            continue;
+        }
+        stream.records.sort((left, right) =>
+            compareJournalSequence(left.id.sequence, right.id.sequence)
+        );
+        streams.push([stream.author, stream.records]);
+    }
+    const replica = makeJournalReplica(streams);
+    if (replica instanceof Error) {
+        return { error: replica };
+    }
+    return buildRetainedReplayState({
+        source: makeReplicaSource(replica),
+        localWriter,
+        currentInputKeysOfNode,
+    });
+}
+
 module.exports = {
     buildRetainedReplayState,
+    buildRetainedReplayStateFromRecords,
 };

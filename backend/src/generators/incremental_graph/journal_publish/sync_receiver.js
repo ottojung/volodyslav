@@ -26,14 +26,15 @@ const {
     isJournalError,
     isSemanticEvent,
     makeJournalAuthor,
+    makeJournalProjectionError,
     streamWithReport,
 } = require('../journal');
-const { buildRetainedReplayState } = require('../journal_reset');
 const { SnapshotIdentityClass, synchronizeRetainedJournal } = require('../journal_sync');
 const { makeCurrentInputKeysOfNode } = require('../journal_bootstrap_startup');
 const {
     readCommittedWriterState,
     readJournalSource,
+    readRetainedReplayState,
 } = require('../journal_store');
 
 /** @typedef {import('../database/synchronize').Capabilities} Capabilities */
@@ -249,13 +250,26 @@ async function syncJournalReceiverToSource(request) {
     if (receiver instanceof Error) {
         throw receiver;
     }
-    const retained = await buildRetainedReplayState({
-        source: receiver,
+    // `incremental-graph-journal-storage.md` §Change-bounded proof summary requires the
+    // receiver's active summary to be maintained incrementally and forbids a
+    // synchronization from falling back to scanning unrelated retained history to
+    // obtain it, so the summary is read from the same sublevel the receiver retains its
+    // records in. A receiver which retains records but has no summary is the
+    // missing-summary case that section reserves for explicit rebuild/maintenance, and
+    // it fails closed here rather than being reconstructed by traversal.
+    const retained = await readRetainedReplayState(receiverStorage.journal, {
         localWriter,
         currentInputKeysOfNode,
     });
-    if ('error' in retained) {
-        throw retained.error;
+    if (retained === undefined) {
+        throw makeJournalProjectionError(
+            'the receiver retains a Journal but has no persisted change-bounded proof summary, ' +
+                'which requires explicit rebuild/maintenance rather than a synchronization',
+            ''
+        );
+    }
+    if (retained instanceof Error) {
+        throw retained;
     }
 
     const source = await readJournalSource(database.replicaJournalSublevel(sourceReplica));
@@ -265,7 +279,7 @@ async function syncJournalReceiverToSource(request) {
 
     const result = await synchronizeRetainedJournal({
         receiver,
-        retainedState: retained.state,
+        retainedState: retained,
         source,
         localWriter,
         committed,

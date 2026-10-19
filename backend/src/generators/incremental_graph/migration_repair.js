@@ -66,7 +66,7 @@ const {
  * @param {Map<NodeIdentifier, import('./database/types').Freshness>} request.targetFreshness
  * @param {CommittedWriterState} request.state - The committed state the M1 publication left.
  * @param {number} request.publicationInstant
- * @returns {Promise<{records: ReadonlyArray<JournalRecord>, writerState: CommittedWriterState} | {error: JournalError}>}
+ * @returns {Promise<{records: ReadonlyArray<JournalRecord>, writerState: CommittedWriterState, retainedState: import('./journal_retained').RetainedReplayState} | {error: JournalError}>}
  */
 async function repairMigrationJournal(request) {
     const {
@@ -199,7 +199,17 @@ async function repairMigrationJournal(request) {
         return { error: markerFailure };
     }
 
-    return { records: authored, writerState: state };
+    // Resolve the final cut over the markers M3 just staged, so the state the cutover
+    // persists is the resolved cut of the target journal rather than a state with an
+    // open delta. A summary persisted with an unresolved `touched` set would still be
+    // consumable, but resolving it here makes the persisted form exactly the one an
+    // explicit rebuild produces.
+    const finalProjection = projectRetainedReplay(retainedState);
+    if ("error" in finalProjection) {
+        return { error: finalProjection.error };
+    }
+
+    return { records: authored, writerState: state, retainedState };
 }
 
 module.exports = {
