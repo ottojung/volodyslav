@@ -20,23 +20,11 @@ Do not build permanent decoder ladders, unions of historical storage formats, al
 ---
 
 $id-7139531086125123
-title: Persisted database key lengths are bounded independently of NodeKey size
+title: Persisted database key lengths are O(H)
 date: 2026/10/19
 source: @ottojung
 kind: requirement
 
-Every persisted database key MUST have length O(H). No persisted database key
-may contain a `NodeKey` (including its canonical serialization), regardless of
-the size of that node key. This applies to all sublevels and intermediate
-persisted staging/state namespaces, not only the new Journal sublevel.
-
-Here H is the retained-history-size parameter already used by the Journal 3
-complexity model (with constant metadata overhead at empty history). The length
-of a user-supplied or schema-derived NodeKey must not determine the length of
-any physical database key. NodeKeys may still appear as values/payloads or in
-in-memory lookup structures; the prohibition concerns persisted *keys*.
-
-Indexes that need to address a semantic node must use compact bounded
-identities with sound lookup/collision handling instead. Journal 3 must not
-introduce `journal/occurrence|<canonical node key>` entries, or any equivalent
-NodeKey-containing physical keys.
+The length of every persisted database key must be O(H), where H is the
+size of retained authoritative Journal history. This requirement applies
+throughout the database and across all supported database transitions.
