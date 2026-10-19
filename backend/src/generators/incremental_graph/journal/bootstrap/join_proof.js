@@ -99,7 +99,17 @@ function authorJoiningProof(request) {
             /** @type {ValidationBasis} */
             const basis = [];
             for (const input of inputs) {
-                const named = valueIdOf.get(nodeKeyToCanonicalString(input));
+                // §7.3: the certificate basis records the validity edge the
+                // joining legacy graph actually held, not the current schema's
+                // input merely because that input is materialized. A joining
+                // input with no D -> K edge in the legacy graph must be
+                // recorded as "unknown" so replay does not expose a validity
+                // edge no legacy replica possessed.
+                const inputKeyString = nodeKeyToCanonicalString(input);
+                const joiningEdge = legacyNode.directInputKeys.some(
+                    (direct) => nodeKeyToCanonicalString(direct) === inputKeyString
+                );
+                const named = joiningEdge ? valueIdOf.get(inputKeyString) : undefined;
                 basis.push(
                     makeValidationBasisEntry(input, named === undefined ? "unknown" : named)
                 );
