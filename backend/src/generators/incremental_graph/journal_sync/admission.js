@@ -46,6 +46,15 @@
 /** @typedef {import('../journal/types').JournalSequence} JournalSequence */
 /** @typedef {import('../journal/types').NodeKey} NodeKey */
 
+/**
+ * The compact summary of one admitted record retained by the index. It records
+ * only what `validateAdmittedReference` needs to resolve a reference — whether
+ * the coordinate holds a `ValueEvent` and, when it does, that event's node — so
+ * the index never retains a record's payload.
+ *
+ * @typedef {{ isValue: true, node: NodeKey } | { isValue: false, node: undefined }} AdmittedRecordSummary
+ */
+
 const {
     authorityCompare,
     compareJournalSequence,
@@ -252,16 +261,16 @@ class AdmittedIndexClass {
     constructor() {
         /** @type {Map<string, Array<AdmittedWriterMaximum>>} */
         this.byWriter = new Map();
-        /** @type {Map<string, JournalRecord>} */
+        /** @type {Map<string, AdmittedRecordSummary>} */
         this.byId = new Map();
     }
 
     /**
-     * The admitted record at one coordinate, or `undefined` when the change set
-     * does not hold it.
+     * The compact summary of the admitted record at one coordinate, or `undefined`
+     * when the change set does not hold it.
      *
      * @param {JournalRecordId} id
-     * @returns {JournalRecord | undefined}
+     * @returns {AdmittedRecordSummary | undefined}
      */
     recordOf(id) {
         return this.byId.get(journalRecordIdToString(id));
@@ -272,7 +281,12 @@ class AdmittedIndexClass {
      * @returns {void}
      */
     add(record) {
-        this.byId.set(journalRecordIdToString(record.id), record);
+        this.byId.set(
+            journalRecordIdToString(record.id),
+            isValueEvent(record)
+                ? { isValue: true, node: record.node }
+                : { isValue: false, node: undefined }
+        );
         if (!isSemanticEvent(record)) {
             return;
         }
@@ -395,7 +409,6 @@ function validateAdmittedAuthority(event, index) {
 }
 
 /**
-/**
  * The incremental admitted-relations index one operation's validation folds into.
  *
  * The properties this type carries are:
@@ -459,7 +472,7 @@ function validateAdmittedReference(event, referenceId, expectedNode, frontier, i
     if (resolved === undefined) {
         return undefined;
     }
-    if (!isValueEvent(resolved)) {
+    if (!resolved.isValue) {
         return makeJournalRecordValidationError(
             "referenced ValueId is not a ValueEvent",
             label
