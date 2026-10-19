@@ -465,7 +465,7 @@ async function runMigrationEdgeUnsafe(capabilities, rootDatabase, nodeDefs, edge
     // memory at O(|max value| + |keys|), matching the sync path.
     // The migration publication instant, which §11a.3 makes the `modifiedAt` of
     // every genuinely produced occurrence and the seed of every M1 authority.
-    const publicationInstant = capabilities.datetime.now().toISOString();
+    const publicationInstant = new Date(capabilities.datetime.now().toMillis()).toISOString();
     const producedOccurrences = await buildProducedOccurrences(
         decisions,
         prevStorage,

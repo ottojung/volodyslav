@@ -130,7 +130,9 @@ async function handleChanged(incrementalGraph, nodeDefinition, nodeIdentifier, i
     batch.valid.clear(nodeIdentifier);
     const becameStale = await propagatePotentiallyOutdated(incrementalGraph.storage, batch, downstream);
     const datetime = incrementalGraph.datetime;
-    const nowIso = datetime.now().toISOString();
+    // Journal ValueEvents require a canonical UTC instant. DateTime itself
+    // preserves its caller's timezone, so normalize only at this boundary.
+    const nowIso = new Date(datetime.now().toMillis()).toISOString();
     batch.values.put(nodeIdentifier, newValue);
 
 
