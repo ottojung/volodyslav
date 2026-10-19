@@ -47,12 +47,8 @@ const {
 } = require("./database");
 const {
     appendRetainedStateOp,
-    journalRetainsRecords,
-    readJournalSource,
-    readRetainedReplayState,
 } = require("./journal_store");
 const {
-    buildRetainedReplayState,
     makeEmptyRetainedReplayState,
 } = require("./journal_retained");
 const {
@@ -76,59 +72,34 @@ function currentInputKeysOfGraphScheme(graphScheme) {
 }
 
 /**
- * Ensure the active replica's persisted retained replay state is present.
+ * Persist the empty retained replay state of a genuinely fresh replica.
  *
- * `incremental-graph-journal-storage.md` §Change-bounded proof summary requires a
- * missing summary to be reconstructed only through an explicit rebuild/maintenance
- * transition, and forbids routine open from silently treating a full-history scan as
- * routine validation. Startup is where that transition is decided: a genuinely empty
- * replica has an empty summary and needs no traversal, while a replica which retains
- * records but has lost its summary enters this explicit rebuild, which is persisted
- * before the graph is constructed. A summary which is present but does not decode is
- * authoritative-history corruption and is refused rather than repaired from mutable
- * graph bytes.
+ * A replica which holds no record has an empty summary, not a missing one, so writing
+ * it here is initialization rather than a scan of retained history, and it is what lets
+ * the first ordinary publication maintain the summary incrementally instead of having
+ * to rebuild it by traversal.
+ *
+ * `incremental-graph-journal-storage.md` §Startup validation bounds routine open by the
+ * current state rather than by retained history: a non-empty replica's summary is not
+ * read here, because it is derived state rather than committed-pair metadata. A
+ * non-empty replica whose summary is absent or stale is the missing/stale case
+ * §Change-bounded proof summary reserves for explicit rebuild/maintenance, and the
+ * first operation which would consume it fails closed rather than scanning.
  *
  * @param {RootDatabase} rootDatabase
  * @param {SchemaStorage} schemaStorage
  * @param {GraphScheme} graphScheme
  * @returns {Promise<void>}
  */
-async function ensureRetainedReplayState(rootDatabase, schemaStorage, graphScheme) {
+async function initializeRetainedReplayState(rootDatabase, schemaStorage, graphScheme) {
     const localWriter = makeJournalAuthor(rootDatabase.getFingerprint());
     if (localWriter instanceof Error) {
         throw localWriter;
     }
-    const currentInputKeysOfNode = currentInputKeysOfGraphScheme(graphScheme);
-    const existing = await readRetainedReplayState(schemaStorage.journal, {
+    const state = makeEmptyRetainedReplayState(
         localWriter,
-        currentInputKeysOfNode,
-    });
-    if (existing instanceof Error) {
-        throw existing;
-    }
-    if (existing !== undefined) {
-        return;
-    }
-    let state;
-    if (await journalRetainsRecords(schemaStorage.journal)) {
-        const source = await readJournalSource(
-            rootDatabase.replicaJournalSublevel(rootDatabase.currentReplicaName())
-        );
-        if (source instanceof Error) {
-            throw source;
-        }
-        const built = await buildRetainedReplayState({
-            source,
-            localWriter,
-            currentInputKeysOfNode,
-        });
-        if ("error" in built) {
-            throw built.error;
-        }
-        state = built.state;
-    } else {
-        state = makeEmptyRetainedReplayState(localWriter, currentInputKeysOfNode);
-    }
+        currentInputKeysOfGraphScheme(graphScheme)
+    );
     /** @type {Array<*>} */
     const operations = [];
     const rejected = appendRetainedStateOp(schemaStorage.journal, operations, state);
@@ -231,6 +202,7 @@ async function prepareIncrementalGraphStorage(rootDatabase, nodeDefs) {
             version: currentVersion,
             graphSchemeString,
         });
+        await initializeRetainedReplayState(rootDatabase, schemaStorage, graphScheme);
     } else if (storedVersion === undefined && storedScheme !== undefined) {
         throw new GraphSchemeError(
             "Invalid graph storage: graph_scheme exists but version is missing"
@@ -259,8 +231,6 @@ async function prepareIncrementalGraphStorage(rootDatabase, nodeDefs) {
         rootDatabase.getActiveIdentifierLookup(),
         `active replica '${rootDatabase.currentReplicaName()}'`
     );
-
-    await ensureRetainedReplayState(rootDatabase, schemaStorage, graphScheme);
 
     return {
         rootDatabase,
