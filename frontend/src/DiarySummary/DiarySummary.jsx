@@ -8,7 +8,7 @@ import {
     Text,
     VStack,
 } from "@chakra-ui/react";
-import MarkdownIt from "markdown-it";
+import MarkdownItParser from "markdown-it";
 import "./markdown.css";
 import { fetchDiarySummary, runDiarySummary } from "./api.js";
 import { DiarySummaryEntryList } from "./DiarySummaryEntryList.jsx";
@@ -19,7 +19,7 @@ import { useToast } from "../toast.jsx";
  * @typedef {import('./api.js').DiarySummaryRunEntry} DiarySummaryRunEntry
  */
 
-const markdownIt = new MarkdownIt({
+const markdownIt = new MarkdownItParser({
     html: false,
     linkify: true,
     typographer: true,
