@@ -43,6 +43,7 @@
 /** @typedef {import("../database/types").DatabaseBatchOperation} DatabaseBatchOperation */
 /** @typedef {import("../database/types").JournalKey} JournalKey */
 /** @typedef {import("../database/root_database").JournalDatabase} JournalDatabase */
+/** @typedef {import("../journal_retained").RetainedReplayState} RetainedReplayState */
 
 const {
     encodeJournalRecord,
@@ -65,6 +66,7 @@ const {
     ZERO_JOURNAL_SEQUENCE,
 } = require("../journal");
 const { reconcileRetainedWriterHead } = require("./writer_head");
+const { appendRetainedStateOp } = require("./retained_state");
 const {
     journalKeyToString,
     journalTextToString,
@@ -280,17 +282,21 @@ async function readCurrentOccurrence(journalDatabase, node) {
 /**
  * Append one finalized publication to `operations`.
  *
- * Every record, every current-occurrence update the publication implies, and the
- * publication's committed-pair metadata become operations of the caller's array, so
- * the caller publishes them in the same atomic write as the graph mutations they
- * describe. Nothing here touches the database.
+ * Every record, every current-occurrence update the publication implies, the
+ * publication's committed-pair metadata, and — when the caller supplies it — the
+ * retained replay state which describes the resulting journal become operations of the
+ * caller's array, so the caller publishes them in the same atomic write as the graph
+ * mutations they describe. Nothing here touches the database.
  *
  * @param {JournalDatabase} journalDatabase
  * @param {Array<DatabaseBatchOperation>} operations
  * @param {FinalizedPublication} publication
+ * @param {RetainedReplayState | undefined} [retainedState] - The summary which
+ *   describes the journal after this publication. When supplied it is persisted in
+ *   the same batch, which is what makes the active summary durable with the pair.
  * @returns {JournalError | undefined}
  */
-function appendJournalPublicationOps(journalDatabase, operations, publication) {
+function appendJournalPublicationOps(journalDatabase, operations, publication, retainedState) {
     for (const record of publication.records) {
         const key = makeJournalRecordKey(record.id.author, record.id.sequence);
         if (key instanceof Error) {
@@ -318,6 +324,12 @@ function appendJournalPublicationOps(journalDatabase, operations, publication) {
             stringToJournalText(JSON.stringify(serializeWriterState(publication.writerState)))
         )
     );
+    if (retainedState !== undefined) {
+        const rejected = appendRetainedStateOp(journalDatabase, operations, retainedState);
+        if (rejected !== undefined) {
+            return rejected;
+        }
+    }
     return undefined;
 }
 
@@ -399,6 +411,7 @@ async function readRetainedJournal(journalDatabase, committed) {
 module.exports = {
     JOURNAL_STATE_KEY,
     appendJournalPublicationOps,
+    appendRetainedStateOp,
     deserializeWriterState,
     makeInitialCommittedWriterState,
     makeJournalOccurrenceKey,

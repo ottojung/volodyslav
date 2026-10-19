@@ -28,9 +28,12 @@ const {
     journalAuthorToString,
     makeJournalPublicationError,
 } = require("./journal");
-const { GRAPH_SCHEME_KEY, LAST_NODE_INDEX_KEY } = require("./database");
+const { GRAPH_SCHEME_KEY, LAST_NODE_INDEX_KEY, parseGraphScheme } = require("./database");
 const { getRootDatabase } = require("./database");
 const { planSyncPublication } = require("./journal_publish");
+const { appendRetainedStateOp } = require("./journal_store");
+const { buildRetainedReplayStateFromRecords } = require("./journal_retained");
+const { makeCurrentInputKeysOfNode } = require("./journal_bootstrap_startup");
 
 /** @typedef {import('./journal/errors').AnyJournalError} JournalError */
 /** @typedef {import('./journal/types').JournalAuthor} JournalAuthor */
@@ -437,6 +440,15 @@ async function restoreAbsentFrom(capabilities, snapshot) {
             projection: snapshot.projection,
             publication: { writerState: snapshot.writerState },
         };
+        const template = makeCurrentInputKeysOfNode(parseGraphScheme(snapshot.graphSchemeString));
+        const built = await buildRetainedReplayStateFromRecords({
+            records: snapshot.records,
+            localWriter: snapshot.localWriter,
+            currentInputKeysOfNode: (nodeKeyString) => template(nodeKeyString) ?? [],
+        });
+        if ("error" in built) {
+            throw built.error;
+        }
         const operations = [
             ...await planSyncPublication({ target, outcome }),
             ...committedPairOperations(snapshot, target),
@@ -447,6 +459,14 @@ async function restoreAbsentFrom(capabilities, snapshot) {
             // which is not the watermark the destroyed database held.
             target.global.putOp(LAST_NODE_INDEX_KEY, snapshot.writerState.allocatorWatermark),
         ];
+        // §Change-bounded proof summary: the restored pair's summary is rebuilt while
+        // traversing the snapshot's retained history, which is the explicit
+        // maintenance transition the restore already is, and is installed in the same
+        // atomic write as the pair.
+        const rejected = appendRetainedStateOp(target.journal, operations, built.state);
+        if (rejected !== undefined) {
+            throw rejected;
+        }
         await target.batch(operations);
     } finally {
         await rootDatabase.close();

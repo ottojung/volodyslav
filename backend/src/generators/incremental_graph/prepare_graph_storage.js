@@ -45,6 +45,98 @@ const {
     initializeReplicaGlobals,
     assertValidReplicaMaterializationState,
 } = require("./database");
+const {
+    appendRetainedStateOp,
+    journalRetainsRecords,
+    readJournalSource,
+    readRetainedReplayState,
+} = require("./journal_store");
+const {
+    buildRetainedReplayState,
+    makeEmptyRetainedReplayState,
+} = require("./journal_retained");
+const {
+    makeCurrentInputKeysOfNode,
+} = require("./journal_bootstrap_startup");
+const { makeJournalAuthor } = require("./journal");
+
+/**
+ * The current schema's direct inputs per node, as the retained replay state reads them.
+ *
+ * `makeCurrentInputKeysOfNode` reports a node the scheme does not name as having no
+ * template at all. A node the current schema does not name has no direct inputs in the
+ * current schema either, so its input set is empty.
+ *
+ * @param {GraphScheme} graphScheme
+ * @returns {(nodeKeyString: string) => ReadonlyArray<string>}
+ */
+function currentInputKeysOfGraphScheme(graphScheme) {
+    const template = makeCurrentInputKeysOfNode(graphScheme);
+    return (nodeKeyString) => template(nodeKeyString) ?? [];
+}
+
+/**
+ * Ensure the active replica's persisted retained replay state is present.
+ *
+ * `incremental-graph-journal-storage.md` §Change-bounded proof summary requires a
+ * missing summary to be reconstructed only through an explicit rebuild/maintenance
+ * transition, and forbids routine open from silently treating a full-history scan as
+ * routine validation. Startup is where that transition is decided: a genuinely empty
+ * replica has an empty summary and needs no traversal, while a replica which retains
+ * records but has lost its summary enters this explicit rebuild, which is persisted
+ * before the graph is constructed. A summary which is present but does not decode is
+ * authoritative-history corruption and is refused rather than repaired from mutable
+ * graph bytes.
+ *
+ * @param {RootDatabase} rootDatabase
+ * @param {SchemaStorage} schemaStorage
+ * @param {GraphScheme} graphScheme
+ * @returns {Promise<void>}
+ */
+async function ensureRetainedReplayState(rootDatabase, schemaStorage, graphScheme) {
+    const localWriter = makeJournalAuthor(rootDatabase.getFingerprint());
+    if (localWriter instanceof Error) {
+        throw localWriter;
+    }
+    const currentInputKeysOfNode = currentInputKeysOfGraphScheme(graphScheme);
+    const existing = await readRetainedReplayState(schemaStorage.journal, {
+        localWriter,
+        currentInputKeysOfNode,
+    });
+    if (existing instanceof Error) {
+        throw existing;
+    }
+    if (existing !== undefined) {
+        return;
+    }
+    let state;
+    if (await journalRetainsRecords(schemaStorage.journal)) {
+        const source = await readJournalSource(
+            rootDatabase.replicaJournalSublevel(rootDatabase.currentReplicaName())
+        );
+        if (source instanceof Error) {
+            throw source;
+        }
+        const built = await buildRetainedReplayState({
+            source,
+            localWriter,
+            currentInputKeysOfNode,
+        });
+        if ("error" in built) {
+            throw built.error;
+        }
+        state = built.state;
+    } else {
+        state = makeEmptyRetainedReplayState(localWriter, currentInputKeysOfNode);
+    }
+    /** @type {Array<*>} */
+    const operations = [];
+    const rejected = appendRetainedStateOp(schemaStorage.journal, operations, state);
+    if (rejected !== undefined) {
+        throw rejected;
+    }
+    await schemaStorage.batch(operations);
+}
 
 /**
  * @typedef {object} PreparedGraphStorage
@@ -168,6 +260,8 @@ async function prepareIncrementalGraphStorage(rootDatabase, nodeDefs) {
         `active replica '${rootDatabase.currentReplicaName()}'`
     );
 
+    await ensureRetainedReplayState(rootDatabase, schemaStorage, graphScheme);
+
     return {
         rootDatabase,
         compiledNodes,
@@ -178,5 +272,6 @@ async function prepareIncrementalGraphStorage(rootDatabase, nodeDefs) {
 }
 
 module.exports = {
+    currentInputKeysOfGraphScheme,
     prepareIncrementalGraphStorage,
 };

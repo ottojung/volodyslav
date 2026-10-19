@@ -40,6 +40,7 @@ const {
 } = require('./lock');
 const {
     appendJournalPublicationOps,
+    maintainedRetainedState,
     readCommittedWriterState,
 } = require('./journal_store');
 const { finalizeEmission, makeJournalPublicationError } = require('./journal');
@@ -67,6 +68,7 @@ const { stageValueInvalidations } = require('./emit');
 /** @typedef {import('./journal/emission').EmissionIntent} EmissionIntent */
 /** @typedef {import('./journal/emission').MaterializeInput} MaterializeInput */
 /** @typedef {import('./journal/types').JournalRecordId} JournalRecordId */
+/** @typedef {import('./journal_retained').CurrentInputKeysOfNode} CurrentInputKeysOfNode */
 /** @typedef {import('../../sleeper').SleepCapability} SleepCapability */
 /** @typedef {import('../../datetime').Datetime} Datetime */
 
@@ -378,9 +380,12 @@ function groupByDependency(withdrawn) {
  * @param {RootDatabase} rootDatabase
  * @param {SleepCapability} sleeper
  * @param {Datetime} datetime
+ * @param {CurrentInputKeysOfNode} currentInputKeysOfNode - The current schema's direct
+ *   inputs per node, which the retained replay state resolves its certificates and
+ *   freshness against as it is maintained by each publication.
  * @returns {GraphStorage}
  */
-function makeGraphStorage(rootDatabase, sleeper, datetime) {
+function makeGraphStorage(rootDatabase, sleeper, datetime, currentInputKeysOfNode) {
     /**
      * @returns {Promise<NodeIdentifier[]>}
      */
@@ -543,10 +548,17 @@ function makeGraphStorage(rootDatabase, sleeper, datetime) {
                         if (publication instanceof Error) {
                             throw publication;
                         }
+                        const retained = await maintainedRetainedState(
+                            activeSchemaStorage.journal,
+                            rootDatabase.getFingerprint(),
+                            currentInputKeysOfNode,
+                            publication.records
+                        );
                         const rejected = appendJournalPublicationOps(
                             activeSchemaStorage.journal,
                             operations,
-                            publication
+                            publication,
+                            retained
                         );
                         if (rejected !== undefined) {
                             throw rejected;

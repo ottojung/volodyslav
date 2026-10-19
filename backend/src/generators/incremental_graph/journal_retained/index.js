@@ -42,9 +42,14 @@ const {
     selectedOccurrencesOf,
     stageRetainedRecords,
 } = require("./retained");
-const { buildRetainedReplayState } = require("./retained_maintenance");
+const { buildRetainedReplayState, buildRetainedReplayStateFromRecords } = require("./retained_maintenance");
 const { refuseStaleRetainedState } = require("./correspondence");
 const { commitRetainedReplayState, forkRetainedReplayState } = require("./transaction");
+const {
+    deserializeRetainedReplayState,
+    makeEmptyRetainedReplayState,
+    serializeRetainedReplayState,
+} = require("./state_codec");
 
 module.exports = {
     ProofSummaryClass,
@@ -53,9 +58,13 @@ module.exports = {
     authorLookupOf,
     buildProofSummary,
     buildRetainedReplayState,
+    buildRetainedReplayStateFromRecords,
     refuseStaleRetainedState,
     commitRetainedReplayState,
+    deserializeRetainedReplayState,
     forkRetainedReplayState,
+    makeEmptyRetainedReplayState,
+    serializeRetainedReplayState,
     countEligibleProofEdges,
     eligibleProofEdgeUnion,
     invalidationSummaryOf,

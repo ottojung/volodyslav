@@ -45,7 +45,11 @@ const {
     encodeJournalRecord,
     journalAuthorToString,
 } = require('../journal');
-const { forEachRetainedRecord, makeJournalRecordKey } = require('../journal_store');
+const {
+    appendRetainedStateOp,
+    forEachRetainedRecord,
+    makeJournalRecordKey,
+} = require('../journal_store');
 
 /**
  * Thrown when a synchronization outcome cannot be lowered into the replica namespace it
@@ -149,13 +153,18 @@ async function planSyncReceiverPublication(request) {
         receiverFingerprint,
         outcome,
     } = request;
-    return [
+    const operations = [
         ...await retainedRecordOperations(target, retainedSource),
         target.global.putOp('version', receiverVersion),
         target.global.putOp(GRAPH_SCHEME_KEY, receiverGraphScheme),
         target.global.putOp('fingerprint', receiverFingerprint),
         ...await planSyncPublication({ target, outcome }),
     ];
+    const rejected = appendRetainedStateOp(target.journal, operations, outcome.retainedState);
+    if (rejected !== undefined) {
+        throw rejected;
+    }
+    return operations;
 }
 
 /**

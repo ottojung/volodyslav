@@ -28,14 +28,16 @@ const {
     isJournalError,
     isSemanticEvent,
     makeJournalAuthor,
+    makeJournalProjectionError,
     streamWithReport,
 } = require('../journal');
-const { buildRetainedReplayState, resetToSource } = require('../journal_reset');
+const { resetToSource } = require('../journal_reset');
 const { SnapshotIdentityClass } = require('../journal_sync');
 const { makeCurrentInputKeysOfNode } = require('../journal_bootstrap_startup');
 const {
     readCommittedWriterState,
     readJournalSource,
+    readRetainedReplayState,
 } = require('../journal_store');
 
 /** @typedef {import('../database/synchronize').Capabilities} Capabilities */
@@ -257,18 +259,32 @@ async function resetJournalReceiverToSnapshot(request) {
     if (receiver instanceof Error) {
         throw receiver;
     }
-    const retained = await buildRetainedReplayState({
-        source: receiver,
+    // `incremental-graph-journal-storage.md` §Change-bounded proof summary and
+    // `incremental-graph-journal-reset.md` §Pass 1 closure guarantee require the
+    // receiver's active summary to be maintained incrementally and forbid a reset from
+    // replaying or revalidating unrelated retained history, so the summary is read from
+    // the same sublevel the receiver retains its records in. A receiver which retains
+    // records but has no summary is the missing-summary case that section reserves for
+    // explicit rebuild/maintenance, and it fails closed here rather than being
+    // reconstructed by traversal.
+    const retained = await readRetainedReplayState(receiverStorage.journal, {
         localWriter,
         currentInputKeysOfNode,
     });
-    if ('error' in retained) {
-        throw retained.error;
+    if (retained === undefined) {
+        throw makeJournalProjectionError(
+            'the receiver retains a Journal but has no persisted change-bounded proof summary, ' +
+                'which requires explicit rebuild/maintenance rather than a reset',
+            ''
+        );
+    }
+    if (retained instanceof Error) {
+        throw retained;
     }
 
     const result = await resetToSource({
         receiver,
-        retainedState: retained.state,
+        retainedState: retained,
         source: held.source,
         localWriter,
         committed,

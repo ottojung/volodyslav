@@ -46,6 +46,7 @@ const {
     IDENTIFIERS_KEY,
     LAST_NODE_INDEX_KEY,
     compareNodeIdentifier,
+    parseGraphScheme,
     serializeIdentifierLookup,
     stringToNodeKeyString,
     setIdentifierMapping,
@@ -62,7 +63,8 @@ const {
     nodeKeyToCanonicalString,
 } = require("./journal");
 const { appendJournalPublicationOps, makeInitialCommittedWriterState } = require("./journal_store");
-const { isStartupCanonicalBootstrap } = require("./journal_bootstrap_startup");
+const { buildRetainedReplayStateFromRecords } = require("./journal_retained");
+const { isStartupCanonicalBootstrap, makeCurrentInputKeysOfNode } = require("./journal_bootstrap_startup");
 
 /**
  * The committed Journal state a resolved bootstrap installs, reconstructed from the
@@ -215,11 +217,25 @@ async function installCanonicalBootstrap(rootDatabase, resolution) {
     if (isJournalError(writerState)) {
         throw writerState;
     }
-    const operations = graphOperationsOf(storage, resolution);
-    appendJournalPublicationOps(storage.journal, operations, {
+    const currentInputKeysOfNode = currentInputKeysOfGraphSchemeString(resolution.artifact.graphSchemeString);
+    const built = await buildRetainedReplayStateFromRecords({
         records: resolution.records,
-        writerState,
+        localWriter: resolution.localWriter,
+        currentInputKeysOfNode,
     });
+    if ("error" in built) {
+        throw built.error;
+    }
+    const operations = graphOperationsOf(storage, resolution);
+    appendJournalPublicationOps(
+        storage.journal,
+        operations,
+        {
+            records: resolution.records,
+            writerState,
+        },
+        built.state
+    );
     operations.push(storage.global.putOp(IDENTIFIERS_KEY, identifierLookupOf(resolution)));
     operations.push(storage.global.putOp(LAST_NODE_INDEX_KEY, resolution.projection.lastNodeIndex));
     operations.push(storage.global.putOp(GRAPH_SCHEME_KEY, resolution.artifact.graphSchemeString));
@@ -228,6 +244,20 @@ async function installCanonicalBootstrap(rootDatabase, resolution) {
     await storage.batch(operations);
     await rootDatabase.setCurrentReplicaPointer(target);
     return target;
+}
+
+/**
+ * The current schema's direct inputs per node, read from a persisted graph scheme string.
+ *
+ * A node the scheme does not name has no template, which is the empty input set the
+ * retained replay state reads as "no direct inputs".
+ *
+ * @param {string} graphSchemeString
+ * @returns {(nodeKeyString: string) => ReadonlyArray<string>}
+ */
+function currentInputKeysOfGraphSchemeString(graphSchemeString) {
+    const template = makeCurrentInputKeysOfNode(parseGraphScheme(graphSchemeString));
+    return (nodeKeyString) => template(nodeKeyString) ?? [];
 }
 
 /**

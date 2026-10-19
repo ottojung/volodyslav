@@ -22,6 +22,7 @@
 
 const {
     appendJournalPublicationOps,
+    appendRetainedStateOp,
     readCommittedWriterState,
 } = require("./journal_store");
 const {
@@ -210,15 +211,25 @@ async function buildMigrationJournal(sourceStorage, targetStorage, fingerprint, 
     if ("error" in repaired) {
         throw repaired.error;
     }
+    // The migration target's retained replay state is the summary the cutover selects,
+    // so it is written before the pointer moves. `incremental-graph-journal-storage.md`
+    // §Change-bounded proof summary permits Journal-aware migration to rebuild the
+    // summary while traversing H, which is what `repairMigrationJournal` does, and
+    // §Derived indexes requires a maintained index to be updated in durable staging
+    // before the state it describes becomes active.
+    /** @type {Array<import('./database/root_database').DatabaseBatchOperation>} */
+    const operations = [];
     if (repaired.records.length > 0) {
-        /** @type {Array<import('./database/root_database').DatabaseBatchOperation>} */
-        const operations = [];
         const rejected = appendJournalPublicationOps(targetStorage.journal, operations, repaired);
         if (rejected !== undefined) {
             throw rejected;
         }
-        await targetStorage.batch(operations);
     }
+    const stateRejected = appendRetainedStateOp(targetStorage.journal, operations, repaired.retainedState);
+    if (stateRejected !== undefined) {
+        throw stateRejected;
+    }
+    await targetStorage.batch(operations);
 }
 
 module.exports = {
