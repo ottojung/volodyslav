@@ -485,7 +485,7 @@ const { COMPUTED_VALUE_TYPE_TAGS } = require("./computed_value");
 
 /**
  * The canonical current-format text of one retained Journal record, or the JSON
- * text of one Journal committed-pair metadata record.
+ * text of Journal metadata (committed state or current occurrence).
  *
  * The properties that this class carries are:
  * - The string is text the Journal sublevel persists and the Journal's own

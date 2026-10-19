@@ -3,8 +3,8 @@
  *
  * The Journal sublevel stores canonical text, not JSON values: a record's stored
  * value is `JSON.stringify(...)` output which the Journal's own readers parse, and
- * an occurrence's stored value is a bare `author:sequence` record id which is not
- * JSON at all. A read or write which crosses the untyped raw accessors of
+ * an occurrence's stored value is canonical text containing the node identity and
+ * its record id. A read or write which crosses the untyped raw accessors of
  * `RootDatabase` therefore has to use the text encoding, and has to keep using the
  * declared encoding of the sublevel the key names.
  *
@@ -26,6 +26,8 @@ const {
     stringToJournalKey,
     stringToJournalText,
 } = require('../src/generators/incremental_graph/database/types');
+const { makeJournalOccurrenceKey } =
+    require('../src/generators/incremental_graph/journal_store');
 const { getMockedRootCapabilities } = require('./spies');
 const { stubLogger, stubEnvironment } = require('./stubs');
 
@@ -40,8 +42,10 @@ const RECORD_TEXT = stringToJournalText(
     '"context":[],"authorityTime":{"physical":1,"logical":"1"},"nodeIdentifier":"all_events",' +
     '"payload":{"type":"all_events","events":[]},"createdAt":1,"modifiedAt":1,"reason":"write"}'
 );
-const OCCURRENCE_KEY = stringToJournalKey('occurrence|{"head":"all_events","args":[]}');
-const OCCURRENCE_TEXT = stringToJournalText('qai1:1');
+const OCCURRENCE_KEY = makeJournalOccurrenceKey({ head: 'all_events', args: [] });
+const OCCURRENCE_TEXT = stringToJournalText(
+    JSON.stringify({ node: '{"head":"all_events","args":[]}', valueId: 'qai1:1' })
+);
 const STATE_KEY = stringToJournalKey('state');
 const STATE_TEXT = stringToJournalText(
     '{"localWriter":"qai1","writerHead":"1","committedFrontier":[["qai1","1"]],' +
@@ -155,7 +159,7 @@ function readRenderedFile(directory, relativePath) {
 }
 
 describe('the bytes a rendered snapshot holds', () => {
-    test('a rendered occurrence record id is the bare id text, not a JSON string literal', async () => {
+    test('a rendered occurrence entry is JSON metadata text, not double-quoted', async () => {
         const { capabilities, tmpDir } = makeTestCapabilities();
         const source = await makeDatabaseWithJournalText(capabilities);
         const renderDir = path.join(tmpDir, 'render', 'x');
@@ -164,7 +168,7 @@ describe('the bytes a rendered snapshot holds', () => {
         } finally {
             await source.close();
         }
-        expect(readRenderedFile(renderDir, path.join('journal', OCCURRENCE_KEY))).toBe('qai1:1');
+        expect(readRenderedFile(renderDir, path.join('journal', OCCURRENCE_KEY))).toBe(OCCURRENCE_TEXT);
     });
 
     test('a rendered record is its canonical text, with no JSON quoting around it', async () => {
@@ -217,7 +221,7 @@ describe('the bytes a rendered snapshot holds', () => {
         fs.mkdirSync(path.join(snapshotDir, 'journal'), { recursive: true });
         fs.writeFileSync(
             path.join(snapshotDir, 'journal', OCCURRENCE_KEY),
-            'qai1:1',
+            OCCURRENCE_TEXT,
             'utf8'
         );
         fs.writeFileSync(path.join(snapshotDir, 'journal', RECORD_KEY), RECORD_TEXT, 'utf8');
@@ -239,7 +243,7 @@ describe('the bytes a rendered snapshot holds', () => {
         fs.mkdirSync(path.join(snapshotDir, 'journal'), { recursive: true });
         fs.writeFileSync(
             path.join(snapshotDir, 'journal', OCCURRENCE_KEY),
-            JSON.stringify('qai1:1'),
+            JSON.stringify(OCCURRENCE_TEXT),
             'utf8'
         );
         fs.writeFileSync(

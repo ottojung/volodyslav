@@ -189,7 +189,7 @@ async function publishFixtureOccurrence(storage, nodeIdentifier, timestamps) {
         throw new Error("the fixture occurrence was rejected: " + publication.message);
     }
     const operations = [];
-    const rejected = appendJournalPublicationOps(storage.journal, operations, publication);
+    const rejected = await appendJournalPublicationOps(storage.journal, operations, publication);
     if (rejected !== undefined) {
         throw new Error("the fixture occurrence could not be appended: " + rejected.message);
     }

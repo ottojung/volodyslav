@@ -193,12 +193,13 @@ describe('the encoding each live sublevel declaration actually stored', () => {
         );
     });
 
-    test('a Journal occurrence id is stored as bare text, which is not JSON at all', async () => {
+    test('a Journal occurrence stores its JSON metadata as unwrapped text', async () => {
         const storage = db.getSchemaStorage();
-        await storage.journal.put('occurrence|{"head":"all_events","args":[]}', 'qai1:1');
-        expect(
-            await readStoredText(db, `!x!!${JOURNAL_SUBLEVEL_NAME}!occurrence|{"head":"all_events","args":[]}`)
-        ).toBe('qai1:1');
+        const { makeJournalOccurrenceKey } = require('../src/generators/incremental_graph/journal_store');
+        const key = makeJournalOccurrenceKey({ head: 'all_events', args: [] });
+        const value = JSON.stringify({ node: '{"head":"all_events","args":[]}', valueId: 'qai1:1' });
+        await storage.journal.put(key, value);
+        expect(await readStoredText(db, `!x!!${JOURNAL_SUBLEVEL_NAME}!${key}`)).toBe(value);
     });
 
     test('a replica freshness entry is stored as JSON text, which the table records for freshness', async () => {

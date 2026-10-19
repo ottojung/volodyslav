@@ -227,7 +227,7 @@ async function installCanonicalBootstrap(rootDatabase, resolution) {
         throw built.error;
     }
     const operations = graphOperationsOf(storage, resolution);
-    appendJournalPublicationOps(
+    const rejection = await appendJournalPublicationOps(
         storage.journal,
         operations,
         {
@@ -236,6 +236,9 @@ async function installCanonicalBootstrap(rootDatabase, resolution) {
         },
         built.state
     );
+    if (rejection !== undefined) {
+        throw rejection;
+    }
     operations.push(storage.global.putOp(IDENTIFIERS_KEY, identifierLookupOf(resolution)));
     operations.push(storage.global.putOp(LAST_NODE_INDEX_KEY, resolution.projection.lastNodeIndex));
     operations.push(storage.global.putOp(GRAPH_SCHEME_KEY, resolution.artifact.graphSchemeString));

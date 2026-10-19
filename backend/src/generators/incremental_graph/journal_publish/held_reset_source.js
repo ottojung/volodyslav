@@ -19,7 +19,7 @@
  *
  * A Journal 3 replica persists, per materialized occurrence, its payload (`values`),
  * its two timestamps (`timestamps`), its derived freshness (`freshness`), its current
- * `ValueId` (the Journal sublevel's `occurrence|` key) and its incoming validity edges
+ * `ValueId` (the Journal sublevel's `occurrence|` value) and its incoming validity edges
  * (`valid`, stored inverted as dependency to dependents). Its `identifiers_keys_map`
  * names the semantic key each physical identifier stands for. Those are exactly the
  * fields §Source target lists as observable semantics: presence, payload,
@@ -43,7 +43,6 @@ const {
     deserializeNodeKey,
     GRAPH_SCHEME_KEY,
     IDENTIFIERS_KEY,
-    journalTextToString,
     LAST_NODE_INDEX_KEY,
     nodeIdToKeyFromLookup,
     nodeKeyStringToString,
@@ -68,11 +67,10 @@ const {
     makeJournalAuthor,
     makeJournalSourceReadError,
     NodeFreshnessClass,
-    parseJournalRecordId,
     ProjectionClass,
 } = require("../journal");
 const { makeResetSource } = require("../journal_reset");
-const { makeJournalOccurrenceKey, readJournalSource } = require("../journal_store");
+const { readCurrentOccurrence, readJournalSource } = require("../journal_store");
 
 /** The `freshness` row value which means the occurrence is up to date. */
 const UP_TO_DATE = 'up-to-date';
@@ -160,11 +158,7 @@ async function validInputsByNodeKey(storage, lookup) {
  * @returns {Promise<JournalRecordId | undefined>}
  */
 async function readOccurrenceOf(storage, node) {
-    const raw = await storage.journal.get(makeJournalOccurrenceKey(node));
-    if (raw === undefined) {
-        return undefined;
-    }
-    const parsed = parseJournalRecordId(journalTextToString(raw));
+    const parsed = await readCurrentOccurrence(storage.journal, node);
     return parsed instanceof Error ? undefined : parsed;
 }
 

@@ -98,6 +98,11 @@ async function carryRetainedJournal(sourceStorage, targetStorage, rewriter) {
         if (rewritten instanceof Error) {
             throw rewritten;
         }
+        if (sourceKeys.has(rewritten.keyText)) {
+            throw makeJournalPublicationError(
+                "distinct migrated Journal entries would share physical key " + rewritten.keyText
+            );
+        }
         sourceKeys.add(rewritten.keyText);
         operations.push(
             targetJournal.putOp(
@@ -146,7 +151,7 @@ async function publishMigrationM1(targetStorage, state, intents, publicationInst
     }
     /** @type {Array<import('./database/root_database').DatabaseBatchOperation>} */
     const operations = [];
-    const rejected = appendJournalPublicationOps(targetStorage.journal, operations, publication);
+    const rejected = await appendJournalPublicationOps(targetStorage.journal, operations, publication);
     if (rejected !== undefined) {
         return rejected;
     }
@@ -220,7 +225,7 @@ async function buildMigrationJournal(sourceStorage, targetStorage, fingerprint, 
     /** @type {Array<import('./database/root_database').DatabaseBatchOperation>} */
     const operations = [];
     if (repaired.records.length > 0) {
-        const rejected = appendJournalPublicationOps(targetStorage.journal, operations, repaired);
+        const rejected = await appendJournalPublicationOps(targetStorage.journal, operations, repaired);
         if (rejected !== undefined) {
             throw rejected;
         }

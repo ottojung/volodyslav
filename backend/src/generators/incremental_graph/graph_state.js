@@ -554,7 +554,7 @@ function makeGraphStorage(rootDatabase, sleeper, datetime, currentInputKeysOfNod
                             currentInputKeysOfNode,
                             publication.records
                         );
-                        const rejected = appendJournalPublicationOps(
+                        const rejected = await appendJournalPublicationOps(
                             activeSchemaStorage.journal,
                             operations,
                             publication,
