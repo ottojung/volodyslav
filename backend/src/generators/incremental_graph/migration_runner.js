@@ -36,7 +36,7 @@ const { buildProducedOccurrences } = require("./migration_occurrences");
 const { buildMigrationJournal } = require("./migration_journal");
 const { verifyTargetReplica } = require("./migration_verification");
 const { makeLazyMigrationSource } = require("./migration_source");
-const { makeJournalAuthor, makeJournalVersionCompatibilityError } = require("./journal");
+const { canonicalJournalTimestamp, makeJournalAuthor, makeJournalVersionCompatibilityError } = require("./journal");
 const { readCurrentOccurrence } = require("./journal_store");
 const { checkpointMigration } = require("./database");
 const { unifyStores, makeDbToDbAdapter, deserializeNodeKey } = require("./database");
@@ -465,7 +465,7 @@ async function runMigrationEdgeUnsafe(capabilities, rootDatabase, nodeDefs, edge
     // memory at O(|max value| + |keys|), matching the sync path.
     // The migration publication instant, which §11a.3 makes the `modifiedAt` of
     // every genuinely produced occurrence and the seed of every M1 authority.
-    const publicationInstant = capabilities.datetime.now().toISOString();
+    const publicationInstant = canonicalJournalTimestamp(capabilities.datetime.now().toMillis());
     const producedOccurrences = await buildProducedOccurrences(
         decisions,
         prevStorage,
