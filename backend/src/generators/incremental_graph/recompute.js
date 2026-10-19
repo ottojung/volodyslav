@@ -32,6 +32,7 @@
 const { makeInvalidComputorReturnValueError, makeInvalidUnchangedError } = require("./errors");
 const { isUnchanged } = require("./unchanged");
 const { canonicalJournalTimestamp } = require("./journal");
+const { fromISOString } = require("../../datetime");
 const {
     nodeIdentifierToString,
     ReplicaStateInvariantError,
@@ -143,7 +144,9 @@ async function handleChanged(incrementalGraph, nodeDefinition, nodeIdentifier, i
             throw new ReplicaStateInvariantError("pull", "has no timestamps entry", nodeIdentifierToString(nodeIdentifier));
         }
         batch.timestamps.put(nodeIdentifier, {
-            createdAt: existingTimestamp.createdAt,
+            // Preserve the historical creation instant, not its local-zone
+            // spelling. Journal requires canonical whole-millisecond UTC text.
+            createdAt: canonicalJournalTimestamp(fromISOString(existingTimestamp.createdAt).toMillis()),
             modifiedAt: nowIso,
         });
     } else {
