@@ -40,7 +40,7 @@
 
 const { GRAPH_SCHEME_KEY } = require('../database');
 const { planSyncPublication } = require('./sync_publish');
-const { stageRetainedRecords } = require('./staged_records');
+const { stageGrowthRecords, stageRetainedRecords } = require('./staged_records');
 /** @typedef {import('../journal/errors').AnyJournalError} JournalError */
 /** @typedef {import('../journal/records').JournalRecord} JournalRecord */
 /** @typedef {import('../journal/types').JournalAuthor} JournalAuthor */
@@ -125,7 +125,13 @@ async function planResetPublication(request) {
         target.global.putOp('version', receiverVersion),
         target.global.putOp(GRAPH_SCHEME_KEY, receiverGraphScheme),
         target.global.putOp('fingerprint', receiverFingerprint),
-        ...await planSyncPublication({ target, outcome }),
+        // The journal growth — the imported suffix and the authored records — is
+        // staged before the cutover, so this batch writes no record of its own and
+        // only the projection and the metadata which make the staged target active.
+        ...await planSyncPublication({
+            target,
+            outcome: { records: [], projection: outcome.projection, publication: outcome.publication },
+        }),
     ];
     const rejected = appendRetainedStateOp(target.journal, operations, outcome.retainedState);
     if (rejected !== undefined) {
@@ -137,22 +143,21 @@ async function planResetPublication(request) {
 /**
  * Publish one reset outcome into the inactive replica.
  *
- * The receiver's retained records are streamed into the inactive target first, in bounded
- * chunks, and the cutover batch is then issued as one atomic write. The target is inactive
- * throughout, so a failure in either phase leaves the previously activated replica as the
- * receiver; a retry re-stages the same deterministic keys over any abandoned partial
- * stage. The caller performs the cutover itself, by moving the replica pointer, and only
- * after this returns.
+ * The receiver's retained records and the operation's journal growth — the imported
+ * source suffix and the authored records — are streamed into the inactive target first,
+ * in bounded chunks, and the cutover batch is then issued as one atomic write. The target
+ * is inactive throughout, so a failure in either phase leaves the previously activated
+ * replica as the receiver; a retry re-stages the same deterministic keys over any
+ * abandoned partial stage. The caller performs the cutover itself, by moving the replica
+ * pointer, and only after this returns.
  *
  * @param {ResetPublicationRequest} request
  * @returns {Promise<void>}
  */
 async function publishResetOutcome(request) {
-    await stageRetainedRecords(
-        request.target,
-        request.retainedSource,
-        (recordKey) => new ResetPublicationError(recordKey)
-    );
+    const makeError = (/** @type {string} */ recordKey) => new ResetPublicationError(recordKey);
+    await stageRetainedRecords(request.target, request.retainedSource, makeError);
+    await stageGrowthRecords(request.target, request.outcome.recordGrowth, makeError);
     await request.target.batch(await planResetPublication(request));
 }
 

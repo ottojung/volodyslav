@@ -71,6 +71,8 @@ const {
     projectRetainedJournal,
 } = require("../src/generators/incremental_graph/journal");
 
+const { withCollectedRecords } = require("./journal_record_growth_helper");
+
 const {
     isSyncOutcome,
     planDependencyClosureRemoval,
@@ -379,7 +381,7 @@ async function retainedStateOf(receiver) {
  */
 async function synchronize(options) {
     const identity = new SnapshotIdentityClass("v1", "scheme");
-    return await synchronizeRetainedJournal({
+    const result = await synchronizeRetainedJournal({
         receiver: makeReplicaSource(replicaOf(options.receiver)),
         source: makeReplicaSource(replicaOf(options.source)),
         localWriter: makeJournalAuthor(WRITER_LOCAL),
@@ -391,6 +393,7 @@ async function synchronize(options) {
         sourceIdentity: identity,
         retainedState: await retainedStateOf(options.receiver),
     });
+    return await withCollectedRecords(result);
 }
 
 /**

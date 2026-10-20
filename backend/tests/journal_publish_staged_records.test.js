@@ -40,6 +40,10 @@ const {
 } = require("../src/generators/incremental_graph/journal_retained");
 
 const {
+    makeRecordGrowth,
+} = require("../src/generators/incremental_graph/journal_sync");
+
+const {
     publishSyncReceiverOutcome,
 } = require("../src/generators/incremental_graph/journal_publish/sync_publication");
 
@@ -132,7 +136,7 @@ function retainedSourceOf(count) {
 function emptyOutcome() {
     const localWriter = made(makeJournalAuthor(WRITER_LOCAL));
     return {
-        records: [],
+        recordGrowth: makeRecordGrowth([], []),
         projection: new ProjectionClass([], new Map(), 0, localWriter, new Set(), new Set()),
         publication: {
             writerState: {

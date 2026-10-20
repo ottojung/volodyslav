@@ -45,6 +45,7 @@
 /** @typedef {import('../journal/types').NodeKey} NodeKey */
 /** @typedef {import('../journal/oracle/projection').Projection} Projection */
 /** @typedef {import('../journal/oracle/record_source').JournalSource} JournalSource */
+/** @typedef {import('../journal_sync').RecordGrowth} RecordGrowth */
 /** @typedef {import('../journal_sync').SnapshotIdentity} SnapshotIdentity */
 /** @typedef {import('./authoring').ResetPublication} ResetPublication */
 /** @typedef {import('./authoring').ResetRequest} ResetRequest */
@@ -59,7 +60,11 @@ const {
     nodeKeyToCanonicalString,
 } = require("../journal");
 const { reconcileRetainedWriterHead } = require("../journal_store");
-const { assertCompatibleIdentity, planForeignSuffixImport } = require("../journal_sync");
+const {
+    assertCompatibleIdentity,
+    makeRecordGrowth,
+    planForeignSuffixImport,
+} = require("../journal_sync");
 const { finalizeResetRecords, ResetPublicationClass } = require("./authoring");
 const { verifyTargetEquivalence } = require("./equivalence");
 const { deleteRequestOf, iterateResetDomain, valueRequestOf } = require("./pass1");
@@ -84,8 +89,9 @@ const {
 
 /**
  * The properties that this class carries are:
- * - `records` is the receiver's retained journal growth of this reset: every
- *   imported record unchanged, followed by every reset-authored record;
+ * - `recordGrowth` is the receiver's retained journal growth of this reset as a
+ *   streaming source: every imported record unchanged, re-read from the held
+ *   source on demand, followed by every reset-authored record;
  * - `projection` is `project(Jreset)`, so its occurrences, freshness and validity
  *   edges are the graph state the receiver must commit;
  * - `valueIds` names, for every target-present node, the occurrence reset settled
@@ -100,16 +106,17 @@ const {
  *   and §Derived indexes requires the same of a maintained candidate index.
  *
  * The proof of those properties is guaranteed by:
- * - `resetToSource(...)`: it stages each imported record without touching it,
- *   stages only what `finalizeResetRecords` allocated, takes `projection` from the
- *   retained state extended by exactly those records, and derives `changed` from
- *   the two counts directly; and
+ * - `resetToSource(...)`: it folds each imported record into the staged state as it
+ *   reads it, stages only what `finalizeResetRecords` allocated, takes `projection`
+ *   from the retained state extended by exactly those records, builds `recordGrowth`
+ *   from the import plan's re-readable suffixes and the authored records, and derives
+ *   `changed` from the imported and authored counts directly; and
  * - `valueIds` is filled from `selectedHeads(J0)` for preserved occurrences and from
  *   the allocated `ValueEvent`s for authored ones, and Passes 2 and 3 author no
  *   `ValueEvent`, so the map is the selected occurrence of each target-present node
  *   after the final pass.
  *
- * @param {ReadonlyArray<JournalRecord>} records
+ * @param {RecordGrowth} recordGrowth
  * @param {ResetPublication} publication
  * @param {Projection} projection
  * @param {Map<string, ResetValueId>} valueIds
@@ -118,15 +125,15 @@ const {
  */
 class ResetOutcomeClass {
     /**
-     * @param {ReadonlyArray<JournalRecord>} records
+     * @param {RecordGrowth} recordGrowth
      * @param {ResetPublication} publication
      * @param {Projection} projection
      * @param {Map<string, ResetValueId>} valueIds
      * @param {boolean} changed
      * @param {RetainedReplayState} retainedState
      */
-    constructor(records, publication, projection, valueIds, changed, retainedState) {
-        this.records = records;
+    constructor(recordGrowth, publication, projection, valueIds, changed, retainedState) {
+        this.recordGrowth = recordGrowth;
         this.publication = publication;
         this.projection = projection;
         this.valueIds = valueIds;
@@ -240,12 +247,11 @@ async function resetToSource(request) {
     if ("error" in plan) {
         return plan;
     }
-    // The plan validated each suffix and holds no copy of it, so the records are
-    // streamed back out of the source one at a time as they are staged. The batch
-    // which publishes them is the one bounded buffer the cutover keeps; the plan's
-    // own validation never materialises the suffix.
-    /** @type {JournalRecord[]} */
-    const imported = [];
+    // The plan validated each suffix and holds no copy of it, so each imported
+    // record is folded into the staged state as it is read and is never collected
+    // into an array: the imported suffix is streamed, not materialised. The growth
+    // the outcome publishes re-reads the same suffixes on demand.
+    let importedCount = 0;
     for (const suffix of plan.suffixes) {
         const reader = suffix.reader();
         for (;;) {
@@ -253,7 +259,8 @@ async function resetToSource(request) {
             if (record === undefined) {
                 break;
             }
-            imported.push(record);
+            stageRetainedRecords(staged, [record]);
+            importedCount += 1;
         }
         const failure = reader.failure();
         if (failure !== undefined) {
@@ -266,7 +273,6 @@ async function resetToSource(request) {
     // dependency-closed, and Pass 1 is what repairs that. The head view is the
     // retained one with the imported records folded in, so no retained Value/Delete
     // record is visited again.
-    stageRetainedRecords(staged, imported);
     const rawHeads = selectedHeadsOf(staged);
 
     const target = source.projection;
@@ -474,11 +480,11 @@ async function resetToSource(request) {
 
     return {
         outcome: new ResetOutcomeClass(
-            [...imported, ...authored],
+            makeRecordGrowth(plan.suffixes, authored),
             new ResetPublicationClass(authored, state),
             final,
             valueIds,
-            imported.length > 0 || authored.length > 0,
+            importedCount > 0 || authored.length > 0,
             retainedState
         ),
     };

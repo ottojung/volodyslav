@@ -72,6 +72,7 @@ const {
 
 const { getMockedRootCapabilities } = require('./spies');
 const { stubLogger, stubEnvironment } = require('./stubs');
+const { withCollectedRecords } = require('./journal_record_growth_helper');
 
 const NODE_A = { head: 'event', args: [{ id: 1 }] };
 const NODE_B = { head: 'event', args: [{ id: 2 }] };
@@ -279,7 +280,7 @@ function committedAfter(records, authorityPhysical) {
  */
 async function synchronize(options) {
     const identity = new SnapshotIdentityClass('v1', 'scheme');
-    return await synchronizeRetainedJournal({
+    const result = await synchronizeRetainedJournal({
         receiver: makeReplicaSource(replicaOf(options.receiver)),
         source: makeReplicaSource(replicaOf(options.source)),
         localWriter: made(makeJournalAuthor(WRITER_LOCAL)),
@@ -295,6 +296,7 @@ async function synchronize(options) {
             currentInputKeysOfNode: chainInputs,
         })).state,
     });
+    return await withCollectedRecords(result);
 }
 
 /**

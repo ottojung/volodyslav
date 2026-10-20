@@ -72,6 +72,8 @@ const {
     projectRetainedJournal,
 } = require("../src/generators/incremental_graph/journal");
 
+const { withCollectedRecords } = require("./journal_record_growth_helper");
+
 const { SnapshotIdentityClass } = require("../src/generators/incremental_graph/journal_sync");
 
 const {
@@ -322,7 +324,7 @@ async function runReset(receiverRecords, sourceRecords) {
     if (lastLocal === undefined) {
         throw new Error("the receiver fixture has no local record");
     }
-    return await resetToSource({
+    const result = await resetToSource({
         receiver,
         retainedState,
         source,
@@ -339,6 +341,7 @@ async function runReset(receiverRecords, sourceRecords) {
         currentInputKeysOfNode: chainInputs,
         receiverIdentity: new SnapshotIdentityClass("v1", "scheme"),
     });
+    return await withCollectedRecords(result);
 }
 
 /**

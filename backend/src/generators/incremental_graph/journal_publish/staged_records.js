@@ -32,6 +32,7 @@
 /** @typedef {import('../journal/errors').AnyJournalError} JournalError */
 /** @typedef {import('../journal/records').JournalRecord} JournalRecord */
 /** @typedef {import('../journal/oracle/record_source').JournalSource} JournalSource */
+/** @typedef {import('../journal_sync').RecordGrowth} RecordGrowth */
 /** @typedef {import('../database/root_database').SchemaStorage} SchemaStorage */
 
 const { RAW_BATCH_CHUNK_SIZE, stringToJournalText } = require('../database');
@@ -134,7 +135,34 @@ async function stageRetainedRecords(target, retainedSource, makeError) {
     await writer.flush();
 }
 
+/**
+ * Stage one operation's journal growth into the inactive target in bounded chunks.
+ *
+ * The growth is the imported foreign suffix re-read from the held source followed
+ * by the operation-authored records, so streaming it into the target makes the
+ * target hold every record `Jfinal` (or `Jreset`) names without ever materialising
+ * the imported suffix. A reader failure during the re-read throws before the
+ * cutover, which is the failure-before-cutover case both specifications allow.
+ *
+ * @param {SchemaStorage} target
+ * @param {RecordGrowth} recordGrowth
+ * @param {(recordKey: string) => Error} makeError
+ * @returns {Promise<void>}
+ */
+async function stageGrowthRecords(target, recordGrowth, makeError) {
+    const writer = new BoundedBatchWriter(target);
+    await recordGrowth.forEachRecord(async (record) => {
+        const key = makeJournalRecordKey(record.id.author, record.id.sequence);
+        if (key instanceof Error) {
+            throw makeError(journalAuthorToString(record.id.author));
+        }
+        await writer.push(target.journal.putOp(key, stringToJournalText(encodeJournalRecord(record))));
+    });
+    await writer.flush();
+}
+
 module.exports = {
     BoundedBatchWriter,
+    stageGrowthRecords,
     stageRetainedRecords,
 };

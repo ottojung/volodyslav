@@ -47,6 +47,8 @@ const {
     makeReplicaSource,
 } = require("../src/generators/incremental_graph/journal");
 
+const { withCollectedRecords } = require("./journal_record_growth_helper");
+
 const {
     SnapshotIdentityClass,
     synchronizeRetainedJournal,
@@ -343,7 +345,7 @@ async function synchronize(options) {
     const staged = options.retainedState === undefined
         ? await rebuiltStateOf(options.receiver)
         : options.retainedState;
-    return await synchronizeRetainedJournal({
+    const result = await synchronizeRetainedJournal({
         receiver: makeReplicaSource(replicaOf(options.receiver)),
         source: makeReplicaSource(replicaOf(options.source)),
         localWriter: makeJournalAuthor(WRITER_LOCAL),
@@ -357,6 +359,7 @@ async function synchronize(options) {
         sourceIdentity: identity,
         retainedState: staged,
     });
+    return await withCollectedRecords(result);
 }
 
 /**
@@ -740,6 +743,9 @@ describe("synchronizeRetainedJournal, the retained history it does not re-read",
             authorityPhysical: 700,
         });
 
+        // The read counts below were captured before this collection, which is the
+        // one pass that materialises the growth for the assertion.
+        await withCollectedRecords(countedResult.result);
         const outcome = outcomeOf(countedResult.result);
         const imported = outcome.records.filter(
             (record) => journalAuthorToString(record.id.author) === WRITER_PEER
