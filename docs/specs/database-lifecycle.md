@@ -496,6 +496,24 @@ No computor executes during sync.
 A completely absent installation uses §4, not ordinary sync. A pre-Journal
 installation completes §8.2 before ordinary sync.
 
+### Failure handling
+
+Synchronization is not globally atomic across all remote hosts. Each host is
+processed independently: a failure for one host is recorded, its staging
+cleanup is attempted, and synchronization continues with the remaining hosts.
+Successful earlier or later host merges remain committed. After all hosts have
+been attempted, Volodyslav reports an aggregate synchronization failure if any
+host failed; the aggregate error carries the per-host failure records. This
+documented partial-success behavior is not corruption. The pairwise procedure
+and the multi-source execution rule are normative in
+`incremental-graph-journal-sync.md` §Multi-source execution.
+
+After an initiated synchronization, Volodyslav attempts to reopen the local
+database and rerun the migration gate even if synchronization itself failed. If
+both synchronization and reopening fail, both failures are relevant; the
+synchronization error does not justify leaving the application interface
+attached to a closed database.
+
 ## 10. Controlled reset
 
 Controlled reset is specified by `incremental-graph-journal-reset.md`.
