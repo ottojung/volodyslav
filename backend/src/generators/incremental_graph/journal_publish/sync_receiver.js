@@ -20,14 +20,12 @@ const {
     parseGraphScheme,
     requireValidFingerprint,
 } = require('../database');
+const { greatestObservedHighWater } = require('./observed_high_water');
 const { installSyncOutcome } = require('./sync_publication');
 const {
-    compareAuthorityTime,
     isJournalError,
-    isSemanticEvent,
     makeJournalAuthor,
     makeJournalProjectionError,
-    streamWithReport,
 } = require('../journal');
 const { SnapshotIdentityClass, synchronizeRetainedJournal } = require('../journal_sync');
 const { makeCurrentInputKeysOfNode } = require('../journal_bootstrap_startup');
@@ -43,8 +41,6 @@ const {
 /** @typedef {import('../database/root_database').ReplicaName} ReplicaName */
 /** @typedef {import('../journal/records').JournalRecord} JournalRecord */
 /** @typedef {import('../journal/emission').CommittedWriterState} CommittedWriterState */
-/** @typedef {import('../journal/types').AuthorityTime} AuthorityTime */
-/** @typedef {import('../journal/oracle/record_source').JournalSource} JournalSource */
 
 /**
  * @param {{ keys: () => AsyncIterable<unknown> }} sublevel
@@ -114,36 +110,6 @@ function requireText(value, what) {
         throw new Error(`synchronization requires the receiver's persisted ${what}, which is not a string`);
     }
     return value;
-}
-
-/**
- * The greatest authority time the observed union `J0` carries.
- *
- * The receiver's own committed high-water covers `JR`; the source snapshot's records cover
- * the imported part of `S`. Synchronization-authored records are allocated strictly above
- * this value, so an unobserved high-water would let an authored record share an authority
- * time with an imported one. The source is folded record by record rather than collected,
- * because only its greatest semantic authority time is read here.
- *
- * @param {AuthorityTime} committedHighWater
- * @param {JournalSource} source
- * @returns {Promise<AuthorityTime>}
- */
-async function observedHighWaterOf(committedHighWater, source) {
-    let greatest = committedHighWater;
-    const failure = await streamWithReport(source, (record) => {
-        if (!isSemanticEvent(record)) {
-            return undefined;
-        }
-        if (compareAuthorityTime(record.authorityTime, greatest) > 0) {
-            greatest = record.authorityTime;
-        }
-        return undefined;
-    });
-    if (failure !== undefined) {
-        throw failure;
-    }
-    return greatest;
 }
 
 /**
@@ -233,6 +199,10 @@ async function syncJournalReceiverToSource(request) {
         await sourceStorage.global.get(GRAPH_SCHEME_KEY),
         'source graph scheme'
     );
+    const sourceCommitted = await readCommittedWriterState(sourceStorage.journal, sourceFingerprint);
+    if (isJournalError(sourceCommitted)) {
+        throw sourceCommitted;
+    }
 
     const committed = await readCommittedWriterState(receiverStorage.journal, receiverFingerprint);
     if (isJournalError(committed)) {
@@ -283,7 +253,10 @@ async function syncJournalReceiverToSource(request) {
         source,
         localWriter,
         committed,
-        observedHighWater: await observedHighWaterOf(committed.authorityHighWater, source),
+        observedHighWater: greatestObservedHighWater(
+            committed.authorityHighWater,
+            sourceCommitted.authorityHighWater
+        ),
         publicationInstant: capabilities.datetime.now().toMillis(),
         currentInputKeysOfNode,
         receiverIdentity: new SnapshotIdentityClass(receiverVersion, receiverGraphScheme),
