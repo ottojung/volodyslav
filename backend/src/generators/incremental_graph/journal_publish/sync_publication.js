@@ -1,25 +1,28 @@
 /**
- * The synchronization persistence front: publishing `Jfinal + project(Jfinal)` in one write.
+ * The synchronization persistence front: publishing `Jfinal + project(Jfinal)` at cutover.
  *
- * `incremental-graph-journal-sync.md` §Atomic publication requires that cutover publish,
- * together, `Jfinal`, `project(Jfinal)`, the local writer allocator/high-water state and
- * the derived indexes the implementation keeps. This module is that write for a
- * synchronization. It never computes a synchronization: `synchronizeRetainedJournal` in
- * `../journal_sync` performs everything up to but excluding the publication write and
- * returns the outcome, and this module lowers that outcome the way
- * `incremental-graph-journal-sync.md` §Atomic publication lowers it. The lowering itself is
- * `planSyncPublication`, because a projection becomes persisted graph bytes in exactly one
- * place in this tree and a second copy of that lowering would be a second rule about what a
- * projection persists.
+ * `incremental-graph-journal-sync.md` §Atomic publication permits the transfer to stream
+ * into inactive durable staging, with active state changing only at final cutover, and
+ * requires that cutover to publish, together, `Jfinal`, `project(Jfinal)`, the local writer
+ * allocator/high-water state and the derived indexes the implementation keeps. This module
+ * is that publication for a synchronization. It never computes a synchronization:
+ * `synchronizeRetainedJournal` in `../journal_sync` performs everything up to but excluding
+ * the publication write and returns the outcome, and this module lowers that outcome the
+ * way §Atomic publication lowers it. The lowering itself is `planSyncPublication`, because
+ * a projection becomes persisted graph bytes in exactly one place in this tree and a second
+ * copy of that lowering would be a second rule about what a projection persists.
  *
  * ## What this module adds to the shared lowering
  *
  * A synchronization's journal growth is a *delta*: `SyncOutcome.records` holds the imported
  * foreign records and the receiver-authored normalization records, not the receiver's
  * already-retained history. The activated replica retains that history, and synchronization
- * retains it rather than replacing it, so the target must hold it as well. The retained
- * records are therefore written alongside the outcome's own records in the same batch, which
- * makes the target sublevel exactly `Jfinal` when the batch completes.
+ * retains it rather than replacing it, so the target must hold it as well. Because that
+ * retained history is history-sized, it is not folded into the cutover batch: it is staged
+ * into the inactive target first, in bounded chunks, by `staged_records.js`, and the cutover
+ * batch then publishes the graph and the metadata which make the staged target exactly
+ * `Jfinal`. The target is inactive throughout staging, so the receiver exposes either its
+ * old pair or the complete new one.
  *
  * The target's replica metadata is the receiver's own: version, graph scheme and
  * fingerprint. A synchronization receiver keeps its own writer identity and authors every
@@ -27,11 +30,9 @@
  * receiver's identity rather than adopting the source's.
  */
 
-const {
-    GRAPH_SCHEME_KEY,
-    stringToJournalText,
-} = require('../database');
+const { GRAPH_SCHEME_KEY } = require('../database');
 const { planSyncPublication } = require('./sync_publish');
+const { stageGrowthRecords, stageRetainedRecords } = require('./staged_records');
 /** @typedef {import('../journal/errors').AnyJournalError} JournalError */
 /** @typedef {import('../journal/records').JournalRecord} JournalRecord */
 /** @typedef {import('../journal/types').JournalAuthor} JournalAuthor */
@@ -41,15 +42,7 @@ const { planSyncPublication } = require('./sync_publish');
 /** @typedef {import('../database/root_database').SchemaStorage} SchemaStorage */
 /** @typedef {import('../journal_sync').SyncOutcome} SyncOutcome */
 
-const {
-    encodeJournalRecord,
-    journalAuthorToString,
-} = require('../journal');
-const {
-    appendRetainedStateOp,
-    forEachRetainedRecord,
-    makeJournalRecordKey,
-} = require('../journal_store');
+const { appendRetainedStateOp } = require('../journal_store');
 
 /**
  * Thrown when a synchronization outcome cannot be lowered into the replica namespace it
@@ -87,43 +80,6 @@ function isSyncPublicationError(object) {
 }
 
 /**
- * The operations which retain the receiver's already committed journal records in the target
- * replica.
- *
- * A record's storage key is its author and coordinate, so writing the receiver's own
- * retained records into the target contributes exactly the keys `Jfinal` names for them and
- * nothing else. Occurrence keys are not written here: the shared lowering derives the
- * occurrence index from the projection it lowers, so the target's index names
- * `project(Jfinal)` and not the receiver's pre-synchronization occurrences.
- *
- * The records are folded out of the receiver's own streaming source one at a time, so the
- * retained history is never collected as a records array in addition to the operations the
- * single atomic batch needs. The batch itself is the atomic unit, so its operation list is
- * the one bounded buffer the cutover holds.
- *
- * @param {SchemaStorage} target
- * @param {JournalSource} retainedSource - The activated replica's retained journal, read
- *   through its per-writer streaming readers.
- * @returns {Promise<Array<*>>}
- */
-async function retainedRecordOperations(target, retainedSource) {
-    /** @type {Array<*>} */
-    const operations = [];
-    const failure = await forEachRetainedRecord(retainedSource, (record) => {
-        const key = makeJournalRecordKey(record.id.author, record.id.sequence);
-        if (key instanceof Error) {
-            throw new SyncPublicationError(journalAuthorToString(record.id.author));
-        }
-        operations.push(target.journal.putOp(key, stringToJournalText(encodeJournalRecord(record))));
-        return undefined;
-    });
-    if (failure !== undefined) {
-        throw failure;
-    }
-    return operations;
-}
-
-/**
  * @typedef {object} SyncPublicationRequest
  * @property {SchemaStorage} target - The inactive replica the synchronization is built into.
  * @property {JournalSource} retainedSource - The activated replica's retained journal,
@@ -136,10 +92,16 @@ async function retainedRecordOperations(target, retainedSource) {
  */
 
 /**
- * Build the one operation array which turns the inactive replica into `Jfinal`.
+ * Build the one atomic cutover batch which makes the staged target active as `Jfinal`.
  *
- * The retained records are streamed from the receiver's source into the operation list
- * rather than collected first, so the retained history is not held twice.
+ * The receiver's retained records are not part of this batch: they are history-sized, so
+ * `publishSyncReceiverOutcome` stages them into the inactive target first, in bounded
+ * chunks, while the target is still inactive (`staged_records.js`). This batch carries
+ * only the cutover's own state — the replica metadata, `project(Jfinal)` lowered to
+ * storage, the committed-pair writer state and the maintained proof summary — so it is
+ * graph-sized rather than history-sized. The pointer move follows it, so the receiver
+ * exposes `Jfinal + project(Jfinal)` only once every staged record and this batch are
+ * durable.
  *
  * @param {SyncPublicationRequest} request
  * @returns {Promise<Array<*>>}
@@ -147,18 +109,22 @@ async function retainedRecordOperations(target, retainedSource) {
 async function planSyncReceiverPublication(request) {
     const {
         target,
-        retainedSource,
         receiverVersion,
         receiverGraphScheme,
         receiverFingerprint,
         outcome,
     } = request;
     const operations = [
-        ...await retainedRecordOperations(target, retainedSource),
         target.global.putOp('version', receiverVersion),
         target.global.putOp(GRAPH_SCHEME_KEY, receiverGraphScheme),
         target.global.putOp('fingerprint', receiverFingerprint),
-        ...await planSyncPublication({ target, outcome }),
+        // The journal growth — the imported suffix and the authored records — is
+        // staged before the cutover, so this batch writes no record of its own and
+        // only the projection and the metadata which make the staged target active.
+        ...await planSyncPublication({
+            target,
+            outcome: { records: [], projection: outcome.projection, publication: outcome.publication },
+        }),
     ];
     const rejected = appendRetainedStateOp(target.journal, operations, outcome.retainedState);
     if (rejected !== undefined) {
@@ -170,15 +136,21 @@ async function planSyncReceiverPublication(request) {
 /**
  * Publish one synchronization outcome into the inactive replica.
  *
- * The whole publication is one array of operations and one `batch` call, so the target
- * never exposes a journal which disagrees with its own graph: either `Jfinal` and
- * `project(Jfinal)` both become visible together or neither does. The caller performs
- * the cutover itself, by moving the replica pointer, and only after this returns.
+ * The receiver's retained records and the operation's journal growth — the imported
+ * foreign suffix and the authored records — are streamed into the inactive target first,
+ * in bounded chunks, and the cutover batch is then issued as one atomic write. The target
+ * is inactive throughout, so a failure in either phase leaves the previously activated
+ * replica as the receiver; a retry re-stages the same deterministic keys over any
+ * abandoned partial stage. The caller performs the cutover itself, by moving the replica
+ * pointer, and only after this returns.
  *
  * @param {SyncPublicationRequest} request
  * @returns {Promise<void>}
  */
 async function publishSyncReceiverOutcome(request) {
+    const makeError = (/** @type {string} */ recordKey) => new SyncPublicationError(recordKey);
+    await stageRetainedRecords(request.target, request.retainedSource, makeError);
+    await stageGrowthRecords(request.target, request.outcome.recordGrowth, makeError);
     await request.target.batch(await planSyncReceiverPublication(request));
 }
 

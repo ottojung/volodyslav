@@ -32,6 +32,8 @@ const {
     makeReplicaSource,
 } = require("../src/generators/incremental_graph/journal");
 
+const { withCollectedRecords } = require("./journal_record_growth_helper");
+
 const {
     isSyncOutcome,
     SnapshotIdentityClass,
@@ -308,7 +310,7 @@ async function synchronize(options) {
     const currentInputKeysOfNode = options.currentInputKeysOfNode === undefined
         ? chainInputs
         : options.currentInputKeysOfNode;
-    return await synchronizeRetainedJournal({
+    const result = await synchronizeRetainedJournal({
         receiver: makeReplicaSource(replicaOf(options.receiver)),
         source: makeReplicaSource(replicaOf(options.source)),
         localWriter: makeJournalAuthor(WRITER_LOCAL),
@@ -322,6 +324,7 @@ async function synchronize(options) {
         sourceIdentity: options.sourceIdentity === undefined ? identity : options.sourceIdentity,
         retainedState: await retainedStateOf(options.receiver, currentInputKeysOfNode),
     });
+    return await withCollectedRecords(result);
 }
 
 /**

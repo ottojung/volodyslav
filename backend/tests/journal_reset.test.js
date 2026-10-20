@@ -43,6 +43,8 @@ const {
     summarizeInvalidations,
 } = require("../src/generators/incremental_graph/journal");
 
+const { withCollectedRecords } = require("./journal_record_growth_helper");
+
 const { SnapshotIdentityClass } = require("../src/generators/incremental_graph/journal_sync");
 
 const {
@@ -343,7 +345,7 @@ async function retainedReplayState(source, currentInputKeysOfNode) {
  */
 async function reset(options) {
     const receiver = makeReplicaSource(replicaOf(options.receiver));
-    return await resetToSource({
+    const result = await resetToSource({
         receiver,
         retainedState: await retainedReplayState(
             receiver,
@@ -362,6 +364,7 @@ async function reset(options) {
                 ? new SnapshotIdentityClass("v1", "scheme")
                 : options.receiverIdentity,
     });
+    return await withCollectedRecords(result);
 }
 
 /**

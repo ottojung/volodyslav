@@ -11,8 +11,8 @@
  * publication write: it acquires the missing foreign-writer suffixes, validates
  * what it admits, computes the normalization the union still owes, allocates the
  * receiver-authored records, and returns `project(Jfinal)` together with the
- * records to retain and the retained replay state of `Jfinal`. Nothing here
- * touches storage.
+ * streaming journal growth to publish and the retained replay state of `Jfinal`.
+ * Nothing here touches storage.
  *
  * A caller supplies that state, because `incremental-graph-journal-storage.md`
  * §Change-bounded proof summary forbids synchronization from scanning retained
@@ -29,6 +29,7 @@
 /** @typedef {import('./normalize').StalePropagation} StalePropagation */
 /** @typedef {import('./compatibility').SnapshotIdentity} SnapshotIdentity */
 /** @typedef {import('./import_plan').ImportPlan} ImportPlan */
+/** @typedef {import('./record_growth').RecordGrowth} RecordGrowth */
 /** @typedef {import('./synchronize').SyncOutcome} SyncOutcome */
 
 const {
@@ -55,6 +56,11 @@ const {
     planStalePropagation,
 } = require("./normalize");
 const {
+    isRecordGrowth,
+    makeRecordGrowth,
+    RecordGrowthClass,
+} = require("./record_growth");
+const {
     isSyncOutcome,
     synchronizeRetainedJournal,
     SyncOutcomeClass,
@@ -63,6 +69,7 @@ const {
 module.exports = {
     ImportedSuffixClass,
     ImportPlanClass,
+    RecordGrowthClass,
     SnapshotIdentityClass,
     SyncOutcomeClass,
     SyncPublicationClass,
@@ -71,10 +78,12 @@ module.exports = {
     importedSourceOf,
     isClosureRemoval,
     isImportPlan,
+    isRecordGrowth,
     isSnapshotIdentity,
     isStalePropagation,
     isSyncOutcome,
     isSyncPublication,
+    makeRecordGrowth,
     planDependencyClosureRemoval,
     planForeignSuffixImport,
     planStalePropagation,

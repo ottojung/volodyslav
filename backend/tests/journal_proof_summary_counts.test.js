@@ -45,6 +45,8 @@ const {
     nodeKeyToCanonicalString,
 } = require("../src/generators/incremental_graph/journal");
 
+const { withCollectedRecords } = require("./journal_record_growth_helper");
+
 const {
     SnapshotIdentityClass,
     synchronizeRetainedJournal,
@@ -459,6 +461,7 @@ describe("a staged synchronization cutover maintains the counted eligible-proof 
                 throw new Error("synchronization failed with " + result.error.name + ": " + result.error.message);
             }
             expect(isRetainedReplayState(result.outcome.retainedState)).toBe(true);
+            await withCollectedRecords(result);
             return result.outcome;
         };
 

@@ -41,6 +41,8 @@ const {
     projectRetainedJournal,
 } = require("../src/generators/incremental_graph/journal");
 
+const { withCollectedRecords } = require("./journal_record_growth_helper");
+
 const {
     isSyncOutcome,
     SnapshotIdentityClass,
@@ -277,7 +279,7 @@ function receiverRecords() {
  * @returns {Promise<import("../src/generators/incremental_graph/journal_sync").SyncOutcome>}
  */
 async function synchronize(options) {
-    return await synchronizeRetainedJournal({
+    const result = await synchronizeRetainedJournal({
         receiver: makeReplicaSource(replicaOf(options.receiver)),
         source: makeReplicaSource(replicaOf(options.source)),
         localWriter: makeJournalAuthor(WRITER_LOCAL),
@@ -289,6 +291,7 @@ async function synchronize(options) {
         sourceIdentity: new SnapshotIdentityClass("v1", "scheme"),
         retainedState: await retainedStateOf(options.receiver),
     });
+    return await withCollectedRecords(result);
 }
 
 /**

@@ -58,6 +58,8 @@ const {
     projectRetainedJournal,
 } = require("../src/generators/incremental_graph/journal");
 
+const { withCollectedRecords } = require("./journal_record_growth_helper");
+
 const {
     SnapshotIdentityClass,
     synchronizeRetainedJournal,
@@ -346,6 +348,7 @@ async function reset(receiver, source) {
         throw new Error("reset failed with " + result.error.name + ": " + result.error.message);
     }
     expect(isResetOutcome(result.outcome)).toBe(true);
+    await withCollectedRecords(result);
     return result.outcome;
 }
 
@@ -373,6 +376,7 @@ async function synchronize(receiver, source, retainedState) {
     if (!("outcome" in result)) {
         throw new Error("synchronization failed with " + result.error.name + ": " + result.error.message);
     }
+    await withCollectedRecords(result);
     return result.outcome;
 }
 

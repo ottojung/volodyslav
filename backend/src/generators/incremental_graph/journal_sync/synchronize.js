@@ -61,6 +61,7 @@
 /** @typedef {import('./authoring').SyncInvalidateRequest} SyncInvalidateRequest */
 /** @typedef {import('./authoring').SyncPublication} SyncPublication */
 /** @typedef {import('./compatibility').SnapshotIdentity} SnapshotIdentity */
+/** @typedef {import('./record_growth').RecordGrowth} RecordGrowth */
 
 const {
     makeJournalProjectionError,
@@ -80,11 +81,13 @@ const { assertCompatibleIdentity } = require("./compatibility");
 const { finalizeSyncRecords, SyncPublicationClass } = require("./authoring");
 const { planForeignSuffixImport } = require("./import_plan");
 const { planDependencyClosureRemoval, planStalePropagation } = require("./normalize");
+const { makeRecordGrowth } = require("./record_growth");
 
 /**
  * The properties that this class carries are:
- * - `records` is the receiver's retained journal growth of this operation: every
- *   imported record unchanged, followed by the authored normalization records;
+ * - `recordGrowth` is the receiver's retained journal growth of this operation as a
+ *   streaming source: every imported record unchanged, re-read from the held
+ *   source on demand, followed by the authored normalization records;
  * - `projection` is exactly `project(Jfinal)`, so its occurrences, freshness and
  *   validity edges are the graph state the receiver must commit;
  * - `stateAdvancing` is true exactly when this operation imported a record the
@@ -96,15 +99,17 @@ const { planDependencyClosureRemoval, planStalePropagation } = require("./normal
  *   and §Derived indexes requires the same of a maintained candidate index.
  *
  * The proof of those properties is guaranteed by:
- * - `synchronizeRetainedJournal(...)`: it stages each imported record without
- *   touching it, stages only what `finalizeSyncRecords` allocated, takes
- *   `projection` from the retained state extended by exactly those records, and
- *   takes `stateAdvancing` from the two counts directly, which is the predicate
- *   of `sync.md` §Host-count bounded settling schedule. `retainedState` is the
- *   caller's own state, into which the operation's fork has been committed, so it
- *   describes exactly `Jfinal`.
+ * - `synchronizeRetainedJournal(...)`: it folds each imported record into the
+ *   staged state as it reads it, stages only what `finalizeSyncRecords` allocated,
+ *   takes `projection` from the retained state extended by exactly those records,
+ *   builds `recordGrowth` from the import plan's re-readable suffixes and the
+ *   authored records, and takes `stateAdvancing` from the imported count and the
+ *   authored count directly, which is the predicate of `sync.md` §Host-count
+ *   bounded settling schedule. `retainedState` is the caller's own state, into
+ *   which the operation's fork has been committed, so it describes exactly
+ *   `Jfinal`.
  *
- * @param {ReadonlyArray<JournalRecord>} records
+ * @param {RecordGrowth} recordGrowth
  * @param {SyncPublication} publication
  * @param {Projection} projection
  * @param {boolean} stateAdvancing
@@ -112,14 +117,14 @@ const { planDependencyClosureRemoval, planStalePropagation } = require("./normal
  */
 class SyncOutcomeClass {
     /**
-     * @param {ReadonlyArray<JournalRecord>} records
+     * @param {RecordGrowth} recordGrowth
      * @param {SyncPublication} publication
      * @param {Projection} projection
      * @param {boolean} stateAdvancing
      * @param {RetainedReplayState} retainedState
      */
-    constructor(records, publication, projection, stateAdvancing, retainedState) {
-        this.records = records;
+    constructor(recordGrowth, publication, projection, stateAdvancing, retainedState) {
+        this.recordGrowth = recordGrowth;
         this.publication = publication;
         this.projection = projection;
         this.stateAdvancing = stateAdvancing;
@@ -244,12 +249,11 @@ async function synchronizeRetainedJournal(request) {
         return plan;
     }
 
-    // The plan validated each suffix and holds no copy of it, so the records are
-    // streamed back out of the source one at a time as they are staged. The batch
-    // which publishes them is the one bounded buffer the cutover keeps; the plan's
-    // own validation never materialises the suffix.
-    /** @type {JournalRecord[]} */
-    const imported = [];
+    // The plan validated each suffix and holds no copy of it, so each imported
+    // record is folded into the staged state as it is read and is never collected
+    // into an array: the imported suffix is streamed, not materialised. The growth
+    // the outcome publishes re-reads the same suffixes on demand.
+    let importedCount = 0;
     for (const suffix of plan.suffixes) {
         const reader = suffix.reader();
         for (;;) {
@@ -257,7 +261,8 @@ async function synchronizeRetainedJournal(request) {
             if (record === undefined) {
                 break;
             }
-            imported.push(record);
+            stageRetainedRecords(staged, [record]);
+            importedCount += 1;
         }
         const failure = reader.failure();
         if (failure !== undefined) {
@@ -270,7 +275,6 @@ async function synchronizeRetainedJournal(request) {
     // dependency-closed, and Phase 1 is what repairs that. The head view is the
     // retained one with the imported records folded in, so no retained Value/Delete
     // record is visited again.
-    stageRetainedRecords(staged, imported);
     /** @type {Map<string, HeadSelection>} */
     const rawHeads = selectedHeadsOf(staged);
     const closure = planDependencyClosureRemoval({
@@ -373,15 +377,14 @@ async function synchronizeRetainedJournal(request) {
         };
     }
 
-    /** @type {JournalRecord[]} */
-    const records = [...imported, ...authored];
+    const recordGrowth = makeRecordGrowth(plan.suffixes, authored);
     commitRetainedReplayState(retainedState, staged);
     return {
         outcome: new SyncOutcomeClass(
-            records,
+            recordGrowth,
             new SyncPublicationClass(authored, state),
             afterPhaseOne,
-            records.length > 0,
+            importedCount > 0 || authored.length > 0,
             retainedState
         ),
     };

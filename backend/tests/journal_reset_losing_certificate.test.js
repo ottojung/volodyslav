@@ -40,6 +40,8 @@ const {
     projectRetainedJournal,
 } = require("../src/generators/incremental_graph/journal");
 
+const { withCollectedRecords } = require("./journal_record_growth_helper");
+
 const { SnapshotIdentityClass } = require("../src/generators/incremental_graph/journal_sync");
 
 const {
@@ -276,7 +278,7 @@ async function reset({ receiver, source, authority }) {
     const physical = authority === undefined ? 500 : authority;
     const last = receiver.filter((record) => journalAuthorToString(record.id.author) === WRITER_LOCAL)
         .slice(-1)[0];
-    return await resetToSource({
+    const result = await resetToSource({
         receiver: makeReplicaSource(replicaOf(receiver)),
         retainedState: await retainedStateOf(receiver),
         source,
@@ -293,6 +295,7 @@ async function reset({ receiver, source, authority }) {
         currentInputKeysOfNode: kSchema,
         receiverIdentity: new SnapshotIdentityClass("v1", "scheme"),
     });
+    return await withCollectedRecords(result);
 }
 
 /**
