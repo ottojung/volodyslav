@@ -504,6 +504,36 @@ describe("Journal 3 startup canonical-bootstrap gate", () => {
             startupOverPreJournalInterface(unanswerableCohortSource(undefined))
         ).rejects.toThrow(/did not resolve/);
     });
+
+    test("a pre-Journal source whose graph interpretation differs from the target fails before authoring bootstrap history", async () => {
+        const { db } = await preJournalReplica();
+        const replicaBefore = db.currentReplicaName();
+        // The supported pre-Journal source persists one graph interpretation; the running
+        // release configures its own canonical bootstrap target graph scheme. Bootstrap
+        // preserves the legacy graph interpretation exactly, so a source whose persisted
+        // interpretation differs from the target would require a schema-semantic
+        // transformation. `incremental-graph-journal-migrations.md` §1/§3 make that
+        // source/target pair unsupported and require startup to fail before any bootstrap
+        // history is authored, rather than stage or publish a candidate first.
+        await db.getSchemaStorage().global.put("graph_scheme", "some-other-scheme");
+        const calls = { queries: 0, publications: 0, published: [] };
+        await expect(
+            runCanonicalBootstrapGate({
+                rootDatabase: db,
+                nodeDefs: nodeDefsOf(),
+                source: emptyCohortSource(calls),
+            })
+        ).rejects.toMatchObject({ name: "JournalVersionCompatibilityError" });
+
+        // The failure precedes every side effect: no candidate was staged or published, the
+        // replica pointer did not move, and no local Journal record was authored.
+        expect(calls.queries).toBe(0);
+        expect(calls.publications).toBe(0);
+        expect(calls.published).toEqual([]);
+        expect(db.currentReplicaName()).toBe(replicaBefore);
+        expect(await retainedRecordKeys(db)).toEqual([]);
+        await db.close();
+    });
 });
 
 /**
