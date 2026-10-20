@@ -206,7 +206,7 @@ function isNodeIdentifier(value) {
         return false;
     }
     const index = value.slice(0, separator);
-    if (!/^[0-9a-z]+$/.test(index)) {
+    if (!/^(?:0|[1-9a-z][0-9a-z]*)$/.test(index)) {
         return false;
     }
     return isValidFingerprint(value.slice(separator + 1));
