@@ -13,6 +13,11 @@ const {
     fixtureRecoverySourceHolding,
     readFixtureReplica,
 } = require("./journal_startup_fixture");
+const {
+    queryInstallationRecovery,
+    isRecoveryExists,
+    restoreAbsentFrom,
+} = require("../src/generators/incremental_graph/journal_recovery_source");
 const { makeJournalAuthor } = require("../src/generators/incremental_graph/journal");
 const {
     deserializeNodeKey,
@@ -78,7 +83,13 @@ async function getMigratingCapabilities() {
     if (recoverySource instanceof Error) {
         throw recoverySource;
     }
-    capabilities.installationRecoverySource = recoverySource;
+    // A transport-independent fixture provides the continuation-safe snapshot.
+    // Restore it explicitly: root capabilities do not transport recovery sources.
+    const answer = await queryInstallationRecovery(recoverySource);
+    if (!isRecoveryExists(answer)) {
+        throw new Error("fixture did not provide a continuation-safe snapshot");
+    }
+    await restoreAbsentFrom(capabilities, answer.snapshot);
     return capabilities;
 }
 

@@ -317,11 +317,10 @@ async function preJournalReplica() {
 
 /**
  * Startup through the interface itself, over a live database left as supported
- * pre-Journal state.
- * @param {object} source - The configured cohort bootstrap source.
+ * pre-Journal state, without introducing new root capability fields.
  * @returns {Promise<object>}
  */
-async function startupOverPreJournalInterface(source) {
+async function startupOverPreJournalInterface() {
     const capabilities = getMockedRootCapabilities();
     stubLogger(capabilities);
     stubEnvironment(capabilities);
@@ -344,7 +343,6 @@ async function startupOverPreJournalInterface(source) {
     await clearJournalRecords(first._database);
     await first._database.close();
 
-    capabilities.cohortBootstrapSource = source;
     const second = makeInterface(() => capabilities);
     await second.ensureInitialized();
     return { capabilities, second };
@@ -483,26 +481,10 @@ describe("Journal 3 startup canonical-bootstrap gate", () => {
         expect(await retainedRecordKeys(db)).toEqual([]);
         await db.close();
     });
-    test("startup over a live pre-Journal database resolves and installs the canonical bootstrap", async () => {
-        const calls = { queries: 0, publications: 0, published: [] };
-        const { capabilities, second } = await startupOverPreJournalInterface(emptyCohortSource(calls));
-        expect(calls.queries).toBe(1);
-        expect(calls.publications).toBe(1);
-        const messages = capabilities.logger.logInfo.mock.calls.map((call) => call[1]);
-        expect(messages.some((message) => typeof message === "string" && message.includes("resume-canonical-creator"))).toBe(true);
-        // The events the pre-Journal database persisted are still readable after the
-        // cutover, so bootstrap preserved the graph rather than rebuilding one.
-        const events = await second.getAllEvents();
-        expect(events).toHaveLength(1);
-        expect(events[0].id.identifier).toBe("aaaaaaaaa:1");
-        expect(await retainedRecordCount(second._database)).toBeGreaterThan(0);
-        await second._database.close();
-    });
-
-    test("startup over a live pre-Journal database fails when the canonical bootstrap does not resolve", async () => {
-        await expect(
-            startupOverPreJournalInterface(unanswerableCohortSource(undefined))
-        ).rejects.toThrow(/did not resolve/);
+    test("interface startup over a pre-Journal database fails closed without a transport source", async () => {
+        // The source-aware canonical gate is exercised above; the outer lifecycle
+        // does not smuggle a new source through root capabilities.
+        await expect(startupOverPreJournalInterface()).rejects.toThrow(/cohort bootstrap source/);
     });
 
     test("a pre-Journal source whose graph interpretation differs from the target fails before authoring bootstrap history", async () => {

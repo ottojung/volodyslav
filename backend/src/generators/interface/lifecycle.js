@@ -33,11 +33,6 @@ const {
     syncJournalReceiverToSource,
     resetJournalReceiverToSnapshot,
     runCanonicalBootstrapGate,
-    queryInstallationRecovery,
-    restoreAbsentFrom,
-    isRecoveryDefinitelyAbsent,
-    isRecoveryExists,
-    isRecoveryIndeterminate,
     makeJournalPublicationError,
 } = require("../incremental_graph");
 const { createDefaultGraphDefinition } = require("./default_graph");
@@ -104,7 +99,7 @@ async function internalEnsureInitialized(interfaceInstance) {
         );
 
         if (!liveDbExists) {
-            await internalBootstrap(capabilities);
+            await internalBootstrap();
         }
 
         const ret = await internalEnsureInitializedWithMigration(interfaceInstance, runMigrationUnsafe);
@@ -119,69 +114,19 @@ async function internalEnsureInitialized(interfaceInstance) {
 }
 
 /**
- * Select and execute the bootstrap path when the live LevelDB is absent.
+ * Without a configured installation-recovery authority, no absent-state decision
+ * can safely be made. Fail closed rather than invent a fresh installation or
+ * silently restore from an unverified transport. Do not add root capabilities to
+ * carry the decision: a future implementation must derive an authoritative source
+ * using existing runtime infrastructure before allowing absent-state startup.
  *
- * `database-lifecycle.md` §4 / `database-boot-sequence.md` §7.1: the absent-state
- * decision queries the transport-neutral `InstallationRecoverySource` and follows
- * exactly one of its answers:
- *  - `Exists(ContinuationSafeSnapshot)` → receiver-less restore of the held snapshot;
- *  - `DefinitelyAbsent` → fresh creation of the empty local database;
- *  - `IndeterminateOrError` → fatal, with no fallback to fresh creation.
- *
- * A deployment which configures no recovery source fails closed: an absent local
- * database without the decision is fatal rather than an invented fresh identity.
- *
- * @param {GeneratorsCapabilities} capabilities
  * @returns {Promise<void>}
  */
-async function internalBootstrap(capabilities) {
-    const source = capabilities.installationRecoverySource;
-    if (source === undefined) {
-        throw makeJournalPublicationError(
-            'the live database is completely absent and the deployment configured no installation recovery ' +
-                'source, so the absent-state decision could not be made'
-        );
-    }
-
-    const answer = await queryInstallationRecovery(source);
-
-    if (isRecoveryExists(answer)) {
-        capabilities.logger.logInfo(
-            {},
-            'Bootstrap: installation recovery source holds a continuation-safe snapshot; restoring'
-        );
-        await restoreAbsentFrom(capabilities, answer.snapshot);
-        capabilities.logger.logInfo(
-            {},
-            'Bootstrap: absent-state restore completed'
-        );
-        return;
-    }
-
-    if (isRecoveryDefinitelyAbsent(answer)) {
-        capabilities.logger.logInfo(
-            {},
-            'Bootstrap: installation recovery source reports definite absence; creating fresh'
-        );
-        // Fresh creation is local and direct. Opening the absent database creates
-        // the empty live replica, and the startup gate that follows initializes its
-        // fingerprint, version/schema metadata and empty graph. `database-lifecycle.md`
-        // §4.3 and `database-boot-sequence.md` §7.1 forbid falling back to normal
-        // synchronization from an empty local database, so no host-branch merge runs
-        // here and this fresh replica retains no foreign history. The first ordinary
-        // synchronization publishes this installation's branch.
-        return;
-    }
-
-    if (isRecoveryIndeterminate(answer)) {
-        throw makeJournalPublicationError(
-            'the installation recovery query was indeterminate, so startup fails without fresh creation: ' +
-                answer.detail
-        );
-    }
-
+async function internalBootstrap() {
     throw makeJournalPublicationError(
-        'the installation recovery query returned an unrecognized answer'
+        'the live database is completely absent and no installation recovery source is ' +
+            'available from the existing runtime infrastructure, so the absent-state ' +
+            'decision could not be made'
     );
 }
 
@@ -286,9 +231,9 @@ async function internalEnsureInitializedWithMigration(
  * database selected. The gate reports that outcome rather than retrying it, because §6
  * requires a re-query through the owned procedure before another publication attempt.
  *
- * The cohort bootstrap source is deployment configuration carried on the capabilities
- * rather than persisted database state, so an installation which configures none still
- * starts normally for every replica that is not a supported pre-Journal source.
+ * No cohort source is supplied by root capabilities. Already-current replicas
+ * still start normally; supported pre-Journal replicas fail closed until an
+ * authoritative source can be constructed from existing runtime infrastructure.
  *
  * @param {GeneratorsCapabilities} capabilities
  * @param {RootDatabase} database
@@ -299,7 +244,7 @@ async function internalCanonicalBootstrapGate(capabilities, database, nodeDefs) 
     const outcome = await runCanonicalBootstrapGate({
         rootDatabase: database,
         nodeDefs,
-        source: capabilities.cohortBootstrapSource,
+        source: undefined,
         logger: capabilities.logger,
     });
     if (outcome.status === 'unresolved-canonical-bootstrap') {
