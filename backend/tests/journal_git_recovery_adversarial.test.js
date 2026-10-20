@@ -14,8 +14,8 @@ test('Git recovery refuses a checkpoint whose writerHead exceeds its retained Jo
   await fs.cp(fixture,dest,{recursive:true});
   const p=path.join(dest,'journal','state');
   const state=JSON.parse(await fs.readFile(p,'utf8'));
-  state.writerHead='11';
-  state.committedFrontier=[[state.localWriter,'11']];
+  state.writerHead=String(Number(state.writerHead)+1);
+  state.committedFrontier=[[state.localWriter,state.writerHead]];
   await fs.writeFile(p,JSON.stringify(state));
   await expect(snapshotFromRenderedReplica(capabilities,dest)).rejects.toThrow(/committed frontier/);
  }finally{await fs.rm(dest,{recursive:true,force:true})}
@@ -45,7 +45,7 @@ test('Git recovery refuses a writer head unsupported by the committed Journal',a
   await fs.cp(fixture,dest,{recursive:true});
   const p=path.join(dest,'journal','state');
   const state=JSON.parse(await fs.readFile(p,'utf8'));
-  state.writerHead='11';
+  state.writerHead=String(Number(state.writerHead)+1);
   await fs.writeFile(p,JSON.stringify(state));
   await expect(snapshotFromRenderedReplica(capabilities,dest)).rejects.toThrow(/local writer head/);
  }finally{await fs.rm(dest,{recursive:true,force:true})}
