@@ -49,7 +49,7 @@
  *   supported pre-Journal replica and is not a condition at all for any other replica.
  */
 
-const { makeJournalAuthor, isJournalError } = require("./journal");
+const { makeJournalAuthor, isJournalError, makeJournalVersionCompatibilityError } = require("./journal");
 const { compileValidatedGraphSchema } = require("./graph_schema");
 const { readPreJournalSourceState } = require("./journal_bootstrap_source");
 const {
@@ -97,6 +97,25 @@ async function runCanonicalBootstrapGate(request) {
         databaseVersion: rootDatabase.getVersion(),
         graphSchemeString: bootstrapTargetSchemeOf(nodeDefs),
     };
+    // `incremental-graph-journal-migrations.md` §1 and §3: bootstrap preserves the
+    // persisted legacy graph interpretation exactly, so a supported pre-Journal source's
+    // persisted graph scheme must equal this release's canonical bootstrap target scheme.
+    // A source whose graph interpretation differs would require a schema-semantic
+    // transformation to reach the target, which is not a bootstrap: that source/target
+    // pair is unsupported and startup fails `JournalVersionCompatibilityError` before any
+    // candidate is staged or published, so no bootstrap history is authored and the
+    // supported pre-Journal database stays the active persisted state.
+    if (read.legacyState.graphSchemeString !== target.graphSchemeString) {
+        throw makeJournalVersionCompatibilityError(
+            "the supported pre-Journal source persists the graph interpretation " +
+                JSON.stringify(read.legacyState.graphSchemeString) +
+                ", which is not this release's canonical bootstrap target graph scheme, so reaching the " +
+                "bootstrap target would require a schema-semantic transformation; startup fails before " +
+                "authoring bootstrap history",
+            target.graphSchemeString,
+            read.legacyState.graphSchemeString
+        );
+    }
     const resolution = await resolveCanonicalBootstrapForStartup({
         legacyState: read.legacyState,
         localWriter,
