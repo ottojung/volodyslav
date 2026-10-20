@@ -1,0 +1,52 @@
+const fs = require('fs/promises');
+const os = require('os');
+const path = require('path');
+const {snapshotFromRenderedReplica} = require('../src/generators/incremental_graph/journal_git_recovery');
+const {getMockedRootCapabilities} = require('./spies');
+const {stubEnvironment,stubLogger}=require('./stubs');
+
+test('Git recovery refuses a checkpoint whose writerHead exceeds its retained Journal',async()=>{
+ const capabilities = getMockedRootCapabilities();
+ stubEnvironment(capabilities);stubLogger(capabilities);
+ const dest=await fs.mkdtemp(path.join(os.tmpdir(),'j3-corrupt-checkpoint-'));
+ const fixture=path.join(__dirname,'mock-incremental-database-remote-populated','rendered','r');
+ try{
+  await fs.cp(fixture,dest,{recursive:true});
+  const p=path.join(dest,'journal','state');
+  const state=JSON.parse(await fs.readFile(p,'utf8'));
+  state.writerHead='11';
+  state.committedFrontier=[[state.localWriter,'11']];
+  await fs.writeFile(p,JSON.stringify(state));
+  await expect(snapshotFromRenderedReplica(capabilities,dest)).rejects.toThrow(/committed frontier/);
+ }finally{await fs.rm(dest,{recursive:true,force:true})}
+});
+
+test('Git recovery refuses a checkpoint with authority high-water below retained records',async()=>{
+ const capabilities=getMockedRootCapabilities();
+ stubEnvironment(capabilities);stubLogger(capabilities);
+ const dest=await fs.mkdtemp(path.join(os.tmpdir(),'j3-corrupt-highwater-'));
+ const fixture=path.join(__dirname,'mock-incremental-database-remote-populated','rendered','r');
+ try{
+  await fs.cp(fixture,dest,{recursive:true});
+  const p=path.join(dest,'journal','state');
+  const state=JSON.parse(await fs.readFile(p,'utf8'));
+  state.authorityHighWater=[0,'0'];
+  await fs.writeFile(p,JSON.stringify(state));
+  await expect(snapshotFromRenderedReplica(capabilities,dest)).rejects.toThrow(/high-water/);
+ }finally{await fs.rm(dest,{recursive:true,force:true})}
+});
+
+test('Git recovery refuses a writer head unsupported by the committed Journal',async()=>{
+ const capabilities=getMockedRootCapabilities();
+ stubEnvironment(capabilities);stubLogger(capabilities);
+ const dest=await fs.mkdtemp(path.join(os.tmpdir(),'j3-corrupt-writerhead-'));
+ const fixture=path.join(__dirname,'mock-incremental-database-remote-populated','rendered','r');
+ try{
+  await fs.cp(fixture,dest,{recursive:true});
+  const p=path.join(dest,'journal','state');
+  const state=JSON.parse(await fs.readFile(p,'utf8'));
+  state.writerHead='11';
+  await fs.writeFile(p,JSON.stringify(state));
+  await expect(snapshotFromRenderedReplica(capabilities,dest)).rejects.toThrow(/local writer head/);
+ }finally{await fs.rm(dest,{recursive:true,force:true})}
+});

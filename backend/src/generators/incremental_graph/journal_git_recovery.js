@@ -19,6 +19,11 @@ const {
     tryDecodeJournalRecord,
     journalAuthorToString,
     journalSequenceToString,
+    journalSequenceAtFrontier,
+    compareJournalSequence,
+    compareAuthorityTime,
+    isSemanticEvent,
+    replicaFrontier,
 } = require('./journal');
 const { deserializeWriterState } = require('./journal_store');
 const { makeContinuationSafeSnapshot, makeInstallationRecoverySource } =
@@ -98,6 +103,34 @@ async function snapshotFromRenderedReplica(capabilities, replicaPath) {
     );
     if (writerState instanceof Error) {
         throw writerState;
+    }
+    // The committed pair is authoritative metadata, not an independently
+    // restorable claim. A held checkpoint must agree with the records it holds:
+    // otherwise restoration could install a writer head or imported frontier
+    // naming events which were never restored.
+    const observedFrontier = replicaFrontier(replica);
+    if (observedFrontier.size !== writerState.committedFrontier.size) {
+        throw new Error('recovery checkpoint committed frontier disagrees with retained Journal');
+    }
+    for (const [writer, sequence] of observedFrontier) {
+        if (compareJournalSequence(
+            sequence, journalSequenceAtFrontier(writerState.committedFrontier, writer)
+        ) !== 0) {
+            throw new Error('recovery checkpoint committed frontier disagrees with retained Journal');
+        }
+    }
+    if (compareJournalSequence(
+        writerState.writerHead, journalSequenceAtFrontier(observedFrontier, writerState.localWriter)
+    ) !== 0) {
+        throw new Error('recovery checkpoint local writer head disagrees with retained Journal');
+    }
+    for (const records of replica.values()) {
+        for (const record of records) {
+            if (isSemanticEvent(record) &&
+                compareAuthorityTime(record.authorityTime, writerState.authorityHighWater) > 0) {
+                throw new Error('recovery checkpoint authority high-water is below a retained record');
+            }
+        }
     }
     const graphSchemeString = await readJson(capabilities, path.join(replicaPath, 'global', 'graph_scheme'));
     const scheme = parseGraphScheme(graphSchemeString);
