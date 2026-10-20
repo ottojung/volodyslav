@@ -50,3 +50,30 @@ test('Git recovery refuses a writer head unsupported by the committed Journal',a
   await expect(snapshotFromRenderedReplica(capabilities,dest)).rejects.toThrow(/local writer head/);
  }finally{await fs.rm(dest,{recursive:true,force:true})}
 });
+
+test('Git recovery refuses a checkpoint with a forged allocator watermark',async()=>{
+ const capabilities=getMockedRootCapabilities();
+ stubEnvironment(capabilities);stubLogger(capabilities);
+ const dest=await fs.mkdtemp(path.join(os.tmpdir(),'j3-corrupt-allocator-'));
+ const fixture=path.join(__dirname,'mock-incremental-database-remote-populated','rendered','r');
+ try{
+  await fs.cp(fixture,dest,{recursive:true});
+  const p=path.join(dest,'journal','state');
+  const state=JSON.parse(await fs.readFile(p,'utf8'));
+  state.allocatorWatermark=0;
+  await fs.writeFile(p,JSON.stringify(state));
+  await expect(snapshotFromRenderedReplica(capabilities,dest)).rejects.toThrow(/allocator/);
+ }finally{await fs.rm(dest,{recursive:true,force:true})}
+});
+
+test('Git recovery refuses an inconsistent global last_node_index',async()=>{
+ const capabilities=getMockedRootCapabilities();
+ stubEnvironment(capabilities);stubLogger(capabilities);
+ const dest=await fs.mkdtemp(path.join(os.tmpdir(),'j3-corrupt-global-index-'));
+ const fixture=path.join(__dirname,'mock-incremental-database-remote-populated','rendered','r');
+ try{
+  await fs.cp(fixture,dest,{recursive:true});
+  await fs.writeFile(path.join(dest,'global','last_node_index'),'0');
+  await expect(snapshotFromRenderedReplica(capabilities,dest)).rejects.toThrow(/allocator/);
+ }finally{await fs.rm(dest,{recursive:true,force:true})}
+});
