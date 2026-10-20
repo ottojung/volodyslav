@@ -207,8 +207,13 @@ async function verifyTargetReplica(targetStorage, targetLookup, graphScheme, loc
             );
         }
     }
+    // Membership must be linear in the number of materializations. Scanning
+    // every replayed occurrence for each persisted key would cost O(G²),
+    // violating migration's O(H) historical-validation requirement when G
+    // grows with retained history.
+    const replayedKeys = new Set(projection.occurrences.map((replayed) => replayed.nodeKeyString));
     for (const nodeKeyString of persisted.keys()) {
-        if (projection.occurrences.every((replayed) => replayed.nodeKeyString !== nodeKeyString)) {
+        if (!replayedKeys.has(nodeKeyString)) {
             throw makeJournalProjectionError(
                 "the migration target replica materializes a node its retained history selects no occurrence for",
                 nodeKeyString
