@@ -212,7 +212,15 @@ async function internalEnsureInitializedWithMigration(
         ontologyBox
     );
     try {
-        capabilities.logger.logDebug({}, 'Initialization: running migration gate before graph construction');
+        // A supported pre-Journal replica must establish its shared canonical
+        // Journal identity before any ordinary migration can author Journal
+        // records. Otherwise an older global/version takes the migration
+        // identity edge, authors a local Journal, and then appears current to
+        // the bootstrap gate — silently bypassing cohort arbitration.
+        // `database-lifecycle.md` §8.1-8.3 orders bootstrap before migration.
+        capabilities.logger.logDebug({}, 'Initialization: running canonical bootstrap gate before migration');
+        await internalCanonicalBootstrapGate(capabilities, database, nodeDefs);
+        capabilities.logger.logDebug({}, 'Initialization: canonical bootstrap gate completed, running migration gate');
         // `incremental-graph-journal-migrations.md` §9b: startup resolves the release's
         // canonical migration chain from the stored version to the running version and
         // hands it to the migration procedure. The release lineage today carries exactly
@@ -247,9 +255,7 @@ async function internalEnsureInitializedWithMigration(
             undefined,
             canonicalChain,
         );
-        capabilities.logger.logDebug({}, 'Initialization: migration gate completed, running canonical bootstrap gate');
-        await internalCanonicalBootstrapGate(capabilities, database, nodeDefs);
-        capabilities.logger.logDebug({}, 'Initialization: canonical bootstrap gate completed, constructing incremental graph');
+        capabilities.logger.logDebug({}, 'Initialization: migration gate completed, constructing incremental graph');
         const incrementalGraph = await createIncrementalGraph(
             capabilities,
             database,
