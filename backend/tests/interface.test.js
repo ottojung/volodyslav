@@ -23,9 +23,10 @@ const { readRetainedJournal, readCommittedWriterState } = require("../src/genera
 const { makeReplicaSource, projectRetainedJournal } = require("../src/generators/incremental_graph/journal/oracle");
 const {
     makeContinuationSafeSnapshot,
-    makeInstallationRecoverySource,
+    restoreAbsentFrom,
 } = require("../src/generators/incremental_graph/journal_recovery_source");
 const { deriveInputPositions, GRAPH_SCHEME_KEY } = require("../src/generators/incremental_graph/database/graph_scheme");
+const { getRootDatabase } = require("../src/generators/incremental_graph/database");
 const { LAST_NODE_INDEX_KEY } = require("../src/generators/incremental_graph/database");
 const { journalAuthorToString } = require("../src/generators/incremental_graph/journal");
 const { getMockedRootCapabilities } = require("./spies");
@@ -67,24 +68,6 @@ function makeEvent(id, input) {
         input: `text ${input}`,
         creator: { name: "test", uuid: "00000000-0000-0000-0000-000000000001", version: "0.0.0", hostname: "test-host" },
     };
-}
-
-/**
- * A transport-neutral installation recovery source which answers every query with
- * one fixed transport value.
- * @param {unknown} answer
- * @returns {object}
- */
-function recoverySourceReturning(answer) {
-    const configured = makeInstallationRecoverySource({
-        async queryInstallationRecovery() {
-            return answer;
-        },
-    });
-    if (configured instanceof Error) {
-        throw configured;
-    }
-    return configured;
 }
 
 /**
@@ -570,15 +553,11 @@ describe("generators/interface", () => {
                 LIVE_DATABASE_WORKING_PATH
             );
             await capabilities.deleter.deleteDirectory(liveDbPath);
-            capabilities.installationRecoverySource = recoverySourceReturning(snapshot);
+            await restoreAbsentFrom(capabilities, snapshot);
 
             const second = makeInterface(() => capabilities);
             await second.ensureInitialized();
 
-            expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
-                expect.objectContaining({}),
-                'Bootstrap: installation recovery source holds a continuation-safe snapshot; restoring'
-            );
             await expect(second.getAllEvents()).resolves.toHaveLength(2);
             expect(isInterface(second)).toBe(true);
 
@@ -637,15 +616,12 @@ describe("generators/interface", () => {
                 LIVE_DATABASE_WORKING_PATH
             );
             await capabilities.deleter.deleteDirectory(liveDbPath);
-            capabilities.installationRecoverySource = recoverySourceReturning(null);
+            const emptyDb = await getRootDatabase(capabilities);
+            await emptyDb.close();
 
             const iface = makeInterface(() => capabilities);
             await iface.ensureInitialized();
 
-            expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
-                expect.objectContaining({}),
-                'Bootstrap: installation recovery source reports definite absence; creating fresh'
-            );
             expect(isInterface(iface)).toBe(true);
             await iface._database.close();
         });
@@ -671,15 +647,12 @@ describe("generators/interface", () => {
                 LIVE_DATABASE_WORKING_PATH
             );
             await capabilities.deleter.deleteDirectory(liveDbPath);
-            capabilities.installationRecoverySource = recoverySourceReturning(null);
+            const emptyDb = await getRootDatabase(capabilities);
+            await emptyDb.close();
 
             const iface = makeInterface(() => capabilities);
             await iface.ensureInitialized();
 
-            expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
-                expect.objectContaining({}),
-                'Bootstrap: installation recovery source reports definite absence; creating fresh'
-            );
             expect(isInterface(iface)).toBe(true);
 
             const replica = await readRetainedJournal(iface._database.getSchemaStorage().journal);
@@ -690,23 +663,22 @@ describe("generators/interface", () => {
             await iface._database.close();
         });
 
-        test("V6: IndeterminateOrError fails startup with no fresh fallback", async () => {
+        test("without a recovery authority startup fails with no fresh fallback", async () => {
             const capabilities = await getTestCapabilities();
             const liveDbPath = path.join(
                 capabilities.environment.workingDirectory(),
                 LIVE_DATABASE_WORKING_PATH
             );
             await capabilities.deleter.deleteDirectory(liveDbPath);
-            capabilities.installationRecoverySource = recoverySourceReturning("maybe");
+            // No authoritative recovery answer is obtainable; startup must fail closed.
 
             const iface = makeInterface(() => capabilities);
-            await expect(iface.ensureInitialized()).rejects.toThrow(/indeterminate/);
+            await expect(iface.ensureInitialized()).rejects.toThrow(/installation recovery/);
             expect(await capabilities.checker.directoryExists(liveDbPath)).toBe(null);
         });
 
         test("an absent local database with no configured recovery source fails closed", async () => {
             const capabilities = await getTestCapabilities();
-            delete capabilities.installationRecoverySource;
             const liveDbPath = path.join(
                 capabilities.environment.workingDirectory(),
                 LIVE_DATABASE_WORKING_PATH

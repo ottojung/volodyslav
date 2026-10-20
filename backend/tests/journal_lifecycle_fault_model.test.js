@@ -38,7 +38,6 @@ const {
     validateJournalReplica,
 } = require("../src/generators/incremental_graph/journal");
 const { planForeignSuffixImport } = require("../src/generators/incremental_graph/journal_sync");
-const { makeInstallationRecoverySource } = require("../src/generators/incremental_graph/journal_recovery_source");
 const { makeInterface } = require("../src/generators/interface");
 const eventId = require("../src/event/id");
 const { fromISOString } = require("../src/datetime");
@@ -192,26 +191,6 @@ function soleWriterOf(replica) {
     return writers[0].__value;
 }
 
-/**
- * An installation recovery source which records every query and always answers the
- * definite-absence token, so a test can tell whether an existing database was routed
- * through the absent-state decision.
- * @param {{queries: number}} calls
- * @returns {object}
- */
-function recordingDefinitelyAbsentSource(calls) {
-    const source = makeInstallationRecoverySource({
-        async queryInstallationRecovery() {
-            calls.queries += 1;
-            return null;
-        },
-    });
-    if (source instanceof Error) {
-        throw source;
-    }
-    return source;
-}
-
 describe("Journal 3 §7 lifecycle fault model: physical damage of the local store", () => {
     test("(a) partial deletion of a retained record is reported as a hole, not normalized into a shorter history", async () => {
         const capabilities = testCapabilities();
@@ -343,13 +322,8 @@ describe("Journal 3 §7 lifecycle fault model: physical damage of the local stor
 
     test("(e) an existing but damaged/truncated database is not routed through absent restore", async () => {
         const capabilities = testCapabilities();
-        const calls = { queries: 0 };
-        capabilities.installationRecoverySource = recordingDefinitelyAbsentSource(calls);
         const eventsBefore = await buildLiveJournal(capabilities);
         expect(eventsBefore.length).toBeGreaterThan(0);
-        // Building and running an existing database never consults the absent-state
-        // decision, because the directory exists the whole time.
-        expect(calls.queries).toBe(0);
 
         const { db, entries } = await rawLiveDatabase(capabilities);
         // Partially delete the database's format-selecting metadata while the directory and
@@ -361,12 +335,11 @@ describe("Journal 3 §7 lifecycle fault model: physical damage of the local stor
 
         const second = makeInterface(() => capabilities);
         // An existing local database is never routed through the absent-state decision:
-        // the directory exists, so the recovery source is not queried. Partial deletion of
+        // the directory exists. Partial deletion of
         // the format-selecting metadata is corrupted/unsupported state, so startup fails
         // closed rather than re-initializing the existing replica as fresh.
         await expect(second.ensureInitialized()).rejects.toThrow(
             /refusing to re-initialize an existing replica as fresh/
         );
-        expect(calls.queries).toBe(0);
     });
 });
