@@ -45,6 +45,7 @@ jest.mock("../src/generators/incremental_graph", () => ({
     CHECKPOINT_WORKING_PATH: "checkpoint",
     syncJournalReceiverToSource: jest.fn(),
     runCanonicalBootstrapGate: jest.fn(),
+    gitCanonicalBootstrapSource: jest.fn(() => ({ queryCanonicalBootstrap: jest.fn(), publishCanonicalBootstrapIfAbsent: jest.fn() })),
     queryInstallationRecovery: jest.fn(),
     restoreAbsentFrom: jest.fn(),
     isRecoveryDefinitelyAbsent: jest.fn(),

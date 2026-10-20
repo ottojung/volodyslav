@@ -43,6 +43,8 @@ const metaEventsComputor = require("../src/generators/individual/meta_events/wra
 const eventId = require("../src/event/id");
 const { fromISOString } = require("../src/datetime");
 const { makeInterface } = require("../src/generators/interface");
+const { gitCanonicalBootstrapSource } = require("../src/generators/incremental_graph");
+const { queryCanonicalBootstrap, isCanonicalBootstrapExists } = require("../src/generators/incremental_graph/journal/bootstrap");
 const { stubIncrementalDatabaseRemote } = require("./stub_incremental_database_remote");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger, stubEnvironment, stubDatetime, stubRandomSeed, ensureLiveDatabaseDirectory } = require("./stubs");
@@ -320,7 +322,7 @@ async function preJournalReplica() {
  * pre-Journal state, without introducing new root capability fields.
  * @returns {Promise<object>}
  */
-async function startupOverPreJournalInterface() {
+async function startupOverPreJournalInterface(unavailable = false) {
     const capabilities = getMockedRootCapabilities();
     stubLogger(capabilities);
     stubEnvironment(capabilities);
@@ -343,6 +345,11 @@ async function startupOverPreJournalInterface() {
     await clearJournalRecords(first._database);
     await first._database.close();
 
+    if (unavailable) {
+        capabilities.environment.generatorsRepository = () => path.join(
+            capabilities.environment.workingDirectory(), "unavailable-bootstrap-remote"
+        );
+    }
     const second = makeInterface(() => capabilities);
     await second.ensureInitialized();
     return { capabilities, second };
@@ -481,10 +488,19 @@ describe("Journal 3 startup canonical-bootstrap gate", () => {
         expect(await retainedRecordKeys(db)).toEqual([]);
         await db.close();
     });
-    test("interface startup over a pre-Journal database fails closed without a transport source", async () => {
-        // The source-aware canonical gate is exercised above; the outer lifecycle
-        // does not smuggle a new source through root capabilities.
-        await expect(startupOverPreJournalInterface()).rejects.toThrow(/cohort bootstrap source/);
+    test("interface startup publishes canonical bootstrap through the existing Git transport", async () => {
+        const { capabilities, second } = await startupOverPreJournalInterface();
+        const source = gitCanonicalBootstrapSource(capabilities);
+        if (source instanceof Error) throw source;
+        const held = await queryCanonicalBootstrap(source);
+        expect(isCanonicalBootstrapExists(held)).toBe(true);
+        expect(await second.getAllEvents()).toHaveLength(1);
+        expect(await retainedRecordCount(second._database)).toBeGreaterThan(0);
+        await second._database.close();
+    });
+
+    test("an unreachable canonical Git slot prevents pre-Journal cutover", async () => {
+        await expect(startupOverPreJournalInterface(true)).rejects.toThrow(/did not resolve/);
     });
 
     test("a pre-Journal source whose graph interpretation differs from the target fails before authoring bootstrap history", async () => {
