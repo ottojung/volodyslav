@@ -199,7 +199,7 @@ function deserializeWriterState(value, fingerprint) {
     if (authorityHighWater instanceof Error) {
         return authorityHighWater;
     }
-    if (typeof value.allocatorWatermark !== "number" || !Number.isSafeInteger(value.allocatorWatermark)) {
+    if (typeof value.allocatorWatermark !== "number" || !Number.isSafeInteger(value.allocatorWatermark) || value.allocatorWatermark < 0) {
         return makeJournalSourceReadError("the journal state record has a malformed allocator watermark");
     }
     return {
@@ -253,7 +253,16 @@ async function readCommittedWriterState(journalDatabase, fingerprint) {
         }
         return makeInitialCommittedWriterState(author);
     }
-    return deserializeWriterState(JSON.parse(journalTextToString(raw)), fingerprint);
+    let decoded;
+    try {
+        decoded = JSON.parse(journalTextToString(raw));
+    } catch (error) {
+        return makeJournalSourceReadError(
+            "the journal state record is malformed JSON: " +
+                (error instanceof Error ? error.message : String(error))
+        );
+    }
+    return deserializeWriterState(decoded, fingerprint);
 }
 
 /**
