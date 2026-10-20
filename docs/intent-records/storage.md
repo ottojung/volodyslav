@@ -20,11 +20,12 @@ Do not build permanent decoder ladders, unions of historical storage formats, al
 ---
 
 $id-7139531086125123
-title: Persisted database key lengths are O(H)
+title: Current replica database key lengths are O(H)
 date: 2026/10/19
 source: @ottojung
 kind: requirement
 
-The length of every persisted database key must be O(H), where H is the
-size of retained authoritative Journal history. This requirement applies
-throughout the database and across all supported database transitions.
+Every persisted database key belonging to the current replica must have
+length O(H), where H is the size of that replica's retained authoritative
+Journal history. This requirement does not constrain keys belonging to
+other replicas.
