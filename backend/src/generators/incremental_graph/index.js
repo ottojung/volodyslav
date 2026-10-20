@@ -55,6 +55,8 @@ const { migrationCallback } = require('./migration');
 const { synchronizeNoLock } = require('./database');
 const { prepareIncrementalGraphStorage } = require('./prepare_graph_storage');
 const { runCanonicalBootstrapGate } = require('./journal_bootstrap_gate');
+const { gitInstallationRecoverySource } = require('./journal_git_recovery');
+const { gitCanonicalBootstrapSource } = require('./journal_git_bootstrap');
 const {
     isCohortBootstrapSource,
     isJournalVersionCompatibilityError,
@@ -146,6 +148,8 @@ module.exports = {
     resetJournalReceiverToSnapshot,
     syncJournalReceiverToSource,
     runCanonicalBootstrapGate,
+    gitInstallationRecoverySource,
+    gitCanonicalBootstrapSource,
     makeCanonicalMigrationChain,
     canonicalNextJournalVersion,
     resolveCanonicalMigrationChain,

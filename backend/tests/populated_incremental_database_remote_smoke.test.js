@@ -16,14 +16,8 @@ const {
 const {
     fixtureAbsentCohortSource,
     fixtureInputKeys,
-    fixtureRecoverySourceHolding,
     readFixtureReplica,
 } = require("./journal_startup_fixture");
-const {
-    queryInstallationRecovery,
-    isRecoveryExists,
-    restoreAbsentFrom,
-} = require("../src/generators/incremental_graph/journal_recovery_source");
 const { makeJournalAuthor } = require("../src/generators/incremental_graph/journal");
 const { resolveCanonicalBootstrapForStartup } = require("../src/generators/incremental_graph/journal_bootstrap_startup");
 
@@ -60,17 +54,8 @@ async function getTestCapabilities() {
     // The deleted local database is completely absent, so the §4 absent-state
     // decision runs: the deployment's recovery source holds the populated
     // fixture's continuation-safe snapshot, which startup restores.
-    const recoverySource = fixtureRecoverySourceHolding(POPULATED_FIXTURE);
-    if (recoverySource instanceof Error) {
-        throw recoverySource;
-    }
-    // A transport-independent fixture provides the continuation-safe snapshot.
-    // Restore it explicitly: root capabilities do not transport recovery sources.
-    const answer = await queryInstallationRecovery(recoverySource);
-    if (!isRecoveryExists(answer)) {
-        throw new Error("fixture did not provide a continuation-safe snapshot");
-    }
-    await restoreAbsentFrom(capabilities, answer.snapshot);
+    // The existing Git checkpoint transport supplies the held recovery source
+    // at startup, without any added root capability fields.
     return capabilities;
 }
 
