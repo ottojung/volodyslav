@@ -24,9 +24,12 @@ const {
     appendJournalPublicationOps,
     appendRetainedStateOp,
     readCommittedWriterState,
+    readRetainedJournal,
 } = require("./journal_store");
 const {
     finalizeMigrationEmission,
+    isWriterStateRecord,
+    journalAuthorToString,
     makeJournalAuthor,
     makeJournalPublicationError,
 } = require("./journal");
@@ -134,10 +137,12 @@ async function carryRetainedJournal(sourceStorage, targetStorage, rewriter) {
  * @param {ReadonlyArray<MigrationIntent>} intents - The M1 value/absence transition.
  * @param {number} publicationInstant - Epoch milliseconds of the migration publication.
  * @param {number} allocatorWatermark - The allocation watermark the target durably establishes.
+ * @param {boolean} forceWriterStateRecord - The old committed watermark lacks a
+ *   physical retained WriterStateRecord witness; migrating must explicitly reify it.
  * @returns {Promise<CommittedWriterState | JournalError>}
  */
-async function publishMigrationM1(targetStorage, state, intents, publicationInstant, allocatorWatermark) {
-    if (intents.length === 0 && allocatorWatermark <= state.allocatorWatermark) {
+async function publishMigrationM1(targetStorage, state, intents, publicationInstant, allocatorWatermark, forceWriterStateRecord) {
+    if (intents.length === 0 && allocatorWatermark <= state.allocatorWatermark && !forceWriterStateRecord) {
         return state;
     }
     const publication = finalizeMigrationEmission({
@@ -145,6 +150,7 @@ async function publishMigrationM1(targetStorage, state, intents, publicationInst
         intents,
         publicationInstant,
         allocatorWatermark,
+        forceWriterStateRecord,
     });
     if (publication instanceof Error) {
         return publication;
@@ -179,7 +185,7 @@ async function publishMigrationM1(targetStorage, state, intents, publicationInst
  * @param {Map<import('./database/types').NodeIdentifier, import('./database/types').Freshness>} targetFreshness - The target's freshness flags, which M3 encodes.
  * @param {import('./database/graph_scheme').GraphScheme} graphScheme - The target schema.
  * @param {import('./database/identifier_lookup').IdentifierLookup} targetLookup - The target replica's identifier lookup.
- * @returns {Promise<void>}
+ * @returns {Promise<number>} - The final committed allocator watermark after M1-M3.
  */
 async function buildMigrationJournal(sourceStorage, targetStorage, fingerprint, intents, publicationInstant, allocatorWatermark, rewriter, desiredValid, targetFreshness, graphScheme, targetLookup) {
     await carryRetainedJournal(sourceStorage, targetStorage, rewriter);
@@ -187,12 +193,38 @@ async function buildMigrationJournal(sourceStorage, targetStorage, fingerprint, 
     if (sourceWriterState instanceof Error) {
         throw sourceWriterState;
     }
+    // Legacy checkpoints can carry an already committed local allocator floor
+    // without any physical WriterStateRecord witness. The replayed allocator
+    // would otherwise be zero even though the carried writer-state metadata is
+    // larger. Reify that floor during migration, without pretending a new index
+    // was allocated. This is an O(H) maintenance-only scan, never routine open.
+    const carried = await readRetainedJournal(targetStorage.journal, sourceWriterState);
+    if (carried instanceof Error) {
+        throw carried;
+    }
+    const localName = journalAuthorToString(sourceWriterState.localWriter);
+    let witnessedWatermark = 0;
+    for (const records of carried.values()) {
+        for (const record of records) {
+            if (isWriterStateRecord(record) && journalAuthorToString(record.id.author) === localName) {
+                witnessedWatermark = record.lastNodeIndex;
+            }
+        }
+    }
+    if (witnessedWatermark > sourceWriterState.allocatorWatermark) {
+        throw makeJournalPublicationError(
+            "migration source writer state is below its retained allocator witness"
+        );
+    }
+    const forceWriterStateRecord = witnessedWatermark < sourceWriterState.allocatorWatermark;
+
     const targetWriterState = await publishMigrationM1(
         targetStorage,
         sourceWriterState,
         intents,
         publicationInstant,
-        allocatorWatermark
+        allocatorWatermark,
+        forceWriterStateRecord
     );
     if (targetWriterState instanceof Error) {
         throw targetWriterState;
@@ -235,6 +267,7 @@ async function buildMigrationJournal(sourceStorage, targetStorage, fingerprint, 
         throw stateRejected;
     }
     await targetStorage.batch(operations);
+    return repaired.writerState.allocatorWatermark;
 }
 
 module.exports = {

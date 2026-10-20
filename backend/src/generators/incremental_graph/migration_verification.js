@@ -19,7 +19,8 @@
  * which semantic nodes are present, which occurrence each one names, that
  * occurrence's payload, its `NodeIdentifier`, its `createdAt`/`modifiedAt`
  * (§§11a.3, 15, 19), and the freshness and validity edges M2 (§16) and M3 (§17)
- * encode. Those are the facts this module compares, and they are compared exactly.
+ * encode. Those are the occurrence facts this module compares exactly, alongside
+ * the replay-determined local allocator watermark and persisted global counter.
  *
  * Comparing freshness and validity here is what makes M2 and M3 load-bearing: a
  * cutover which authored the target occurrences but not the proof and persistent
@@ -39,7 +40,7 @@ const {
 } = require("./journal");
 
 const { readCommittedWriterState, readRetainedJournal } = require("./journal_store");
-const { deriveInputPositions, nodeIdentifierToString, nodeKeyStringToString, stringToNodeKeyString } = require("./database");
+const { deriveInputPositions, nodeIdentifierToString, nodeKeyStringToString, stringToNodeKeyString, LAST_NODE_INDEX_KEY } = require("./database");
 
 /** @typedef {import('./journal/errors').AnyJournalError} JournalError */
 /** @typedef {import('./journal/types').JournalAuthor} JournalAuthor */
@@ -214,6 +215,24 @@ async function verifyTargetReplica(targetStorage, targetLookup, graphScheme, loc
             );
         }
     }
+    // The replay also determines the allocator watermark. Graph-occurrence
+    // equality alone does not constrain global/last_node_index: a corrupted
+    // target could pass occurrence verification yet reuse an existing
+    // NodeIdentifier after cutover. The committed writer-state watermark and
+    // the persisted global counter must both agree with replay.
+    const persistedLastNodeIndex = await targetStorage.global.get(LAST_NODE_INDEX_KEY);
+    if (typeof persistedLastNodeIndex !== "number" ||
+        !Number.isSafeInteger(persistedLastNodeIndex) ||
+        persistedLastNodeIndex < 0 ||
+        persistedLastNodeIndex !== projection.lastNodeIndex ||
+        committed.allocatorWatermark !== projection.lastNodeIndex) {
+        throw makeJournalProjectionError(
+            "the migration target replica (" + replicaName + ") allocator watermark or " +
+                "global/last_node_index disagrees with retained Journal replay",
+            "unknown"
+        );
+    }
+
 }
 
 /**

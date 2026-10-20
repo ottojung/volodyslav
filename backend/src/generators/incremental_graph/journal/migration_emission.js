@@ -212,6 +212,11 @@ const {
  *   the authority seed of every record.
  * @property {number} allocatorWatermark - The local allocation watermark this publication durably
  *   establishes.
+ * @property {boolean} [forceWriterStateRecord] - At a Journal-aware migration of a
+ *   legacy checkpoint, an older committed writer-state watermark may have no
+ *   physical WriterStateRecord witness. This publication records that already
+ *   committed allocator floor so replay and the new global counter agree.
+
  */
 
 /**
@@ -288,7 +293,7 @@ function rejectDuplicateNodes(ordered) {
  * @returns {FinalizedPublication | JournalError}
  */
 function finalizeMigrationEmission(request) {
-    const { state, intents, publicationInstant, allocatorWatermark } = request;
+    const { state, intents, publicationInstant, allocatorWatermark, forceWriterStateRecord = false } = request;
     if (!Number.isSafeInteger(publicationInstant) || publicationInstant < 0) {
         return makeJournalPublicationError(
             "migration publication instant must be a non-negative whole millisecond, got " +
@@ -379,7 +384,7 @@ function finalizeMigrationEmission(request) {
         nextSequence = requireSuccessorJournalSequence(nextSequence);
     }
 
-    if (allocatorWatermark > state.allocatorWatermark) {
+    if (allocatorWatermark > state.allocatorWatermark || forceWriterStateRecord) {
         const writerStateId = makeJournalRecordId(localWriter, nextSequence);
         if (writerStateId instanceof Error) {
             return writerStateId;
