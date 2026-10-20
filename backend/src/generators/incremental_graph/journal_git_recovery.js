@@ -9,7 +9,6 @@
  * The held snapshot is checked out at one commit; a read/clone/parse error
  * is indeterminate and must never be reinterpreted as definite absence.
  */
-const fs = require('fs/promises');
 const path = require('path');
 const defaultBranch = require('../../gitstore').defaultBranch;
 const {
@@ -31,22 +30,28 @@ const {
     stringToNodeKeyString,
 } = require('./database');
 
-/** @param {string} filepath */
-async function readJson(filepath) {
-    return JSON.parse(await fs.readFile(filepath, 'utf8'));
+/**
+ * @param {{reader: import('../../filesystem/reader').FileReader}} capabilities
+ * @param {string} filepath
+ */
+async function readJson(capabilities, filepath) {
+    return JSON.parse(await capabilities.reader.readFileAsText(filepath));
 }
 
 /**
  * Read one immutable rendered Git checkpoint without constructing any live
  * receiver, fingerprint, or alternate installation.
  *
+ * @param {{reader: import('../../filesystem/reader').FileReader, scanner: import('../../filesystem/dirscanner').DirScanner}} capabilities
  * @param {string} replicaPath
  */
-async function snapshotFromRenderedReplica(replicaPath) {
+async function snapshotFromRenderedReplica(capabilities, replicaPath) {
     const journalDirectory = path.join(replicaPath, 'journal');
     /** @type {Map<string, Array<import('./journal').JournalRecord>>} */
     const byAuthor = new Map();
-    for (const name of (await fs.readdir(journalDirectory)).sort()) {
+    const members = await capabilities.scanner.scanDirectory(journalDirectory);
+    for (const member of members.sort((a, b) => a.path.localeCompare(b.path))) {
+        const name = path.basename(member.path);
         if (!name.startsWith('record|')) {
             continue;
         }
@@ -54,7 +59,7 @@ async function snapshotFromRenderedReplica(replicaPath) {
         if (fields === null) {
             throw new Error('recovery checkpoint contains an invalid Journal record key');
         }
-        const record = tryDecodeJournalRecord(await fs.readFile(path.join(journalDirectory, name), 'utf8'));
+        const record = tryDecodeJournalRecord(await capabilities.reader.readFileAsText(member.path));
         if (record instanceof Error) {
             throw record;
         }
@@ -87,14 +92,14 @@ async function snapshotFromRenderedReplica(replicaPath) {
     if (replica instanceof Error) {
         throw replica;
     }
-    const fingerprint = await readJson(path.join(replicaPath, 'global', 'fingerprint'));
+    const fingerprint = await readJson(capabilities, path.join(replicaPath, 'global', 'fingerprint'));
     const writerState = deserializeWriterState(
-        await readJson(path.join(journalDirectory, 'state')), fingerprint
+        await readJson(capabilities, path.join(journalDirectory, 'state')), fingerprint
     );
     if (writerState instanceof Error) {
         throw writerState;
     }
-    const graphSchemeString = await readJson(path.join(replicaPath, 'global', 'graph_scheme'));
+    const graphSchemeString = await readJson(capabilities, path.join(replicaPath, 'global', 'graph_scheme'));
     const scheme = parseGraphScheme(graphSchemeString);
     const projection = await projectRetainedJournal({
         source: makeReplicaSource(replica),
@@ -119,7 +124,7 @@ async function snapshotFromRenderedReplica(replicaPath) {
         records: [...replica.values()].flat(),
         projection,
         writerState,
-        databaseVersion: await readJson(path.join(replicaPath, 'global', 'version')),
+        databaseVersion: await readJson(capabilities, path.join(replicaPath, 'global', 'version')),
         graphSchemeString,
     });
     if (snapshot instanceof Error) {
@@ -130,7 +135,7 @@ async function snapshotFromRenderedReplica(replicaPath) {
 
 /**
  * Construct a source from existing infrastructure, not by adding a capability.
- * @param {{ environment: import('../../environment').Environment, git: import('../../subprocess/command').Command, creator: import('../../filesystem/creator').FileCreator, deleter: import('../../filesystem/deleter').FileDeleter }} capabilities
+ * @param {{ environment: import('../../environment').Environment, git: import('../../subprocess/command').Command, creator: import('../../filesystem/creator').FileCreator, deleter: import('../../filesystem/deleter').FileDeleter, reader: import('../../filesystem/reader').FileReader, scanner: import('../../filesystem/dirscanner').DirScanner }} capabilities
  */
 function gitInstallationRecoverySource(capabilities) {
     return makeInstallationRecoverySource({
@@ -152,7 +157,7 @@ function gitInstallationRecoverySource(capabilities) {
                     'clone', '--depth', '1', '--single-branch', '--branch', branch,
                     '--', remote, temp
                 );
-                return await snapshotFromRenderedReplica(path.join(temp, 'rendered', 'r'));
+                return await snapshotFromRenderedReplica(capabilities, path.join(temp, 'rendered', 'r'));
             } finally {
                 await capabilities.deleter.deleteDirectory(temp);
             }

@@ -6,7 +6,6 @@
  * expected-absent lease; losing concurrent publishers read the winning cut.
  * No extra root capability or independent runtime configuration is introduced.
  */
-const fs = require('fs/promises');
 const path = require('path');
 const {
     encodeJournalRecord,
@@ -86,7 +85,7 @@ function decodeArtifact(value) {
  * A successful query with no ref is a definite absence; every other read
  * failure is indeterminate and therefore fails startup.
  *
- * @param {{git: import('../../subprocess/command').Command, environment: import('../../environment').Environment, creator: import('../../filesystem/creator').FileCreator, deleter: import('../../filesystem/deleter').FileDeleter}} capabilities
+ * @param {{git: import('../../subprocess/command').Command, environment: import('../../environment').Environment, creator: import('../../filesystem/creator').FileCreator, deleter: import('../../filesystem/deleter').FileDeleter, reader: import('../../filesystem/reader').FileReader, writer: import('../../filesystem/writer').FileWriter}} capabilities
  */
 async function readGitCanonicalArtifact(capabilities) {
     const remote = capabilities.environment.generatorsRepository();
@@ -100,14 +99,14 @@ async function readGitCanonicalArtifact(capabilities) {
             'clone', '--depth', '1', '--single-branch', '--branch', CANONICAL_BRANCH,
             '--', remote, temp
         );
-        return decodeArtifact(JSON.parse(await fs.readFile(path.join(temp, ARTIFACT_FILE), 'utf8')));
+        return decodeArtifact(JSON.parse(await capabilities.reader.readFileAsText(path.join(temp, ARTIFACT_FILE))));
     } finally {
         await capabilities.deleter.deleteDirectory(temp);
     }
 }
 
 /**
- * @param {{git: import('../../subprocess/command').Command, environment: import('../../environment').Environment, creator: import('../../filesystem/creator').FileCreator, deleter: import('../../filesystem/deleter').FileDeleter}} capabilities
+ * @param {{git: import('../../subprocess/command').Command, environment: import('../../environment').Environment, creator: import('../../filesystem/creator').FileCreator, deleter: import('../../filesystem/deleter').FileDeleter, reader: import('../../filesystem/reader').FileReader, writer: import('../../filesystem/writer').FileWriter}} capabilities
  */
 function gitCanonicalBootstrapSource(capabilities) {
     return makeCohortBootstrapSource({
@@ -119,7 +118,8 @@ function gitCanonicalBootstrapSource(capabilities) {
             const remote = capabilities.environment.generatorsRepository();
             try {
                 await capabilities.git.call('init', '--initial-branch', CANONICAL_BRANCH, '--', temp);
-                await fs.writeFile(path.join(temp, ARTIFACT_FILE), encodeCandidate(candidate), 'utf8');
+                const artifactFile = await capabilities.creator.createFile(path.join(temp, ARTIFACT_FILE));
+                await capabilities.writer.writeFile(artifactFile, encodeCandidate(candidate));
                 await capabilities.git.call('-C', temp, 'add', '--', ARTIFACT_FILE);
                 await capabilities.git.call(
                     '-C', temp, '-c', 'user.name=Volodyslav',
