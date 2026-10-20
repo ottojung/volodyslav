@@ -179,7 +179,7 @@ async function publishMigrationM1(targetStorage, state, intents, publicationInst
  * @param {Map<import('./database/types').NodeIdentifier, import('./database/types').Freshness>} targetFreshness - The target's freshness flags, which M3 encodes.
  * @param {import('./database/graph_scheme').GraphScheme} graphScheme - The target schema.
  * @param {import('./database/identifier_lookup').IdentifierLookup} targetLookup - The target replica's identifier lookup.
- * @returns {Promise<void>}
+ * @returns {Promise<number>} - The final committed allocator watermark after M1-M3.
  */
 async function buildMigrationJournal(sourceStorage, targetStorage, fingerprint, intents, publicationInstant, allocatorWatermark, rewriter, desiredValid, targetFreshness, graphScheme, targetLookup) {
     await carryRetainedJournal(sourceStorage, targetStorage, rewriter);
@@ -235,6 +235,7 @@ async function buildMigrationJournal(sourceStorage, targetStorage, fingerprint, 
         throw stateRejected;
     }
     await targetStorage.batch(operations);
+    return repaired.writerState.allocatorWatermark;
 }
 
 module.exports = {

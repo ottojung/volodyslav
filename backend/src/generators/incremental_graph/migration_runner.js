@@ -513,7 +513,7 @@ async function runMigrationEdgeUnsafe(capabilities, rootDatabase, nodeDefs, edge
          */
         (nodeKeyString) => deserializeNodeKey(nodeKeyString)
     );
-    await buildMigrationJournal(
+    const committedAllocatorWatermark = await buildMigrationJournal(
         prevStorage,
         toStorage,
         rootDatabase.getFingerprint(),
@@ -526,6 +526,12 @@ async function runMigrationEdgeUnsafe(capabilities, rootDatabase, nodeDefs, edge
         newGraphScheme,
         finalLookup
     );
+    // The definitive allocator counter is the final Journal writer state, not
+    // an earlier lazy-source estimate. The migration may carry writer-state
+    // history whose high watermark exceeds the source global counter; writing
+    // this value before the final fsync/cutover makes the two representations
+    // agree and lets target verification reject any remaining discrepancy.
+    await toStorage.global.put(LAST_NODE_INDEX_KEY, committedAllocatorWatermark);
 
     // One final fsync: all unification writes use sync:false for performance;
     // _rawSync() issues an empty batch with sync:true to flush the WAL
