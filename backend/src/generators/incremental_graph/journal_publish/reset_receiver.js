@@ -22,14 +22,12 @@ const {
     requireValidFingerprint,
 } = require('../database');
 const { readHeldResetSource } = require('./held_reset_source');
+const { greatestObservedHighWater } = require('./observed_high_water');
 const { installResetOutcome } = require('./reset_publication');
 const {
-    compareAuthorityTime,
     isJournalError,
-    isSemanticEvent,
     makeJournalAuthor,
     makeJournalProjectionError,
-    streamWithReport,
 } = require('../journal');
 const { resetToSource } = require('../journal_reset');
 const { SnapshotIdentityClass } = require('../journal_sync');
@@ -46,8 +44,6 @@ const {
 /** @typedef {import('../database/root_database').ReplicaName} ReplicaName */
 /** @typedef {import('../journal/records').JournalRecord} JournalRecord */
 /** @typedef {import('../journal/emission').CommittedWriterState} CommittedWriterState */
-/** @typedef {import('../journal/types').AuthorityTime} AuthorityTime */
-/** @typedef {import('../journal/oracle/record_source').JournalSource} JournalSource */
 
 /**
  * @param {{ keys: () => AsyncIterable<unknown> }} sublevel
@@ -117,38 +113,6 @@ function requireText(value, what) {
         throw new Error(`reset requires the receiver's persisted ${what}, which is not a string`);
     }
     return value;
-}
-
-/**
- * The greatest authority time the observed union `J0` carries.
- *
- * The receiver's own committed high-water covers `JR`; the source snapshot's records
- * cover the imported part of `S`. Reset-authored records are allocated strictly above
- * this value, so an unobserved high-water would let an authored record share an authority
- * time with an imported one. This is the same install-time metadata read
- * `journal_bootstrap_install.js` performs over the records it installs. The source is
- * folded record by record rather than collected, because only its greatest semantic
- * authority time is read here.
- *
- * @param {AuthorityTime} committedHighWater
- * @param {JournalSource} source
- * @returns {Promise<AuthorityTime>}
- */
-async function observedHighWaterOf(committedHighWater, source) {
-    let greatest = committedHighWater;
-    const failure = await streamWithReport(source, (record) => {
-        if (!isSemanticEvent(record)) {
-            return undefined;
-        }
-        if (compareAuthorityTime(record.authorityTime, greatest) > 0) {
-            greatest = record.authorityTime;
-        }
-        return undefined;
-    });
-    if (failure !== undefined) {
-        throw failure;
-    }
-    return greatest;
 }
 
 /**
@@ -247,6 +211,10 @@ async function resetJournalReceiverToSnapshot(request) {
     if (isJournalError(committed)) {
         throw committed;
     }
+    const sourceCommitted = await readCommittedWriterState(sourceStorage.journal, sourceFingerprint);
+    if (isJournalError(sourceCommitted)) {
+        throw sourceCommitted;
+    }
     const localWriter = makeJournalAuthor(receiverFingerprint);
     if (isJournalError(localWriter)) {
         throw localWriter;
@@ -288,7 +256,10 @@ async function resetJournalReceiverToSnapshot(request) {
         source: held.source,
         localWriter,
         committed,
-        observedHighWater: await observedHighWaterOf(committed.authorityHighWater, held.source.journal),
+        observedHighWater: greatestObservedHighWater(
+            committed.authorityHighWater,
+            sourceCommitted.authorityHighWater
+        ),
         publicationInstant: capabilities.datetime.now().toMillis(),
         currentInputKeysOfNode,
         receiverIdentity: new SnapshotIdentityClass(receiverVersion, receiverGraphScheme),

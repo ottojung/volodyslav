@@ -211,6 +211,42 @@ async function buildReceiverWithHeldSnapshot(capabilities) {
     return { database, receiver, source };
 }
 
+/**
+ * Count the record-range reads the production synchronization/reset front makes
+ * against one replica's raw journal sublevel.
+ *
+ * The front reaches a source journal through `database.replicaJournalSublevel`, so
+ * replacing that method with one which returns a record-range-counting sublevel for
+ * exactly the named replica observes every read the front makes against it without
+ * touching the other replica or the fixture's own rendering. The first sublevel the
+ * method returns for that replica is the one wrapped, and it is returned for every
+ * later call as well, so a front which reads the source through several handles still
+ * accumulates into one count.
+ *
+ * @param {object} database
+ * @param {string} source - The replica name whose raw journal sublevel to count.
+ * @returns {() => {rangesOpened: number, entriesYielded: number}}
+ */
+function countSourceRecordRanges(database, source) {
+    const original = database.replicaJournalSublevel.bind(database);
+    /** @type {object | undefined} */
+    let wrapped;
+    /** @type {{rangesOpened: number, entriesYielded: number} | undefined} */
+    let stats;
+    database.replicaJournalSublevel = (name) => {
+        const sublevel = original(name);
+        if (name !== source) {
+            return sublevel;
+        }
+        if (wrapped === undefined) {
+            wrapped = sublevel;
+            stats = countJournalRecordRanges(sublevel);
+        }
+        return wrapped;
+    };
+    return () => stats ?? { rangesOpened: 0, entriesYielded: 0 };
+}
+
 describe("the production Journal front streams retained records", () => {
     test("synchronization reads the receiver and the held snapshot without a record point read", async () => {
         const capabilities = testCapabilities();
@@ -227,6 +263,54 @@ describe("the production Journal front streams retained records", () => {
 
             expect(changed).toBe(true);
             expect(recordGets).toEqual([]);
+        } finally {
+            await database.close();
+        }
+    });
+
+    test("synchronization derives the observed high-water from committed metadata, not a source-history scan", async () => {
+        const capabilities = testCapabilities();
+        const { database, receiver, source } = await buildReceiverWithHeldSnapshot(capabilities);
+        const sourceRanges = countSourceRecordRanges(database, source);
+        try {
+            const changed = await syncJournalReceiverToSource({
+                database,
+                capabilities,
+                receiver,
+                source,
+            });
+
+            expect(changed).toBe(true);
+            // The source and receiver share one writer here, so there is no foreign
+            // suffix to import and no forward record range to open. The observed
+            // high-water comes from the source's committed metadata, so the retained
+            // history is never re-read to re-derive a value the source already
+            // persists. A front which scanned the source would yield one entry per
+            // retained record here.
+            const stats = sourceRanges();
+            expect(stats.rangesOpened).toBe(0);
+            expect(stats.entriesYielded).toBe(0);
+        } finally {
+            await database.close();
+        }
+    });
+
+    test("reset derives the observed high-water from committed metadata, not a source-history scan", async () => {
+        const capabilities = testCapabilities();
+        const { database, receiver, source } = await buildReceiverWithHeldSnapshot(capabilities);
+        const sourceRanges = countSourceRecordRanges(database, source);
+        try {
+            const changed = await resetJournalReceiverToSnapshot({
+                database,
+                capabilities,
+                receiver,
+                source,
+            });
+
+            expect(changed).toBe(true);
+            const stats = sourceRanges();
+            expect(stats.rangesOpened).toBe(0);
+            expect(stats.entriesYielded).toBe(0);
         } finally {
             await database.close();
         }
