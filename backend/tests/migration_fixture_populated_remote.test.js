@@ -154,10 +154,12 @@ describe("populated rendered fixture migration", () => {
         const sourceFiles = (await fsPromises.readdir(sourceJournal)).sort();
         const migratedFiles = await listJournalFiles(capabilities);
 
-        // Historical Journal records and committed state survive byte-for-byte.
-        // The derived current-occurrence index is instead converted from the
-        // preceding persisted format to fixed-width physical keys and metadata.
-        const sourceRecords = sourceFiles.filter((name) => !name.startsWith("occurrence|"));
+        // Every original historical Journal record survives byte-for-byte.
+        // Committed writer-state metadata is intentionally advanced by the
+        // one new WriterStateRecord which reifies the old snapshot's allocated
+        // index floor, so source state/retained summary are not immutable here.
+        // The derived occurrence index is converted to fixed-width keys.
+        const sourceRecords = sourceFiles.filter((name) => name.startsWith("record|"));
         const sourceOccurrences = sourceFiles.filter((name) => name.startsWith("occurrence|"));
         for (const name of sourceRecords) {
             expect(migratedFiles).toContain(name);
@@ -210,6 +212,13 @@ describe("populated rendered fixture migration", () => {
             )
         );
         expect(writerState.allocatorWatermark).toBe(lastNodeIndex);
+        // This legacy fixture had allocator watermark 4 in its committed
+        // metadata but no retained writer-state record. The migrated history
+        // now explicitly witnesses that value, and the latest writer head
+        // includes the additional record.
+        expect(lastNodeIndex).toBe(4);
+        expect(writerState.writerHead).toBe("11");
+        expect(migratedFiles).toContain("record|testfingerprnt|000000000000000000000000000011");
     });
 });
 

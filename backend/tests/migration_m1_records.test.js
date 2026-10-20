@@ -326,7 +326,7 @@ describe("the migration cutover verifies the target before selecting it", () => 
                 "../src/generators/incremental_graph/migration_journal"
             ).buildMigrationJournal;
             buildMigrationJournal.mockImplementation(async (...args) => {
-                await realBuildMigrationJournal(...args);
+                const committedWatermark = await realBuildMigrationJournal(...args);
                 const targetStorage = args[1];
                 const targetTimestamps = await targetStorage.timestamps.get(source.identifier);
                 if (targetTimestamps === undefined) {
@@ -336,6 +336,7 @@ describe("the migration cutover verifies the target before selecting it", () => 
                     createdAt: targetTimestamps.createdAt,
                     modifiedAt: "1999-01-01T00:00:00.000Z",
                 });
+                return committedWatermark;
             });
 
             await expect(
@@ -355,7 +356,13 @@ describe("the migration cutover verifies the target before selecting it", () => 
             db = await getRootDatabase(caps);
             const replicaBefore = db.currentReplicaName();
 
-            buildMigrationJournal.mockImplementation(async () => undefined);
+            // Simulate losing the Journal half while keeping the graph half;
+            // return the allocator value the new migration builder reports.
+            buildMigrationJournal.mockImplementation(async (_source, target) => {
+                const counter = await target.global.get("last_node_index");
+                if (typeof counter !== "number") throw new Error("fixture has no allocator metadata");
+                return counter;
+            });
 
             await expect(
                 runMigration(caps, db, source.nodeDefs, source.keepAll)

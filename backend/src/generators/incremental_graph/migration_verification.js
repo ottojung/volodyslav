@@ -190,24 +190,6 @@ async function verifyTargetReplica(targetStorage, targetLookup, graphScheme, loc
         );
     }
 
-    // The replay also determines the allocator watermark. Graph-occurrence
-    // equality alone does not constrain global/last_node_index: a corrupted
-    // target could pass occurrence verification yet reuse an existing
-    // NodeIdentifier after cutover. The committed writer-state watermark and
-    // the persisted global counter must both agree with replay.
-    const persistedLastNodeIndex = await targetStorage.global.get(LAST_NODE_INDEX_KEY);
-    if (typeof persistedLastNodeIndex !== "number" ||
-        !Number.isSafeInteger(persistedLastNodeIndex) ||
-        persistedLastNodeIndex < 0 ||
-        persistedLastNodeIndex !== projection.lastNodeIndex ||
-        committed.allocatorWatermark !== projection.lastNodeIndex) {
-        throw makeJournalProjectionError(
-            "the migration target replica (" + replicaName + ") allocator watermark or " +
-                "global/last_node_index disagrees with retained Journal replay",
-            "unknown"
-        );
-    }
-
     const persisted = await readTargetOccurrences(targetStorage, targetLookup, graphScheme);
     for (const replayed of projection.occurrences) {
         const graph = persisted.get(replayed.nodeKeyString);
@@ -233,6 +215,24 @@ async function verifyTargetReplica(targetStorage, targetLookup, graphScheme, loc
             );
         }
     }
+    // The replay also determines the allocator watermark. Graph-occurrence
+    // equality alone does not constrain global/last_node_index: a corrupted
+    // target could pass occurrence verification yet reuse an existing
+    // NodeIdentifier after cutover. The committed writer-state watermark and
+    // the persisted global counter must both agree with replay.
+    const persistedLastNodeIndex = await targetStorage.global.get(LAST_NODE_INDEX_KEY);
+    if (typeof persistedLastNodeIndex !== "number" ||
+        !Number.isSafeInteger(persistedLastNodeIndex) ||
+        persistedLastNodeIndex < 0 ||
+        persistedLastNodeIndex !== projection.lastNodeIndex ||
+        committed.allocatorWatermark !== projection.lastNodeIndex) {
+        throw makeJournalProjectionError(
+            "the migration target replica (" + replicaName + ") allocator watermark or " +
+                "global/last_node_index disagrees with retained Journal replay",
+            "unknown"
+        );
+    }
+
 }
 
 /**
