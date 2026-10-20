@@ -23,6 +23,7 @@ const {
     compareJournalSequence,
     compareAuthorityTime,
     isSemanticEvent,
+    isWriterStateRecord,
     replicaFrontier,
 } = require('./journal');
 const { deserializeWriterState } = require('./journal_store');
@@ -108,6 +109,25 @@ async function snapshotFromRenderedReplica(capabilities, replicaPath) {
     // restorable claim. A held checkpoint must agree with the records it holds:
     // otherwise restoration could install a writer head or imported frontier
     // naming events which were never restored.
+    // The allocator watermark is duplicated in the current committed pair.
+    // Do not restore an inconsistent claimed watermark: that could reallocate a
+    // NodeIdentifier which still occurs in the retained snapshot.
+    const indexInCheckpoint = await readJson(
+        capabilities, path.join(replicaPath, 'global', 'last_node_index')
+    );
+    if (!Number.isSafeInteger(indexInCheckpoint) || indexInCheckpoint < 0 ||
+        indexInCheckpoint !== writerState.allocatorWatermark) {
+        throw new Error('recovery checkpoint allocator watermark disagrees with global last_node_index');
+    }
+    for (const records of replica.values()) {
+        for (const record of records) {
+            if (isWriterStateRecord(record) &&
+                journalAuthorToString(record.id.author) === journalAuthorToString(writerState.localWriter) &&
+                record.lastNodeIndex > writerState.allocatorWatermark) {
+                throw new Error('recovery checkpoint allocator watermark is below retained writer-state history');
+            }
+        }
+    }
     const observedFrontier = replicaFrontier(replica);
     if (observedFrontier.size !== writerState.committedFrontier.size) {
         throw new Error('recovery checkpoint committed frontier disagrees with retained Journal');
