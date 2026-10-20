@@ -635,3 +635,68 @@ async function ownArtifactOf(db) {
     })
 
 }
+
+test("pre-Journal older version resolves canonical bootstrap before Journal-aware migration", async () => {
+    const capabilities = getMockedRootCapabilities();
+    stubLogger(capabilities);
+    stubEnvironment(capabilities);
+    stubDatetime(capabilities);
+    stubRandomSeed(capabilities);
+    ensureLiveDatabaseDirectory(capabilities);
+    await stubIncrementalDatabaseRemote(capabilities);
+
+    const first = makeInterface(() => capabilities);
+    await first.ensureInitialized();
+    await first.update([{
+        id: eventId.fromString("aaaaaaaaa:1"),
+        date: fromISOString("2020-01-01T09:00:00.000Z"),
+        original: "an event",
+        input: "an event",
+        creator: CREATOR,
+    }]);
+    await clearJournalRecords(first._database);
+    await first._database.getSchemaStorage().global.put("version", "0.0.0-dev");
+    await first._database.close();
+
+    const second = makeInterface(() => capabilities);
+    await second.ensureInitialized();
+    const cohort = gitCanonicalBootstrapSource(capabilities);
+    if (cohort instanceof Error) {
+        throw cohort;
+    }
+    const observed = await queryCanonicalBootstrap(cohort);
+    expect(isCanonicalBootstrapExists(observed)).toBe(true);
+    expect(await second.getAllEvents()).toHaveLength(1);
+    await second._database.close();
+});
+
+test("unavailable canonical transport over an older pre-Journal replica cannot migrate around arbitration", async () => {
+    const capabilities = getMockedRootCapabilities();
+    stubLogger(capabilities);
+    stubEnvironment(capabilities);
+    stubDatetime(capabilities);
+    stubRandomSeed(capabilities);
+    ensureLiveDatabaseDirectory(capabilities);
+    await stubIncrementalDatabaseRemote(capabilities);
+    const first = makeInterface(() => capabilities);
+    await first.ensureInitialized();
+    await first.update([{
+        id: eventId.fromString("aaaaaaaaa:1"),
+        date: fromISOString("2020-01-01T09:00:00.000Z"),
+        original: "an event",
+        input: "an event",
+        creator: CREATOR,
+    }]);
+    await clearJournalRecords(first._database);
+    await first._database.getSchemaStorage().global.put("version", "0.0.0-dev");
+    await first._database.close();
+    const inaccessible = path.join(capabilities.environment.workingDirectory(), "missing-canonical-remote");
+    capabilities.environment.generatorsRepository = () => inaccessible;
+
+    const second = makeInterface(() => capabilities);
+    await expect(second.ensureInitialized()).rejects.toThrow();
+    const database = await getRootDatabase(capabilities);
+    expect(await database.getGlobalVersion()).toBe("0.0.0-dev");
+    expect(await retainedRecordCount(database)).toBe(0);
+    await database.close();
+});
