@@ -381,6 +381,32 @@ Journal coordinate. A crash may expose only states permitted by the
 operation's transaction/publication boundary; it does not make a partially
 committed Journal/projection pair a supported state.
 
+Ordinary evolution preserves these lifecycle invariants:
+
+1. **Version ownership.** Writes target the active state associated with the
+   running database version. A write path that discovers a different stored
+   version fails rather than writing across that boundary; the startup gate in
+   §8 establishes that equality before graph APIs are exposed.
+2. **Durable-before-visible commit.** A successful transaction persists its
+   settled Journal/projection state before corresponding volatile state is
+   treated as committed. The atomic publication boundary above enforces this
+   ordering.
+3. **Coherent graph state.** Values, dependency relationships, freshness, and
+   associated derived metadata describe one settled graph state after a
+   successful transaction: `project(journalAfter) == graphAfter`.
+4. **Atomic transaction boundary.** Other operations observe the state before
+   or after a transaction's finalization, not a deliberately exposed partial
+   finalization.
+5. **Exclusive maintenance boundary.** Migration, synchronization, reset, and
+   active-state cutover wait for ordinary graph activity and prevent new
+   ordinary activity until maintenance completes (§3).
+6. **Schema-mediated access.** Runtime operations use the graph schema and
+   database abstraction to address and evolve state. They do not infer a new
+   schema from arbitrary persisted contents.
+
+These invariants are obligations of supported write paths. If a supported
+operation reports success while violating one of them, that is a lifecycle bug.
+
 A successful operation which changes no persisted semantic state need not
 append a semantic event merely because the API was invoked.
 
@@ -604,6 +630,47 @@ evidence that the local writer has lost an already-surviving suffix.
 The system does not require Byzantine provenance, malicious-peer containment,
 general partial-corruption repair, or semantic recovery from arbitrary
 filesystem damage.
+
+## 13a. Implementation consequences
+
+Implementations and future changes MUST preserve the following lifecycle
+properties. Each property names its normative owner in this document.
+
+1. Startup MUST distinguish existing local state from absent local state
+   before choosing bootstrap behavior (§4).
+2. Discovering expected synchronized state for the current host MUST NOT
+   silently degrade to fresh creation when restoration fails (§4.3).
+3. The graph interface MUST NOT become initialized before the database is open
+   and current, including successful completion of any required migration
+   (§3, §12 `migration/startup`).
+4. Version-changing local use MUST go through migration; version-different peer
+   state MUST NOT be merged by normal synchronization (§8, §9).
+5. Migration and synchronization MUST construct replacement state away from the
+   selected active state and cut over only after their state-building
+   preconditions succeed (§8.3, §9).
+6. Maintenance transitions MUST be exclusive with ordinary graph activity (§3,
+   §8.3, §9, §10, §11).
+7. Per-host synchronization failures MAY coexist with successful merges from
+   other hosts, but the aggregate result MUST report the failures (§9 `Failure
+   handling`).
+8. Reopening after synchronization or reset MUST pass through the migration
+   gate before database-backed services resume (§9 `Failure handling`).
+9. Tests and diagnostics SHOULD distinguish incompatibility, failed
+   preconditions, corruption, and unsupported manipulation rather than using
+   those terms interchangeably (§15).
+10. New recovery, import, or restore behavior MUST be implemented as a
+    Volodyslav-controlled lifecycle transition. Documentation alone MUST NOT
+    redefine raw file manipulation as supported (§14).
+11. Storage refactors MAY change physical artifacts without changing this
+    specification, provided these lifecycle preconditions, transitions, and
+    postconditions remain true.
+
+The retired baseline obligation "Normal synchronization MUST checkpoint stable
+local state and perform structured database merge rather than exposing textual
+repository merge as database semantics" is superseded: Journal 3 synchronization
+imports immutable foreign suffixes and normalizes through authored semantic
+events, with no textual repository merge exposed as database semantics
+(`incremental-graph-journal-sync.md`).
 
 ## 14. Unsupported operations and states
 
