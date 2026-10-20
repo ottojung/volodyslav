@@ -86,6 +86,8 @@ File: `backend/tests/populated_incremental_database_remote_smoke.test.js`.
 
 This is the behavioral smoke test over a realistic populated fixture. It ensures the repository is not just structurally sound, but also **operationally healthy** through the public interface.
 
+Migration coverage is owned by Layer 2, not this layer: the fixture is already a Journal replica at the running version, so startup performs receiver-less absent-state restoration and deliberately runs no bootstrap or migration. This layer's subject is post-restore operation over a current Journal replica.
+
 ### What this smoke test covers
 
 The fixture remote is seeded from the `populated` fixture and the local live database is deleted, so startup exercises the Journal 3 lifecycle gate of `database-lifecycle.md`: the absent-state decision restores the fixture snapshot through the receiver-less restore path, and the restored replica is already at the current version so no bootstrap or migration runs. Over the restored database it exercises:

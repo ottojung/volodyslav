@@ -21,10 +21,61 @@ replace or rewrite `incremental-graph-synchronization.md` so the canonical
 synchronization specification describes shipped Journal 3 behavior: the owner
 above now carries that contract, and this file is only a redirect to it.
 
-No normative requirement was dropped in the consolidation. The obligations that
-appeared only in the retired text — "Synchronization MUST NOT invoke computors"
-and the scope/non-goals statements — are restated in
+The obligations that appeared only in the retired text — "Synchronization MUST
+NOT invoke computors" and the scope/non-goals statements — are restated in
 `incremental-graph-journal-sync.md` §Scope and non-goals. The bounded-memory
 iteration contract remains owned by `$id-4924739474925738`.
+
+The retired text also specified a legacy pairwise materialization merge. Journal
+3 synchronization replaces that mechanism with immutable foreign-suffix import
+plus deterministic replay, so those merge-domain requirements are superseded
+rather than silently dropped. The canonical owner
+`incremental-graph-journal-sync.md` states the live rules.
+
+Superseded by Journal 3 replay and identity semantics:
+
+- `REQ-SYNC-07`, `REQ-SYNC-08`, `REQ-SYNC-08a`, `REQ-SYNC-08b`,
+  `REQ-SYNC-08c` (timestamp-based candidate selection and merge-time
+  freshness): Journal 3 selects values by replay and `ValueId`, not by the
+  `(modifiedAt, NodeIdentifier, sourceFingerprint)` tuple, and authors no merge
+  timestamp. The same-coordinate stale-freshness rule is vacuous because
+  identifiers embed the host fingerprint and the immutable-overlap law forbids
+  writer forks.
+- `REQ-SYNC-09`, `REQ-SYNC-10` (distinct-input classifier; structural deletion
+  closure): owned by `incremental-graph-journal-sync.md` §Phase 1:
+  dependency-closure removal.
+- `REQ-SYNC-11`, `REQ-SYNC-12`, `REQ-SYNC-13` (final identifier selection;
+  meaning of `potentially-outdated`; equality does not create origin): Journal
+  3 identity and freshness are owned by `incremental-graph-journal-replay.md`.
+- `REQ-SYNC-14`, `REQ-SYNC-15`, `REQ-SYNC-16`, `REQ-SYNC-17` (validity-proof
+  transport): Journal 3 rebuilds proofs by replay; there is no source-side proof
+  transport. Owned by `incremental-graph-journal-replay.md`.
+- `DEF-SYNC-02` (source-version identity): replaced by `ValueId` identity and
+  the immutable-overlap law; equal timestamps, identifiers, or stored values are
+  no longer identity evidence.
+
+Still applicable, with their equivalent owner:
+
+- `REQ-SYNC-04`, `REQ-SYNC-05` (source and final consistency): a source whose
+  retained records are inconsistent with its projection is rejected rather than
+  silently dropped. Owned by `incremental-graph-journal-well-formedness.md`
+  and `incremental-graph-journal-sync.md` §Final replay and validation.
+- `REQ-SYNC-06` (malformed-metadata rejection): malformed immutable context and
+  duplicate/conflicting records are rejected rather than silently dropped.
+  Owned by `incremental-graph-journal-well-formedness.md` and
+  `incremental-graph-journal-sync.md` §Imported causal closure and §Final replay
+  and validation.
+- `REQ-SYNC-11a` (up-to-date eligibility): the `selfProofReady(K) => fresh(K)`
+  gate in `incremental-graph-journal-sync.md` §Final replay and validation.
+- `REQ-SYNC-18`, `REQ-SYNC-19` (pre-switch validation; fail-closed on failure):
+  `incremental-graph-journal-sync.md` §Final replay and validation and §Atomic
+  publication.
+- `REQ-SYNC-20`, `REQ-SYNC-22` (write-target isolation; partial-failure safety):
+  `incremental-graph-journal-sync.md` §Atomic publication, which streams into
+  inactive staging and leaves the previous active pair selected on failure.
+- `REQ-SYNC-21` (switch condition): a successful synchronization publishes the
+  final pair atomically and is a semantic no-op when nothing changed.
+  `incremental-graph-journal-sync.md` §Atomic publication and §Pairwise result
+  law.
 
 See `incremental-graph-journal-README.md` for the Journal 3 reading order.
