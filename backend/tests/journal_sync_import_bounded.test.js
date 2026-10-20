@@ -50,6 +50,7 @@ const {
 } = require("../src/generators/incremental_graph/journal_publish/sync_publication");
 
 const {
+    JOURNAL_STATE_KEY,
     readRetainedJournal,
 } = require("../src/generators/incremental_graph/journal_store");
 
@@ -311,6 +312,76 @@ describe("a foreign suffix longer than the work-queue limit", () => {
             }
             const retained = [...replica.values()].flat();
             expect(retained).toHaveLength(1 + IMPORT_LENGTH);
+        } finally {
+            await db.close();
+        }
+    });
+
+    test("a fault in the imported-growth staging fails before cutover and a retry re-stages cleanly", async () => {
+        const capabilities = capabilitiesFor();
+        /** @type {((keys: Array<string>) => boolean) | undefined} */
+        let failOn = undefined;
+        const initialize = capabilities.levelDatabase.initialize;
+        capabilities.levelDatabase.initialize = (databasePath) => {
+            const level = initialize(databasePath);
+            const batch = level.batch.bind(level);
+            level.batch = (operations) => {
+                const keys = operations.map((operation) => String(operation.key));
+                if (failOn !== undefined && failOn(keys)) {
+                    return Promise.reject(new Error("injected growth staging failure"));
+                }
+                return batch(operations);
+            };
+            return level;
+        };
+
+        const receiver = [localLeaf()];
+        const source = peerChain(IMPORT_LENGTH, "1");
+        const outcome = await synchronize(receiver, source);
+
+        const db = await getRootDatabase(capabilities);
+        try {
+            const target = db.syncStagingStorage();
+            const publication = {
+                target,
+                retainedSource: makeReplicaSource(replicaOf(receiver)),
+                receiverVersion: "1.0.0",
+                receiverGraphScheme: "scheme",
+                receiverFingerprint: WRITER_LOCAL,
+                outcome,
+            };
+
+            // The receiver's one retained record is the first record-only batch; the imported
+            // suffix is staged after it in chunks of RAW_BATCH_CHUNK_SIZE. Rejecting the second
+            // growth chunk fails before the cutover batch ever runs.
+            let recordBatchesSeen = 0;
+            failOn = (keys) => {
+                if (!(keys.length > 0 && keys.every((key) => key.includes("record|")))) {
+                    return false;
+                }
+                recordBatchesSeen += 1;
+                return recordBatchesSeen === 3;
+            };
+
+            await expect(publishSyncReceiverOutcome(publication)).rejects.toThrow(
+                "injected growth staging failure"
+            );
+
+            const partialReplica = await readRetainedJournal(target.journal);
+            if (partialReplica instanceof Error) {
+                throw partialReplica;
+            }
+            expect([...partialReplica.values()].flat()).toHaveLength(1 + RAW_BATCH_CHUNK_SIZE);
+            expect(await target.journal.get(JOURNAL_STATE_KEY)).toBeUndefined();
+
+            // A retry re-stages the same deterministic keys over the abandoned partial stage.
+            failOn = undefined;
+            await publishSyncReceiverOutcome(publication);
+            const fullReplica = await readRetainedJournal(target.journal);
+            if (fullReplica instanceof Error) {
+                throw fullReplica;
+            }
+            expect([...fullReplica.values()].flat()).toHaveLength(1 + IMPORT_LENGTH);
         } finally {
             await db.close();
         }
