@@ -350,6 +350,60 @@ describe('sync exposes Jsync + project(Jsync) in one write', () => {
         }
     });
 
+    test('a fault in the retained-history staging leaves the previously activated replica active', async () => {
+        const receiverCapabilities = capabilitiesFor('staging-failure');
+        const receiver = await buildPulledDatabase(receiverCapabilities, 'the receiver wrote this');
+        const receiverReplica = receiver.currentReplicaName();
+        const before = await storedRowsOf(receiver);
+        await receiver.close();
+
+        const sourceCapabilities = capabilitiesFor('staging-failure-source');
+        const sourceDatabase = await buildPulledDatabase(sourceCapabilities, 'the held snapshot holds this');
+        await publishHeldSnapshot(receiverCapabilities, sourceDatabase);
+        await sourceDatabase.close();
+
+        let syncPhase = false;
+        const initialize = receiverCapabilities.levelDatabase.initialize;
+        receiverCapabilities.levelDatabase.initialize = (databasePath) => {
+            const level = initialize(databasePath);
+            const batch = level.batch.bind(level);
+            level.batch = (operations) => {
+                const keys = operations.map((operation) => String(operation.key));
+                // A staging chunk writes only retained Journal records; rejecting it
+                // injects a fault before the cutover batch ever runs.
+                const isRecordOnly = keys.length > 0 && keys.every((key) => key.includes('record|'));
+                if (syncPhase && isRecordOnly) {
+                    return Promise.reject(new Error('injected staging failure'));
+                }
+                return batch(operations);
+            };
+            return level;
+        };
+
+        const originalSync = syncJournalReceiverToSource;
+        /** @type {import('../src/generators/incremental_graph/journal_publish').SyncReceiverToSource} */
+        const wrappedSync = async (request) => {
+            syncPhase = true;
+            try {
+                return await originalSync(request);
+            } finally {
+                syncPhase = false;
+            }
+        };
+
+        await expect(
+            synchronizeNoLock(receiverCapabilities, { journalSync: wrappedSync })
+        ).rejects.toThrow('injected staging failure');
+
+        const reopened = await getRootDatabase(receiverCapabilities);
+        try {
+            expect(reopened.currentReplicaName()).toBe(receiverReplica);
+            expect(await storedRowsOf(reopened)).toEqual(before);
+        } finally {
+            await reopened.close();
+        }
+    });
+
     test('a publication which fails leaves the previously activated replica active', async () => {
         const receiverCapabilities = capabilitiesFor('failure');
         const receiver = await buildPulledDatabase(receiverCapabilities, 'the receiver wrote this');

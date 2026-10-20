@@ -26,6 +26,7 @@ const os = require("os");
 
 const {
     getRootDatabase,
+    RAW_BATCH_CHUNK_SIZE,
     renderToFilesystem,
     scanFromFilesystem,
     stringToJournalText,
@@ -619,7 +620,7 @@ describe("the streaming source materialises no retained history", () => {
         }
     });
 
-    test("synchronization publishes the retained records in one atomic batch", async () => {
+    test("synchronization stages retained records in bounded chunks and cuts over in one atomic batch", async () => {
         const capabilities = testCapabilities();
         const levelOf = interceptLevel(capabilities);
         const { database, receiver, source } = await buildReceiverWithHeldSnapshot(capabilities);
@@ -631,6 +632,11 @@ describe("the streaming source materialises no retained history", () => {
             batches.push(operations);
             return originalBatch(operations, ...rest);
         };
+        /**
+         * @param {Array<unknown>} operations
+         * @returns {Array<string>}
+         */
+        const keysOf = (operations) => operations.map((operation) => String(operation.key));
         try {
             const changed = await syncJournalReceiverToSource({
                 database,
@@ -640,11 +646,29 @@ describe("the streaming source materialises no retained history", () => {
             });
 
             expect(changed).toBe(true);
-            // The retained records are streamed into the same single batch as the
-            // outcome's own records, so the target is never observed half-written and
-            // the cutover stays one atomic write.
-            expect(batches).toHaveLength(1);
-            expect(batches[0].length).toBeGreaterThan(0);
+            // The retained records are staged into the inactive replica in bounded
+            // record-only chunks, so no single staging write holds the retained history
+            // and the target is still inactive until the cutover.
+            const recordOnly = batches.filter(
+                (operations) =>
+                    operations.length > 0 &&
+                    keysOf(operations).every((key) => key.includes("record|"))
+            );
+            expect(recordOnly.length).toBeGreaterThan(0);
+            for (const operations of recordOnly) {
+                expect(operations.length).toBeLessThanOrEqual(RAW_BATCH_CHUNK_SIZE);
+            }
+            // The cutover is one atomic write which publishes the graph together with
+            // the journal state, so the receiver is never observed half-written.
+            const graphAndJournal = batches.filter(
+                (operations) =>
+                    keysOf(operations).some((key) => key.includes("journal")) &&
+                    keysOf(operations).some(
+                        (key) => key.includes("values") || key.includes("timestamps")
+                    )
+            );
+            expect(graphAndJournal).toHaveLength(1);
+            expect(graphAndJournal[0].length).toBeGreaterThan(0);
         } finally {
             await database.close();
         }

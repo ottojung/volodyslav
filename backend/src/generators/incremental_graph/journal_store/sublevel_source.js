@@ -448,11 +448,15 @@ async function readJournalSource(journalSublevel, committed) {
  * so the retained history is never held as a records collection in addition to the
  * operations the atomic batch itself needs.
  *
+ * `visit` may itself be asynchronous, because a front which stages each record durably
+ * before the next one must await that write; the fold awaits each visit before pulling
+ * the next record, so the writer holds at most one record beyond its own bounded batch.
+ *
  * `visit` reports a failure as a value, and the first failure ends the fold. A reader's
  * own structural failure is reported the same way.
  *
  * @param {JournalSource} source
- * @param {(record: JournalRecord) => JournalError | undefined} visit
+ * @param {(record: JournalRecord) => JournalError | undefined | Promise<JournalError | undefined>} visit
  * @returns {Promise<JournalError | undefined>}
  */
 async function forEachRetainedRecord(source, visit) {
@@ -463,7 +467,7 @@ async function forEachRetainedRecord(source, visit) {
             if (record === undefined) {
                 break;
             }
-            const failure = visit(record);
+            const failure = await visit(record);
             if (failure !== undefined) {
                 return failure;
             }

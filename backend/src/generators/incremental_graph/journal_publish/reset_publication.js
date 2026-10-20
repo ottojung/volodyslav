@@ -24,9 +24,12 @@
  * A reset's journal growth is a *delta*: `ResetOutcome.records` holds the imported
  * source records and the receiver-authored reset records, not the receiver's already
  * retained history. The activated replica retains that history, and reset retains it
- * rather than replacing it, so the target must hold it as well. The retained records
- * are therefore written alongside the outcome's own records in the same batch, which
- * makes the target sublevel exactly `Jreset` when the batch completes.
+ * rather than replacing it, so the target must hold it as well. Because that retained
+ * history is history-sized, it is not folded into the cutover batch: it is staged into
+ * the inactive target first, in bounded chunks, by `staged_records.js`, and the cutover
+ * batch then publishes the graph and the metadata which make the staged target exactly
+ * `Jreset`. The target is inactive throughout staging, so the receiver exposes either its
+ * old pair or the complete new one.
  *
  * The target's replica metadata is the receiver's own: version, graph scheme and
  * fingerprint. A reset receiver keeps its own writer identity and authors every record
@@ -35,11 +38,9 @@
  * receiver's identity rather than adopting the source's.
  */
 
-const {
-    GRAPH_SCHEME_KEY,
-    stringToJournalText,
-} = require('../database');
+const { GRAPH_SCHEME_KEY } = require('../database');
 const { planSyncPublication } = require('./sync_publish');
+const { stageRetainedRecords } = require('./staged_records');
 /** @typedef {import('../journal/errors').AnyJournalError} JournalError */
 /** @typedef {import('../journal/records').JournalRecord} JournalRecord */
 /** @typedef {import('../journal/types').JournalAuthor} JournalAuthor */
@@ -49,15 +50,7 @@ const { planSyncPublication } = require('./sync_publish');
 /** @typedef {import('../database/root_database').SchemaStorage} SchemaStorage */
 /** @typedef {import('../journal_reset').ResetOutcome} ResetOutcome */
 
-const {
-    encodeJournalRecord,
-    journalAuthorToString,
-} = require('../journal');
-const {
-    appendRetainedStateOp,
-    forEachRetainedRecord,
-    makeJournalRecordKey,
-} = require('../journal_store');
+const { appendRetainedStateOp } = require('../journal_store');
 
 /**
  * Thrown when a reset outcome cannot be lowered into the replica namespace it targets.
@@ -94,42 +87,6 @@ function isResetPublicationError(object) {
 }
 
 /**
- * The operations which retain the receiver's already committed journal records in the
- * target replica.
- *
- * A record's storage key is its author and coordinate, so writing the receiver's own
- * retained records into the target contributes exactly the keys `Jreset` names for
- * them and nothing else. Occurrence keys are not written here: the shared lowering
- * derives the occurrence index from the projection it lowers, so the target's index
- * names `project(Jreset)` and not the receiver's pre-reset occurrences.
- *
- * The records are folded out of the receiver's own streaming source one at a time, so the
- * retained history is never collected as a records array in addition to the operations the
- * single atomic batch needs.
- *
- * @param {SchemaStorage} target
- * @param {JournalSource} retainedSource - The activated replica's retained journal, read
- *   through its per-writer streaming readers.
- * @returns {Promise<Array<*>>}
- */
-async function retainedRecordOperations(target, retainedSource) {
-    /** @type {Array<*>} */
-    const operations = [];
-    const failure = await forEachRetainedRecord(retainedSource, (record) => {
-        const key = makeJournalRecordKey(record.id.author, record.id.sequence);
-        if (key instanceof Error) {
-            throw new ResetPublicationError(journalAuthorToString(record.id.author));
-        }
-        operations.push(target.journal.putOp(key, stringToJournalText(encodeJournalRecord(record))));
-        return undefined;
-    });
-    if (failure !== undefined) {
-        throw failure;
-    }
-    return operations;
-}
-
-/**
  * @typedef {object} ResetPublicationRequest
  * @property {SchemaStorage} target - The inactive replica the reset is built into.
  * @property {JournalSource} retainedSource - The activated replica's retained journal,
@@ -143,10 +100,15 @@ async function retainedRecordOperations(target, retainedSource) {
  */
 
 /**
- * Build the one operation array which turns the inactive replica into `Jreset`.
+ * Build the one atomic cutover batch which makes the staged target active as `Jreset`.
  *
- * The retained records are streamed from the receiver's source into the operation list
- * rather than collected first, so the retained history is not held twice.
+ * The receiver's retained records are not part of this batch: they are history-sized, so
+ * `publishResetOutcome` stages them into the inactive target first, in bounded chunks,
+ * while the target is still inactive (`staged_records.js`). This batch carries only the
+ * cutover's own state — the replica metadata, `project(Jreset)` lowered to storage, the
+ * committed-pair writer state and the maintained proof summary — so it is graph-sized
+ * rather than history-sized. The pointer move follows it, so the receiver exposes
+ * `Jreset + project(Jreset)` only once every staged record and this batch are durable.
  *
  * @param {ResetPublicationRequest} request
  * @returns {Promise<Array<*>>}
@@ -154,14 +116,12 @@ async function retainedRecordOperations(target, retainedSource) {
 async function planResetPublication(request) {
     const {
         target,
-        retainedSource,
         receiverVersion,
         receiverGraphScheme,
         receiverFingerprint,
         outcome,
     } = request;
     const operations = [
-        ...await retainedRecordOperations(target, retainedSource),
         target.global.putOp('version', receiverVersion),
         target.global.putOp(GRAPH_SCHEME_KEY, receiverGraphScheme),
         target.global.putOp('fingerprint', receiverFingerprint),
@@ -177,15 +137,22 @@ async function planResetPublication(request) {
 /**
  * Publish one reset outcome into the inactive replica.
  *
- * The whole publication is one array of operations and one `batch` call, so the target
- * never exposes a journal which disagrees with its own graph: either `Jreset` and
- * `project(Jreset)` both become visible together or neither does. The caller performs
- * the cutover itself, by moving the replica pointer, and only after this returns.
+ * The receiver's retained records are streamed into the inactive target first, in bounded
+ * chunks, and the cutover batch is then issued as one atomic write. The target is inactive
+ * throughout, so a failure in either phase leaves the previously activated replica as the
+ * receiver; a retry re-stages the same deterministic keys over any abandoned partial
+ * stage. The caller performs the cutover itself, by moving the replica pointer, and only
+ * after this returns.
  *
  * @param {ResetPublicationRequest} request
  * @returns {Promise<void>}
  */
 async function publishResetOutcome(request) {
+    await stageRetainedRecords(
+        request.target,
+        request.retainedSource,
+        (recordKey) => new ResetPublicationError(recordKey)
+    );
     await request.target.batch(await planResetPublication(request));
 }
 
