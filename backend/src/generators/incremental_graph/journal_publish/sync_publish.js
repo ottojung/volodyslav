@@ -125,11 +125,11 @@ const {
 const {
     encodeJournalRecord,
     isJournalError,
-    journalRecordIdToString,
 } = require('../journal');
 const {
     JOURNAL_STATE_KEY,
     makeJournalOccurrenceKey,
+    makeJournalOccurrenceText,
     makeJournalRecordKey,
     serializeWriterState,
 } = require('../journal_store');
@@ -401,11 +401,21 @@ async function planSyncPublication(request) {
     for (const key of await occurrenceKeysOf(target.journal)) {
         operations.push(target.journal.delOp(key));
     }
+    const seenOccurrenceIndexKeys = new Map();
     for (const occurrence of occurrences) {
+        const key = makeJournalOccurrenceKey(occurrence.nodeKey);
+        const physicalKey = journalKeyToString(key);
+        const existingNode = seenOccurrenceIndexKeys.get(physicalKey);
+        if (existingNode !== undefined && existingNode !== occurrence.nodeKeyString) {
+            throw new SyncPublicationPlanError(
+                "identifiers", "two semantic nodes share one occurrence-index physical key"
+            );
+        }
+        seenOccurrenceIndexKeys.set(physicalKey, occurrence.nodeKeyString);
         operations.push(
             target.journal.putOp(
-                makeJournalOccurrenceKey(occurrence.nodeKey),
-                stringToJournalText(journalRecordIdToString(occurrence.valueId))
+                key,
+                makeJournalOccurrenceText(occurrence.nodeKey, occurrence.valueId)
             )
         );
     }

@@ -58,7 +58,8 @@ The cutover applies the codec twice, and both applications must agree:
   `ValueEvent` payload. `JournalRecordId`, writer sequence, context, `AuthorityTime`,
   `NodeIdentifier` and both value timestamps are preserved, and a rewritten
   `ValidationBasis` is re-sorted into the target's canonical `NodeKeyString` order.
-  The current-occurrence index, which is keyed by node key, is re-keyed;
+  The current-occurrence index uses bounded physical keys derived from semantic
+  identity; entries are re-keyed when the codec changes that identity;
 * the target replica's `identifiers_keys_map` maps every preserved `NodeIdentifier`
   to the transported target key.
 

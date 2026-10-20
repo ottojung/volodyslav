@@ -174,7 +174,7 @@ describe("journal-aware migration format codec", () => {
                 }
             }
 
-            // The occurrence index is keyed by node key, so it was re-keyed as
+            // The occurrence index is derived from semantic identity, so it was re-keyed as
             // well: the target key resolves, the source key does not.
             const targetOccurrence = await readCurrentOccurrence(
                 db.getSchemaStorage().journal,

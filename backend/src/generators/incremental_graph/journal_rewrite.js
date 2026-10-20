@@ -29,8 +29,10 @@ const {
     sortValidationBasis,
     tryDecodeJournalRecord,
 } = require("./journal");
+const { makeJournalOccurrenceKey, decodeJournalOccurrenceText } = require("./journal_store");
 const {
     deserializeNodeKey,
+    journalKeyToString,
     journalTextToString,
     nodeKeyStringToString,
     serializeNodeKey,
@@ -330,7 +332,7 @@ function makeHistoryRewriter(codec) {
     }
 
     /**
-     * @param {string} keyText - The `occurrence|<canonical node key>` key without
+     * @param {string} keyText - The canonical node key recovered from the occurrence value,
      *   its prefix.
      * @param {string} label
      * @returns {string | CodecRejection}
@@ -381,8 +383,8 @@ function makeHistoryRewriter(codec) {
  *
  * The three key families of `journal_database.js` do not all carry a NodeKey:
  * a `record|` entry carries it inside the record text, an `occurrence|` entry
- * carries it as the key itself, and the committed-pair metadata entry carries
- * none. Rewriting retained history therefore rewrites the first two and carries
+ * carries it inside its value (the physical key is a fixed-size digest), and
+ * the committed-pair metadata entry carries none. Rewriting the first two and carrying
  * the third through, because a retained occurrence index entry whose node key
  * changed representation would otherwise name a node no record names.
  *
@@ -394,14 +396,29 @@ function makeHistoryRewriter(codec) {
 function rewriteJournalEntry(keyText, value, rewriter) {
     const text = journalTextToString(value);
     if (keyText.startsWith(OCCURRENCE_KEY_PREFIX)) {
-        const rewrittenKey = rewriter.occurrenceKeyText(
-            keyText.slice(OCCURRENCE_KEY_PREFIX.length),
-            keyText
-        );
+        const source = decodeJournalOccurrenceText(value);
+        if (source instanceof Error) {
+            return makeJournalVersionCompatibilityError(
+                "the occurrence index entry " + keyText + " has invalid metadata",
+                "a valid occurrence index value", source.message
+            );
+        }
+        const sourceNode = deserializeNodeKey(stringToNodeKeyString(source.node));
+        if (journalKeyToString(makeJournalOccurrenceKey(sourceNode)) !== keyText) {
+            return makeJournalVersionCompatibilityError(
+                "the occurrence index entry " + keyText + " disagrees with its semantic identity",
+                "matching current-format occurrence key and value", keyText
+            );
+        }
+        const rewrittenKey = rewriter.occurrenceKeyText(source.node, keyText);
         if (rewrittenKey instanceof Error) {
             return rewrittenKey;
         }
-        return { keyText: OCCURRENCE_KEY_PREFIX + rewrittenKey, text };
+        const targetNode = deserializeNodeKey(stringToNodeKeyString(rewrittenKey));
+        return {
+            keyText: journalKeyToString(makeJournalOccurrenceKey(targetNode)),
+            text: JSON.stringify({ node: rewrittenKey, valueId: source.valueId }),
+        };
     }
     if (keyText.startsWith(RECORD_KEY_PREFIX)) {
         const rewrittenText = rewriter.recordText(text, keyText);

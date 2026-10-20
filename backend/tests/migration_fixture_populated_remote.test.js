@@ -15,6 +15,12 @@ const {
 } = require("./journal_startup_fixture");
 const { makeJournalAuthor } = require("../src/generators/incremental_graph/journal");
 const {
+    deserializeNodeKey,
+    stringToNodeKeyString,
+} = require("../src/generators/incremental_graph/database");
+const { makeJournalOccurrenceKey } = require("../src/generators/incremental_graph/journal_store");
+
+const {
     isUnresolvedStartupCanonicalBootstrap,
     resolveCanonicalBootstrapForStartup,
 } = require("../src/generators/incremental_graph/journal_bootstrap_startup");
@@ -152,15 +158,39 @@ describe("populated rendered fixture migration", () => {
         const sourceFiles = (await fsPromises.readdir(sourceJournal)).sort();
         const migratedFiles = await listJournalFiles(capabilities);
 
-        // The migration transports the retained history into the target replica
-        // rather than rebuilding it, so every source record is still there and
-        // still holds the bytes it was written with.
-        for (const name of sourceFiles) {
+        // Historical Journal records and committed state survive byte-for-byte.
+        // The derived current-occurrence index is instead converted from the
+        // preceding persisted format to fixed-width physical keys and metadata.
+        const sourceRecords = sourceFiles.filter((name) => !name.startsWith("occurrence|"));
+        const sourceOccurrences = sourceFiles.filter((name) => name.startsWith("occurrence|"));
+        for (const name of sourceRecords) {
             expect(migratedFiles).toContain(name);
             const source = await fsPromises.readFile(path.join(sourceJournal, name));
             const migrated = await fsPromises.readFile(path.join(migratedJournal, name));
             expect(migrated.equals(source)).toBe(true);
         }
+        const convertedOccurrences = await Promise.all(sourceOccurrences.map(async (name) => {
+            const canonical = name.slice("occurrence|".length);
+            const node = deserializeNodeKey(stringToNodeKeyString(canonical));
+            const physicalKey = String(makeJournalOccurrenceKey(node));
+            const text = await fsPromises.readFile(path.join(migratedJournal, physicalKey), "utf8");
+            return { oldKey: name, physicalKey, value: JSON.parse(text) };
+        }));
+        const expectedOccurrences = await Promise.all(sourceOccurrences.map(async (name) => {
+            const canonical = name.slice("occurrence|".length);
+            const node = deserializeNodeKey(stringToNodeKeyString(canonical));
+            const valueId = await fsPromises.readFile(path.join(sourceJournal, name), "utf8");
+            return {
+                oldKey: name,
+                physicalKey: String(makeJournalOccurrenceKey(node)),
+                value: { node: canonical, valueId },
+            };
+        }));
+        expect(convertedOccurrences).toEqual(expectedOccurrences);
+        expect(convertedOccurrences.map((entry) => entry.physicalKey))
+            .toEqual(expect.arrayContaining(migratedFiles.filter((name) => name.startsWith("occurrence|"))));
+        expect(convertedOccurrences.every((entry) => /^occurrence\|[a-f0-9]{64}$/.test(entry.physicalKey))).toBe(true);
+        expect(sourceOccurrences.some((name) => migratedFiles.includes(name))).toBe(false);
 
         // The Journal sublevel is text-valued, so its stored form is the value
         // text itself. A JSON-encoded string there is the legacy double-encoded

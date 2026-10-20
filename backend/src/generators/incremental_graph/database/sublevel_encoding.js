@@ -3,8 +3,7 @@
  *
  * The Journal sublevel stores canonical text, not JSON values: `journal/state`
  * and `journal/record|...` hold `JSON.stringify(...)` output that the Journal's
- * current-format readers parse themselves, and `journal/occurrence|...` holds a
- * bare `author:sequence` record id which is not JSON at all. Every other sublevel
+ * current-format readers parse themselves, and `journal/occurrence|...` holds JSON current-occurrence metadata. Every other sublevel
  * stores JSON values.
  *
  * That makes the Journal sublevel the only sublevel which cannot be read or

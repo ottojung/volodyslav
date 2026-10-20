@@ -14,7 +14,7 @@
  * ```text
  * state                                the Journal committed-pair metadata record
  * record|<author>|<padded coordinate>  one canonical current-format record per key
- * occurrence|<canonical node key>      the record id of the current value occurrence
+ * occurrence|<sha256(canonical node key)>  JSON node/record-id occurrence metadata
  * ```
  *
  * The coordinate is left-padded to a fixed width so that a plain byte-ordered
@@ -50,7 +50,6 @@ const {
     isDeleteEvent,
     isValueEvent,
     journalAuthorToString,
-    journalRecordIdToString,
     journalSequenceToString,
     makeAuthorityTime,
     makeJournalAuthor,
@@ -60,11 +59,16 @@ const {
     makeJournalReplica,
     makeJournalSequence,
     makeReplicaSource,
-    nodeKeyToCanonicalString,
-    parseJournalRecordId,
     tryDecodeJournalRecord,
     ZERO_JOURNAL_SEQUENCE,
 } = require("../journal");
+const {
+    checkOccurrenceIndexCollisions,
+    decodeJournalOccurrenceText,
+    makeJournalOccurrenceKey,
+    makeJournalOccurrenceText,
+    readCurrentOccurrence,
+} = require("./occurrence_index");
 const { reconcileRetainedWriterHead } = require("./writer_head");
 const { appendRetainedStateOp } = require("./retained_state");
 const {
@@ -80,7 +84,6 @@ const {
 const JOURNAL_STATE_KEY = stringToJournalKey("state");
 
 const RECORD_KEY_PREFIX = "record|";
-const OCCURRENCE_KEY_PREFIX = "occurrence|";
 
 /**
  * The fixed width every record coordinate is padded to inside the sublevel key.
@@ -105,17 +108,6 @@ function makeJournalRecordKey(author, sequence) {
     return stringToJournalKey(
         RECORD_KEY_PREFIX + journalAuthorToString(author) + "|" + digits.padStart(RECORD_KEY_DIGITS, "0")
     );
-}
-
-/**
- * The storage key one node's current value occurrence occupies. The index is keyed by
- * the node's canonical semantic key rather than by its identifier, so a `DeleteEvent`
- * — which names the node but not its identifier — can clear the occurrence it removes.
- * @param {NodeKey} node
- * @returns {JournalKey}
- */
-function makeJournalOccurrenceKey(node) {
-    return stringToJournalKey(OCCURRENCE_KEY_PREFIX + nodeKeyToCanonicalString(node));
 }
 
 /**
@@ -265,28 +257,14 @@ async function readCommittedWriterState(journalDatabase, fingerprint) {
 }
 
 /**
- * The record id of a node's current value occurrence, or `undefined` when the node
- * has no Journal value occurrence yet.
- * @param {JournalDatabase} journalDatabase
- * @param {NodeKey} node
- * @returns {Promise<JournalRecordId | undefined | JournalError>}
- */
-async function readCurrentOccurrence(journalDatabase, node) {
-    const raw = await journalDatabase.get(makeJournalOccurrenceKey(node));
-    if (raw === undefined) {
-        return undefined;
-    }
-    return parseJournalRecordId(journalTextToString(raw));
-}
-
-/**
  * Append one finalized publication to `operations`.
  *
  * Every record, every current-occurrence update the publication implies, the
  * publication's committed-pair metadata, and — when the caller supplies it — the
  * retained replay state which describes the resulting journal become operations of the
  * caller's array, so the caller publishes them in the same atomic write as the graph
- * mutations they describe. Nothing here touches the database.
+ * mutations they describe. It reads the current index to reject collisions,
+ * but performs no writes until the caller publishes the finished batch.
  *
  * @param {JournalDatabase} journalDatabase
  * @param {Array<DatabaseBatchOperation>} operations
@@ -294,9 +272,13 @@ async function readCurrentOccurrence(journalDatabase, node) {
  * @param {RetainedReplayState | undefined} [retainedState] - The summary which
  *   describes the journal after this publication. When supplied it is persisted in
  *   the same batch, which is what makes the active summary durable with the pair.
- * @returns {JournalError | undefined}
+ * @returns {Promise<JournalError | undefined>}
  */
-function appendJournalPublicationOps(journalDatabase, operations, publication, retainedState) {
+async function appendJournalPublicationOps(journalDatabase, operations, publication, retainedState) {
+    const collision = await checkOccurrenceIndexCollisions(journalDatabase, publication.records);
+    if (collision !== undefined) {
+        return collision;
+    }
     for (const record of publication.records) {
         const key = makeJournalRecordKey(record.id.author, record.id.sequence);
         if (key instanceof Error) {
@@ -309,7 +291,7 @@ function appendJournalPublicationOps(journalDatabase, operations, publication, r
             operations.push(
                 journalDatabase.putOp(
                     makeJournalOccurrenceKey(record.node),
-                    stringToJournalText(journalRecordIdToString(record.id))
+                    makeJournalOccurrenceText(record.node, record.id)
                 )
             );
             continue;
@@ -415,6 +397,8 @@ module.exports = {
     deserializeWriterState,
     makeInitialCommittedWriterState,
     makeJournalOccurrenceKey,
+    makeJournalOccurrenceText,
+    decodeJournalOccurrenceText,
     makeJournalRecordKey,
     readCommittedWriterState,
     readCurrentOccurrence,

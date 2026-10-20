@@ -78,7 +78,7 @@ async function retainedRecordCount(db) {
  * The journal sublevel layout is:
  * - `state` — committed-pair metadata (O(1), allowed)
  * - `record|<author>|<padded coordinate>` — retained records (O(H), forbidden)
- * - `occurrence|<canonical node key>` — current occurrence (O(1) per node, allowed)
+ * - `occurrence|<fixed-width digest>` — current occurrence (O(1) per node, allowed)
  *
  * @param {object} journalSublevel - The journal sublevel to instrument
  * @returns {{instrumented: object, historyProportionalCalls: () => Array<string>}}

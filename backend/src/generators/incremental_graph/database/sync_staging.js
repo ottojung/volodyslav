@@ -14,7 +14,7 @@
  *
  * The name is a constant, and the keys are the Journal sublevel's own key
  * families (`state`, `record|<author>|<padded coordinate>`,
- * `occurrence|<canonical node key>`) plus the graph sublevel names, so a staged
+ * `occurrence|<fixed-width digest>`) plus the graph sublevel names, so a staged
  * target is byte-compatible with the replica it will become. Staging therefore
  * needs no separate key vocabulary, and there is no key under which a transport
  * locator could be stored.
