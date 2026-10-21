@@ -41,6 +41,11 @@ Superseded by Journal 3 replay and identity semantics:
   timestamp. The same-coordinate stale-freshness rule is vacuous because
   identifiers embed the host fingerprint and the immutable-overlap law forbids
   writer forks.
+- `REQ-SYNC-08d` (selected record timestamp copy): Journal 3 carries the exact
+  `createdAt`/`modifiedAt` instant of the selected `ValueEvent` through
+  deterministic replay; it never substitutes merge-execution time nor combines
+  timestamps across sources. Owned by `incremental-graph-journal-replay.md`
+  §timestamps.
 - `REQ-SYNC-09`, `REQ-SYNC-10` (distinct-input classifier; structural deletion
   closure): owned by `incremental-graph-journal-sync.md` §Phase 1:
   dependency-closure removal.
