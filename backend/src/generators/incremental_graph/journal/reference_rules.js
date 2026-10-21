@@ -66,11 +66,12 @@ const { nodeKeyToCanonicalString } = require("./basis");
  * @param {NodeKey} referenceNode - The semantic node the reference is made from.
  * @param {JournalRecordId} value
  * @param {JournalReplica} replica
+ * @param {Map<string, JournalRecord>} [index] - Whole-replica record index, for O(1) resolution.
  * @returns {ReferenceResolution | {ok: false, error: JournalError}}
  */
-function resolveValueEvent(referenceId, referenceNode, value, replica) {
+function resolveValueEvent(referenceId, referenceNode, value, replica, index) {
     const label = journalRecordIdToString(referenceId);
-    const record = recordAtSequence(replica, value.author, value.sequence);
+    const record = recordAtSequence(replica, value.author, value.sequence, index);
     if (record === undefined) {
         return {
             ok: false,
@@ -103,10 +104,11 @@ function resolveValueEvent(referenceId, referenceNode, value, replica) {
  * @param {import('./ordering').ContextualRecord} event
  * @param {JournalRecordId} value
  * @param {JournalReplica} replica
+ * @param {Map<string, JournalRecord>} [index] - Whole-replica record index, for O(1) resolution.
  * @returns {JournalError | undefined}
  */
-function requireObservedValue(event, value, replica) {
-    const target = recordAtSequence(replica, value.author, value.sequence);
+function requireObservedValue(event, value, replica, index) {
+    const target = recordAtSequence(replica, value.author, value.sequence, index);
     if (target === undefined || !isValueEvent(target)) {
         return undefined;
     }
@@ -125,14 +127,15 @@ function requireObservedValue(event, value, replica) {
  * node which happened-before the validation.
  * @param {ValidateEvent} event
  * @param {JournalReplica} replica
+ * @param {Map<string, JournalRecord>} [index] - Whole-replica record index, for O(1) resolution.
  * @returns {JournalError | undefined}
  */
-function validateTarget(event, replica) {
-    const resolved = resolveValueEvent(event.id, event.node, event.value, replica);
+function validateTarget(event, replica, index) {
+    const resolved = resolveValueEvent(event.id, event.node, event.value, replica, index);
     if (!resolved.ok) {
         return resolved.error;
     }
-    return requireObservedValue(event, event.value, replica);
+    return requireObservedValue(event, event.value, replica, index);
 }
 
 /**
@@ -140,21 +143,23 @@ function validateTarget(event, replica) {
  * that exact input which happened-before the validation.
  * @param {ValidateEvent} event
  * @param {JournalReplica} replica
+ * @param {Map<string, JournalRecord>} [index] - Whole-replica record index, for O(1) resolution.
  * @returns {JournalError | undefined}
  */
-function validateBasisValues(event, replica) {
+function validateBasisValues(event, replica, index) {
     for (const entry of event.basis) {
         if (entry.value === "unknown") {
             continue;
         }
-        const resolved = resolveValueEvent(event.id, entry.input, entry.value, replica);
+        const resolved = resolveValueEvent(event.id, entry.input, entry.value, replica, index);
         if (!resolved.ok) {
             return resolved.error;
         }
         const observed = requireObservedValue(
             { id: event.id, context: event.context },
             entry.value,
-            replica
+            replica,
+            index
         );
         if (observed !== undefined) {
             return observed;
@@ -241,18 +246,19 @@ function validateCurrentShapeBasis(event, currentInputKeysOfNode) {
  * the record and belongs to the lifecycle transition which authored it.
  * @param {InvalidateEvent} event
  * @param {JournalReplica} replica
+ * @param {Map<string, JournalRecord>} [index] - Whole-replica record index, for O(1) resolution.
  * @returns {JournalError | undefined}
  */
-function validateInvalidationScope(event, replica) {
+function validateInvalidationScope(event, replica, index) {
     const scope = event.scope;
     if (scope.kind === "node") {
         return undefined;
     }
-    const resolved = resolveValueEvent(event.id, event.node, scope.value, replica);
+    const resolved = resolveValueEvent(event.id, event.node, scope.value, replica, index);
     if (!resolved.ok) {
         return resolved.error;
     }
-    return requireObservedValue(event, scope.value, replica);
+    return requireObservedValue(event, scope.value, replica, index);
 }
 
 /**
