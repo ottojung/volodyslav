@@ -20,6 +20,7 @@ const RETIRED_SYNC_REQUIREMENTS = [
     "REQ-SYNC-08a",
     "REQ-SYNC-08b",
     "REQ-SYNC-08c",
+    "REQ-SYNC-08d",
     "REQ-SYNC-09",
     "REQ-SYNC-10",
     "REQ-SYNC-11",
