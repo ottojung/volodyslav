@@ -11,6 +11,7 @@ const {
     isJournalAuthor,
     isSameJournalAuthor,
     journalAuthorToString,
+    journalRecordIdToString,
     journalSequenceToString,
     makeJournalAuthor,
     makeJournalFrontier,
@@ -204,14 +205,47 @@ function streamOf(replica, author) {
 }
 
 /**
+ * A random-access index from a record id text to its retained record.
+ *
+ * Cross-record reference rules resolve a coordinate to the record it names.
+ * Scanning the writer stream per reference is O(H) per lookup and therefore
+ * Θ(H²) over a whole-history validation, which migration's O(H) class forbids.
+ * One index over the replica makes each lookup O(1); the replica is immutable,
+ * so the index cannot go stale while it is held.
+ *
+ * @param {JournalReplica} replica
+ * @returns {Map<string, JournalRecord>}
+ */
+function buildRecordIndex(replica) {
+    /** @type {Map<string, JournalRecord>} */
+    const index = new Map();
+    for (const stream of replica) {
+        for (const record of stream[1]) {
+            index.set(journalRecordIdToString(record.id), record);
+        }
+    }
+    return index;
+}
+
+/**
  * The record at one writer coordinate, which is absent when the coordinate is
  * not retained.
+ *
+ * When `index` is supplied the lookup is O(1); otherwise the writer stream is
+ * scanned, which is the bounded single-lookup form used by callers that do not
+ * hold a whole-replica index.
  * @param {JournalReplica} replica
  * @param {JournalAuthor} author
  * @param {JournalSequence} sequence
+ * @param {Map<string, JournalRecord>} [index]
  * @returns {JournalRecord | undefined}
  */
-function recordAtSequence(replica, author, sequence) {
+function recordAtSequence(replica, author, sequence, index) {
+    if (index !== undefined) {
+        return index.get(
+            journalAuthorToString(author) + ":" + journalSequenceToString(sequence)
+        );
+    }
     for (const record of streamOf(replica, author)) {
         if (compareJournalSequence(record.id.sequence, sequence) === 0) {
             return record;
@@ -301,6 +335,7 @@ function semanticEventsOfReplica(replica) {
 }
 
 module.exports = {
+    buildRecordIndex,
     isJournalReplica,
     isSameJournalAuthor,
     journalSequenceToString,

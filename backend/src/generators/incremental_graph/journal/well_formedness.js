@@ -27,6 +27,7 @@ const {
     validateTarget,
 } = require("./reference_rules");
 const {
+    buildRecordIndex,
     isJournalReplica,
     makeJournalReplica,
     replicaFrontier,
@@ -203,20 +204,21 @@ function joinReplicaRecords(left, right) {
  * not is still intelligible history.
  * @param {JournalRecord} record
  * @param {JournalReplica} replica
+ * @param {Map<string, JournalRecord>} [index] - Whole-replica record index, for O(1) resolution.
  * @returns {JournalError | undefined}
  */
-function validateRecordReferences(record, replica) {
+function validateRecordReferences(record, replica, index) {
     const forward = validateNoForwardOwnWriterReference(record);
     if (forward !== undefined) {
         return forward;
     }
     if (isValidateEvent(record)) {
-        return validateTarget(record, replica) ??
-            validateBasisValues(record, replica) ??
+        return validateTarget(record, replica, index) ??
+            validateBasisValues(record, replica, index) ??
             validateOrdinaryBasisReasons(record);
     }
     if (isInvalidateEvent(record)) {
-        return validateInvalidationScope(record, replica);
+        return validateInvalidationScope(record, replica, index);
     }
     return undefined;
 }
@@ -248,9 +250,13 @@ function validateJournalReplica(replica) {
     if (monotonicity !== undefined) {
         return monotonicity;
     }
+    // Cross-record reference resolution needs random access by coordinate. One
+    // whole-replica index turns the per-reference writer-stream scan from O(H)
+    // into O(1), so the reference pass is O(H) rather than Θ(H²).
+    const recordIndex = buildRecordIndex(replica);
     for (const stream of replica) {
         for (const record of stream[1]) {
-            const references = validateRecordReferences(record, replica);
+            const references = validateRecordReferences(record, replica, recordIndex);
             if (references !== undefined) {
                 return references;
             }
