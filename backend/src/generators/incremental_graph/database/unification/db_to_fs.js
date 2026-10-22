@@ -26,7 +26,7 @@
  */
 
 const path = require('path');
-const { keyToRelativePath, relativePathToKey, serializeValue } = require('../encoding');
+const { keyToRelativePath, relativePathToKey, serializeRawValue } = require('../encoding');
 
 /** @typedef {import('../root_database').RootDatabase} RootDatabase */
 /** @typedef {import('../../../../filesystem/creator').FileCreator} FileCreator */
@@ -160,7 +160,7 @@ function makeDbToFsAdapter(capabilities, rootDatabase, outputDir, sublevel) {
             const innerKey = rawKey.slice(rawKeyPrefix.length);
             const value = await rootDatabase._rawGetInSublevel(sublevel, innerKey);
             if (value === undefined) return undefined;
-            return serializeValue(value);
+            return serializeRawValue(rawKey, value);
         },
 
         async readTarget(relPath) {

@@ -17,8 +17,18 @@ const { fromISOString } = require("../src/datetime");
 const { transaction } = require("../src/event_log_storage");
 const {
     stubIncrementalDatabaseRemote,
-    stubPopulatedIncrementalDatabaseRemote,
+    stubIncrementalDatabaseRemoteBranches,
 } = require("./stub_incremental_database_remote");
+const { readRetainedJournal, readCommittedWriterState } = require("../src/generators/incremental_graph/journal_store");
+const { makeReplicaSource, projectRetainedJournal } = require("../src/generators/incremental_graph/journal/oracle");
+const {
+    makeContinuationSafeSnapshot,
+    restoreAbsentFrom,
+} = require("../src/generators/incremental_graph/journal_recovery_source");
+const { deriveInputPositions, GRAPH_SCHEME_KEY } = require("../src/generators/incremental_graph/database/graph_scheme");
+const { getRootDatabase } = require("../src/generators/incremental_graph/database");
+const { LAST_NODE_INDEX_KEY } = require("../src/generators/incremental_graph/database");
+const { journalAuthorToString } = require("../src/generators/incremental_graph/journal");
 const { getMockedRootCapabilities } = require("./spies");
 const {
     stubLogger,
@@ -58,6 +68,53 @@ function makeEvent(id, input) {
         input: `text ${input}`,
         creator: { name: "test", uuid: "00000000-0000-0000-0000-000000000001", version: "0.0.0", hostname: "test-host" },
     };
+}
+
+/**
+ * Read one live database's retained journal, committed writer state and materialized
+ * projection into a continuation-safe recovery snapshot, so a test can hold the
+ * installation's synchronized state and restore it after deleting the live database.
+ * @param {object} db
+ * @returns {Promise<object>}
+ */
+async function continuationSafeSnapshotOf(db) {
+    const storage = db.getSchemaStorage();
+    const replica = await readRetainedJournal(storage.journal);
+    if (replica instanceof Error) {
+        throw replica;
+    }
+    const committed = await readCommittedWriterState(storage.journal, db.getFingerprint());
+    if (committed instanceof Error) {
+        throw committed;
+    }
+    const graphSchemeString = await storage.global.get(GRAPH_SCHEME_KEY);
+    const currentInputKeysOfNode = (nodeKeyString) => {
+        try {
+            return deriveInputPositions(graphSchemeString, nodeKeyString);
+        } catch (error) {
+            return [];
+        }
+    };
+    const projection = await projectRetainedJournal({
+        source: makeReplicaSource(replica),
+        localWriter: committed.localWriter,
+        currentInputKeysOfNode,
+    });
+    if (projection instanceof Error) {
+        throw projection;
+    }
+    const snapshot = makeContinuationSafeSnapshot({
+        localWriter: committed.localWriter,
+        records: [...replica.values()].flat(),
+        projection,
+        writerState: committed,
+        databaseVersion: await storage.global.get("version"),
+        graphSchemeString,
+    });
+    if (snapshot instanceof Error) {
+        throw snapshot;
+    }
+    return snapshot;
 }
 
 /**
@@ -475,48 +532,59 @@ describe("generators/interface", () => {
         });
     });
 
-    describe("bootstrap path selection", () => {
-        test("V3: uses reset-to-hostname sync when LevelDB is absent and hostname branch exists remotely", async () => {
-            // Setup: remote WITH hostname branch (test-host-main), no local LevelDB.
-            const capabilities = getMockedRootCapabilities();
-            stubEnvironment(capabilities);
-            stubLogger(capabilities);
-            stubDatetime(capabilities);
-            ensureLiveDatabaseDirectory(capabilities);
-            await stubPopulatedIncrementalDatabaseRemote(capabilities);
-            // Delete the pre-created LevelDB dir to trigger the bootstrap path.
+    describe("absent-state decision", () => {
+        test("V3: Exists(ContinuationSafeSnapshot) restores the held snapshot", async () => {
+            const capabilities = await getTestCapabilities();
+            const first = makeInterface(() => capabilities);
+            await first.ensureInitialized();
+            await first.update([
+                makeEvent("event-1", "First event"),
+                makeEvent("event-2", "Second event"),
+            ]);
+
+            const snapshot = await continuationSafeSnapshotOf(first._database);
+            const destroyedAllocatorWatermark = await first._database
+                .getSchemaStorage()
+                .global.get(LAST_NODE_INDEX_KEY);
+            await first._database.close();
+
             const liveDbPath = path.join(
                 capabilities.environment.workingDirectory(),
                 LIVE_DATABASE_WORKING_PATH
             );
             await capabilities.deleter.deleteDirectory(liveDbPath);
+            await restoreAbsentFrom(capabilities, snapshot);
 
-            const iface = makeInterface(() => capabilities);
-            await iface.ensureInitialized();
+            const second = makeInterface(() => capabilities);
+            await second.ensureInitialized();
 
-            // Verify the reset-to-hostname path was taken.
-            expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
-                expect.objectContaining({ hostname: 'test-host' }),
-                'Bootstrap: hostname branch found; using reset-to-hostname sync path'
-            );
-            await expect(iface.getAllEvents()).resolves.toHaveLength(26);
-            await expect(iface.getConfig()).resolves.toMatchObject({
-                help: expect.stringContaining("Event logging help text"),
-                shortcuts: expect.arrayContaining([
-                    ["breakfast", "food [when this morning]", "Quick breakfast entry"],
-                ]),
-            });
-            expect(isInterface(iface)).toBe(true);
+            await expect(second.getAllEvents()).resolves.toHaveLength(2);
+            expect(isInterface(second)).toBe(true);
+
+            const restoredStorage = second._database.getSchemaStorage();
+            // The restore is receiver-less, so the continuing installation identity,
+            // the retained history and the allocator watermark are the snapshot's own
+            // rather than a newly generated fingerprint's.
+            await expect(restoredStorage.global.get("fingerprint"))
+                .resolves.toBe(journalAuthorToString(snapshot.localWriter));
+            await expect(restoredStorage.global.get(LAST_NODE_INDEX_KEY))
+                .resolves.toBe(destroyedAllocatorWatermark);
+            const restoredReplica = await readRetainedJournal(restoredStorage.journal);
+            if (restoredReplica instanceof Error) {
+                throw restoredReplica;
+            }
+            expect([...restoredReplica.values()].flat()).toHaveLength(snapshot.records.length);
+            await second._database.close();
         });
 
-        test("V4: uses fallback normal sync when LevelDB is absent and hostname branch is absent remotely", async () => {
-            // Setup: remote WITHOUT the hostname branch (only a non-hostname branch), no local LevelDB.
+        test("V4: DefinitelyAbsent permits fresh creation", async () => {
             const capabilities = getMockedRootCapabilities();
             stubEnvironment(capabilities);
             stubLogger(capabilities);
             stubDatetime(capabilities);
 
-            // Create a bare remote that has only 'main' (not 'test-host-main').
+            // A remote which holds no branch for this installation, so the fresh
+            // creation retains no foreign history and publishes a new branch.
             const gitDir = capabilities.environment.generatorsRepository();
             await capabilities.git.call("init", "--bare", "--", gitDir);
             const workTree = path.join(
@@ -542,11 +610,75 @@ describe("generators/interface", () => {
             );
             await capabilities.git.call("-C", workTree, "push", "origin", "main");
 
-            // Delete the pre-created LevelDB dir to trigger the bootstrap path.
-            // The production code (internalInitCheckpointRepoForFallback) will
-            // automatically initialize the checkpoint repo and configure the
-            // origin remote, so no manual pre-initialization is needed here.
             ensureLiveDatabaseDirectory(capabilities);
+            const liveDbPath = path.join(
+                capabilities.environment.workingDirectory(),
+                LIVE_DATABASE_WORKING_PATH
+            );
+            await capabilities.deleter.deleteDirectory(liveDbPath);
+            const emptyDb = await getRootDatabase(capabilities);
+            await emptyDb.close();
+
+            const iface = makeInterface(() => capabilities);
+            await iface.ensureInitialized();
+
+            expect(isInterface(iface)).toBe(true);
+            await iface._database.close();
+        });
+
+        test("DefinitelyAbsent fresh creation ignores a foreign Journal-state host branch", async () => {
+            const capabilities = getMockedRootCapabilities();
+            stubEnvironment(capabilities);
+            stubLogger(capabilities);
+            stubDatetime(capabilities);
+
+            // The remote holds only another host's branch, which carries Journal
+            // state. `database-lifecycle.md` §4.3 requires a fresh replica to retain
+            // no foreign history, and `database-boot-sequence.md` §7.1 deletes the
+            // fallback to normal synchronization from an empty local database, so
+            // fresh creation must neither merge this branch nor fail on it.
+            await stubIncrementalDatabaseRemoteBranches(capabilities, [
+                { hostname: "other-host", fixtureName: "populated" },
+            ]);
+
+            ensureLiveDatabaseDirectory(capabilities);
+            const liveDbPath = path.join(
+                capabilities.environment.workingDirectory(),
+                LIVE_DATABASE_WORKING_PATH
+            );
+            await capabilities.deleter.deleteDirectory(liveDbPath);
+            const emptyDb = await getRootDatabase(capabilities);
+            await emptyDb.close();
+
+            const iface = makeInterface(() => capabilities);
+            await iface.ensureInitialized();
+
+            expect(isInterface(iface)).toBe(true);
+
+            const replica = await readRetainedJournal(iface._database.getSchemaStorage().journal);
+            if (replica instanceof Error) {
+                throw replica;
+            }
+            expect([...replica.values()].flat()).toHaveLength(0);
+            await iface._database.close();
+        });
+
+        test("without a recovery authority startup fails with no fresh fallback", async () => {
+            const capabilities = await getTestCapabilities();
+            const liveDbPath = path.join(
+                capabilities.environment.workingDirectory(),
+                LIVE_DATABASE_WORKING_PATH
+            );
+            await capabilities.deleter.deleteDirectory(liveDbPath);
+            // No authoritative recovery answer is obtainable; startup must fail closed.
+
+            const iface = makeInterface(() => capabilities);
+            await expect(iface.ensureInitialized()).rejects.toThrow(/installation recovery/);
+            expect(await capabilities.checker.directoryExists(liveDbPath)).toBe(null);
+        });
+
+        test("an absent local database with no configured recovery source fails closed", async () => {
+            const capabilities = await getTestCapabilities();
             const liveDbPath = path.join(
                 capabilities.environment.workingDirectory(),
                 LIVE_DATABASE_WORKING_PATH
@@ -554,14 +686,8 @@ describe("generators/interface", () => {
             await capabilities.deleter.deleteDirectory(liveDbPath);
 
             const iface = makeInterface(() => capabilities);
-            await iface.ensureInitialized();
-
-            // Verify the fallback normal-sync path was taken.
-            expect(capabilities.logger.logInfo).toHaveBeenCalledWith(
-                expect.objectContaining({ hostname: 'test-host' }),
-                'Bootstrap: hostname branch does not exist remotely; using normal sync fallback'
-            );
-            expect(isInterface(iface)).toBe(true);
+            await expect(iface.ensureInitialized()).rejects.toThrow(/installation recovery/);
+            expect(await capabilities.checker.directoryExists(liveDbPath)).toBe(null);
         });
     });
 });
