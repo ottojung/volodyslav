@@ -744,6 +744,65 @@ describe("resetToSource, the core identity rule", () => {
         expect(outcome.projection.occurrences.every((occurrence) => occurrence.fresh)).toBe(true);
     });
 
+    test("a split-bootstrap raw-union winner keeps its ValueId when its occurrence matches the source", async () => {
+        // Independent late bootstrap can assign different ValueIds to a shared
+        // non-canonical legacy occurrence. Reset compares immutable occurrence
+        // state, not the source's ValueId, and must retain the selected raw-union
+        // winner without manufacturing a replacement.
+        const receiverValue = materialize({
+            writer: WRITER_LOCAL,
+            sequence: "1",
+            node: NODE_A,
+            context: [],
+            authority: 20,
+            payload: OTHER_PAYLOAD,
+            createdAt: NOW,
+            modifiedAt: LATER,
+        });
+        const sourceValue = materialize({
+            writer: WRITER_PEER,
+            sequence: "1",
+            node: NODE_A,
+            context: [],
+            authority: 10,
+            payload: OTHER_PAYLOAD,
+            createdAt: NOW,
+            modifiedAt: LATER,
+        });
+        const source = await sourceSnapshotOf([
+            sourceValue,
+            validateOwnMaterialization({
+                writer: WRITER_PEER,
+                valueSequence: "1",
+                node: NODE_A,
+                context: [],
+                authority: 10,
+                basis: [],
+            }),
+        ]);
+
+        const outcome = outcomeOf(await reset({ receiver: [receiverValue], source }));
+
+        expect(journalRecordIdToString(receiverValue.id)).not.toBe(
+            journalRecordIdToString(sourceValue.id)
+        );
+        expect(journalRecordIdToString(outcome.valueIds.get(KEY_A))).toBe(
+            journalRecordIdToString(receiverValue.id)
+        );
+        expect(authoredOf(outcome).filter((record) => record.kind === "value")).toHaveLength(0);
+        const selected = outcome.projection.occurrences.find(
+            (occurrence) => occurrence.nodeKeyString === KEY_A
+        );
+        expect(selected).toMatchObject({
+            nodeIdentifier: identifierOf(KEY_A),
+            payload: OTHER_PAYLOAD,
+            createdAt: NOW,
+            modifiedAt: LATER,
+            fresh: true,
+        });
+        expect(outcome.projection.freshness.get(KEY_A)?.fresh).toBe(true);
+    });
+
     test("an import which changes no semantics still reports a persistent change", async () => {
         const receiver = receiverProvenPair();
         const source = await sourceSnapshotOf(sourcePair([
