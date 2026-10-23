@@ -815,6 +815,131 @@ describe("resetToSource, the core identity rule", () => {
     });
 });
 
+describe("resetToSource, repairing a non-dependency-closed raw union", () => {
+    test("an absent dependency is re-established while the matching occurrence keeps its ValueId", async () => {
+        // `incremental-graph-journal-testing.md` §Reset raw-union
+        // dependency-closure regression: the raw union of receiver and source
+        // selects D absent (receiver Delete(50) beats source Value(10)) and B
+        // present (source Value(100) beats receiver Delete(51)), which is not
+        // dependency-closed under `B -> {A, D}`. Reset must repair D before
+        // projecting, author no temporary Delete(B), and preserve B's matching
+        // source ValueId.
+        const receiver = [
+            materialize({
+                writer: WRITER_LOCAL,
+                sequence: "1",
+                node: NODE_A,
+                context: [],
+                authority: 40,
+            }),
+            validateOwnMaterialization({
+                writer: WRITER_LOCAL,
+                valueSequence: "1",
+                node: NODE_A,
+                context: [],
+                authority: 40,
+                basis: [],
+            }),
+            materialize({
+                writer: WRITER_LOCAL,
+                sequence: "3",
+                node: NODE_B,
+                context: [],
+                authority: 41,
+            }),
+            materialize({
+                writer: WRITER_LOCAL,
+                sequence: "4",
+                node: NODE_D,
+                context: [],
+                authority: 42,
+            }),
+            deletionOf({
+                writer: WRITER_LOCAL,
+                sequence: "5",
+                node: NODE_D,
+                context: [],
+                authority: 50,
+            }),
+            deletionOf({
+                writer: WRITER_LOCAL,
+                sequence: "6",
+                node: NODE_B,
+                context: [],
+                authority: 51,
+            }),
+        ];
+        const sourceRecords = [
+            materialize({
+                writer: WRITER_PEER,
+                sequence: "1",
+                node: NODE_D,
+                context: [],
+                authority: 10,
+            }),
+            validateOwnMaterialization({
+                writer: WRITER_PEER,
+                valueSequence: "1",
+                node: NODE_D,
+                context: [],
+                authority: 10,
+                basis: [],
+            }),
+            materialize({
+                writer: WRITER_PEER,
+                sequence: "3",
+                node: NODE_A,
+                context: [],
+                authority: 60,
+            }),
+            validateOwnMaterialization({
+                writer: WRITER_PEER,
+                valueSequence: "3",
+                node: NODE_A,
+                context: [],
+                authority: 60,
+                basis: [],
+            }),
+            materialize({
+                writer: WRITER_PEER,
+                sequence: "5",
+                node: NODE_B,
+                context: [],
+                authority: 100,
+            }),
+            validateOwnMaterialization({
+                writer: WRITER_PEER,
+                valueSequence: "5",
+                node: NODE_B,
+                context: [],
+                authority: 100,
+                basis: [
+                    { node: NODE_A, value: WRITER_PEER + ":3" },
+                    { node: NODE_D, value: WRITER_PEER + ":1" },
+                ],
+            }),
+        ];
+        const source = await sourceSnapshotOf(sourceRecords);
+
+        const outcome = outcomeOf(await reset({ receiver, source }));
+
+        const authored = authoredOf(outcome);
+        expect(authored.filter((record) =>
+            record.kind === "delete" &&
+            nodeKeyToCanonicalString(record.node) === KEY_B)).toHaveLength(0);
+        const replacements = authored.filter((record) => record.kind === "value");
+        expect(replacements).toHaveLength(1);
+        expect(nodeKeyToCanonicalString(replacements[0].node)).toBe(KEY_D);
+        expect(replacements[0].reason).toBe("reset");
+        expect(journalRecordIdToString(outcome.valueIds.get(KEY_B))).toBe(WRITER_PEER + ":5");
+        const summarized = (projection) => projection.occurrences.map((occurrence) => [
+            occurrence.nodeKeyString,
+            occurrence.payload,
+        ]).sort();
+        expect(summarized(outcome.projection)).toEqual(summarized(source.projection));
+    });
+});
+
 describe("resetToSource, weakening proof with occurrence-scoped barriers", () => {
     test("every edge an eligible certificate could expose and the target does not want is barriered", async () => {
         const receiver = receiverProvenPair();
