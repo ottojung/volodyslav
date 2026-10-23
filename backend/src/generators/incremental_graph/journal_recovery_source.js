@@ -97,7 +97,7 @@ class ContinuationSafeSnapshotClass {
      */
     constructor(localWriter, records, projection, writerState, databaseVersion, graphSchemeString) {
         this.localWriter = localWriter;
-        this.records = records;
+        this.records = Object.freeze([...records]);
         this.projection = projection;
         this.writerState = writerState;
         this.databaseVersion = databaseVersion;
