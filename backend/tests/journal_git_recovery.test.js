@@ -38,6 +38,10 @@ test('held Git checkpoint reconstructs a writer and its retained records', async
     expect(isRecoveryExists(result)).toBe(true);
     if (!isRecoveryExists(result)) return;
     expect(result.snapshot.records.length).toBeGreaterThan(0);
+    expect(Object.isFrozen(result.snapshot.records)).toBe(true);
+    const retainedCount = result.snapshot.records.length;
+    expect(() => result.snapshot.records.push(result.snapshot.records[0])).toThrow(TypeError);
+    expect(result.snapshot.records).toHaveLength(retainedCount);
     expect(result.snapshot.writerState.localWriter).toBe(result.snapshot.localWriter);
 });
 
