@@ -576,6 +576,55 @@ describe("resetToSource, refusing incompatible sources before touching history",
         }
         expect(isJournalWriterBehindError(result.error)).toBe(true);
     });
+
+    test("a source ahead of the receiver for its own writer is refused before any record is read", async () => {
+        // `incremental-graph-journal-testing.md` §Reset own-writer-behind rejection
+        // requires `resetTo()` to fail `JournalWriterBehindError` before importing
+        // any source record or authoring any reset event. The own-writer rollback
+        // boundary therefore precedes every retained-history read: only writer-set
+        // and length metadata may be consulted, never a record body.
+        const receiver = receiverProvenPair();
+        const longerLocalPrefix = materialize({
+            writer: WRITER_LOCAL,
+            sequence: "7",
+            node: NODE_A,
+            context: [],
+            authority: 900,
+        });
+
+        const target = await sourceSnapshotOf([...receiver, longerLocalPrefix]);
+        const countedReceiver = countingSource(makeReplicaSource(replicaOf(receiver)));
+        const countedSource = countingSource(target.journal);
+        const instrumented = makeResetSource({
+            databaseVersion: target.databaseVersion,
+            graphSchemeString: target.graphSchemeString,
+            journal: countedSource.source,
+            projection: target.projection,
+        });
+
+        const result = await resetToSource({
+            receiver: countedReceiver.source,
+            retainedState: await retainedReplayState(
+                makeReplicaSource(replicaOf(receiver)),
+                twoInputSchema
+            ),
+            source: instrumented,
+            localWriter: LOCAL_AUTHOR,
+            committed: committedAfter(receiver, 500),
+            observedHighWater: authorityOf(500),
+            publicationInstant: INSTANT,
+            currentInputKeysOfNode: twoInputSchema,
+            receiverIdentity: new SnapshotIdentityClass("v1", "scheme"),
+        });
+
+        expect("outcome" in result).toBe(false);
+        if ("outcome" in result) {
+            return;
+        }
+        expect(isJournalWriterBehindError(result.error)).toBe(true);
+        expect(countedSource.reads()).toBe(0);
+        expect(countedReceiver.reads()).toBe(0);
+    });
 });
 
 describe("resetToSource, establishing target presence over the raw union", () => {
