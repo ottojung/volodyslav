@@ -36,6 +36,11 @@ const RETIRED_SYNC_REQUIREMENTS = [
     "REQ-SYNC-20",
     "REQ-SYNC-21",
     "REQ-SYNC-22",
+    "REQ-SYNC-23",
+    "REQ-SYNC-24",
+    "REQ-SYNC-25",
+    "REQ-SYNC-26",
+    "REQ-SYNC-27",
     "DEF-SYNC-02",
 ];
 
