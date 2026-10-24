@@ -422,6 +422,31 @@ describe("synchronizeRetainedJournal, acquiring foreign-writer suffixes", () => 
             .toEqual([KEY_A, KEY_B, KEY_C]);
     });
 
+    test("a source whose retained journal is a subset of the receiver's advances no state", async () => {
+        // `incremental-graph-journal-testing.md` §Synchronization result reports
+        // state advancement: a source behind the receiver imports nothing and
+        // reports `stateAdvancing == false`, distinct from the repeat-sync and
+        // writer-behind cases pinned above.
+        const prefix = receiverChain();
+        const peerMaterialization = materialize({
+            writer: WRITER_PEER,
+            sequence: "1",
+            node: NODE_C,
+            context: [[WRITER_LOCAL, "4"]],
+            basis: [{ node: NODE_B, value: WRITER_LOCAL + ":3" }],
+        });
+        const result = await synchronize({
+            receiver: [...prefix, ...peerMaterialization],
+            source: [...prefix],
+            authorityPhysical: 400,
+        });
+
+        const outcome = outcomeOf(result);
+        expect(outcome.records).toEqual([]);
+        expect(outcome.publication.records).toEqual([]);
+        expect(outcome.stateAdvancing).toBe(false);
+    });
+
     test("a source which is ahead for the receiver's own writer is refused before anything is admitted", async () => {
         const receiver = receiverChain();
         const longerLocalPrefix = materialize({
