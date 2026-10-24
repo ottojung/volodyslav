@@ -58,6 +58,27 @@ Superseded by Journal 3 replay and identity semantics:
 - `DEF-SYNC-02` (source-version identity): replaced by `ValueId` identity and
   the immutable-overlap law; equal timestamps, identifiers, or stored values are
   no longer identity evidence.
+- `DEF-SYNC-01`, `DEF-SYNC-03`, `DEF-SYNC-04`, `DEF-SYNC-05` (value origin;
+  semantic merge domain; selected source side; final outcome): per-key
+  byte-source selection has no Journal counterpart. Journal 3 admits values by
+  importing foreign suffixes and selecting heads by replay, with occurrence
+  identity carried by `ValueId` (`incremental-graph-journal-sync.md` §Imported
+  causal closure and §Normalization versus raw union;
+  `incremental-graph-journal-replay.md`). These definitions remain implemented
+  only by the pre-Journal fieldwise merge engine
+  (`backend/src/generators/incremental_graph/database/sync_merge_plan.js`,
+  `sync_merge_apply.js`), which refuses Journal-backed replicas
+  (`JournalBackedFieldwiseMergeError` in `sync_merge.js`).
+- `DEF-SYNC-06`, `DEF-SYNC-07`, `DEF-SYNC-08` (taint propagation; direct
+  invalidation candidates; direct relowering): no Journal counterpart.
+  Opposite-side ancestry and selected-source provenance do not exist once the
+  merge mechanism is replaced; dependent removal and staleness are owned by
+  `incremental-graph-journal-sync.md` §Phase 1: dependency-closure removal and
+  §Phase 2. Implemented only by the pre-Journal engine cited above.
+- `DEF-SYNC-09` (source validity proof): no Journal counterpart. Journal 3
+  rebuilds proofs by replay; there is no source-side proof transport. Owned by
+  `incremental-graph-journal-replay.md`; implemented for pre-Journal peers by
+  `backend/src/generators/incremental_graph/database/sync_merge_validity.js`.
 
 Still applicable, with their equivalent owner:
 

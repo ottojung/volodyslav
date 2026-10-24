@@ -36,7 +36,15 @@ const RETIRED_SYNC_REQUIREMENTS = [
     "REQ-SYNC-20",
     "REQ-SYNC-21",
     "REQ-SYNC-22",
+    "DEF-SYNC-01",
     "DEF-SYNC-02",
+    "DEF-SYNC-03",
+    "DEF-SYNC-04",
+    "DEF-SYNC-05",
+    "DEF-SYNC-06",
+    "DEF-SYNC-07",
+    "DEF-SYNC-08",
+    "DEF-SYNC-09",
 ];
 
 describe("Journal 3 documentation contracts restored against the pre-Journal baseline", () => {
