@@ -1210,6 +1210,76 @@ describe("resetToSource, weakening proof with occurrence-scoped barriers", () =>
             authorOf,
         })]).toEqual([]);
     });
+
+    test("a barrier for one occurrence leaves a later concurrent occurrence fully proved", async () => {
+        // `incremental-graph-journal-testing.md` §Reset proof weakening requires a
+        // barrier for `(B1,A)` to leave a concurrent/later `B2` certificate
+        // untouched when that certificate does not observe the barrier. A third
+        // writer `Z` therefore materializes a replacement `B2` and proves both of
+        // its edges while observing only the pre-barrier history: `Z` is
+        // concurrent with the reset-authored barriers. Occurrence scoping means
+        // the barriers, which name `B1`, cannot retire `B2`'s edges.
+        const WRITER_THIRD = "ccccccccc";
+        const receiver = receiverProvenPair();
+        const source = await sourceSnapshotOf(sourcePair(
+            [{ node: NODE_A, value: "unknown" }, { node: NODE_D, value: "unknown" }],
+            { reason: "migration" }
+        ));
+
+        const outcome = outcomeOf(await reset({ receiver, source }));
+
+        const proofBarriers = authoredOf(outcome).filter(
+            (record) => record.kind === "invalidate" && record.scope.kind === "proof"
+        );
+        expect(proofBarriers).toHaveLength(2);
+        for (const barrier of proofBarriers) {
+            expect(journalRecordIdToString(barrier.scope.value)).toBe(WRITER_LOCAL + ":5");
+        }
+
+        const extended = [...receiver, ...outcome.records,
+            materialize({
+                writer: WRITER_THIRD,
+                sequence: "1",
+                node: NODE_B,
+                context: [],
+                authority: 900,
+            }),
+            validate({
+                writer: WRITER_THIRD,
+                sequence: "2",
+                node: NODE_B,
+                // Concurrent with the barriers: `Z` observes the receiver's
+                // pre-reset history but none of the reset-authored records.
+                context: [[WRITER_LOCAL, "6"]],
+                authority: 900,
+                value: WRITER_THIRD + ":1",
+                basis: [
+                    { node: NODE_A, value: WRITER_LOCAL + ":1" },
+                    { node: NODE_D, value: WRITER_LOCAL + ":3" },
+                ],
+                reason: "compute",
+            }),
+        ].sort((left, right) => sequenceOf(left) - sequenceOf(right));
+
+        const projected = await projectRetainedJournal({
+            source: makeReplicaSource(replicaOf(extended)),
+            localWriter: LOCAL_AUTHOR,
+            currentInputKeysOfNode: twoInputSchema,
+        });
+        if (projected instanceof Error) {
+            throw new Error("the extended journal does not project: " + projected.message);
+        }
+        const settled = projected.occurrences.find(
+            (occurrence) => occurrence.nodeKeyString === KEY_B
+        );
+        // `Z`'s strictly greater authority selects `B2` over the barriered `B1`.
+        expect(settled === undefined ? undefined : journalRecordIdToString(settled.valueId))
+            .toBe(WRITER_THIRD + ":1");
+        // The barriers name `B1`, so neither of `B2`'s edges is retired even
+        // though `B2`'s certificate never observed them.
+        expect(settled === undefined ? undefined : [...settled.validInputs].sort())
+            .toEqual([KEY_A, KEY_D]);
+    });
 });
 
 /**
