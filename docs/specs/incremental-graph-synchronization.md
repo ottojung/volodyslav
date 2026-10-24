@@ -58,6 +58,14 @@ Superseded by Journal 3 replay and identity semantics:
 - `DEF-SYNC-02` (source-version identity): replaced by `ValueId` identity and
   the immutable-overlap law; equal timestamps, identifiers, or stored values are
   no longer identity evidence.
+- `REQ-SYNC-23`, `REQ-SYNC-27` (pairwise commutativity; no multi-host
+  order-independence guarantee): superseded by the convergence and host-count
+  bounded settling construction. Journal 3 states eventual convergence of every
+  fair execution plus an achievable `2(H-1)` state-advancing settling schedule
+  rather than pairwise merge commutativity over merge-domain artifacts
+  (selected identifiers, lowered inputs, reverse dependencies) which no longer
+  exist. Owned by `incremental-graph-journal-sync.md` §Convergence and
+  termination.
 
 Still applicable, with their equivalent owner:
 
@@ -82,5 +90,14 @@ Still applicable, with their equivalent owner:
   final pair atomically and is a semantic no-op when nothing changed.
   `incremental-graph-journal-sync.md` §Atomic publication and §Pairwise result
   law.
+- `REQ-SYNC-24`, `REQ-SYNC-26` (sequential per-host merge; host failure
+  isolation): the outer procedure may process multiple sources sequentially and
+  successful earlier sources commit even if a later source fails. Owned by
+  `incremental-graph-journal-sync.md` §Multi-source execution and
+  `database-lifecycle.md` §9 `Failure handling`.
+- `REQ-SYNC-25` (per-host validation after success): each pairwise `Sync`
+  performs final replay and validation with atomic publication before the next
+  source proceeds. Owned by `incremental-graph-journal-sync.md` §Final replay
+  and validation, §Atomic publication, and §Multi-source execution.
 
 See `incremental-graph-journal-README.md` for the Journal 3 reading order.
