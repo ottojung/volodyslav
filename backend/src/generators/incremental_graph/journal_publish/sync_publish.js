@@ -68,12 +68,13 @@ const {
  * about what a projection persists.
  *
  * The proof of those properties is guaranteed by:
- * - `synchronizeRetainedJournal(...)`: it returns `records`, `projection` and
- *   `publication`, and `SyncPublication.writerState` is the committed state after
- *   `records`.
- * - `resetToSource(...)`: it returns `[...imported, ...authored]` as `records`, the
- *   final cut as `projection`, and `ResetPublicationClass(authored, state)`, whose
- *   `writerState` is the committed state after those records.
+ * - `synchronizeRetainedJournal(...)`: it carries the operation's journal growth
+ *   as `recordGrowth` — the imported suffixes re-read on demand followed by the
+ *   authored records — and `SyncPublication.writerState` is the committed state
+ *   after that growth.
+ * - `resetToSource(...)`: it carries the same `recordGrowth` shape, the final
+ *   cut as `projection`, and `ResetPublicationClass(authored, state)`, whose
+ *   `writerState` is the committed state after that growth.
  *
  * `retainedState` is not lowered here: it is the cutover's own input, because
  * `incremental-graph-journal-sync.md` §Atomic publication publishes the derived
