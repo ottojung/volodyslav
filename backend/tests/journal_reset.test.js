@@ -1932,3 +1932,77 @@ describe("resetToSource, reading each cut as a delta over the retained state", (
         expect("outcome" in result).toBe(false);
     });
 });
+
+describe("resetToSource, keeping the receiver allocator local", () => {
+    test("the committed watermark survives a reset which authors records", async () => {
+        // `incremental-graph-journal-checklist.md` §11 requires the receiver
+        // allocator to remain local: reset must carry the receiver's committed
+        // watermark into the publication writer state rather than adopting any
+        // source watermark or resetting to zero. The OTHER_PAYLOAD source
+        // forces occurrence replacement, so the publication authors records.
+        const receiver = receiverProvenPair();
+        const source = await sourceSnapshotOf(sourcePair(
+            [
+                { node: NODE_A, value: WRITER_PEER + ":1" },
+                { node: NODE_D, value: WRITER_PEER + ":3" },
+            ],
+            { payload: OTHER_PAYLOAD }
+        ));
+        const committed = {
+            ...committedAfter(receiver, 500),
+            allocatorWatermark: 41,
+        };
+        const result = await resetToSource({
+            receiver: makeReplicaSource(replicaOf(receiver)),
+            retainedState: await retainedReplayState(
+                makeReplicaSource(replicaOf(receiver)),
+                twoInputSchema
+            ),
+            source,
+            localWriter: LOCAL_AUTHOR,
+            committed,
+            observedHighWater: authorityOf(500),
+            publicationInstant: INSTANT,
+            currentInputKeysOfNode: twoInputSchema,
+            receiverIdentity: new SnapshotIdentityClass("v1", "scheme"),
+        });
+        const outcome = outcomeOf(result);
+
+        expect(authoredOf(outcome).length).toBeGreaterThan(0);
+        expect(outcome.publication.writerState.allocatorWatermark).toBe(41);
+        expect(authoredOf(outcome).filter((record) => record.kind === "writer-state")).toHaveLength(0);
+    });
+
+    test("the committed watermark survives a reset which authors nothing", async () => {
+        // Same-payload fixtures select the receiver's own occurrences, so Pass 1
+        // authors no record; the empty publication must still carry the
+        // receiver's watermark rather than resetting it.
+        const receiver = receiverProvenPair();
+        const source = await sourceSnapshotOf(sourcePair([
+            { node: NODE_A, value: WRITER_PEER + ":1" },
+            { node: NODE_D, value: WRITER_PEER + ":3" },
+        ]));
+        const committed = {
+            ...committedAfter(receiver, 500),
+            allocatorWatermark: 41,
+        };
+        const result = await resetToSource({
+            receiver: makeReplicaSource(replicaOf(receiver)),
+            retainedState: await retainedReplayState(
+                makeReplicaSource(replicaOf(receiver)),
+                twoInputSchema
+            ),
+            source,
+            localWriter: LOCAL_AUTHOR,
+            committed,
+            observedHighWater: authorityOf(500),
+            publicationInstant: INSTANT,
+            currentInputKeysOfNode: twoInputSchema,
+            receiverIdentity: new SnapshotIdentityClass("v1", "scheme"),
+        });
+        const outcome = outcomeOf(result);
+
+        expect(authoredOf(outcome)).toHaveLength(0);
+        expect(outcome.publication.writerState.allocatorWatermark).toBe(41);
+    });
+});
