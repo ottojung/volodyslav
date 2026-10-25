@@ -80,6 +80,10 @@ describe("Journal 3 documentation contracts restored against the pre-Journal bas
         expect(text).toMatch(
             /neither check migrates an old-version fixture/,
         );
+        expect(text).not.toMatch(/operations over migrated state/);
+        expect(text).toMatch(
+            /operations over a restored current-version replica/,
+        );
     });
 
     test("the rollback-classification cross-reference points at the surviving unsupported-operations section", () => {

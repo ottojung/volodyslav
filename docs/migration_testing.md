@@ -5,7 +5,7 @@ This page explains how Volodyslav tests incremental-graph migrations at two comp
 1. **Mechanics-level migration tests** that validate the migration protocol itself.
 2. **Fixture-level migration + smoke tests** that validate behavior on realistic repository state.
 
-The goal is confidence in both **correctness of the migration engine** and **real-world usability of migrated data**.
+The goal is confidence in both **correctness of the migration engine** and **real-world usability of restored data**.
 
 ---
 
@@ -120,7 +120,7 @@ Volodyslav’s migration testing uses a **pyramid with explicit contracts**:
 
 - **Protocol tests** (runner/storage): strict migration semantics.
 - **Fixture migration test**: canonical rendered output reproduction.
-- **Behavioral smoke test**: end-user graph operations over migrated state.
+- **Behavioral smoke test**: end-user graph operations over a restored current-version replica (no migration).
 
 This design optimizes for:
 
@@ -149,6 +149,6 @@ Migration confidence in Volodyslav comes from combining:
 
 - **strict engine invariants**,
 - **golden fixture migration reproduction**, and
-- **realistic behavioral smoke coverage**.
+- **realistic behavioral smoke coverage over restored state**.
 
 That combination is what makes migration changes safer than relying on only unit tests or only end-to-end tests.
