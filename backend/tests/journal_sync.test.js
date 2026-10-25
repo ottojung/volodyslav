@@ -422,6 +422,34 @@ describe("synchronizeRetainedJournal, acquiring foreign-writer suffixes", () => 
             .toEqual([KEY_A, KEY_B, KEY_C]);
     });
 
+    test("a source whose retained journal is a strict subset of the receiver's does not advance state", async () => {
+        // `incremental-graph-journal-testing.md` §Synchronization result reports
+        // state advancement requires `stateAdvancing == false` when the source's
+        // retained Journal is a subset of the receiver's. The receiver below
+        // already retains the peer's C occurrence, so the source — which holds
+        // only the local prefix — contributes no import and no normalization.
+        const peerMaterialization = materialize({
+            writer: WRITER_PEER,
+            sequence: "1",
+            node: NODE_C,
+            context: [[WRITER_LOCAL, "4"]],
+            basis: [{ node: NODE_B, value: WRITER_LOCAL + ":3" }],
+        });
+        const receiver = [...receiverChain(), ...peerMaterialization];
+
+        const result = await synchronize({
+            receiver,
+            source: receiverChain(),
+            authorityPhysical: 400,
+        });
+
+        const outcome = outcomeOf(result);
+        expect(outcome.publication.records).toEqual([]);
+        expect(outcome.stateAdvancing).toBe(false);
+        expect(outcome.projection.occurrences.map((occurrence) => occurrence.nodeKeyString))
+            .toEqual([KEY_A, KEY_B, KEY_C]);
+    });
+
     test("a source which is ahead for the receiver's own writer is refused before anything is admitted", async () => {
         const receiver = receiverChain();
         const longerLocalPrefix = materialize({
