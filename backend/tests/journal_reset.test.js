@@ -1071,7 +1071,22 @@ describe("resetToSource, weakening proof with occurrence-scoped barriers", () =>
      *
      * @returns {ReadonlyArray<import("../src/generators/incremental_graph/journal").JournalRecord>}
      */
-    function receiverWithReestablishedEdge() {
+    /**
+     * A receiver whose retained history holds a proof barrier for `D -> B`
+     * followed by a concurrent revalidation of the same occurrence which proves
+     * the barriered edge again without observing the barrier's maintenance
+     * decision.
+     *
+     * `incremental-graph-journal-testing.md` §Concurrent same-ValueId
+     * revalidation regression requires this shape with both `reason="reset"`
+     * and `reason="migration"` barriers: after union, the concurrent
+     * validation must not re-establish the barriered edge.
+     *
+     * @param {string} [barrierReason] - The maintenance reason of the retained
+     *   proof barrier, either `"reset"` or `"migration"`.
+     */
+    function receiverWithReestablishedEdge(barrierReason) {
+        const reason = barrierReason === undefined ? "reset" : barrierReason;
         return [
             materialize({
                 writer: WRITER_LOCAL,
@@ -1132,7 +1147,7 @@ describe("resetToSource, weakening proof with occurrence-scoped barriers", () =>
                     made(makeJournalRecordId(LOCAL_AUTHOR, makeJournalSequence("5"))),
                     NODE_D
                 ),
-                "reset"
+                reason
             )),
             made(makeValidateEvent(
                 {
@@ -1203,6 +1218,62 @@ describe("resetToSource, weakening proof with occurrence-scoped barriers", () =>
 
         // The summary staged for cutover with reset's own records has retired both
         // edges, so it agrees with the projection it is published beside.
+        expect([...eligibleProofEdgeUnion({
+            summary: outcome.retainedState.proofs,
+            nodeKeyString: KEY_B,
+            valueId: WRITER_LOCAL + ":5",
+            authorOf,
+        })]).toEqual([]);
+    });
+
+    test("an edge a migration barrier retired stays barriered through a concurrent revalidation", async () => {
+        // The `reason="migration"` half of the concurrent same-ValueId
+        // revalidation regression in `incremental-graph-journal-testing.md`:
+        // the retained barrier was authored by migration rather than reset,
+        // but the union still counts the re-proved edge as exposed and reset
+        // still barriers it. The barrier reason selects which maintenance
+        // transition retired the edge, not whether the edge is retired.
+        const receiver = receiverWithReestablishedEdge("migration");
+        const source = await sourceSnapshotOf(sourcePair(
+            [{ node: NODE_A, value: "unknown" }, { node: NODE_D, value: "unknown" }],
+            { reason: "migration" }
+        ));
+
+        const outcome = outcomeOf(await reset({ receiver, source }));
+
+        const proofBarriers = authoredOf(outcome).filter(
+            (record) => record.kind === "invalidate" && record.scope.kind === "proof"
+        );
+        expect(proofBarriers).toHaveLength(2);
+        expect(proofBarriers.map((barrier) => nodeKeyToCanonicalString(barrier.scope.input)).sort())
+            .toEqual([KEY_A, KEY_D]);
+        for (const barrier of proofBarriers) {
+            expect(barrier.reason).toBe("reset");
+            expect(journalRecordIdToString(barrier.scope.value)).toBe(WRITER_LOCAL + ":5");
+        }
+
+        const committed = outcome.projection.occurrences.find(
+            (occurrence) => occurrence.nodeKeyString === KEY_B
+        );
+        expect(committed === undefined ? undefined : [...committed.validInputs]).toEqual([]);
+
+        const before = (await retainedReplayState(makeReplicaSource(replicaOf(receiver)), twoInputSchema)).proofs;
+        const authorOf = (name) => (name === WRITER_LOCAL ? LOCAL_AUTHOR : undefined);
+        expect(countEligibleProofEdges({
+            summary: before,
+            nodeKeyString: KEY_B,
+            valueId: WRITER_LOCAL + ":5",
+            inputKeyString: KEY_A,
+            authorOf,
+        })).toBe(2);
+        expect(countEligibleProofEdges({
+            summary: before,
+            nodeKeyString: KEY_B,
+            valueId: WRITER_LOCAL + ":5",
+            inputKeyString: KEY_D,
+            authorOf,
+        })).toBe(1);
+
         expect([...eligibleProofEdgeUnion({
             summary: outcome.retainedState.proofs,
             nodeKeyString: KEY_B,
