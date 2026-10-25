@@ -66,6 +66,32 @@ test('Git recovery refuses a checkpoint with a forged allocator watermark',async
  }finally{await fs.rm(dest,{recursive:true,force:true})}
 });
 
+test('Git recovery refuses a checkpoint with a mid-stream hole behind an agreeing frontier',async()=>{
+ const capabilities=getMockedRootCapabilities();
+ stubEnvironment(capabilities);stubLogger(capabilities);
+ const dest=await fs.mkdtemp(path.join(os.tmpdir(),'j3-corrupt-hole-'));
+ const fixture=path.join(__dirname,'mock-incremental-database-remote-populated','rendered','r');
+ try{
+  await fs.cp(fixture,dest,{recursive:true});
+  await fs.rm(path.join(dest,'journal','record|testfingerprnt|000000000000000000000000000006'));
+  await expect(snapshotFromRenderedReplica(capabilities,dest)).rejects.toThrow(/absent|hole|gap/i);
+ }finally{await fs.rm(dest,{recursive:true,force:true})}
+});
+
+test('Git recovery refuses a checkpoint whose record key disagrees with its body',async()=>{
+ const capabilities=getMockedRootCapabilities();
+ stubEnvironment(capabilities);stubLogger(capabilities);
+ const dest=await fs.mkdtemp(path.join(os.tmpdir(),'j3-corrupt-key-'));
+ const fixture=path.join(__dirname,'mock-incremental-database-remote-populated','rendered','r');
+ try{
+  await fs.cp(fixture,dest,{recursive:true});
+  const journal=path.join(dest,'journal');
+  const fifth=await fs.readFile(path.join(journal,'record|testfingerprnt|000000000000000000000000000005'));
+  await fs.writeFile(path.join(journal,'record|testfingerprnt|000000000000000000000000000006'),fifth);
+  await expect(snapshotFromRenderedReplica(capabilities,dest)).rejects.toThrow(/disagrees/);
+ }finally{await fs.rm(dest,{recursive:true,force:true})}
+});
+
 test('Git recovery refuses an inconsistent global last_node_index',async()=>{
  const capabilities=getMockedRootCapabilities();
  stubEnvironment(capabilities);stubLogger(capabilities);
