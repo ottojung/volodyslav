@@ -84,9 +84,9 @@ It also remains reasonably robust because it compares canonical fixture director
 
 File: `backend/tests/populated_incremental_database_remote_smoke.test.js`.
 
-This is the behavioral smoke test over a realistic populated fixture. It ensures the repository is not just structurally sound, but also **operationally healthy** through the public interface.
+This is the behavioral smoke test over a realistic populated fixture. It ensures the repository is not just structurally sound, but also **operationally healthy** through the public interface. The fixture is already a current-version Journal replica, so this layer does not exercise migration; Layer 2 owns the pre-version-to-current migration coverage.
 
-Migration coverage is owned by Layer 2, not this layer: the fixture is already a Journal replica at the running version, so startup performs receiver-less absent-state restoration and deliberately runs no bootstrap or migration. This layer's subject is post-restore operation over a current Journal replica.
+The test also checks the current-replica startup path: after receiver-less absent-state restoration, startup deliberately runs no bootstrap or migration. A separate startup-lifecycle describe block checks the fixture's bootstrap-resume compatibility; neither check migrates an old-version fixture.
 
 ### What this smoke test covers
 
