@@ -31,9 +31,14 @@
 /** @typedef {import('./sync_publication').SyncPublicationRequest} SyncPublicationRequest */
 
 const {
+    SyncPublicationPlanError,
     planSyncPublication,
     publishSyncOutcome,
 } = require("./sync_publish");
+
+const {
+    stageRecordArray,
+} = require("./staged_records");
 
 const {
     ResetSourceIsNotAJournalSnapshotError,
@@ -49,11 +54,13 @@ const {
 
 module.exports = {
     ResetSourceIsNotAJournalSnapshotError,
+    SyncPublicationPlanError,
     SyncSourceIsNotAJournalSnapshotError,
     isResetSourceIsNotAJournalSnapshotError,
     isSyncSourceIsNotAJournalSnapshotError,
     planSyncPublication,
     publishSyncOutcome,
     resetJournalReceiverToSnapshot,
+    stageRecordArray,
     syncJournalReceiverToSource,
 };

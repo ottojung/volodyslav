@@ -30,7 +30,7 @@ const {
 } = require("./journal");
 const { GRAPH_SCHEME_KEY, LAST_NODE_INDEX_KEY, parseGraphScheme } = require("./database");
 const { getRootDatabase } = require("./database");
-const { planSyncPublication } = require("./journal_publish");
+const { planSyncPublication, SyncPublicationPlanError, stageRecordArray } = require("./journal_publish");
 const { appendRetainedStateOp } = require("./journal_store");
 const { buildRetainedReplayStateFromRecords } = require("./journal_retained");
 const { makeCurrentInputKeysOfNode } = require("./journal_bootstrap_startup");
@@ -422,7 +422,12 @@ function committedPairOperations(snapshot, target) {
  * The journal and projection are lowered through `planSyncPublication`, the one
  * place which knows how a projection becomes persisted graph bytes, so the
  * restored database's graph is exactly `project(records)` by the same rule a
- * synchronization or reset uses.
+ * synchronization or reset uses. The retained history is history-sized, so it is
+ * staged into the fresh database first, in bounded chunks, and the final batch
+ * carries only the graph-sized cutover: the projection, the committed-pair
+ * writer state and the maintained proof summary. A fault during staging throws
+ * before that batch, so a retry re-stages the same deterministic record keys
+ * over the abandoned partial stage.
  *
  * @param {DatabaseCapabilities} capabilities
  * @param {ContinuationSafeSnapshot} snapshot
@@ -435,8 +440,13 @@ async function restoreAbsentFrom(capabilities, snapshot) {
     const rootDatabase = await getRootDatabase(capabilities);
     try {
         const target = rootDatabase.getSchemaStorage();
+        await stageRecordArray(
+            target,
+            snapshot.records,
+            (recordKey) => new SyncPublicationPlanError("record", "the snapshot cannot be lowered: record " + recordKey + " has no storage key")
+        );
         const outcome = {
-            records: snapshot.records,
+            records: [],
             projection: snapshot.projection,
             publication: { writerState: snapshot.writerState },
         };

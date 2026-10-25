@@ -161,8 +161,36 @@ async function stageGrowthRecords(target, recordGrowth, makeError) {
     await writer.flush();
 }
 
+/**
+ * Stage a held record array into the inactive target in bounded chunks.
+ *
+ * The records are written under their own author-and-coordinate keys one at a
+ * time through the same bounded writer the retained and growth halves use, so a
+ * history-sized array never becomes a history-sized batch: each durable write
+ * carries at most `RAW_BATCH_CHUNK_SIZE` operations. The keys are deterministic
+ * in the records, so a fault partway through leaves an abandoned partial stage
+ * a retry overwrites rather than accumulates.
+ *
+ * @param {SchemaStorage} target
+ * @param {ReadonlyArray<JournalRecord>} records
+ * @param {(recordKey: string) => Error} makeError
+ * @returns {Promise<void>}
+ */
+async function stageRecordArray(target, records, makeError) {
+    const writer = new BoundedBatchWriter(target);
+    for (const record of records) {
+        const key = makeJournalRecordKey(record.id.author, record.id.sequence);
+        if (key instanceof Error) {
+            throw makeError(journalAuthorToString(record.id.author));
+        }
+        await writer.push(target.journal.putOp(key, stringToJournalText(encodeJournalRecord(record))));
+    }
+    await writer.flush();
+}
+
 module.exports = {
     BoundedBatchWriter,
     stageGrowthRecords,
+    stageRecordArray,
     stageRetainedRecords,
 };
