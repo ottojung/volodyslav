@@ -94,6 +94,7 @@ const {
 } = require("../src/generators/incremental_graph/journal_reset/pass2");
 
 const { planFreshnessMarkers } = require("../src/generators/incremental_graph/journal_reset/pass3");
+const { iterateResetDomain } = require("../src/generators/incremental_graph/journal_reset/pass1");
 
 const WRITER_LOCAL = "aaaaaaaaa";
 const WRITER_PEER = "bbbbbbbbb";
@@ -356,6 +357,26 @@ function outcomeOf(result) {
 }
 
 describe("reset Pass 2/Pass 3 over a domain larger than the work-queue threshold", () => {
+    test("Pass 1 merges insertion-ordered selected heads with the canonical target order", () => {
+        const insertionOrder = [9, 1, 7, 0, 12, 3];
+        const selections = new Map(insertionOrder.map((id) => [keyOf(id), {
+            nodeKey: nodeOf(id),
+            winner: undefined,
+        }]));
+        const target = {
+            occurrences: [0, 2, 4, 7, 11].map((id) => ({
+                nodeKeyString: keyOf(id),
+                nodeKey: nodeOf(id),
+            })),
+        };
+
+        const entries = [...iterateResetDomain({ selections, target })()];
+        const expected = [0, 12, 1, 2, 3, 4, 7, 11, 9].map(keyOf);
+        expect(entries.map((entry) => entry.nodeKeyString)).toEqual(expected);
+        expect(entries.filter((entry) => entry.selection !== undefined)).toHaveLength(insertionOrder.length);
+        expect(entries.filter((entry) => entry.target !== undefined)).toHaveLength(5);
+    });
+
     test("Pass 2 reads the eligible-certificate union from the maintained summary and barriers every unwanted edge", async () => {
         // The receiver proves every node against its predecessor, so each node has
         // one eligible certificate; the target wants no incoming edge, so the union
