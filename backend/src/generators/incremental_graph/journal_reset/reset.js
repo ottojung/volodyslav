@@ -55,9 +55,7 @@
 /** @typedef {import('./source').ResetSource} ResetSource */
 
 const {
-    isValueEvent,
     makeJournalProjectionError,
-    nodeKeyToCanonicalString,
 } = require("../journal");
 const { reconcileRetainedWriterHead } = require("../journal_store");
 const {
@@ -67,7 +65,8 @@ const {
 } = require("../journal_sync");
 const { finalizeResetRecords, ResetPublicationClass } = require("./authoring");
 const { verifyTargetEquivalence } = require("./equivalence");
-const { deleteRequestOf, iterateResetDomain, valueRequestOf } = require("./pass1");
+const { authorPassOne } = require("./pass1_authoring");
+const { iterateResetDomain } = require("./pass1");
 const {
     eligibleEffectiveProofUnion,
     planProofBarriers,
@@ -315,36 +314,9 @@ async function resetToSource(request) {
     // ---- Pass 1: target presence and value occurrences -------------------
     /** @type {Map<string, ResetValueId>} */
     const valueIds = new Map();
-    /** @type {import('./authoring').ResetRequest[]} */
-    const presenceRequests = [];
-    for (const entry of domain()) {
-        const request = valueRequestOf(entry);
-        if (request !== undefined) {
-            presenceRequests.push(request);
-            continue;
-        }
-        const winner = entry.selection === undefined ? undefined : entry.selection.winner;
-        if (winner !== undefined && isValueEvent(winner)) {
-            valueIds.set(entry.nodeKeyString, winner.id);
-        }
-    }
-    /** @type {import('./authoring').ResetRequest[]} */
-    const absenceRequests = [];
-    for (const entry of domain()) {
-        const request = deleteRequestOf(entry);
-        if (request !== undefined) {
-            absenceRequests.push(request);
-        }
-    }
-    const passOne = allocateInto([...presenceRequests, ...absenceRequests]);
+    const passOne = authorPassOne({ domain, valueIds, allocateInto });
     if ("error" in passOne) {
         return passOne;
-    }
-    for (const record of passOne.publication.records) {
-        if (!isValueEvent(record)) {
-            continue;
-        }
-        valueIds.set(nodeKeyToCanonicalString(record.node), record.id);
     }
     /** @type {Map<string, NodeKey>} */
     const targetNodes = new Map();
