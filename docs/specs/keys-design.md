@@ -209,6 +209,10 @@ Delete removes:
 
 Migration preserves identifiers for `keep`, `replace`, and `invalidate`, and
 allocates fresh identifiers for `create` using the same fingerprint/index scheme.
+In particular, `replace` changes the semantic value occurrence without changing
+the materialized node's `NodeIdentifier`; its new Journal `ValueId` is distinct
+from that storage identity. The migration decision semantics are owned by
+`incremental-graph-journal-migrations.md` §11.
 
 ### last_node_index
 
