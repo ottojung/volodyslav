@@ -77,7 +77,8 @@ const { makeCurrentInputKeysOfNode } = require("./journal_bootstrap_startup");
  * The proof of those properties is guaranteed by:
  * - This class can only be introduced through these functions:
  *   - `makeContinuationSafeSnapshot(...)`: satisfies the properties because it
- *     validates every field against its type before constructing the value, and
+ *     validates every field against its type before constructing the value,
+ *     copies and freezes the retained record array and committed writer state,
  *     returns a `JournalError` instead of a snapshot when any field is absent
  *     or ill-typed.
  *
@@ -97,9 +98,15 @@ class ContinuationSafeSnapshotClass {
      */
     constructor(localWriter, records, projection, writerState, databaseVersion, graphSchemeString) {
         this.localWriter = localWriter;
-        this.records = records;
+        this.records = Object.freeze(records.slice());
         this.projection = projection;
-        this.writerState = writerState;
+        this.writerState = Object.freeze({
+            localWriter: writerState.localWriter,
+            writerHead: writerState.writerHead,
+            committedFrontier: writerState.committedFrontier,
+            authorityHighWater: writerState.authorityHighWater,
+            allocatorWatermark: writerState.allocatorWatermark,
+        });
         this.databaseVersion = databaseVersion;
         this.graphSchemeString = graphSchemeString;
         Object.freeze(this);

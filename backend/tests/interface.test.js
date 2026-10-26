@@ -543,6 +543,15 @@ describe("generators/interface", () => {
             ]);
 
             const snapshot = await continuationSafeSnapshotOf(first._database);
+            const snapshotRecords = snapshot.records.slice();
+            const snapshotWriterState = { ...snapshot.writerState };
+            expect(snapshot.records).toEqual(snapshotRecords);
+            expect(snapshot.writerState).toEqual(snapshotWriterState);
+            expect(Object.isFrozen(snapshot.records)).toBe(true);
+            expect(Object.isFrozen(snapshot.writerState)).toBe(true);
+            expect(() => { snapshot.records.pop(); }).toThrow(TypeError);
+            expect(Reflect.set(snapshot.writerState, "allocatorWatermark", snapshot.writerState.allocatorWatermark + 1)).toBe(false);
+            expect(snapshot.writerState).toEqual(snapshotWriterState);
             const destroyedAllocatorWatermark = await first._database
                 .getSchemaStorage()
                 .global.get(LAST_NODE_INDEX_KEY);
