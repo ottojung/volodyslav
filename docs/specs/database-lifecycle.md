@@ -639,7 +639,7 @@ properties. Each property names its normative owner in this document.
 1. Startup MUST distinguish existing local state from absent local state
    before choosing bootstrap behavior (§4).
 2. Discovering expected synchronized state for the current host MUST NOT
-   silently degrade to fresh creation when restoration fails (§4.3).
+   silently degrade to fresh creation when restoration fails (§4.1, §4.3).
 3. The graph interface MUST NOT become initialized before the database is open
    and current, including successful completion of any required migration
    (§3, §12 `migration/startup`).

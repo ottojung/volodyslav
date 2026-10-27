@@ -287,13 +287,12 @@ The normative regression/property inventory is `incremental-graph-journal-testin
 
 Issue #1607 owns end-to-end change-sensitive synchronization complexity. Correctness must not be weakened for unstated performance goals.
 
-## 16a. Documentation cutover when Journal 3 lands
+## 16a. Documentation cutover
 
-The temporary shipped-vs-target documentation split exists only while Journal 3 is unimplemented. The implementation change is not complete until documentation is cut over with the code:
+The Journal 3 lifecycle and synchronization specifications are the canonical normative specifications. The documentation acceptance checks are:
 
-- replace or rewrite `incremental-graph-synchronization.md` so the canonical synchronization spec describes shipped Journal 3 behavior;
-- replace or rewrite `database-lifecycle.md` so the canonical lifecycle spec describes the shipped Journal 3 lifecycle;
-- fold the temporary target-design lifecycle document into the canonical lifecycle documentation, then remove that temporary file;
+- `incremental-graph-synchronization.md` describes Journal 3 synchronization behavior;
+- `database-lifecycle.md` describes the Journal 3 lifecycle; it is the lifecycle normative owner identified in `incremental-graph-journal-README.md`;
 - rewrite `docs/database-boot-sequence.md` so startup describes the shipped Journal 3 lifecycle: §7.1 (missing live DB) follows `database-lifecycle.md` §4 (`InstallationRecoverySource` query; restore only `Exists(ContinuationSafeSnapshot)`; fresh fingerprint only on `DefinitelyAbsent`; fail on indeterminate/error), deleting the `resetToHostname` attempt and the fallback to normal sync from an empty local database; §7.3 and the startup flow diagram follow the migration/bootstrap gate in `database-lifecycle.md` §8;
 - update `migration.md` together with the runtime migration implementation, deleting the legacy `override` API/error/decision documentation when the code path is deleted;
 - update `incremental-graph.md` REQ-IFACE-06..08 together with the runtime timestamp behavior so the canonical timestamp contract describes shipped Journal 3 semantics;
@@ -301,8 +300,8 @@ The temporary shipped-vs-target documentation split exists only while Journal 3 
 - rewrite `docs/release-safety.md` so all pre-Journal promises of checkpoint/database rollback—including §Durable checkpoints and rollback, the rollback failure-mode language, contributor guidance, and policy checklist—describe Journal 3's forward-only release recovery per `$id-5083197642258146`; checkpoints may remain useful for diagnosis/inspection but must not be presented as replacement authority for an existing Journal database or as permission to rewind remote publication;
 - rewrite `docs/migration_testing.md` Layer 2 and Layer 3 so fixture startup follows the Journal 3 lifecycle gate—pre-Journal bootstrap and any required Journal-aware migration complete before ordinary synchronization—rather than saying synchronization runs migration;
 - update `backend/tests/migration_fixture_populated_remote.test.js`, `backend/tests/populated_incremental_database_remote_smoke.test.js`, and their fixtures to exercise the Journal 3 startup lifecycle; a fixture representing pre-Journal state must supply the configured `CohortBootstrapSource`/canonical-bootstrap path instead of depending on synchronization to perform migration;
-- remove all “Journal 3 target design / not yet implemented / until implementation lands” status banners and other temporary shipped-vs-target routing text; and
-- re-run the normative-ownership/read-order audit so no canonical documentation points readers to a removed pre-Journal rule or temporary target file.
+- no canonical documentation routes readers to a temporary target lifecycle document or describes Journal 3 as unimplemented; and
+- the normative-ownership/read-order audit confirms references resolve to the current owner documents.
 
 There must be one obvious canonical shipped specification for synchronization, lifecycle, migration, fingerprint/identity, and allocator behavior after Journal 3 implementation lands.
 
