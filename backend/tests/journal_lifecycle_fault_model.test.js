@@ -28,7 +28,7 @@ const os = require("os");
 const path = require("path");
 
 const { getRootDatabase } = require("../src/generators/incremental_graph/database");
-const { readRetainedJournal } = require("../src/generators/incremental_graph/journal_store");
+const { readCommittedWriterState, readRetainedJournal } = require("../src/generators/incremental_graph/journal_store");
 const {
     isJournalGapError,
     isJournalSourceReadError,
@@ -341,5 +341,34 @@ describe("Journal 3 §7 lifecycle fault model: physical damage of the local stor
         await expect(second.ensureInitialized()).rejects.toThrow(
             /refusing to re-initialize an existing replica as fresh/
         );
+    });
+
+    test("(f) a corrupted committed-pair state record fails closed instead of scanning history", async () => {
+        const capabilities = testCapabilities();
+        await buildLiveJournal(capabilities);
+
+        // Corrupt the Journal committed-pair metadata itself, which is what a torn
+        // write or an external writer leaves behind. Routine open must report the
+        // metadata as unreadable rather than ignoring it and rescanning retained
+        // history as if the replica had published nothing.
+        const { db, entries } = await rawLiveDatabase(capabilities);
+        await db._rawPut(stateKey(entries), "{not valid json");
+        await db.close();
+
+        const db2 = await getRootDatabase(capabilities);
+        try {
+            const committed = await readCommittedWriterState(
+                db2.getSchemaStorage().journal,
+                db2.getFingerprint()
+            );
+            expect(committed).toBeInstanceOf(Error);
+            if (!(committed instanceof Error)) {
+                return;
+            }
+            expect(isJournalSourceReadError(committed)).toBe(true);
+            expect(committed.message).toMatch(/malformed JSON/);
+        } finally {
+            await db2.close();
+        }
     });
 });
