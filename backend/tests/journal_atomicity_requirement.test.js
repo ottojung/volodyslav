@@ -39,6 +39,7 @@ const {
     readRetainedJournal,
 } = require("../src/generators/incremental_graph/journal_store");
 const { validateJournalReplica, isValueEvent, isInvalidateEvent } = require("../src/generators/incremental_graph/journal");
+const { journalSequenceToString } = require("../src/generators/incremental_graph/journal");
 
 const allEventsModule = require("../src/generators/individual/all_events/wrapper");
 const metaEventsComputor = require("../src/generators/individual/meta_events/wrapper").computor;
@@ -217,5 +218,32 @@ describe("graph and journal publication is one atomic write", () => {
         expect(await graph.getFreshness("all_events")).toBeUndefined();
         const { records } = await readRecoveredJournal(db);
         expect(records.length).toBe(0);
+    });
+
+    test("a failed publication leaves no durable sequence hole for the retry", async () => {
+        const namespaceSublevel = db.getSchemaStorage();
+        const batch = namespaceSublevel.batch;
+        namespaceSublevel.batch = async () => {
+            throw new Error("injected publication failure");
+        };
+        try {
+            await expect(graph.pull("event_context")).rejects.toThrow("injected publication failure");
+        } finally {
+            namespaceSublevel.batch = batch;
+        }
+
+        await graph.pull("event_context");
+
+        const { records, writerState, replica } = await readRecoveredJournal(db);
+        expect(validateJournalReplica(replica)).not.toBeInstanceOf(Error);
+        const ownSequences = records
+            .map((record) => journalSequenceToString(record.id.sequence))
+            .map((text) => Number(text))
+            .sort((left, right) => left - right);
+        expect(ownSequences.length).toBeGreaterThan(0);
+        expect(ownSequences).toEqual(
+            Array.from({ length: ownSequences.length }, (_, index) => index + 1)
+        );
+        expect(journalSequenceToString(writerState.writerHead)).toBe(String(ownSequences.length));
     });
 });
