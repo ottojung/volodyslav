@@ -74,7 +74,12 @@ describe("Journal 3 documentation contracts restored against the pre-Journal bas
 
     test("migration-testing Layer 3 states its migration-coverage boundary", () => {
         const text = read("docs/migration_testing.md");
-        expect(text).toMatch(/Migration coverage is owned by Layer 2/);
+        expect(text).toMatch(
+            /this layer does not exercise migration; Layer 2 owns .* migration coverage/,
+        );
+        expect(text).toMatch(
+            /neither check migrates an old-version fixture/,
+        );
     });
 
     test("the rollback-classification cross-reference points at the surviving unsupported-operations section", () => {
