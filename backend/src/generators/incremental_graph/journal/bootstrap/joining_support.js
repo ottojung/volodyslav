@@ -26,6 +26,7 @@ const {
 } = require("../../database");
 const { makeJournalPublicationError } = require("../errors");
 const {
+    compareAuthorityTime,
     journalRecordIdToString,
     journalSequenceToString,
     makeAuthorityTime,
@@ -67,15 +68,7 @@ const {
  * @returns {number}
  */
 function compareAuthorityAscending(left, right) {
-    if (left.physical !== right.physical) {
-        return left.physical < right.physical ? -1 : 1;
-    }
-    const leftLogical = Number(journalSequenceToString(left.logical));
-    const rightLogical = Number(journalSequenceToString(right.logical));
-    if (leftLogical === rightLogical) {
-        return 0;
-    }
-    return leftLogical < rightLogical ? -1 : 1;
+    return compareAuthorityTime(left, right);
 }
 
 /**
@@ -175,7 +168,7 @@ class JoiningCursorClass {
         if (physical === undefined) {
             const next = makeAuthorityTime(
                 this.highWater.physical,
-                String(Number(journalSequenceToString(this.highWater.logical)) + 1)
+                journalSequenceToString(requireSuccessorJournalSequence(this.highWater.logical))
             );
             if (next instanceof Error) {
                 return { error: next };
