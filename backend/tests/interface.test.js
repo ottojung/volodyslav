@@ -577,6 +577,41 @@ describe("generators/interface", () => {
             await second._database.close();
         });
 
+        test("V3 allocator companion: restore reuses an index owned only by the lost suffix", async () => {
+            const capabilities = await getTestCapabilities();
+            const first = makeInterface(() => capabilities);
+            await first.ensureInitialized();
+            await first.update([makeEvent("event-1", "First event")]);
+
+            const snapshot = await continuationSafeSnapshotOf(first._database);
+            const retainedWatermark = snapshot.writerState.allocatorWatermark;
+            expect(retainedWatermark).toBeGreaterThan(0);
+
+            // This allocation models an un-published local suffix allocation. The
+            // held recovery cut cannot later coexist with it under the Git recovery
+            // source's monotonic-publication contract, so it must not reserve its index.
+            const lostIdentifier = first._database.generateNodeIdentifier();
+            const lostIndex = Number(String(lostIdentifier).split("-")[0], 36);
+            expect(lostIndex).toBe(retainedWatermark + 1);
+            await first._database.close();
+
+            const liveDbPath = path.join(
+                capabilities.environment.workingDirectory(),
+                LIVE_DATABASE_WORKING_PATH
+            );
+            await capabilities.deleter.deleteDirectory(liveDbPath);
+            await restoreAbsentFrom(capabilities, snapshot);
+
+            const restored = makeInterface(() => capabilities);
+            await restored.ensureInitialized();
+            const restoredStorage = restored._database.getSchemaStorage();
+            await expect(restoredStorage.global.get(LAST_NODE_INDEX_KEY))
+                .resolves.toBe(retainedWatermark);
+            const nextIdentifier = restored._database.generateNodeIdentifier();
+            expect(String(nextIdentifier)).toBe(String(lostIdentifier));
+            await restored._database.close();
+        });
+
         test("V4: DefinitelyAbsent permits fresh creation", async () => {
             const capabilities = getMockedRootCapabilities();
             stubEnvironment(capabilities);
