@@ -7,8 +7,8 @@
  * `incremental-graph-journal-sync.md` §Streamability and `$id-4924739474925738` forbid the
  * complete retained Journal from being materialised in RAM as one collection.
  *
- * These tests drive the production publication front, `publishSyncReceiverOutcome`, over a
- * real LevelDB. The receiver's retained history is longer than `RAW_BATCH_CHUNK_SIZE`, so a
+ * These tests drive the production publication fronts, `publishSyncReceiverOutcome`
+ * and `publishResetOutcome`, over a real LevelDB. The receiver's retained history is longer than `RAW_BATCH_CHUNK_SIZE`, so a
  * front which folded it into the single cutover batch would issue one batch of every
  * retained record. The bounded staging path instead issues a sequence of chunks, each no
  * larger than `RAW_BATCH_CHUNK_SIZE`, before the cutover batch.
@@ -48,12 +48,18 @@ const {
 } = require("../src/generators/incremental_graph/journal_publish/sync_publication");
 
 const {
+    publishResetOutcome,
+} = require("../src/generators/incremental_graph/journal_publish/reset_publication");
+
+const {
     JOURNAL_STATE_KEY,
     readRetainedJournal,
 } = require("../src/generators/incremental_graph/journal_store");
 
 const { getMockedRootCapabilities } = require("./spies");
 const { stubDatetime, stubEnvironment, stubLogger } = require("./stubs");
+
+jest.setTimeout(120000);
 
 const WRITER_LOCAL = "aaaaaaaaa";
 const NOW = "2020-01-01T00:00:00.000Z";
@@ -264,6 +270,83 @@ describe("the publication front stages retained history in bounded chunks", () =
             });
 
             await expect(publishSyncReceiverOutcome({
+                target,
+                retainedSource: retainedSourceOf(HISTORY_LENGTH),
+                receiverVersion: "1.0.0",
+                receiverGraphScheme: "scheme",
+                receiverFingerprint: WRITER_LOCAL,
+                outcome: emptyOutcome(),
+            })).rejects.toThrow("injected staging failure");
+
+            const replica = await readRetainedJournal(target.journal);
+            if (replica instanceof Error) {
+                throw replica;
+            }
+            const staged = [...replica.values()].flat();
+            // The first chunk is durable and the rest is not: the cutover never ran.
+            expect(staged).toHaveLength(RAW_BATCH_CHUNK_SIZE);
+
+            const writerState = await target.journal.get(JOURNAL_STATE_KEY);
+            expect(writerState).toBeUndefined();
+        } finally {
+            await db.close();
+        }
+    });
+});
+
+describe("the reset front stages retained history in bounded chunks", () => {
+    test("a retained history longer than the chunk size is written in several bounded batches", async () => {
+        const capabilities = capabilitiesFor();
+        const batches = instrumentBatches(capabilities);
+        const db = await getRootDatabase(capabilities);
+        try {
+            batches.issued.length = 0;
+            const target = db.syncStagingStorage();
+            await publishResetOutcome({
+                target,
+                retainedSource: retainedSourceOf(HISTORY_LENGTH),
+                receiverVersion: "1.0.0",
+                receiverGraphScheme: "scheme",
+                receiverFingerprint: WRITER_LOCAL,
+                outcome: emptyOutcome(),
+            });
+
+            const recordBatches = batches.issued.filter(isRecordBatch);
+            expect(recordBatches.length).toBeGreaterThan(1);
+            for (const keys of recordBatches) {
+                expect(keys.length).toBeLessThanOrEqual(RAW_BATCH_CHUNK_SIZE);
+            }
+            const staged = recordBatches.reduce((total, keys) => total + keys.length, 0);
+            expect(staged).toBe(HISTORY_LENGTH);
+
+            const replica = await readRetainedJournal(target.journal);
+            if (replica instanceof Error) {
+                throw replica;
+            }
+            const retained = [...replica.values()].flat();
+            expect(retained).toHaveLength(HISTORY_LENGTH);
+        } finally {
+            await db.close();
+        }
+    });
+
+    test("a fault in a staging chunk fails the reset before the cutover state is written", async () => {
+        const capabilities = capabilitiesFor();
+        const batches = instrumentBatches(capabilities);
+        const db = await getRootDatabase(capabilities);
+        try {
+            batches.issued.length = 0;
+            const target = db.syncStagingStorage();
+            let recordBatchesSeen = 0;
+            batches.failOn((keys) => {
+                if (!isRecordBatch(keys)) {
+                    return false;
+                }
+                recordBatchesSeen += 1;
+                return recordBatchesSeen === 2;
+            });
+
+            await expect(publishResetOutcome({
                 target,
                 retainedSource: retainedSourceOf(HISTORY_LENGTH),
                 receiverVersion: "1.0.0",
