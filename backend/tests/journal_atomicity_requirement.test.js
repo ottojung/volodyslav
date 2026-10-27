@@ -246,4 +246,28 @@ describe("graph and journal publication is one atomic write", () => {
         );
         expect(journalSequenceToString(writerState.writerHead)).toBe(String(ownSequences.length));
     });
+
+    test("successive publications receive disjoint contiguous ranges with no hole", async () => {
+        // Checklist §4 requires concurrent successes to receive disjoint contiguous
+        // ranges; the sequential case must hold first. Three successive production
+        // publications (materialization, explicit invalidation, recompute) must
+        // partition the writer's sequence space 1..N with no gap, no overlap, and
+        // the committed writer head equal to the total.
+        await graph.pull("event_context");
+        await graph.invalidate("meta_events");
+        await graph.pull("event_context");
+
+        const { records, writerState, replica } = await readRecoveredJournal(db);
+        expect(validateJournalReplica(replica)).not.toBeInstanceOf(Error);
+        const ownSequences = records
+            .map((record) => journalSequenceToString(record.id.sequence))
+            .map((text) => Number(text))
+            .sort((left, right) => left - right);
+        expect(ownSequences.length).toBeGreaterThan(0);
+        expect(new Set(ownSequences).size).toBe(ownSequences.length);
+        expect(ownSequences).toEqual(
+            Array.from({ length: ownSequences.length }, (_, index) => index + 1)
+        );
+        expect(journalSequenceToString(writerState.writerHead)).toBe(String(ownSequences.length));
+    });
 });
