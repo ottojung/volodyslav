@@ -59,21 +59,24 @@ const {
 /**
  * The two computed outcomes a projection is lowered from.
  *
- * `SyncOutcome` and `ResetOutcome` differ in what they carry beyond the three fields
+ * `SyncOutcome` and `ResetOutcome` differ in what they carry beyond the two fields
  * this lowering reads — a synchronization reports whether it advanced the receiver's
  * state, a reset reports the same fact plus the settled `ValueId` of each target-present
  * node, and both report the retained replay state their records project to — and agree
- * on `records`, `projection` and `publication.writerState`, which are the whole of what
- * a lowering consumes. Both are therefore lowered by one rule rather than by two rules
+ * on `projection` and `publication.writerState`, which are the whole of what
+ * a lowering consumes. Each outcome's journal growth travels as a streaming
+ * `recordGrowth` which the publication front stages into the inactive target in
+ * bounded chunks, so the lowering itself carries no history-sized record array.
+ * Both are therefore lowered by one rule rather than by two rules
  * about what a projection persists.
  *
  * The proof of those properties is guaranteed by:
- * - `synchronizeRetainedJournal(...)`: it returns `records`, `projection` and
- *   `publication`, and `SyncPublication.writerState` is the committed state after
- *   `records`.
- * - `resetToSource(...)`: it returns `[...imported, ...authored]` as `records`, the
- *   final cut as `projection`, and `ResetPublicationClass(authored, state)`, whose
- *   `writerState` is the committed state after those records.
+ * - `synchronizeRetainedJournal(...)`: it returns `recordGrowth`, `projection`
+ *   and `publication`, and `SyncPublication.writerState` is the committed state
+ *   after the growth it stages.
+ * - `resetToSource(...)`: it returns `recordGrowth`, `projection` and
+ *   `ResetPublicationClass(authored, state)`, whose `writerState` is the
+ *   committed state after the growth it stages.
  *
  * `retainedState` is not lowered here: it is the cutover's own input, because
  * `incremental-graph-journal-sync.md` §Atomic publication publishes the derived
