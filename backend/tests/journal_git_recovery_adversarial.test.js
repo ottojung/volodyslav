@@ -66,6 +66,29 @@ test('Git recovery refuses a checkpoint with a forged allocator watermark',async
  }finally{await fs.rm(dest,{recursive:true,force:true})}
 });
 
+test('Git recovery refuses a checkpoint whose retained writer stream has a sequence hole',async()=>{
+ const capabilities=getMockedRootCapabilities();
+ stubEnvironment(capabilities);stubLogger(capabilities);
+ const dest=await fs.mkdtemp(path.join(os.tmpdir(),'j3-corrupt-stream-hole-'));
+ const fixture=path.join(__dirname,'mock-incremental-database-remote-populated','rendered','r');
+ try{
+  await fs.cp(fixture,dest,{recursive:true});
+  const recordsPath=path.join(dest,'journal');
+  const files=(await fs.readdir(recordsPath)).filter(name=>/^record\|[a-z]{9,}\|[0-9]{30}$/.test(name));
+  const byWriter=new Map();
+  for(const name of files){
+   const [,writer,sequence]=/^record\|([a-z]{9,})\|([0-9]{30})$/.exec(name);
+   const stream=byWriter.get(writer)||[];
+   stream.push({name,sequence});byWriter.set(writer,stream);
+  }
+  const stream=[...byWriter.values()].find(records=>records.length>1);
+  expect(stream).toBeDefined();
+  const removed=stream[1];
+  await fs.rm(path.join(recordsPath,removed.name));
+  await expect(snapshotFromRenderedReplica(capabilities,dest)).rejects.toThrow(/claims a committed prefix|absent/);
+ }finally{await fs.rm(dest,{recursive:true,force:true})}
+});
+
 test('Git recovery refuses an inconsistent global last_node_index',async()=>{
  const capabilities=getMockedRootCapabilities();
  stubEnvironment(capabilities);stubLogger(capabilities);
