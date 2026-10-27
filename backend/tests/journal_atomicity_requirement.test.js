@@ -39,6 +39,7 @@ const {
     readRetainedJournal,
 } = require("../src/generators/incremental_graph/journal_store");
 const { validateJournalReplica, isValueEvent, isInvalidateEvent } = require("../src/generators/incremental_graph/journal");
+const { isValidateEvent } = require("../src/generators/incremental_graph/journal/records");
 
 const allEventsModule = require("../src/generators/individual/all_events/wrapper");
 const metaEventsComputor = require("../src/generators/individual/meta_events/wrapper").computor;
@@ -182,6 +183,7 @@ describe("graph and journal publication is one atomic write", () => {
         expect(validateJournalReplica(replica)).not.toBeInstanceOf(Error);
         const materialized = records.filter(isValueEvent);
         expect(materialized.length).toBe(3);
+        expect(records.filter(isValidateEvent).length).toBe(3);
         expect(writerState.writerHead).toBeDefined();
     });
 
@@ -193,7 +195,12 @@ describe("graph and journal publication is one atomic write", () => {
 
         const after = await readRecoveredJournal(db);
         const fresh = after.records.filter(isInvalidateEvent);
-        expect(fresh.length).toBeGreaterThan(before.records.filter(isInvalidateEvent).length);
+        const previous = before.records.filter(isInvalidateEvent);
+        const newInvalidations = fresh.filter(event => !previous.includes(event));
+        expect(newInvalidations).toHaveLength(2);
+        expect(newInvalidations.map(event => event.reason).sort()).toEqual(["explicit", "propagated"]);
+        expect(newInvalidations.find(event => event.reason === "explicit").scope).toEqual({ kind: "node" });
+        expect(newInvalidations.find(event => event.reason === "propagated").scope.kind).toBe("value");
         expect(await graph.getFreshness("meta_events")).toBe("potentially-outdated");
     });
 
