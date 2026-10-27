@@ -24,6 +24,7 @@ const { getRootDatabase } = require("../src/generators/incremental_graph/databas
 const { createIncrementalGraph } = require("../src/generators/incremental_graph");
 const { readRetainedJournal } = require("../src/generators/incremental_graph/journal_store");
 const {
+    isInvalidateEvent,
     isValidateEvent,
     isValueEvent,
     isWriterStateRecord,
@@ -174,6 +175,28 @@ describe("the publication window one user-visible operation leaves open", () => 
         await graph.pull("event_context");
 
         expect(issued).toHaveLength(0);
+        await db.close();
+    });
+
+    test("an explicit invalidation publishes its graph and journal effects in one durable write", async () => {
+        const capabilities = testCapabilities();
+        const db = await getRootDatabase(capabilities);
+        const graph = await makeRealGraph(capabilities, db);
+        await graph.pull("event_context");
+        const issued = instrumentBatches(db);
+
+        await graph.invalidate("meta_events");
+
+        expect(issued).toHaveLength(1);
+        expect(issued[0]).toContain("freshness");
+        expect(issued[0]).toContain("valid");
+        expect(issued[0]).toContain("journal");
+
+        const replica = await readRetainedJournal(db.getSchemaStorage().journal);
+        expect(replica).not.toBeInstanceOf(Error);
+        const records = [...replica.values()].flat();
+        expect(records.filter(isInvalidateEvent)).toHaveLength(2);
+
         await db.close();
     });
 });
