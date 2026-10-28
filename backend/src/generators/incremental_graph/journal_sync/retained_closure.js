@@ -203,7 +203,6 @@ async function verifyClaimedObservation(event, author, sequence, index, receiver
         }
         return undefined;
     }
-    /** @type {any} */
     const nearest = await nearestRetainedSemantic(receiver, author, sequence, cache);
     if (nearest === undefined) {
         return undefined;
