@@ -45,17 +45,22 @@
  *   node, with no duplicate semantic input.
  *
  * Transitive closure of a context and authority extension are relations over the
- * complete admitted change set, so they are checked by `validateAdmittedRelations`
- * against a per-writer running maximum of the admitted records, not by reading
- * retained history. A coordinate the change set does not hold is a retained-prefix
- * coordinate whose closure and authority were established when the receiver
- * admitted it, so this module does not rescan it. `incremental-graph-journal-
+ * complete admitted change set plus the retained prefix the change set claims,
+ * so they are checked by `validateAdmittedRelationsWithRetained` against a
+ * per-writer running maximum of the admitted records together with positioned
+ * reads of the claimed retained coordinates. A coordinate the change set does
+ * not hold is a retained-prefix coordinate whose context and authority are
+ * resolved by reading that coordinate (and transitively what it observed) from
+ * the receiver, one positioned read per observed coordinate, never by
+ * rescanning unrelated retained history. `incremental-graph-journal-
  * theorems.md` Laws 8 and 8a prove shared-prefix identity — no writer forks — for
  * compatible supported inputs; they do not prove context closure, so closure is
- * checked here rather than assumed. Re-deriving it by reading the claimed prefixes
- * would break the change-bounded read bound that `storage.md`
- * §Synchronization/reset validation requires and that
- * `journal_sync_retained_state.test.js` pins.
+ * checked here rather than assumed. The positioned retained reads are the
+ * "retained context summaries/indexes" evidence that `sync.md` §Final replay
+ * and validation requires and the "as needed" retained evidence that
+ * `storage.md` §Synchronization/reset validation permits; the read count scales
+ * with the admitted change set, not with the retained history length, which is
+ * the bound `journal_sync_retained_state.test.js` pins.
  */
 
 /** @typedef {import('../journal/errors').AnyJournalError} JournalError */
@@ -70,7 +75,8 @@
 /** @typedef {import('../journal/types').NodeKey} NodeKey */
 /** @typedef {import('./admission').AdmittedIndex} AdmittedIndex */
 
-const { makeAdmittedIndex, validateAdmittedRelations, validateImportedRecord } = require("./admission");
+const { makeAdmittedIndex, validateImportedRecord } = require("./admission");
+const { validateAdmittedRelationsWithRetained } = require("./retained_closure");
 const { readRetainedOverlap } = require("./retained_overlap");
 
 const {
@@ -337,16 +343,22 @@ async function admitSuffix(suffix, frontier, currentInputKeysOfNode, index) {
  * @param {ImportedSuffix} suffix
  * @param {AdmittedIndex} index
  * @param {JournalFrontier} frontier - The complete union frontier.
+ * @param {JournalSource} receiver - The receiver's retained journal, for
+ *   positioned reads of claimed retained-prefix coordinates.
+ * @param {Map<string, import('../journal/records').JournalRecord>} retainedCache -
+ *   The per-operation memo of retained records, shared across all suffixes.
  * @returns {Promise<JournalError | undefined>}
  */
-async function checkSuffixRelations(suffix, index, frontier) {
+async function checkSuffixRelations(suffix, index, frontier, receiver, retainedCache) {
     const reader = suffix.reader();
     for (;;) {
         const record = await reader.nextRecord();
         if (record === undefined) {
             return reader.failure();
         }
-        const relations = validateAdmittedRelations(record, index, frontier);
+        const relations = await validateAdmittedRelationsWithRetained(
+            record, index, frontier, receiver, retainedCache
+        );
         if (relations !== undefined) {
             return relations;
         }
@@ -441,12 +453,15 @@ async function planForeignSuffixImport(plan) {
 
     // Transitive closure and authority extension are relations between a record and
     // every event it claims to have observed, so they are checked over the complete
-    // admitted change set rather than as each suffix is read. Every suffix is
-    // therefore admitted first into one running index, and then re-read to check
-    // each record against that complete index. The index is the only derived state
-    // which spans the change set; the records themselves are streamed twice and
-    // never held as one collection.
+    // admitted change set plus the retained prefix it claims rather than as each
+    // suffix is read. Every suffix is therefore admitted first into one running
+    // index, and then re-read to check each record against that complete index
+    // and the retained prefix. The index plus the per-operation retained-record
+    // memo are the only derived state which spans the change set; the records
+    // themselves are streamed twice and never held as one collection.
     const index = makeAdmittedIndex();
+    /** @type {Map<string, import('../journal/records').JournalRecord>} */
+    const retainedCache = new Map();
 
     for (const author of source.writers()) {
         if (journalAuthorToString(author) === localName) {
@@ -478,7 +493,7 @@ async function planForeignSuffixImport(plan) {
     }
 
     for (const suffix of suffixes) {
-        const relations = await checkSuffixRelations(suffix, index, frontier);
+        const relations = await checkSuffixRelations(suffix, index, frontier, receiver, retainedCache);
         if (relations !== undefined) {
             return { error: relations };
         }

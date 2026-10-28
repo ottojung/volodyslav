@@ -84,6 +84,18 @@ const NOW = '2020-01-01T00:00:00.000Z';
 const LATER = '2020-01-02T00:00:00.000Z';
 const WRITER_LOCAL = 'aaaaaaaaa';
 const WRITER_PEER = 'bbbbbbbbb';
+/**
+ * Peer fixtures model a writer which observed the receiver's retained prefix
+ * before authoring, so ordinary authority allocation (`incremental-graph-
+ * journal-types.md` §Ordinary authority allocation) puts their authority after
+ * the observed retained authority. Law 6 (`happenedBefore(E,F) =>
+ * authorityCompare(E,F) < 0`) requires the same. Every peer record therefore
+ * carries this base above its writer-local sequence number. The base sits just
+ * above the receiver's retained authority and below the synchronization
+ * allocation floor, so sync-authored normalization records still extend the
+ * imported authority they observe.
+ */
+const PEER_AUTHORITY_BASE = 4;
 const PAYLOAD = { type: 'entry_description', description: 'x' };
 const INSTANT = 1700000000000;
 const TEST_HOSTNAME = 'test-host-xyz';
@@ -165,12 +177,13 @@ function materialize(occurrence) {
     const nodeKey = nodeKeyToCanonicalString(occurrence.node);
     const valueId = occurrence.writer + ':' + occurrence.sequence;
     const valueSequence = String(Number(occurrence.sequence) + 1);
+    const authorityBase = occurrence.writer === WRITER_PEER ? PEER_AUTHORITY_BASE : 0;
     return [
         made(makeValueEvent(
             {
                 id: valueId,
                 context: contextOf(observedUpTo(occurrence.writer, occurrence.sequence, occurrence.context)),
-                authorityTime: authorityOf(Number(occurrence.sequence)),
+                authorityTime: authorityOf(authorityBase + Number(occurrence.sequence)),
                 node: occurrence.node,
             },
             identifierOf(nodeKey),
@@ -183,7 +196,7 @@ function materialize(occurrence) {
             {
                 id: occurrence.writer + ':' + valueSequence,
                 context: contextOf(observedUpTo(occurrence.writer, valueSequence, occurrence.context)),
-                authorityTime: authorityOf(Number(valueSequence)),
+                authorityTime: authorityOf(authorityBase + Number(valueSequence)),
                 node: occurrence.node,
             },
             valueId,
@@ -204,11 +217,12 @@ function materialize(occurrence) {
  * @param {ReadonlyArray<string>} occurrence.context
  */
 function materializeOnly(occurrence) {
+    const authorityBase = occurrence.writer === WRITER_PEER ? PEER_AUTHORITY_BASE : 0;
     return made(makeValueEvent(
         {
             id: occurrence.writer + ':' + occurrence.sequence,
             context: contextOf(observedUpTo(occurrence.writer, occurrence.sequence, occurrence.context)),
-            authorityTime: authorityOf(Number(occurrence.sequence)),
+            authorityTime: authorityOf(authorityBase + Number(occurrence.sequence)),
             node: occurrence.node,
         },
         identifierOf(nodeKeyToCanonicalString(occurrence.node)),
@@ -228,11 +242,12 @@ function materializeOnly(occurrence) {
  * @param {ReadonlyArray<string>} deletion.context
  */
 function deletionOf(deletion) {
+    const authorityBase = deletion.writer === WRITER_PEER ? PEER_AUTHORITY_BASE : 0;
     return made(makeDeleteEvent(
         {
             id: deletion.writer + ':' + deletion.sequence,
             context: contextOf(deletion.context),
-            authorityTime: authorityOf(Number(deletion.sequence)),
+            authorityTime: authorityOf(authorityBase + Number(deletion.sequence)),
             node: deletion.node,
         },
         'operation'

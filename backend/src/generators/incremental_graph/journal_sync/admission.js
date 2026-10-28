@@ -19,17 +19,22 @@
  *
  * Transitive closure and authority extension are relations between a record and
  * every event it claims to have observed, so they are checked by
- * `validateAdmittedRelations` against the complete set of records one operation
- * admits. The set is the change set `C`, not the retained history: the check
- * folds the admitted records into a per-writer running maximum of their contexts
- * and authority (`makeAdmittedIndex`), and each record is compared against the
- * maximum of the writers it claims. A claimed coordinate whose writer retains nothing in this operation's
- * change set is a retained-prefix coordinate; its context and authority belong to
- * the receiver's already validated history and are not rescanned here. This is
- * the bounded form `incremental-graph-journal-storage.md` §Synchronization/reset
- * validation permits, and it rejects the `incremental-graph-journal-well-
- * formedness.md` §Transitive closure malformed history as soon as the offending
- * records are part of the admitted suffix.
+ * `validateAdmittedRelationsWithRetained` (in `retained_closure.js`) against the
+ * complete set of records one operation admits plus the retained prefix those
+ * records claim. The check folds the admitted records into a per-writer running
+ * maximum of their contexts and authority (`makeAdmittedIndex`), and each record
+ * is compared against the maximum of the writers it claims. A claimed coordinate
+ * no admitted maximum covers is a retained-prefix coordinate; its context and
+ * authority are resolved by positioned reads of that coordinate (and,
+ * transitively, of what it observed) from the receiver, never by rescanning
+ * unrelated retained history. This is the bounded form
+ * `incremental-graph-journal-sync.md` §Final replay and validation requires
+ * ("transitive closure against retained context summaries/indexes") and
+ * `incremental-graph-journal-storage.md` §Synchronization/reset validation
+ * permits ("using retained indexes/committed metadata as needed"), and it rejects
+ * the `incremental-graph-journal-well-formedness.md` §Transitive closure
+ * malformed history whether the offending records are part of the admitted
+ * suffix or of the retained prefix the suffix claims.
  *
  * `incremental-graph-journal-theorems.md` Law 8a proves shared-prefix identity —
  * no writer forks — for compatible supported inputs; it does not prove context
@@ -58,7 +63,6 @@
 const {
     authorityCompare,
     compareJournalSequence,
-    isInvalidateEvent,
     isSameJournalAuthor,
     isSemanticEvent,
     isValidateEvent,
@@ -70,7 +74,6 @@ const {
     makeJournalCausalClosureError,
     makeJournalRecordValidationError,
     makeJournalReferenceCausalityError,
-    nodeKeyToCanonicalString,
     predecessorJournalSequence,
     validateCompleteLocalPrefix,
     validateCurrentShapeBasis,
@@ -79,6 +82,12 @@ const {
     validateRetainedRangeCoverage,
     ZERO_JOURNAL_SEQUENCE,
 } = require("../journal");
+
+const {
+    basisInputsOf,
+    referencedIdsOf,
+    validateAdmittedReferences,
+} = require("./retained_closure");
 
 /**
  * Is the coordinate a record references covered by what that record observed?
@@ -108,48 +117,6 @@ function referenceIsObserved(event, referenced) {
     const predecessor = predecessorJournalSequence(record.id.sequence);
     return !(predecessor instanceof Error) &&
         compareJournalSequence(referenced.sequence, predecessor) <= 0;
-}
-
-/**
- * The ValueId coordinates one record names, or an empty array when it names none.
- *
- * A validation names its target occurrence and, for every explicit input, the
- * occurrence it used as that input; `incremental-graph-journal-well-formedness.md`
- * section Validation basis rules items 4 and 5 require each non-`"unknown"` basis
- * value to be a retained ValueEvent of the declared input node that happened-before
- * the validation, so every basis occurrence is a coordinate the record names. A
- * value scope and a proof scope both name a ValueId: they retire something about
- * the named occurrence. Only the node scope names no coordinate.
- *
- * @param {JournalRecord} record
- * @returns {ReadonlyArray<JournalRecordId>}
- */
-function referencedIdsOf(record) {
-    if (isValidateEvent(record)) {
-        const references = [record.value];
-        for (const entry of record.basis) {
-            if (entry.value !== "unknown") {
-                references.push(entry.value);
-            }
-        }
-        return references;
-    }
-    if (record.kind === "invalidate" && record.scope.kind !== "node") {
-        return [record.scope.value];
-    }
-    return [];
-}
-
-/**
- * The canonical NodeKey identities a record's validation basis names.
- * @param {JournalRecord} record
- * @returns {ReadonlyArray<string>}
- */
-function basisInputsOf(record) {
-    if (!isValidateEvent(record)) {
-        return [];
-    }
-    return record.basis.map((entry) => nodeKeyToCanonicalString(entry.input));
 }
 
 /**
@@ -438,91 +405,6 @@ function validateAdmittedAuthority(event, index) {
  */
 function makeAdmittedIndex() {
     return new AdmittedIndexClass();
-}
-
-/**
- * Check that a ValueId one admitted record names resolves to a `ValueEvent` of
- * the expected node.
- *
- * A coordinate beyond the union frontier is not retained at all, so the
- * reference is impossible and is rejected. A coordinate at or below the frontier
- * which the change set does not hold is a retained-prefix coordinate whose
- * record was validated when the receiver admitted it, so this operation does not
- * rescan it. A coordinate the change set does hold is resolved directly: it must
- * be a `ValueEvent` of the node the reference declares, exactly as whole-history
- * validation requires. Resolving an admitted coordinate visits one admitted
- * record and never retained history, so the check stays change-bounded.
- *
- * @param {SemanticEvent} event
- * @param {JournalRecordId} referenceId
- * @param {NodeKey} expectedNode
- * @param {JournalFrontier} frontier
- * @param {AdmittedIndexClass} index
- * @returns {JournalError | undefined}
- */
-function validateAdmittedReference(event, referenceId, expectedNode, frontier, index) {
-    const label = journalRecordIdToString(event.id);
-    if (compareJournalSequence(
-        referenceId.sequence,
-        journalSequenceAtFrontier(frontier, referenceId.author)
-    ) > 0) {
-        return makeJournalRecordValidationError("referenced ValueId is not retained", label);
-    }
-    const resolved = index.recordOf(referenceId);
-    if (resolved === undefined) {
-        return undefined;
-    }
-    if (!resolved.isValue) {
-        return makeJournalRecordValidationError(
-            "referenced ValueId is not a ValueEvent",
-            label
-        );
-    }
-    if (nodeKeyToCanonicalString(resolved.node) !== nodeKeyToCanonicalString(expectedNode)) {
-        return makeJournalRecordValidationError(
-            "referenced ValueId belongs to another semantic node",
-            label
-        );
-    }
-    return undefined;
-}
-
-/**
- * Check the self-described references of one admitted record against the
- * admitted change set.
- *
- * A validation names its target occurrence and, for each explicit input, the
- * occurrence it used as that input; a value- or proof-scoped invalidation names
- * the occurrence it retires. Each is a `ValueEvent` of the record's own node (or
- * of the named input) in whole-history well-formedness, so each is resolved here
- * for the coordinates the change set holds.
- *
- * @param {SemanticEvent} event
- * @param {JournalFrontier} frontier
- * @param {AdmittedIndexClass} index
- * @returns {JournalError | undefined}
- */
-function validateAdmittedReferences(event, frontier, index) {
-    if (isValidateEvent(event)) {
-        const target = validateAdmittedReference(event, event.value, event.node, frontier, index);
-        if (target !== undefined) {
-            return target;
-        }
-        for (const entry of event.basis) {
-            if (entry.value === "unknown") {
-                continue;
-            }
-            const basis = validateAdmittedReference(event, entry.value, entry.input, frontier, index);
-            if (basis !== undefined) {
-                return basis;
-            }
-        }
-        return undefined;
-    }
-    if (isInvalidateEvent(event) && event.scope.kind !== "node") {
-        return validateAdmittedReference(event, event.scope.value, event.node, frontier, index);
-    }
-    return undefined;
 }
 
 /**
