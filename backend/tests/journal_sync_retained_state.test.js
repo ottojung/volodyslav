@@ -45,6 +45,7 @@ const {
     makeWriterStateRecord,
     nodeKeyToCanonicalString,
     makeReplicaSource,
+    suffixReaderOf,
 } = require("../src/generators/incremental_graph/journal");
 
 const { withCollectedRecords } = require("./journal_record_growth_helper");
@@ -77,6 +78,18 @@ const WRITER_LOCAL = "aaaaaaaaa";
 const WRITER_PEER = "bbbbbbbbb";
 const PAYLOAD = { type: "entry_description", description: "x" };
 const INSTANT = 1700000000000;
+/**
+ * Peer fixtures model a writer which observed the receiver's retained prefix
+ * before authoring, so ordinary authority allocation (`incremental-graph-
+ * journal-types.md` §Ordinary authority allocation) puts their authority after
+ * the observed retained authority. Law 6 (`happenedBefore(E,F) =>
+ * authorityCompare(E,F) < 0`) requires the same. Every peer record therefore
+ * carries this base above its writer-local sequence number. The base sits above
+ * the receiver's retained authority (including the unrelated-leaf extension)
+ * and below the synchronization allocation floor, so sync-authored
+ * normalization records still extend the imported authority they observe.
+ */
+const PEER_AUTHORITY_BASE = 100;
 
 /**
  * `C -> B -> A`, plus the unrelated leaf `D`, so a receiver's retained history can be
@@ -159,12 +172,13 @@ function materialize(occurrence) {
     const nodeKey = nodeKeyToCanonicalString(occurrence.node);
     const valueId = occurrence.writer + ":" + occurrence.sequence;
     const valueSequence = String(Number(occurrence.sequence) + 1);
+    const authorityBase = occurrence.writer === WRITER_PEER ? PEER_AUTHORITY_BASE : 0;
     return [
         made(makeValueEvent(
             {
                 id: valueId,
                 context: contextOf(observedUpTo(occurrence.writer, occurrence.sequence, occurrence.context)),
-                authorityTime: authorityOf(Number(occurrence.sequence)),
+                authorityTime: authorityOf(authorityBase + Number(occurrence.sequence)),
                 node: occurrence.node,
             },
             identifierOf(nodeKey),
@@ -177,7 +191,7 @@ function materialize(occurrence) {
             {
                 id: occurrence.writer + ":" + valueSequence,
                 context: contextOf(observedUpTo(occurrence.writer, valueSequence, occurrence.context)),
-                authorityTime: authorityOf(Number(valueSequence)),
+                authorityTime: authorityOf(authorityBase + Number(valueSequence)),
                 node: occurrence.node,
             },
             valueId,
@@ -199,11 +213,12 @@ function materialize(occurrence) {
  * @returns {import("../src/generators/incremental_graph/journal").JournalRecord}
  */
 function materializeOnly(occurrence) {
+    const authorityBase = occurrence.writer === WRITER_PEER ? PEER_AUTHORITY_BASE : 0;
     return made(makeValueEvent(
         {
             id: occurrence.writer + ":" + occurrence.sequence,
             context: contextOf(observedUpTo(occurrence.writer, occurrence.sequence, occurrence.context)),
-            authorityTime: authorityOf(Number(occurrence.sequence)),
+            authorityTime: authorityOf(authorityBase + Number(occurrence.sequence)),
             node: occurrence.node,
         },
         identifierOf(nodeKeyToCanonicalString(occurrence.node)),
@@ -238,15 +253,25 @@ function replicaOf(records) {
  * nothing the interface did not already offer: it makes the number of records the
  * operation traverses observable.
  *
+ * The wrapper distinguishes sequential prefix reads from positioned suffix reads:
+ * `reads` counts records delivered through `prefixReaderOf` (a sequential scan
+ * of a writer's retained prefix), while `indexedReads` counts records delivered
+ * through `suffixReaderOf` (a positioned seek to a claimed coordinate, which a
+ * durable source opens as a range rather than by traversing the prefix before
+ * it). The retained closure check may only use the latter: resolving a claimed
+ * retained coordinate must never rescan the retained prefix before it.
+ *
  * @param {import("../src/generators/incremental_graph/journal/oracle/record_source").JournalSource} source
- * @returns {import("../src/generators/incremental_graph/journal/oracle/record_source").JournalSource & {reads: () => number, writersCalls: () => number, retainedLengthCalls: () => number}}
+ * @returns {import("../src/generators/incremental_graph/journal/oracle/record_source").JournalSource & {reads: () => number, indexedReads: () => number, writersCalls: () => number, retainedLengthCalls: () => number}}
  */
 function countingSource(source) {
     let reads = 0;
+    let indexedReads = 0;
     let writersCalls = 0;
     let retainedLengthCalls = 0;
     return {
         reads: () => reads,
+        indexedReads: () => indexedReads,
         writersCalls: () => writersCalls,
         retainedLengthCalls: () => retainedLengthCalls,
         writers: () => {
@@ -262,6 +287,36 @@ function countingSource(source) {
             return {
                 nextRecord: () => {
                     reads += 1;
+                    return reader.nextRecord();
+                },
+                failure: () => reader.failure(),
+            };
+        },
+        suffixReaderOf: (author, fromSequence) => {
+            if (source.suffixReaderOf === undefined) {
+                return suffixReaderOf(
+                    {
+                        writers: () => source.writers(),
+                        retainedLengthOf: (held) => source.retainedLengthOf(held),
+                        prefixReaderOf: (held) => {
+                            const reader = source.prefixReaderOf(held);
+                            return {
+                                nextRecord: () => {
+                                    reads += 1;
+                                    return reader.nextRecord();
+                                },
+                                failure: () => reader.failure(),
+                            };
+                        },
+                    },
+                    author,
+                    fromSequence
+                );
+            }
+            const reader = source.suffixReaderOf(author, fromSequence);
+            return {
+                nextRecord: () => {
+                    indexedReads += 1;
                     return reader.nextRecord();
                 },
                 failure: () => reader.failure(),
@@ -476,6 +531,36 @@ function localLeafHistory(firstSequence, count) {
     return records;
 }
 
+/**
+ * The writer of the unrelated leaf's history in the history-length bound test.
+ * It is a writer no import in that test claims, so the retained closure check
+ * has no reason to resolve any of its coordinates.
+ */
+const WRITER_EXTRA = "ddddddddd";
+
+/**
+ * Materializations and validations of the unrelated leaf `D` under a writer
+ * nobody claims, so a receiver's retained history can be made long with records
+ * which are demonstrably not part of the change being synchronized.
+ *
+ * @param {number} count
+ * @returns {import("../src/generators/incremental_graph/journal").JournalRecord[]}
+ */
+function unrelatedLeafHistory(count) {
+    /** @type {import("../src/generators/incremental_graph/journal").JournalRecord[]} */
+    const records = [];
+    for (let index = 0; index < count; index += 1) {
+        records.push(...materialize({
+            writer: WRITER_EXTRA,
+            sequence: String(1 + 2 * index),
+            node: NODE_D,
+            context: [],
+            basis: [],
+        }));
+    }
+    return records;
+}
+
 describe("synchronizeRetainedJournal, the retained replay state it stages", () => {
     test("the outcome carries the very state the operation extended", async () => {
         const receiver = receiverChain();
@@ -553,7 +638,7 @@ describe("synchronizeRetainedJournal, the retained replay state it stages", () =
             {
                 id: WRITER_PEER + ":1",
                 context: contextOf([[WRITER_LOCAL, "4"]]),
-                authorityTime: authorityOf(1),
+                authorityTime: authorityOf(PEER_AUTHORITY_BASE + 1),
                 node: NODE_A,
             },
             "operation"
@@ -686,13 +771,15 @@ describe("synchronizeRetainedJournal, the retained history it does not re-read",
         return {
             result,
             receiverReads: receiver.reads(),
+            receiverIndexedReads: receiver.indexedReads(),
             sourceReads: source.reads(),
+            sourceIndexedReads: source.indexedReads(),
             receiverWritersCalls: receiver.writersCalls(),
             receiverRetainedLengthCalls: receiver.retainedLengthCalls(),
         };
     }
 
-    test("an import reads no retained receiver record at all", async () => {
+    test("an import performs no sequential retained receiver reads", async () => {
         const countedResult = await counted({
             receiver: receiverChain(),
             source: peerAddsC(undefined),
@@ -700,16 +787,22 @@ describe("synchronizeRetainedJournal, the retained history it does not re-read",
         });
 
         expect("outcome" in countedResult.result).toBe(true);
+        // No sequential scan of a retained writer prefix is opened. The retained
+        // closure check resolves the claimed coordinates by positioned reads
+        // only: the imported records claim LOCAL:4, whose retained causal chain
+        // is LOCAL:4, LOCAL:3, LOCAL:2 and LOCAL:1, each read once and memoized.
         expect(countedResult.receiverReads).toBe(0);
+        expect(countedResult.receiverIndexedReads).toBe(4);
     });
 
     test("the retained reads do not grow with the receiver's retained history", async () => {
         // The same change to the same node, against receivers whose retained history
-        // differs by a prefix of an unrelated leaf the operation has no reason to
-        // visit. A bound in terms of the retained journal makes the second count
-        // exceed the first.
+        // differs by the unrelated leaf's history under a writer the import never
+        // claims. Claimed coordinates are resolved by positioned reads, so the
+        // unclaimed writer's records are never visited: a bound in terms of the
+        // retained journal would make the second count exceed the first.
         const short = receiverChain();
-        const long = [...short, ...localLeafHistory(5, 4)];
+        const long = [...short, ...unrelatedLeafHistory(4)];
         const rewritesA = (/** @type {number} */ head) => [materializeOnly({
             writer: WRITER_PEER,
             sequence: "1",
@@ -724,7 +817,7 @@ describe("synchronizeRetainedJournal, the retained history it does not re-read",
         });
         const onLong = await counted({
             receiver: long,
-            source: rewritesA(12),
+            source: rewritesA(4),
             authorityPhysical: 9000,
         });
 
@@ -733,6 +826,7 @@ describe("synchronizeRetainedJournal, the retained history it does not re-read",
         expect(long.length).toBeGreaterThan(short.length);
         expect(onLong.receiverReads).toBe(onShort.receiverReads);
         expect(onLong.receiverReads).toBe(0);
+        expect(onLong.receiverIndexedReads).toBe(onShort.receiverIndexedReads);
     });
 
     test("a source is read its missing suffix and never the receiver's history again", async () => {
@@ -755,9 +849,18 @@ describe("synchronizeRetainedJournal, the retained history it does not re-read",
         // once to check closure and authority against the complete admitted index,
         // and once to stage and publish it. Each pass costs the suffix's own records
         // plus the one read which reports the end of the prefix, and the seam
-        // evidence is one more read. What the count may not do is grow with the
-        // receiver's retained history, which is what the sibling case above holds.
-        expect(countedResult.sourceReads).toBe(3 * (source.length + 1) + 1);
+        // evidence is one more read. Every pass opens the source at the first
+        // missing coordinate rather than traversing the retained prefix, so these
+        // are positioned reads; no sequential source scan is opened at all. What
+        // the count may not do is grow with the receiver's retained history, which
+        // is what the sibling case above holds.
+        expect(countedResult.sourceReads).toBe(0);
+        expect(countedResult.sourceIndexedReads).toBe(3 * (source.length + 1) + 1);
+        // The receiver's own retained prefix is likewise never scanned: the
+        // retained closure check resolves only the claimed LOCAL:4 causal chain
+        // by positioned reads, as the first bound test pins.
+        expect(countedResult.receiverReads).toBe(0);
+        expect(countedResult.receiverIndexedReads).toBe(4);
     });
 
     test("the stale-state correspondence costs one enumeration per writer, not one", async () => {

@@ -63,6 +63,18 @@ const NOW = "2020-01-01T00:00:00.000Z";
 const LATER = "2020-01-02T00:00:00.000Z";
 const WRITER_LOCAL = "aaaaaaaaa";
 const WRITER_PEER = "bbbbbbbbb";
+/**
+ * Peer fixtures model a writer which observed the receiver's retained prefix
+ * before authoring, so ordinary authority allocation (`incremental-graph-
+ * journal-types.md` §Ordinary authority allocation) puts their authority after
+ * the observed retained authority. Law 6 (`happenedBefore(E,F) =>
+ * authorityCompare(E,F) < 0`) requires the same. Every peer record therefore
+ * carries this base above its writer-local sequence number. The base sits just
+ * above the receiver's retained authority and below the synchronization
+ * allocation floor, so sync-authored normalization records still extend the
+ * imported authority they observe.
+ */
+const PEER_AUTHORITY_BASE = 100;
 const PAYLOAD = { type: "entry_description", description: "x" };
 const INSTANT = 1700000000000;
 
@@ -132,12 +144,13 @@ function materialize(occurrence) {
     const observedByValue = Number(valueSequence) - 1 === 0
         ? [...occurrence.context]
         : [...occurrence.context, [occurrence.writer, String(Number(valueSequence) - 1)]];
+    const authorityBase = occurrence.writer === WRITER_PEER ? PEER_AUTHORITY_BASE : 0;
     return [
         made(makeValueEvent(
             {
                 id: valueId,
                 context: contextOf(observed),
-                authorityTime: authorityOf(Number(occurrence.sequence)),
+                authorityTime: authorityOf(authorityBase + Number(occurrence.sequence)),
                 node: occurrence.node,
             },
             occurrence.identifier === undefined ? identifierOf(nodeKey) : occurrence.identifier,
@@ -150,7 +163,7 @@ function materialize(occurrence) {
             {
                 id: occurrence.writer + ":" + valueSequence,
                 context: contextOf(observedByValue),
-                authorityTime: authorityOf(Number(valueSequence)),
+                authorityTime: authorityOf(authorityBase + Number(valueSequence)),
                 node: occurrence.node,
             },
             valueId,
@@ -455,11 +468,12 @@ describe("synchronizeRetainedJournal, a retained replay state which is not the r
  * @param {string} occurrence.value - The occurrence being invalidated.
  */
 function invalidateOccurrence(occurrence) {
+    const authorityBase = occurrence.writer === WRITER_PEER ? PEER_AUTHORITY_BASE : 0;
     return made(makeInvalidateEvent(
         {
             id: occurrence.writer + ":" + occurrence.sequence,
             context: contextOf([...occurrence.context]),
-            authorityTime: authorityOf(Number(occurrence.sequence)),
+            authorityTime: authorityOf(authorityBase + Number(occurrence.sequence)),
             node: occurrence.node,
         },
         makeValueScope(occurrence.value),
