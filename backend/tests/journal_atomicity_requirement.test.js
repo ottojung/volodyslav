@@ -39,6 +39,7 @@ const {
     readRetainedJournal,
 } = require("../src/generators/incremental_graph/journal_store");
 const { validateJournalReplica, isValueEvent, isInvalidateEvent } = require("../src/generators/incremental_graph/journal");
+const { journalSequenceToString } = require("../src/generators/incremental_graph/journal");
 
 const allEventsModule = require("../src/generators/individual/all_events/wrapper");
 const metaEventsComputor = require("../src/generators/individual/meta_events/wrapper").computor;
@@ -217,5 +218,83 @@ describe("graph and journal publication is one atomic write", () => {
         expect(await graph.getFreshness("all_events")).toBeUndefined();
         const { records } = await readRecoveredJournal(db);
         expect(records.length).toBe(0);
+    });
+
+    test("a failed publication leaves no durable sequence hole for the retry", async () => {
+        const namespaceSublevel = db.getSchemaStorage();
+        const batch = namespaceSublevel.batch;
+        namespaceSublevel.batch = async () => {
+            throw new Error("injected publication failure");
+        };
+        try {
+            await expect(graph.pull("event_context")).rejects.toThrow("injected publication failure");
+        } finally {
+            namespaceSublevel.batch = batch;
+        }
+
+        await graph.pull("event_context");
+
+        const { records, writerState, replica } = await readRecoveredJournal(db);
+        expect(validateJournalReplica(replica)).not.toBeInstanceOf(Error);
+        const ownSequences = records
+            .map((record) => journalSequenceToString(record.id.sequence))
+            .map((text) => Number(text))
+            .sort((left, right) => left - right);
+        expect(ownSequences.length).toBeGreaterThan(0);
+        expect(ownSequences).toEqual(
+            Array.from({ length: ownSequences.length }, (_, index) => index + 1)
+        );
+        expect(journalSequenceToString(writerState.writerHead)).toBe(String(ownSequences.length));
+    });
+
+    test("successive publications receive disjoint contiguous ranges with no hole", async () => {
+        // Checklist §4 requires concurrent successes to receive disjoint contiguous
+        // ranges; the sequential case must hold first. Three successive production
+        // publications (materialization, explicit invalidation, recompute) must
+        // partition the writer's sequence space 1..N with no gap, no overlap, and
+        // the committed writer head equal to the total.
+        await graph.pull("event_context");
+        await graph.invalidate("meta_events");
+        await graph.pull("event_context");
+
+        const { records, writerState, replica } = await readRecoveredJournal(db);
+        expect(validateJournalReplica(replica)).not.toBeInstanceOf(Error);
+        const ownSequences = records
+            .map((record) => journalSequenceToString(record.id.sequence))
+            .map((text) => Number(text))
+            .sort((left, right) => left - right);
+        expect(ownSequences.length).toBeGreaterThan(0);
+        expect(new Set(ownSequences).size).toBe(ownSequences.length);
+        expect(ownSequences).toEqual(
+            Array.from({ length: ownSequences.length }, (_, index) => index + 1)
+        );
+        expect(journalSequenceToString(writerState.writerHead)).toBe(String(ownSequences.length));
+    });
+
+    test("concurrent successful pulls receive disjoint contiguous ranges", async () => {
+        // Checklist §4 requires concurrent successes to receive disjoint
+        // contiguous ranges. Two pulls issued concurrently over different
+        // nodes serialize their finalization through the per-replica
+        // darkroom; the retained writer sequences must still partition 1..N
+        // with no gap, no overlap, and the committed writer head equal to
+        // the total. A finalization path that allocated sequences outside
+        // the serialized section could issue duplicates or holes here.
+        await Promise.all([
+            graph.pull("meta_events"),
+            graph.pull("event_context"),
+        ]);
+
+        const { records, writerState, replica } = await readRecoveredJournal(db);
+        expect(validateJournalReplica(replica)).not.toBeInstanceOf(Error);
+        const ownSequences = records
+            .map((record) => journalSequenceToString(record.id.sequence))
+            .map((text) => Number(text))
+            .sort((left, right) => left - right);
+        expect(ownSequences.length).toBeGreaterThan(0);
+        expect(new Set(ownSequences).size).toBe(ownSequences.length);
+        expect(ownSequences).toEqual(
+            Array.from({ length: ownSequences.length }, (_, index) => index + 1)
+        );
+        expect(journalSequenceToString(writerState.writerHead)).toBe(String(ownSequences.length));
     });
 });
