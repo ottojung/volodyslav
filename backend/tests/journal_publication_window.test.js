@@ -10,6 +10,10 @@
  * journal-side effect.
  */
 
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
+
 const {
     getRootDatabase,
     makeRealGraph,
@@ -21,14 +25,66 @@ const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger, stubEnvironment } = require("./stubs");
 
 function testCapabilities() {
+    fs.mkdtempSync(path.join(os.tmpdir(), "journal-window-"));
     const capabilities = getMockedRootCapabilities();
-    const logger = stubLogger(capabilities);
-    const environment = stubEnvironment(capabilities);
-    environment.rootDirectory = async () => "/tmp";
-    capabilities.logger = logger;
-    capabilities.environment = environment;
+    stubLogger(capabilities);
+    stubEnvironment(capabilities);
     return capabilities;
 }
+
+/**
+ * @param {object} schemaStorage
+ * @param {unknown} sublevel
+ * @returns {string}
+ */
+function sublevelNameOf(schemaStorage, sublevel) {
+    for (const name of ["values", "freshness", "valid", "timestamps", "global", "journal"]) {
+        if (schemaStorage[name] !== undefined && schemaStorage[name].sublevel === sublevel) {
+            return name;
+        }
+    }
+    return "unknown";
+}
+
+/**
+ * @param {object} capabilities
+ * @param {object} db
+ * @returns {Promise<import("../src/generators/incremental_graph").IncrementalGraph>}
+ */
+async function makeRealGraph(capabilities, db) {
+    const box = allEventsModule.makeBox();
+    box.value = [
+        {
+            id: eventId.fromString("aaaaaaaaa:1"),
+            date: fromISOString("2020-01-01T09:00:00.000Z"),
+            original: "today I ate a sandwich",
+            input: "today I ate a sandwich",
+            creator: CREATOR,
+        },
+        {
+            id: eventId.fromString("aaaaaaaaa:2"),
+            date: fromISOString("2020-01-01T10:00:00.000Z"),
+            original: "the sky is blue",
+            input: "the sky is blue",
+            creator: CREATOR,
+        },
+    ];
+    const graph = await createIncrementalGraph(capabilities, db, box);
+    await graph.pull("all_events");
+    return graph;
+}
+
+const allEventsModule = require("../src/generators/individual/all_events/wrapper");
+const { createIncrementalGraph } = require("../src/generators/incremental_graph");
+const eventId = require("../src/event/id");
+const { fromISOString } = require("../src/datetime");
+
+const CREATOR = {
+    name: "tester",
+    uuid: "0f6c1a1e-0000-4000-8000-000000000000",
+    version: "1.0.0",
+    hostname: "host.example",
+};
 
 function instrumentBatches(db) {
     const schemaStorage = db.getSchemaStorage();
