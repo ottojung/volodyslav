@@ -97,12 +97,10 @@ class ContinuationSafeSnapshotClass {
      */
     constructor(localWriter, records, projection, writerState, databaseVersion, graphSchemeString) {
         this.localWriter = localWriter;
-<<<<<<< HEAD
         // A branded snapshot promises one stable history cut for its lifetime.
         // Copy before freezing so a caller retaining the input array cannot
         // change the records later consumed by absent restoration.
-=======
->>>>>>> origin/agent-LnI2ZQFLUg9bo3ybY4NlsH-issue92-recovery-snapshot
+        this.records = Object.freeze([...records]);
         this.records = Object.freeze([...records]);
         this.projection = projection;
         this.writerState = writerState;
