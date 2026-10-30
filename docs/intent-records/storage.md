@@ -15,3 +15,17 @@ When the persisted format changes, the transition must happen through an explici
 Historical representations must remain confined to the migration boundary. They must not leak into current-domain types, validators, APIs, persisted outputs, or permanent runtime code.
 
 Do not build permanent decoder ladders, unions of historical storage formats, alternate historical representations, or runtime fallbacks for old database versions. Transitional migration machinery should be removed once it is no longer needed for the coordinated transition.
+
+
+---
+
+$id-7139531086125123
+title: Current replica database key lengths are O(H)
+date: 2026/10/19
+source: @ottojung
+kind: requirement
+
+Every persisted database key belonging to the current replica must have
+length O(H), where H is the size of that replica's retained authoritative
+Journal history. This requirement does not constrain keys belonging to
+other replicas.
