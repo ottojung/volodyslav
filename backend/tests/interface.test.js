@@ -577,6 +577,59 @@ describe("generators/interface", () => {
             await second._database.close();
         });
 
+        test("V3b: authoring after absent restore continues the restored history", async () => {
+            const capabilities = await getTestCapabilities();
+            const first = makeInterface(() => capabilities);
+            await first.ensureInitialized();
+            await first.update([
+                makeEvent("event-1", "First event"),
+                makeEvent("event-2", "Second event"),
+            ]);
+
+            const snapshot = await continuationSafeSnapshotOf(first._database);
+            const destroyedAllocatorWatermark = await first._database
+                .getSchemaStorage()
+                .global.get(LAST_NODE_INDEX_KEY);
+            await first._database.close();
+
+            const liveDbPath = path.join(
+                capabilities.environment.workingDirectory(),
+                LIVE_DATABASE_WORKING_PATH
+            );
+            await capabilities.deleter.deleteDirectory(liveDbPath);
+            await restoreAbsentFrom(capabilities, snapshot);
+
+            const second = makeInterface(() => capabilities);
+            await second.ensureInitialized();
+            await second.update([
+                makeEvent("event-1", "First event"),
+                makeEvent("event-2", "Second event"),
+                makeEvent("event-3", "Third event"),
+            ]);
+
+            // The restored installation continues under the snapshot's writer
+            // identity with its history intact: the new write is visible
+            // alongside the restored events, the retained history strictly
+            // grows, and the allocator watermark never moves backwards.
+            await expect(second.getAllEvents()).resolves.toHaveLength(3);
+            await expect(second._database.getSchemaStorage().global.get("fingerprint"))
+                .resolves.toBe(journalAuthorToString(snapshot.localWriter));
+            const advancedWatermark = await second._database
+                .getSchemaStorage()
+                .global.get(LAST_NODE_INDEX_KEY);
+            expect(Number(advancedWatermark))
+                .toBeGreaterThanOrEqual(Number(destroyedAllocatorWatermark));
+            const grownReplica = await readRetainedJournal(
+                second._database.getSchemaStorage().journal
+            );
+            if (grownReplica instanceof Error) {
+                throw grownReplica;
+            }
+            expect([...grownReplica.values()].flat().length)
+                .toBeGreaterThan(snapshot.records.length);
+            await second._database.close();
+        });
+
         test("V4: DefinitelyAbsent permits fresh creation", async () => {
             const capabilities = getMockedRootCapabilities();
             stubEnvironment(capabilities);
