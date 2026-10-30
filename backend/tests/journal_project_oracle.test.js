@@ -2176,6 +2176,59 @@ describe("the oracle reads replay, not a transcription of it", () => {
         expect(projection.selfProofReadyNodes.has(KEY_A)).toBe(false);
     });
 
+    test("a concurrent node-scoped invalidation makes the whole certificate ineligible", async () => {
+        // A:a1 validated, then a concurrent node-scoped invalidation of the same
+        // node. Per replay §Eligible certificate, node invalidation rejects every
+        // certificate which did not causally observe it, regardless of occurrence,
+        // so the node keeps its value but loses all current proof and freshness.
+        const value = makeValueEvent(
+            {
+                id: "aaaaaaaaa:1",
+                context: contextOf([]),
+                authorityTime: authorityOf(100, 0),
+                node: NODE_A,
+            },
+            "1-abcdefghi",
+            { type: "entry_description", description: "a" },
+            NOW,
+            LATER,
+            "compute"
+        );
+        const validate = makeValidateEvent(
+            {
+                id: "aaaaaaaaa:2",
+                context: contextOf([["aaaaaaaaa", "1"]]),
+                authorityTime: authorityOf(200, 0),
+                node: NODE_A,
+            },
+            "aaaaaaaaa:1",
+            [],
+            "compute"
+        );
+        const invalidate = makeInvalidateEvent(
+            {
+                id: "bbbbbbbbb:1",
+                context: contextOf([["aaaaaaaaa", "1"]]),
+                authorityTime: authorityOf(300, 0),
+                node: NODE_A,
+            },
+            makeNodeScope(),
+            "explicit"
+        );
+        const projection = await projectRetainedJournal({
+            source: makeReplicaSource(replicaOf([value, validate, invalidate])),
+            localWriter: WRITER_A,
+            currentInputKeysOfNode: () => [],
+        });
+        if (projection instanceof Error) {
+            throw new Error("the oracle rejected a supported history: " + projection.message);
+        }
+        expect(projection.occurrences).toHaveLength(1);
+        expect(projection.occurrences[0].fresh).toBe(false);
+        expect([...projection.occurrences[0].validInputs]).toEqual([]);
+        expect(projection.selfProofReadyNodes.has(KEY_A)).toBe(false);
+    });
+
     test("a node whose own basis is complete and uninvalidated is self-proof-ready", async () => {
         const value = makeValueEvent(
             {
