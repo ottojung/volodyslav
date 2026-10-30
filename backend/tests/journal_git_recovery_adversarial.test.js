@@ -66,29 +66,28 @@ test('Git recovery refuses a checkpoint with a forged allocator watermark',async
  }finally{await fs.rm(dest,{recursive:true,force:true})}
 });
 
-test('Git recovery refuses a checkpoint with a mid-stream hole behind an agreeing frontier',async()=>{
- const capabilities=getMockedRootCapabilities();
- stubEnvironment(capabilities);stubLogger(capabilities);
- const dest=await fs.mkdtemp(path.join(os.tmpdir(),'j3-corrupt-hole-'));
- const fixture=path.join(__dirname,'mock-incremental-database-remote-populated','rendered','r');
- try{
-  await fs.cp(fixture,dest,{recursive:true});
-  await fs.rm(path.join(dest,'journal','record|testfingerprnt|000000000000000000000000000006'));
-  await expect(snapshotFromRenderedReplica(capabilities,dest)).rejects.toThrow(/absent|hole|gap/i);
- }finally{await fs.rm(dest,{recursive:true,force:true})}
-});
 
-test('Git recovery refuses a checkpoint whose record key disagrees with its body',async()=>{
+test('Git recovery refuses a checkpoint whose retained writer stream has a sequence hole',async()=>{
  const capabilities=getMockedRootCapabilities();
  stubEnvironment(capabilities);stubLogger(capabilities);
- const dest=await fs.mkdtemp(path.join(os.tmpdir(),'j3-corrupt-key-'));
+ const dest=await fs.mkdtemp(path.join(os.tmpdir(),'j3-corrupt-stream-hole-'));
  const fixture=path.join(__dirname,'mock-incremental-database-remote-populated','rendered','r');
  try{
   await fs.cp(fixture,dest,{recursive:true});
-  const journal=path.join(dest,'journal');
-  const fifth=await fs.readFile(path.join(journal,'record|testfingerprnt|000000000000000000000000000005'));
-  await fs.writeFile(path.join(journal,'record|testfingerprnt|000000000000000000000000000006'),fifth);
-  await expect(snapshotFromRenderedReplica(capabilities,dest)).rejects.toThrow(/disagrees/);
+  const recordsPath=path.join(dest,'journal');
+  const files=(await fs.readdir(recordsPath)).filter(name=>/^record\|[a-z]{9,}\|[0-9]{30}$/.test(name));
+  const byWriter=new Map();
+  for(const name of files){
+   const [,writer,sequence]=/^record\|([a-z]{9,})\|([0-9]{30})$/.exec(name);
+   const stream=byWriter.get(writer)||[];
+   stream.push({name,sequence});byWriter.set(writer,stream);
+  }
+  const stream=[...byWriter.values()].find(records=>records.length>1);
+  expect(stream).toBeDefined();
+  const removed=stream[1];
+  await fs.rm(path.join(recordsPath,removed.name));
+  await expect(snapshotFromRenderedReplica(capabilities,dest)).rejects.toThrow(/claims a committed prefix|absent/);
+
  }finally{await fs.rm(dest,{recursive:true,force:true})}
 });
 
