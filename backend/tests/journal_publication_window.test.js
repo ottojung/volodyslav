@@ -196,6 +196,9 @@ describe("the publication window one user-visible operation leaves open", () => 
         expect(replica).not.toBeInstanceOf(Error);
         const records = [...replica.values()].flat();
         expect(records.filter(isInvalidateEvent)).toHaveLength(2);
+        const invalidations = records.filter(isInvalidateEvent);
+        expect(invalidations.map((record) => record.scope.kind)).toEqual(["node", "value"]);
+        expect(invalidations.every((record) => record.reason === "explicit" || record.reason === "propagated")).toBe(true);
 
         await db.close();
     });

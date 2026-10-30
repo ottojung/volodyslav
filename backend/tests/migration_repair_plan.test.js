@@ -10,13 +10,17 @@
  */
 
 const { planProofBarriers } = require("../src/generators/incremental_graph/migration_repair_plan");
+const { finalizeMigrationRepair } = require("../src/generators/incremental_graph/journal/migration_emission");
+const { makeInitialCommittedWriterState } = require("../src/generators/incremental_graph/journal_store");
 const {
     deserializeNodeKey,
 } = require("../src/generators/incremental_graph/database");
 const {
+    isInvalidateEvent,
     makeJournalAuthor,
     makeJournalRecordId,
     makeJournalSequence,
+    journalRecordIdToString,
     nodeKeyToCanonicalString,
 } = require("../src/generators/incremental_graph/journal");
 
@@ -87,4 +91,50 @@ test("a target whose wanted edges cover the union plans no barrier", () => {
         throw new Error("the barrier plan was rejected: " + barriers.error.message);
     }
     expect(barriers).toHaveLength(0);
+});
+
+test("an emitted proof-weakening barrier retires exactly the unwanted edge", () => {
+    const preserved = valueId();
+    const occurrence = {
+        nodeKeyString: KEY_B,
+        nodeKey: deserializeNodeKey(KEY_B),
+        valueId: preserved,
+        validInputs: new Set([KEY_A]),
+        fresh: false,
+    };
+    const unions = new Map([[KEY_B, new Set([KEY_A, KEY_C])]]);
+    const nodeKeyOf = (nodeKeyString) => deserializeNodeKey(nodeKeyString);
+
+    const barriers = planProofBarriers({
+        targetOccurrences: [occurrence],
+        unions,
+        nodeKeyOf,
+    });
+    if (!Array.isArray(barriers)) {
+        throw new Error("the barrier plan was rejected: " + barriers.error.message);
+    }
+    expect(barriers).toHaveLength(1);
+
+    const author = makeJournalAuthor("testtarvalfp");
+    if (author instanceof Error) {
+        throw author;
+    }
+    const state = makeInitialCommittedWriterState(author);
+    if (state instanceof Error) {
+        throw state;
+    }
+    const emission = finalizeMigrationRepair({
+        state,
+        requests: barriers,
+        publicationInstant: 1700000000000,
+    });
+    if (emission instanceof Error) {
+        throw new Error("the barrier emission was rejected: " + emission.message);
+    }
+    expect(emission.records).toHaveLength(1);
+    const record = emission.records[0];
+    expect(isInvalidateEvent(record)).toBe(true);
+    expect(record.scope.kind).toBe("proof");
+    expect(journalRecordIdToString(record.scope.value)).toBe(journalRecordIdToString(preserved));
+    expect(nodeKeyToCanonicalString(record.scope.input)).toBe(KEY_C);
 });
