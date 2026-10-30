@@ -422,7 +422,6 @@ describe("synchronizeRetainedJournal, acquiring foreign-writer suffixes", () => 
             .toEqual([KEY_A, KEY_B, KEY_C]);
     });
 
-
     test("a sync from a source whose journal is a subset of the receiver's advances no state", async () => {
         // `incremental-graph-journal-testing.md` §Synchronization result reports
         // state advancement requires this case, and `sync.md` §Host-count
@@ -431,7 +430,6 @@ describe("synchronizeRetainedJournal, acquiring foreign-writer suffixes", () => 
         // receiver's, so the union is exactly the receiver's journal and no
         // new semantic normalization is owed.
         const receiver = receiverChain();
-
         const peerMaterialization = materialize({
             writer: WRITER_PEER,
             sequence: "1",
@@ -439,7 +437,6 @@ describe("synchronizeRetainedJournal, acquiring foreign-writer suffixes", () => 
             context: [[WRITER_LOCAL, "4"]],
             basis: [{ node: NODE_B, value: WRITER_LOCAL + ":3" }],
         });
-
         const first = await synchronize({ receiver, source: peerMaterialization, authorityPhysical: 400 });
         expect("outcome" in first).toBe(true);
         if (!("outcome" in first)) {
@@ -462,7 +459,6 @@ describe("synchronizeRetainedJournal, acquiring foreign-writer suffixes", () => 
         expect(outcome.projection.occurrences.map((occurrence) => occurrence.nodeKeyString))
             .toEqual([KEY_A, KEY_B, KEY_C]);
         expect(outcome.projection.occurrences.every((occurrence) => occurrence.fresh)).toBe(true);
-
     });
 
     test("a source which is ahead for the receiver's own writer is refused before anything is admitted", async () => {

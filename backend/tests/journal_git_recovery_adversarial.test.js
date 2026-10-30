@@ -66,7 +66,6 @@ test('Git recovery refuses a checkpoint with a forged allocator watermark',async
  }finally{await fs.rm(dest,{recursive:true,force:true})}
 });
 
-
 test('Git recovery refuses a checkpoint whose retained writer stream has a sequence hole',async()=>{
  const capabilities=getMockedRootCapabilities();
  stubEnvironment(capabilities);stubLogger(capabilities);
@@ -138,4 +137,3 @@ test('Git recovery refuses a checkpoint whose record key disagrees with its sema
   await expect(snapshotFromRenderedReplica(capabilities,dest)).rejects.toThrow(/disagrees with its semantic identity/);
  }finally{await fs.rm(dest,{recursive:true,force:true})}
 });
-
