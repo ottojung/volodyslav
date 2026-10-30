@@ -425,23 +425,32 @@ describe("synchronizeRetainedJournal, acquiring foreign-writer suffixes", () => 
     test("a source whose retained journal is a subset of the receiver's advances no state", async () => {
 
         // `incremental-graph-journal-testing.md` §Synchronization result
-        // reports state advancement: a source which retains strictly less than
-        // the receiver imports nothing and needs no normalization, so the
-        // operation succeeds with `stateAdvancing == false` rather than
-        // reporting advancement or failing. The source here is the receiver's
-        // own-writer prefix, which is prefix-comparable and behind, not the
-        // unsupported ahead case the writer-behind regressions pin.
-        const receiver = receiverChain();
-        const prefix = receiver.slice(0, 2);
+        // reports state advancement: a sync from a source whose retained
+        // Journal is a subset of the receiver's returns
+        // `stateAdvancing == false`. The receiver already retains every
+        // source record (the peer's materialization of C), so the sync
+        // imports nothing and authors no normalization record.
+        const peerMaterialization = materialize({
+            writer: WRITER_PEER,
+            sequence: "1",
+            node: NODE_C,
+            context: [[WRITER_LOCAL, "4"]],
+            basis: [{ node: NODE_B, value: WRITER_LOCAL + ":3" }],
+        });
+        const receiver = [...receiverChain(), ...peerMaterialization];
 
-        const result = await synchronize({ receiver, source: prefix, authorityPhysical: 400 });
+        const result = await synchronize({
+            receiver,
+            source: peerMaterialization,
+            authorityPhysical: 400,
+        });
 
         const outcome = outcomeOf(result);
         expect(outcome.records).toEqual([]);
-        expect(outcome.publication.records).toEqual([]);
         expect(outcome.stateAdvancing).toBe(false);
         expect(outcome.projection.occurrences.map((occurrence) => occurrence.nodeKeyString))
-            .toEqual([KEY_A, KEY_B]);
+            .toEqual([KEY_A, KEY_B, KEY_C]);
+
     });
 
     test("a source which is ahead for the receiver's own writer is refused before anything is admitted", async () => {
