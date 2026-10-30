@@ -1,35 +1,69 @@
 /**
- * The publication-window requirement, pinned as a test.
+ * A measurement of the graph commit seam's publication window.
  *
- * `$id-2048186621237391` requires that whenever one supported operation changes
- * IncrementalGraph sublevels and appends corresponding journal history, those
- * changes become durable as ONE atomic publication. This suite asserts the shape
- * of that publication from outside the record layer: the production path must
- * issue exactly one batched write to the journal store for such a transition, and
- * that batch must carry both the graph-side freshness/validity markers and the
- * journal-side effect.
+ * `$id-2048186621237391` requires a graph transition and its journal records to become
+ * durable as one atomic publication. This suite measures the seam as it stands, over
+ * the production path (`createIncrementalGraph` then `pull`), so the window between
+ * the two sides of such a transition is a measured quantity rather than an argument
+ * from reading the code:
+ *
+ * - how many durable writes one user-visible operation issues;
+ * - which sublevels each of those writes carries; and
+ * - what the journal sublevel of the recovered database holds afterwards.
+ *
+ * These numbers are what this file measures. `journal_atomicity_requirement.test.js`
+ * pins the recovered-state consequence of the same requirement; it asserts nothing
+ * about the number of durable writes or the sublevels each of them carries.
  */
 
 const fs = require("fs");
-const os = require("os");
 const path = require("path");
+const os = require("os");
 
-const {
-    getRootDatabase,
-    makeRealGraph,
-} = require("../src/generators/incremental_graph/database");
+const { getRootDatabase } = require("../src/generators/incremental_graph/database");
+const { createIncrementalGraph } = require("../src/generators/incremental_graph");
 const { readRetainedJournal } = require("../src/generators/incremental_graph/journal_store");
-const { isInvalidateEvent } = require("../src/generators/incremental_graph/journal");
+const {
+    isInvalidateEvent,
+    isValidateEvent,
+    isValueEvent,
+    isWriterStateRecord,
+} = require("../src/generators/incremental_graph/journal");
 
+const allEventsModule = require("../src/generators/individual/all_events/wrapper");
+const metaEventsComputor = require("../src/generators/individual/meta_events/wrapper").computor;
+const eventContextComputor = require("../src/generators/individual/event_context/wrapper").computor;
+
+const eventId = require("../src/event/id");
+const { fromISOString } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger, stubEnvironment } = require("./stubs");
 
-function testCapabilities() {
-    fs.mkdtempSync(path.join(os.tmpdir(), "journal-window-"));
-    const capabilities = getMockedRootCapabilities();
-    stubLogger(capabilities);
-    stubEnvironment(capabilities);
-    return capabilities;
+const CREATOR = {
+    name: "tester",
+    uuid: "0f6c1a1e-0000-4000-8000-000000000000",
+    version: "1.0.0",
+    hostname: "host.example",
+};
+
+/**
+ * Record every batch the schema storage issues, and which sublevel each operation of
+ * a batch targets. The sublevel of an operation is recoverable from the operation
+ * itself: the schema storage builds one sublevel per name and each operation carries
+ * the sublevel it would write.
+ * @param {object} db
+ * @returns {Array<Array<string>>} one entry per issued batch, naming the sublevels it carried
+ */
+function instrumentBatches(db) {
+    /** @type {Array<Array<string>>} */
+    const issued = [];
+    const schemaStorage = db.getSchemaStorage();
+    const original = schemaStorage.batch;
+    schemaStorage.batch = async (operations) => {
+        issued.push(operations.map((operation) => sublevelNameOf(schemaStorage, operation.sublevel)));
+        return await original(operations);
+    };
+    return issued;
 }
 
 /**
@@ -47,6 +81,17 @@ function sublevelNameOf(schemaStorage, sublevel) {
 }
 
 /**
+ * @returns {object}
+ */
+function testCapabilities() {
+    fs.mkdtempSync(path.join(os.tmpdir(), "journal-window-"));
+    const capabilities = getMockedRootCapabilities();
+    stubLogger(capabilities);
+    stubEnvironment(capabilities);
+    return capabilities;
+}
+
+/**
  * @param {object} capabilities
  * @param {object} db
  * @returns {Promise<import("../src/generators/incremental_graph").IncrementalGraph>}
@@ -61,63 +106,66 @@ async function makeRealGraph(capabilities, db) {
             input: "today I ate a sandwich",
             creator: CREATOR,
         },
-        {
-            id: eventId.fromString("aaaaaaaaa:2"),
-            date: fromISOString("2020-01-01T10:00:00.000Z"),
-            original: "the sky is blue",
-            input: "the sky is blue",
-            creator: CREATOR,
-        },
     ];
-    const graph = await createIncrementalGraph(capabilities, db, box);
-    await graph.pull("all_events");
-    return graph;
+    const allEventsComputor = allEventsModule.makeComputor(box, {});
+    return await createIncrementalGraph(capabilities, db, [
+        {
+            output: "all_events",
+            inputs: [],
+            computor: allEventsComputor,
+            isDeterministic: false,
+            hasSideEffects: false,
+        },
+        {
+            output: "meta_events",
+            inputs: ["all_events"],
+            computor: metaEventsComputor,
+            isDeterministic: true,
+            hasSideEffects: false,
+        },
+        {
+            output: "event_context",
+            inputs: ["meta_events"],
+            computor: eventContextComputor,
+            isDeterministic: true,
+            hasSideEffects: false,
+        },
+    ]);
 }
 
-const allEventsModule = require("../src/generators/individual/all_events/wrapper");
-const { createIncrementalGraph } = require("../src/generators/incremental_graph");
-const eventId = require("../src/event/id");
-const { fromISOString } = require("../src/datetime");
-
-const CREATOR = {
-    name: "tester",
-    uuid: "0f6c1a1e-0000-4000-8000-000000000000",
-    version: "1.0.0",
-    hostname: "host.example",
-};
-
-function instrumentBatches(db) {
-    const schemaStorage = db.getSchemaStorage();
-    const journalStorage = schemaStorage.journal;
-    const originalBatch = journalStorage.batch.bind(journalStorage);
-    /** @type {string[]} */
-    const issued = [];
-    journalStorage.batch = async (/** @type {string[]} */ operations) => {
-        issued.push(operations.join("\n"));
-        return originalBatch(operations);
-    };
-    return issued;
-}
-
-describe("Journal publication window", () => {
-    test("a pull that advances freshness publishes graph and journal effects in one durable write", async () => {
+describe("the publication window one user-visible operation leaves open", () => {
+    test("a three-node pull issues one durable write carrying both sides of the transition", async () => {
         const capabilities = testCapabilities();
         const db = await getRootDatabase(capabilities);
         const graph = await makeRealGraph(capabilities, db);
-        await graph.pull("event_context");
         const issued = instrumentBatches(db);
 
-        await graph.pull("meta_events");
+        await graph.pull("event_context");
 
+        // Measured: one user-visible operation, three materialized nodes, one
+        // durable write. There is no window between the two sides of the transition,
+        // because there is only one write in which both sides become durable.
         expect(issued).toHaveLength(1);
-        expect(issued[0]).toContain("freshness");
-        expect(issued[0]).toContain("valid");
+        expect(issued[0]).toContain("values");
         expect(issued[0]).toContain("journal");
+
+        // Measured: that one write left records describing all three graph
+        // transitions, so none of them is a graph transition whose journal side does
+        // not exist: a ValueEvent and a ValidateEvent for each of the three
+        // materialized nodes, plus the one WriterStateRecord the advanced local
+        // `last_node_index` requires.
+        const replica = await readRetainedJournal(db.getSchemaStorage().journal);
+        expect(replica).not.toBeInstanceOf(Error);
+        const records = [...replica.values()].flat();
+        expect(records).toHaveLength(7);
+        expect(records.filter(isValueEvent)).toHaveLength(3);
+        expect(records.filter(isValidateEvent)).toHaveLength(3);
+        expect(records.filter(isWriterStateRecord)).toHaveLength(1);
 
         await db.close();
     });
 
-    test("a pull with no advancement issues no journal publication", async () => {
+    test("a pull which changes no persisted state issues no durable write", async () => {
         const capabilities = testCapabilities();
         const db = await getRootDatabase(capabilities);
         const graph = await makeRealGraph(capabilities, db);
