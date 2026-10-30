@@ -168,13 +168,15 @@ function isResetDomainEntry(value) {
  * `incremental-graph-journal-reset.md` §Streamability forbids reset from
  * requiring the complete reset domain to be materialized in RAM as one
  * collection, and permits the passes to be implemented as ordered iteration with
- * bounded iterator buffers. Both members of the domain already arrive in ascending
- * canonical order - `selectedHeads` keys are sorted and the source's committed
- * projection lists its occurrences in ascending order - so the domain is the merge
- * of two ascending sequences, and the merge holds one member of each.
+ * bounded iterator buffers. The target projection is already ordered. Selected
+ * heads are held in an insertion-ordered Map, so this builds one canonical ordering
+ * index per traversal; it costs O(G) graph-sized memory, not O(H) retained-history
+ * memory.
  *
  * The view is re-iterable: Pass 1 walks it once for the target occurrences and
  * once for the target absences, and neither walk needs the other one's results.
+ * The sorted selected-key index is created once for both walks, keeping the
+ * traversal index graph-sized rather than duplicating it per walk.
  *
  * @param {object} plan
  * @param {Map<string, HeadSelection>} plan.selections - The raw `selectedHeads(J0)` view.

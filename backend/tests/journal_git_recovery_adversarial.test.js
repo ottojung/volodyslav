@@ -77,3 +77,27 @@ test('Git recovery refuses an inconsistent global last_node_index',async()=>{
   await expect(snapshotFromRenderedReplica(capabilities,dest)).rejects.toThrow(/allocator/);
  }finally{await fs.rm(dest,{recursive:true,force:true})}
 });
+
+test('Git recovery refuses a checkpoint with a malformed Journal record key',async()=>{
+ const capabilities=getMockedRootCapabilities();
+ stubEnvironment(capabilities);stubLogger(capabilities);
+ const dest=await fs.mkdtemp(path.join(os.tmpdir(),'j3-corrupt-record-key-'));
+ const fixture=path.join(__dirname,'mock-incremental-database-remote-populated','rendered','r');
+ try{
+  await fs.cp(fixture,dest,{recursive:true});
+  await fs.writeFile(path.join(dest,'journal','record|testfingerprnt|not-a-sequence'),'{}');
+  await expect(snapshotFromRenderedReplica(capabilities,dest)).rejects.toThrow(/invalid Journal record key/);
+ }finally{await fs.rm(dest,{recursive:true,force:true})}
+});
+
+test('Git recovery refuses a checkpoint with an undecodable Journal record body',async()=>{
+ const capabilities=getMockedRootCapabilities();
+ stubEnvironment(capabilities);stubLogger(capabilities);
+ const dest=await fs.mkdtemp(path.join(os.tmpdir(),'j3-corrupt-record-body-'));
+ const fixture=path.join(__dirname,'mock-incremental-database-remote-populated','rendered','r');
+ try{
+  await fs.cp(fixture,dest,{recursive:true});
+  await fs.writeFile(path.join(dest,'journal','record|testfingerprnt|000000000000000000000000000006'),'not-json{{{');
+  await expect(snapshotFromRenderedReplica(capabilities,dest)).rejects.toThrow(/not valid JSON/);
+ }finally{await fs.rm(dest,{recursive:true,force:true})}
+});

@@ -576,6 +576,55 @@ describe("resetToSource, refusing incompatible sources before touching history",
         }
         expect(isJournalWriterBehindError(result.error)).toBe(true);
     });
+
+    test("a source ahead of the receiver for its own writer is refused before any record is read", async () => {
+        // `incremental-graph-journal-testing.md` §Reset own-writer-behind rejection
+        // requires `resetTo()` to fail `JournalWriterBehindError` before importing
+        // any source record or authoring any reset event. The own-writer rollback
+        // boundary therefore precedes every retained-history read: only writer-set
+        // and length metadata may be consulted, never a record body.
+        const receiver = receiverProvenPair();
+        const longerLocalPrefix = materialize({
+            writer: WRITER_LOCAL,
+            sequence: "7",
+            node: NODE_A,
+            context: [],
+            authority: 900,
+        });
+
+        const target = await sourceSnapshotOf([...receiver, longerLocalPrefix]);
+        const countedReceiver = countingSource(makeReplicaSource(replicaOf(receiver)));
+        const countedSource = countingSource(target.journal);
+        const instrumented = makeResetSource({
+            databaseVersion: target.databaseVersion,
+            graphSchemeString: target.graphSchemeString,
+            journal: countedSource.source,
+            projection: target.projection,
+        });
+
+        const result = await resetToSource({
+            receiver: countedReceiver.source,
+            retainedState: await retainedReplayState(
+                makeReplicaSource(replicaOf(receiver)),
+                twoInputSchema
+            ),
+            source: instrumented,
+            localWriter: LOCAL_AUTHOR,
+            committed: committedAfter(receiver, 500),
+            observedHighWater: authorityOf(500),
+            publicationInstant: INSTANT,
+            currentInputKeysOfNode: twoInputSchema,
+            receiverIdentity: new SnapshotIdentityClass("v1", "scheme"),
+        });
+
+        expect("outcome" in result).toBe(false);
+        if ("outcome" in result) {
+            return;
+        }
+        expect(isJournalWriterBehindError(result.error)).toBe(true);
+        expect(countedSource.reads()).toBe(0);
+        expect(countedReceiver.reads()).toBe(0);
+    });
 });
 
 describe("resetToSource, establishing target presence over the raw union", () => {
@@ -695,6 +744,65 @@ describe("resetToSource, the core identity rule", () => {
         expect(outcome.projection.occurrences.every((occurrence) => occurrence.fresh)).toBe(true);
     });
 
+    test("a split-bootstrap raw-union winner keeps its ValueId when its occurrence matches the source", async () => {
+        // Independent late bootstrap can assign different ValueIds to a shared
+        // non-canonical legacy occurrence. Reset compares immutable occurrence
+        // state, not the source's ValueId, and must retain the selected raw-union
+        // winner without manufacturing a replacement.
+        const receiverValue = materialize({
+            writer: WRITER_LOCAL,
+            sequence: "1",
+            node: NODE_A,
+            context: [],
+            authority: 20,
+            payload: OTHER_PAYLOAD,
+            createdAt: NOW,
+            modifiedAt: LATER,
+        });
+        const sourceValue = materialize({
+            writer: WRITER_PEER,
+            sequence: "1",
+            node: NODE_A,
+            context: [],
+            authority: 10,
+            payload: OTHER_PAYLOAD,
+            createdAt: NOW,
+            modifiedAt: LATER,
+        });
+        const source = await sourceSnapshotOf([
+            sourceValue,
+            validateOwnMaterialization({
+                writer: WRITER_PEER,
+                valueSequence: "1",
+                node: NODE_A,
+                context: [],
+                authority: 10,
+                basis: [],
+            }),
+        ]);
+
+        const outcome = outcomeOf(await reset({ receiver: [receiverValue], source }));
+
+        expect(journalRecordIdToString(receiverValue.id)).not.toBe(
+            journalRecordIdToString(sourceValue.id)
+        );
+        expect(journalRecordIdToString(outcome.valueIds.get(KEY_A))).toBe(
+            journalRecordIdToString(receiverValue.id)
+        );
+        expect(authoredOf(outcome).filter((record) => record.kind === "value")).toHaveLength(0);
+        const selected = outcome.projection.occurrences.find(
+            (occurrence) => occurrence.nodeKeyString === KEY_A
+        );
+        expect(selected).toMatchObject({
+            nodeIdentifier: identifierOf(KEY_A),
+            payload: OTHER_PAYLOAD,
+            createdAt: NOW,
+            modifiedAt: LATER,
+            fresh: true,
+        });
+        expect(outcome.projection.freshness.get(KEY_A)?.fresh).toBe(true);
+    });
+
     test("an import which changes no semantics still reports a persistent change", async () => {
         const receiver = receiverProvenPair();
         const source = await sourceSnapshotOf(sourcePair([
@@ -763,6 +871,131 @@ describe("resetToSource, the core identity rule", () => {
         expect(outcome.projection.localWriter).toBe(LOCAL_AUTHOR);
         expect(outcome.publication.writerState.allocatorWatermark).toBe(0);
         expect(authoredOf(outcome).filter((record) => record.kind === "writer-state")).toHaveLength(0);
+    });
+});
+
+describe("resetToSource, repairing a non-dependency-closed raw union", () => {
+    test("an absent dependency is re-established while the matching occurrence keeps its ValueId", async () => {
+        // `incremental-graph-journal-testing.md` §Reset raw-union
+        // dependency-closure regression: the raw union of receiver and source
+        // selects D absent (receiver Delete(50) beats source Value(10)) and B
+        // present (source Value(100) beats receiver Delete(51)), which is not
+        // dependency-closed under `B -> {A, D}`. Reset must repair D before
+        // projecting, author no temporary Delete(B), and preserve B's matching
+        // source ValueId.
+        const receiver = [
+            materialize({
+                writer: WRITER_LOCAL,
+                sequence: "1",
+                node: NODE_A,
+                context: [],
+                authority: 40,
+            }),
+            validateOwnMaterialization({
+                writer: WRITER_LOCAL,
+                valueSequence: "1",
+                node: NODE_A,
+                context: [],
+                authority: 40,
+                basis: [],
+            }),
+            materialize({
+                writer: WRITER_LOCAL,
+                sequence: "3",
+                node: NODE_B,
+                context: [],
+                authority: 41,
+            }),
+            materialize({
+                writer: WRITER_LOCAL,
+                sequence: "4",
+                node: NODE_D,
+                context: [],
+                authority: 42,
+            }),
+            deletionOf({
+                writer: WRITER_LOCAL,
+                sequence: "5",
+                node: NODE_D,
+                context: [],
+                authority: 50,
+            }),
+            deletionOf({
+                writer: WRITER_LOCAL,
+                sequence: "6",
+                node: NODE_B,
+                context: [],
+                authority: 51,
+            }),
+        ];
+        const sourceRecords = [
+            materialize({
+                writer: WRITER_PEER,
+                sequence: "1",
+                node: NODE_D,
+                context: [],
+                authority: 10,
+            }),
+            validateOwnMaterialization({
+                writer: WRITER_PEER,
+                valueSequence: "1",
+                node: NODE_D,
+                context: [],
+                authority: 10,
+                basis: [],
+            }),
+            materialize({
+                writer: WRITER_PEER,
+                sequence: "3",
+                node: NODE_A,
+                context: [],
+                authority: 60,
+            }),
+            validateOwnMaterialization({
+                writer: WRITER_PEER,
+                valueSequence: "3",
+                node: NODE_A,
+                context: [],
+                authority: 60,
+                basis: [],
+            }),
+            materialize({
+                writer: WRITER_PEER,
+                sequence: "5",
+                node: NODE_B,
+                context: [],
+                authority: 100,
+            }),
+            validateOwnMaterialization({
+                writer: WRITER_PEER,
+                valueSequence: "5",
+                node: NODE_B,
+                context: [],
+                authority: 100,
+                basis: [
+                    { node: NODE_A, value: WRITER_PEER + ":3" },
+                    { node: NODE_D, value: WRITER_PEER + ":1" },
+                ],
+            }),
+        ];
+        const source = await sourceSnapshotOf(sourceRecords);
+
+        const outcome = outcomeOf(await reset({ receiver, source }));
+
+        const authored = authoredOf(outcome);
+        expect(authored.filter((record) =>
+            record.kind === "delete" &&
+            nodeKeyToCanonicalString(record.node) === KEY_B)).toHaveLength(0);
+        const replacements = authored.filter((record) => record.kind === "value");
+        expect(replacements).toHaveLength(1);
+        expect(nodeKeyToCanonicalString(replacements[0].node)).toBe(KEY_D);
+        expect(replacements[0].reason).toBe("reset");
+        expect(journalRecordIdToString(outcome.valueIds.get(KEY_B))).toBe(WRITER_PEER + ":5");
+        const summarized = (projection) => projection.occurrences.map((occurrence) => [
+            occurrence.nodeKeyString,
+            occurrence.payload,
+        ]).sort();
+        expect(summarized(outcome.projection)).toEqual(summarized(source.projection));
     });
 });
 
@@ -1059,6 +1292,71 @@ describe("resetToSource, weakening proof with occurrence-scoped barriers", () =>
         )].sort()).toEqual([KEY_A, KEY_D]);
     });
 
+    test("a proof barrier for the settled ValueId leaves a replacement occurrence's certificate intact", async () => {
+        const receiver = receiverProvenPair();
+        const source = await sourceSnapshotOf(sourcePair(
+            [{ node: NODE_A, value: "unknown" }, { node: NODE_D, value: "unknown" }],
+            { reason: "migration" }
+        ));
+
+        const outcome = outcomeOf(await reset({ receiver, source }));
+
+        // The reset barriers both proof edges of the settled occurrence.
+        const proofBarriers = authoredOf(outcome).filter(
+            (record) => record.kind === "invalidate" && record.scope.kind === "proof"
+        );
+        expect(proofBarriers).toHaveLength(2);
+        for (const barrier of proofBarriers) {
+            expect(nodeKeyToCanonicalString(barrier.node)).toBe(KEY_B);
+            expect(journalRecordIdToString(barrier.scope.value)).toBe(WRITER_LOCAL + ":5");
+        }
+
+        // A concurrent replacement occurrence from another writer observes
+        // the pre-reset local head but not the reset barriers, and proves
+        // both edges again against the settled input occurrences. The
+        // barriers name the settled ValueId only, so this certificate for a
+        // replacement ValueId remains fully effective even though it never
+        // observed the barriers.
+        const replacement = materialize({
+            writer: WRITER_PEER,
+            sequence: "7",
+            node: NODE_B,
+            context: [[WRITER_LOCAL, "6"]],
+            authority: 600,
+            payload: OTHER_PAYLOAD,
+        });
+        const replacementProof = validate({
+            writer: WRITER_PEER,
+            sequence: "8",
+            node: NODE_B,
+            context: [[WRITER_LOCAL, "6"]],
+            authority: 600,
+            value: WRITER_PEER + ":7",
+            basis: [
+                { node: NODE_A, value: WRITER_LOCAL + ":1" },
+                { node: NODE_D, value: WRITER_LOCAL + ":3" },
+            ],
+        });
+        const projected = await projectRetainedJournal({
+            source: makeReplicaSource(
+                replicaOf([...receiver, ...outcome.records, replacement, replacementProof])
+            ),
+            localWriter: LOCAL_AUTHOR,
+            currentInputKeysOfNode: twoInputSchema,
+        });
+        if (projected instanceof Error) {
+            throw new Error("the committed journal does not project: " + projected.message);
+        }
+        const selected = projected.occurrences.find(
+            (occurrence) => occurrence.nodeKeyString === KEY_B
+        );
+        expect(selected === undefined ? undefined : journalRecordIdToString(selected.valueId))
+            .toBe(WRITER_PEER + ":7");
+        expect(selected === undefined ? undefined : [...selected.validInputs].sort())
+            .toEqual([KEY_A, KEY_D]);
+        expect(selected === undefined ? undefined : selected.fresh).toBe(true);
+    });
+
     /**
      * The receiver's supported pair in which `B` carries two certificates of the
      * same occurrence and an earlier proof barrier sits between them: the first
@@ -1209,6 +1507,76 @@ describe("resetToSource, weakening proof with occurrence-scoped barriers", () =>
             valueId: WRITER_LOCAL + ":5",
             authorOf,
         })]).toEqual([]);
+    });
+
+    test("a barrier for one occurrence leaves a later concurrent occurrence fully proved", async () => {
+        // `incremental-graph-journal-testing.md` §Reset proof weakening requires a
+        // barrier for `(B1,A)` to leave a concurrent/later `B2` certificate
+        // untouched when that certificate does not observe the barrier. A third
+        // writer `Z` therefore materializes a replacement `B2` and proves both of
+        // its edges while observing only the pre-barrier history: `Z` is
+        // concurrent with the reset-authored barriers. Occurrence scoping means
+        // the barriers, which name `B1`, cannot retire `B2`'s edges.
+        const WRITER_THIRD = "ccccccccc";
+        const receiver = receiverProvenPair();
+        const source = await sourceSnapshotOf(sourcePair(
+            [{ node: NODE_A, value: "unknown" }, { node: NODE_D, value: "unknown" }],
+            { reason: "migration" }
+        ));
+
+        const outcome = outcomeOf(await reset({ receiver, source }));
+
+        const proofBarriers = authoredOf(outcome).filter(
+            (record) => record.kind === "invalidate" && record.scope.kind === "proof"
+        );
+        expect(proofBarriers).toHaveLength(2);
+        for (const barrier of proofBarriers) {
+            expect(journalRecordIdToString(barrier.scope.value)).toBe(WRITER_LOCAL + ":5");
+        }
+
+        const extended = [...receiver, ...outcome.records,
+            materialize({
+                writer: WRITER_THIRD,
+                sequence: "1",
+                node: NODE_B,
+                context: [],
+                authority: 900,
+            }),
+            validate({
+                writer: WRITER_THIRD,
+                sequence: "2",
+                node: NODE_B,
+                // Concurrent with the barriers: `Z` observes the receiver's
+                // pre-reset history but none of the reset-authored records.
+                context: [[WRITER_LOCAL, "6"]],
+                authority: 900,
+                value: WRITER_THIRD + ":1",
+                basis: [
+                    { node: NODE_A, value: WRITER_LOCAL + ":1" },
+                    { node: NODE_D, value: WRITER_LOCAL + ":3" },
+                ],
+                reason: "compute",
+            }),
+        ].sort((left, right) => sequenceOf(left) - sequenceOf(right));
+
+        const projected = await projectRetainedJournal({
+            source: makeReplicaSource(replicaOf(extended)),
+            localWriter: LOCAL_AUTHOR,
+            currentInputKeysOfNode: twoInputSchema,
+        });
+        if (projected instanceof Error) {
+            throw new Error("the extended journal does not project: " + projected.message);
+        }
+        const settled = projected.occurrences.find(
+            (occurrence) => occurrence.nodeKeyString === KEY_B
+        );
+        // `Z`'s strictly greater authority selects `B2` over the barriered `B1`.
+        expect(settled === undefined ? undefined : journalRecordIdToString(settled.valueId))
+            .toBe(WRITER_THIRD + ":1");
+        // The barriers name `B1`, so neither of `B2`'s edges is retired even
+        // though `B2`'s certificate never observed them.
+        expect(settled === undefined ? undefined : [...settled.validInputs].sort())
+            .toEqual([KEY_A, KEY_D]);
     });
 });
 
@@ -1697,5 +2065,79 @@ describe("resetToSource, reading each cut as a delta over the retained state", (
         });
 
         expect("outcome" in result).toBe(false);
+    });
+});
+
+describe("resetToSource, keeping the receiver allocator local", () => {
+    test("the committed watermark survives a reset which authors records", async () => {
+        // `incremental-graph-journal-checklist.md` §11 requires the receiver
+        // allocator to remain local: reset must carry the receiver's committed
+        // watermark into the publication writer state rather than adopting any
+        // source watermark or resetting to zero. The OTHER_PAYLOAD source
+        // forces occurrence replacement, so the publication authors records.
+        const receiver = receiverProvenPair();
+        const source = await sourceSnapshotOf(sourcePair(
+            [
+                { node: NODE_A, value: WRITER_PEER + ":1" },
+                { node: NODE_D, value: WRITER_PEER + ":3" },
+            ],
+            { payload: OTHER_PAYLOAD }
+        ));
+        const committed = {
+            ...committedAfter(receiver, 500),
+            allocatorWatermark: 41,
+        };
+        const result = await resetToSource({
+            receiver: makeReplicaSource(replicaOf(receiver)),
+            retainedState: await retainedReplayState(
+                makeReplicaSource(replicaOf(receiver)),
+                twoInputSchema
+            ),
+            source,
+            localWriter: LOCAL_AUTHOR,
+            committed,
+            observedHighWater: authorityOf(500),
+            publicationInstant: INSTANT,
+            currentInputKeysOfNode: twoInputSchema,
+            receiverIdentity: new SnapshotIdentityClass("v1", "scheme"),
+        });
+        const outcome = outcomeOf(result);
+
+        expect(authoredOf(outcome).length).toBeGreaterThan(0);
+        expect(outcome.publication.writerState.allocatorWatermark).toBe(41);
+        expect(authoredOf(outcome).filter((record) => record.kind === "writer-state")).toHaveLength(0);
+    });
+
+    test("the committed watermark survives a reset which authors nothing", async () => {
+        // Same-payload fixtures select the receiver's own occurrences, so Pass 1
+        // authors no record; the empty publication must still carry the
+        // receiver's watermark rather than resetting it.
+        const receiver = receiverProvenPair();
+        const source = await sourceSnapshotOf(sourcePair([
+            { node: NODE_A, value: WRITER_PEER + ":1" },
+            { node: NODE_D, value: WRITER_PEER + ":3" },
+        ]));
+        const committed = {
+            ...committedAfter(receiver, 500),
+            allocatorWatermark: 41,
+        };
+        const result = await resetToSource({
+            receiver: makeReplicaSource(replicaOf(receiver)),
+            retainedState: await retainedReplayState(
+                makeReplicaSource(replicaOf(receiver)),
+                twoInputSchema
+            ),
+            source,
+            localWriter: LOCAL_AUTHOR,
+            committed,
+            observedHighWater: authorityOf(500),
+            publicationInstant: INSTANT,
+            currentInputKeysOfNode: twoInputSchema,
+            receiverIdentity: new SnapshotIdentityClass("v1", "scheme"),
+        });
+        const outcome = outcomeOf(result);
+
+        expect(authoredOf(outcome)).toHaveLength(0);
+        expect(outcome.publication.writerState.allocatorWatermark).toBe(41);
     });
 });

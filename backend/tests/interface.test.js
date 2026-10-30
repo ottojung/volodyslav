@@ -26,6 +26,7 @@ const {
     restoreAbsentFrom,
 } = require("../src/generators/incremental_graph/journal_recovery_source");
 const { deriveInputPositions, GRAPH_SCHEME_KEY } = require("../src/generators/incremental_graph/database/graph_scheme");
+const { makeNodeIdentifier, nodeIdentifierToString } = require("../src/generators/incremental_graph/database/node_identifier");
 const { getRootDatabase } = require("../src/generators/incremental_graph/database");
 const { LAST_NODE_INDEX_KEY } = require("../src/generators/incremental_graph/database");
 const { journalAuthorToString } = require("../src/generators/incremental_graph/journal");
@@ -576,6 +577,112 @@ describe("generators/interface", () => {
             expect([...restoredReplica.values()].flat()).toHaveLength(snapshot.records.length);
             await second._database.close();
         });
+
+        test("V3b: authoring after absent restore continues the restored history", async () => {
+            const capabilities = await getTestCapabilities();
+            const first = makeInterface(() => capabilities);
+            await first.ensureInitialized();
+            await first.update([
+                makeEvent("event-1", "First event"),
+                makeEvent("event-2", "Second event"),
+            ]);
+
+            const snapshot = await continuationSafeSnapshotOf(first._database);
+            const destroyedAllocatorWatermark = await first._database
+                .getSchemaStorage()
+                .global.get(LAST_NODE_INDEX_KEY);
+            await first._database.close();
+
+            const liveDbPath = path.join(
+                capabilities.environment.workingDirectory(),
+                LIVE_DATABASE_WORKING_PATH
+            );
+            await capabilities.deleter.deleteDirectory(liveDbPath);
+            await restoreAbsentFrom(capabilities, snapshot);
+
+            const second = makeInterface(() => capabilities);
+            await second.ensureInitialized();
+            await second.update([
+                makeEvent("event-1", "First event"),
+                makeEvent("event-2", "Second event"),
+                makeEvent("event-3", "Third event"),
+            ]);
+
+            // The restored installation continues under the snapshot's writer
+            // identity with its history intact: the new write is visible
+            // alongside the restored events, the retained history strictly
+            // grows, and the allocator watermark never moves backwards.
+            await expect(second.getAllEvents()).resolves.toHaveLength(3);
+            await expect(second._database.getSchemaStorage().global.get("fingerprint"))
+                .resolves.toBe(journalAuthorToString(snapshot.localWriter));
+            const advancedWatermark = await second._database
+                .getSchemaStorage()
+                .global.get(LAST_NODE_INDEX_KEY);
+            expect(Number(advancedWatermark))
+                .toBeGreaterThanOrEqual(Number(destroyedAllocatorWatermark));
+            const grownReplica = await readRetainedJournal(
+                second._database.getSchemaStorage().journal
+            );
+            if (grownReplica instanceof Error) {
+                throw grownReplica;
+            }
+            expect([...grownReplica.values()].flat().length)
+                .toBeGreaterThan(snapshot.records.length);
+            await second._database.close();
+        });
+
+        test("absent restoration reuses an allocator index from a discarded unpublished suffix", async () => {
+            const capabilities = await getTestCapabilities();
+            const first = makeInterface(() => capabilities);
+            await first.ensureInitialized();
+            await first.update([makeEvent("retained-event", "retained node")]);
+
+            const snapshot = await continuationSafeSnapshotOf(first._database);
+            const retainedAllocatorWatermark = snapshot.writerState.allocatorWatermark;
+            await first._database.close();
+
+            const liveDbPath = path.join(
+                capabilities.environment.workingDirectory(),
+                LIVE_DATABASE_WORKING_PATH
+            );
+            // Simulate allocations committed locally after the held remote cut,
+            // then lost with the complete database. The recovery source's prefix
+            // remains the only retained copy, so those unpublished coordinates
+            // and indices cannot re-enter supported history.
+            const abandoned = makeInterface(() => capabilities);
+            await abandoned.ensureInitialized();
+            const abandonedGraph = abandoned._incrementalGraph;
+            abandoned._allEventsBox.value = [makeEvent("lost-event", "lost suffix node")];
+            await abandonedGraph.pull("sorted_events_descending");
+            const destroyedAllocatorWatermark = await abandoned._database
+                .getSchemaStorage()
+                .global.get(LAST_NODE_INDEX_KEY);
+            expect(destroyedAllocatorWatermark).toBeGreaterThan(retainedAllocatorWatermark);
+            const abandonedWriterState = await readCommittedWriterState(
+                abandoned._database.getSchemaStorage().journal,
+                abandoned._database.getFingerprint()
+            );
+            if (abandonedWriterState instanceof Error) throw abandonedWriterState;
+            expect(abandonedWriterState.writerHead.__value).not.toBe("0");
+            await abandoned._database.close();
+            await capabilities.deleter.deleteDirectory(liveDbPath);
+
+            await restoreAbsentFrom(capabilities, snapshot);
+
+            const restored = makeInterface(() => capabilities);
+            await restored.ensureInitialized();
+            const restoredStorage = restored._database.getSchemaStorage();
+            await expect(restoredStorage.global.get(LAST_NODE_INDEX_KEY))
+                .resolves.toBe(retainedAllocatorWatermark);
+            expect(restored._database.getCurrentAllocationWatermark())
+                .toBe(retainedAllocatorWatermark);
+            const reused = restored._database.generateNodeIdentifier();
+            expect(nodeIdentifierToString(reused)).toBe(nodeIdentifierToString(
+                makeNodeIdentifier(restored._database.getFingerprint(), retainedAllocatorWatermark + 1)
+            ));
+            await restored._database.close();
+        }, 30000);
+
 
         test("V4: DefinitelyAbsent permits fresh creation", async () => {
             const capabilities = getMockedRootCapabilities();

@@ -42,6 +42,7 @@ const {
     isJournalBootstrapForkError,
     isJournalVersionCompatibilityError,
     compareAuthorityTime,
+    encodeJournalRecord,
     journalAuthorToString,
     makeJournalAuthor,
     makeJournalFrontier,
@@ -404,6 +405,19 @@ describe("deterministic canonical staging of passes C1 through C4", () => {
         const second = stagedOf(sourceState({}), CREATOR);
         expect(second.records).toEqual(first.records);
         expect([...second.bootstrapFrontier]).toEqual([...first.bootstrapFrontier]);
+    });
+
+    test("stages byte-identical encoded records and artifacts from identical persisted state", () => {
+        const first = stagedOf(sourceState({}), CREATOR);
+        const second = stagedOf(sourceState({}), CREATOR);
+        expect(second.records.map(encodeJournalRecord)).toEqual(first.records.map(encodeJournalRecord));
+        const firstArtifact = artifactOf(first);
+        const secondArtifact = artifactOf(second);
+        expect(secondArtifact.records.map(encodeJournalRecord)).toEqual(
+            firstArtifact.records.map(encodeJournalRecord)
+        );
+        expect(publishedArtifactIsStagedCandidate(firstArtifact, second)).toBe(true);
+        expect(publishedArtifactIsStagedCandidate(secondArtifact, first)).toBe(true);
     });
 
     test("replays to the legacy occurrences the source persists", async () => {

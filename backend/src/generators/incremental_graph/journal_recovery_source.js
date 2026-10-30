@@ -101,6 +101,7 @@ class ContinuationSafeSnapshotClass {
         // Copy before freezing so a caller retaining the input array cannot
         // change the records later consumed by absent restoration.
         this.records = Object.freeze([...records]);
+        this.records = Object.freeze([...records]);
         this.projection = projection;
         this.writerState = writerState;
         this.databaseVersion = databaseVersion;
