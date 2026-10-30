@@ -126,7 +126,6 @@ test('Git recovery refuses a checkpoint with an undecodable Journal record body'
   await expect(snapshotFromRenderedReplica(capabilities,dest)).rejects.toThrow(/not valid JSON/);
  }finally{await fs.rm(dest,{recursive:true,force:true})}
 });
-
 test('Git recovery refuses a checkpoint whose record key disagrees with its semantic identity',async()=>{
  const capabilities=getMockedRootCapabilities();
  stubEnvironment(capabilities);stubLogger(capabilities);
@@ -139,3 +138,4 @@ test('Git recovery refuses a checkpoint whose record key disagrees with its sema
   await expect(snapshotFromRenderedReplica(capabilities,dest)).rejects.toThrow(/disagrees with its semantic identity/);
  }finally{await fs.rm(dest,{recursive:true,force:true})}
 });
+
