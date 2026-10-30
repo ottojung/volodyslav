@@ -1743,6 +1743,105 @@ describe("the oracle reads replay, not a transcription of it", () => {
         expect(disagreementsBetween(oracle, declarative)).toEqual([]);
     });
 
+    test("two concurrent partial-basis certificates are never combined into one proof", async () => {
+        // `incremental-graph-journal-replay.md` §Certificate selection: replay
+        // never synthesizes positive proof by combining entries from different
+        // validations. Two concurrent maintenance certificates each prove a
+        // different input of the same occurrence via an `"unknown"` entry for
+        // the other input: C1 proves B alone, C2 proves C alone. Both are
+        // eligible with an effective basis of exactly one entry, so authority
+        // selects C2 and only C's edge is valid. A model which merged the two
+        // partial bases would report both edges at once.
+        const valueB = makeValueEvent(
+            {
+                id: "aaaaaaaaa:1",
+                context: contextOf([]),
+                authorityTime: authorityOf(100, 0),
+                node: NODE_B,
+            },
+            identifierOf(KEY_B),
+            { type: "entry_description", description: "b" },
+            NOW,
+            LATER,
+            "compute"
+        );
+        const valueC = makeValueEvent(
+            {
+                id: "aaaaaaaaa:2",
+                context: contextOf([["aaaaaaaaa", "1"]]),
+                authorityTime: authorityOf(200, 0),
+                node: NODE_C,
+            },
+            identifierOf(KEY_C),
+            { type: "entry_description", description: "c" },
+            NOW,
+            LATER,
+            "compute"
+        );
+        const valueA = makeValueEvent(
+            {
+                id: "aaaaaaaaa:3",
+                context: contextOf([["aaaaaaaaa", "2"]]),
+                authorityTime: authorityOf(300, 0),
+                node: NODE_A,
+            },
+            identifierOf(KEY_A),
+            { type: "entry_description", description: "a" },
+            NOW,
+            LATER,
+            "compute"
+        );
+        // C1 proves B and carries "unknown" for C; C2 is authored by a second
+        // writer and proves C while carrying "unknown" for B. Neither observes
+        // the other, so they are concurrent. (A second same-writer validation
+        // would have to claim the exact own prefix and therefore observe C1.)
+        const partialB = makeValidateEvent(
+            {
+                id: "aaaaaaaaa:4",
+                context: contextOf([["aaaaaaaaa", "3"]]),
+                authorityTime: authorityOf(400, 0),
+                node: NODE_A,
+            },
+            "aaaaaaaaa:3",
+            [makeValidationBasisEntry(NODE_B, valueB.id), makeValidationBasisEntry(NODE_C, "unknown")],
+            "reset"
+        );
+        const partialC = makeValidateEvent(
+            {
+                id: "bbbbbbbbb:1",
+                context: contextOf([["aaaaaaaaa", "3"]]),
+                authorityTime: authorityOf(500, 0),
+                node: NODE_A,
+            },
+            "aaaaaaaaa:3",
+            [makeValidationBasisEntry(NODE_B, "unknown"), makeValidationBasisEntry(NODE_C, valueC.id)],
+            "reset"
+        );
+        const schema = (nodeKeyString) => {
+            if (nodeKeyString === KEY_A) {
+                return [KEY_B, KEY_C];
+            }
+            return [];
+        };
+        const records = [valueB, valueC, valueA, partialB, partialC];
+        const oracle = await projectRetainedJournal({
+            source: makeReplicaSource(replicaOf(records)),
+            localWriter: WRITER_A,
+            currentInputKeysOfNode: schema,
+        });
+        if (oracle instanceof Error) {
+            throw new Error("the oracle rejected a supported history: " + oracle.message);
+        }
+        const nodeA = oracle.occurrences.find((o) => o.nodeKeyString === KEY_A);
+        // Exactly one certificate is selected, so exactly one edge survives:
+        // the greater-authority C2 wins and only C's edge is valid.
+        expect([...nodeA.validInputs]).toEqual([KEY_C]);
+        expect(nodeA.fresh).toBe(false);
+        expect(oracle.selfProofReadyNodes.has(KEY_A)).toBe(false);
+        const declarative = declarativeProject(replicaOf(records), "aaaaaaaaa", schema);
+        expect(disagreementsBetween(oracle, declarative)).toEqual([]);
+    });
+
     test("a basis naming the wrong inputs is not current-shape-compatible", async () => {
         // C's current inputs are B and D. One certificate names B and D; another,
         // at greater authority, names B and E, where E is a present node which is
