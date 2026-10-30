@@ -1292,6 +1292,71 @@ describe("resetToSource, weakening proof with occurrence-scoped barriers", () =>
         )].sort()).toEqual([KEY_A, KEY_D]);
     });
 
+    test("a proof barrier for the settled ValueId leaves a replacement occurrence's certificate intact", async () => {
+        const receiver = receiverProvenPair();
+        const source = await sourceSnapshotOf(sourcePair(
+            [{ node: NODE_A, value: "unknown" }, { node: NODE_D, value: "unknown" }],
+            { reason: "migration" }
+        ));
+
+        const outcome = outcomeOf(await reset({ receiver, source }));
+
+        // The reset barriers both proof edges of the settled occurrence.
+        const proofBarriers = authoredOf(outcome).filter(
+            (record) => record.kind === "invalidate" && record.scope.kind === "proof"
+        );
+        expect(proofBarriers).toHaveLength(2);
+        for (const barrier of proofBarriers) {
+            expect(nodeKeyToCanonicalString(barrier.node)).toBe(KEY_B);
+            expect(journalRecordIdToString(barrier.scope.value)).toBe(WRITER_LOCAL + ":5");
+        }
+
+        // A concurrent replacement occurrence from another writer observes
+        // the pre-reset local head but not the reset barriers, and proves
+        // both edges again against the settled input occurrences. The
+        // barriers name the settled ValueId only, so this certificate for a
+        // replacement ValueId remains fully effective even though it never
+        // observed the barriers.
+        const replacement = materialize({
+            writer: WRITER_PEER,
+            sequence: "7",
+            node: NODE_B,
+            context: [[WRITER_LOCAL, "6"]],
+            authority: 600,
+            payload: OTHER_PAYLOAD,
+        });
+        const replacementProof = validate({
+            writer: WRITER_PEER,
+            sequence: "8",
+            node: NODE_B,
+            context: [[WRITER_LOCAL, "6"]],
+            authority: 600,
+            value: WRITER_PEER + ":7",
+            basis: [
+                { node: NODE_A, value: WRITER_LOCAL + ":1" },
+                { node: NODE_D, value: WRITER_LOCAL + ":3" },
+            ],
+        });
+        const projected = await projectRetainedJournal({
+            source: makeReplicaSource(
+                replicaOf([...receiver, ...outcome.records, replacement, replacementProof])
+            ),
+            localWriter: LOCAL_AUTHOR,
+            currentInputKeysOfNode: twoInputSchema,
+        });
+        if (projected instanceof Error) {
+            throw new Error("the committed journal does not project: " + projected.message);
+        }
+        const selected = projected.occurrences.find(
+            (occurrence) => occurrence.nodeKeyString === KEY_B
+        );
+        expect(selected === undefined ? undefined : journalRecordIdToString(selected.valueId))
+            .toBe(WRITER_PEER + ":7");
+        expect(selected === undefined ? undefined : [...selected.validInputs].sort())
+            .toEqual([KEY_A, KEY_D]);
+        expect(selected === undefined ? undefined : selected.fresh).toBe(true);
+    });
+
     /**
      * The receiver's supported pair in which `B` carries two certificates of the
      * same occurrence and an earlier proof barrier sits between them: the first
