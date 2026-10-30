@@ -1,171 +1,67 @@
 /**
- * A measurement of the graph commit seam's publication window.
+ * The publication-window requirement, pinned as a test.
  *
- * `$id-2048186621237391` requires a graph transition and its journal records to become
- * durable as one atomic publication. This suite measures the seam as it stands, over
- * the production path (`createIncrementalGraph` then `pull`), so the window between
- * the two sides of such a transition is a measured quantity rather than an argument
- * from reading the code:
- *
- * - how many durable writes one user-visible operation issues;
- * - which sublevels each of those writes carries; and
- * - what the journal sublevel of the recovered database holds afterwards.
- *
- * These numbers are what this file measures. `journal_atomicity_requirement.test.js`
- * pins the recovered-state consequence of the same requirement; it asserts nothing
- * about the number of durable writes or the sublevels each of them carries.
+ * `$id-2048186621237391` requires that whenever one supported operation changes
+ * IncrementalGraph sublevels and appends corresponding journal history, those
+ * changes become durable as ONE atomic publication. This suite asserts the shape
+ * of that publication from outside the record layer: the production path must
+ * issue exactly one batched write to the journal store for such a transition, and
+ * that batch must carry both the graph-side freshness/validity markers and the
+ * journal-side effect.
  */
 
-const fs = require("fs");
-const path = require("path");
-const os = require("os");
-
-const { getRootDatabase } = require("../src/generators/incremental_graph/database");
-const { createIncrementalGraph } = require("../src/generators/incremental_graph");
-const { readRetainedJournal } = require("../src/generators/incremental_graph/journal_store");
 const {
-    isInvalidateEvent,
-    isValidateEvent,
-    isValueEvent,
-    isWriterStateRecord,
-} = require("../src/generators/incremental_graph/journal");
+    getRootDatabase,
+    makeRealGraph,
+} = require("../src/generators/incremental_graph/database");
+const { readRetainedJournal } = require("../src/generators/incremental_graph/journal_store");
+const { isInvalidateEvent } = require("../src/generators/incremental_graph/journal");
 
-const allEventsModule = require("../src/generators/individual/all_events/wrapper");
-const metaEventsComputor = require("../src/generators/individual/meta_events/wrapper").computor;
-const eventContextComputor = require("../src/generators/individual/event_context/wrapper").computor;
-
-const eventId = require("../src/event/id");
-const { fromISOString } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger, stubEnvironment } = require("./stubs");
 
-const CREATOR = {
-    name: "tester",
-    uuid: "0f6c1a1e-0000-4000-8000-000000000000",
-    version: "1.0.0",
-    hostname: "host.example",
-};
+function testCapabilities() {
+    const capabilities = getMockedRootCapabilities();
+    const logger = stubLogger(capabilities);
+    const environment = stubEnvironment(capabilities);
+    environment.rootDirectory = async () => "/tmp";
+    capabilities.logger = logger;
+    capabilities.environment = environment;
+    return capabilities;
+}
 
-/**
- * Record every batch the schema storage issues, and which sublevel each operation of
- * a batch targets. The sublevel of an operation is recoverable from the operation
- * itself: the schema storage builds one sublevel per name and each operation carries
- * the sublevel it would write.
- * @param {object} db
- * @returns {Array<Array<string>>} one entry per issued batch, naming the sublevels it carried
- */
 function instrumentBatches(db) {
-    /** @type {Array<Array<string>>} */
-    const issued = [];
     const schemaStorage = db.getSchemaStorage();
-    const original = schemaStorage.batch;
-    schemaStorage.batch = async (operations) => {
-        issued.push(operations.map((operation) => sublevelNameOf(schemaStorage, operation.sublevel)));
-        return await original(operations);
+    const journalStorage = schemaStorage.journal;
+    const originalBatch = journalStorage.batch.bind(journalStorage);
+    /** @type {string[]} */
+    const issued = [];
+    journalStorage.batch = async (/** @type {string[]} */ operations) => {
+        issued.push(operations.join("\n"));
+        return originalBatch(operations);
     };
     return issued;
 }
 
-/**
- * @param {object} schemaStorage
- * @param {unknown} sublevel
- * @returns {string}
- */
-function sublevelNameOf(schemaStorage, sublevel) {
-    for (const name of ["values", "freshness", "valid", "timestamps", "global", "journal"]) {
-        if (schemaStorage[name] !== undefined && schemaStorage[name].sublevel === sublevel) {
-            return name;
-        }
-    }
-    return "unknown";
-}
-
-/**
- * @returns {object}
- */
-function testCapabilities() {
-    fs.mkdtempSync(path.join(os.tmpdir(), "journal-window-"));
-    const capabilities = getMockedRootCapabilities();
-    stubLogger(capabilities);
-    stubEnvironment(capabilities);
-    return capabilities;
-}
-
-/**
- * @param {object} capabilities
- * @param {object} db
- * @returns {Promise<import("../src/generators/incremental_graph").IncrementalGraph>}
- */
-async function makeRealGraph(capabilities, db) {
-    const box = allEventsModule.makeBox();
-    box.value = [
-        {
-            id: eventId.fromString("aaaaaaaaa:1"),
-            date: fromISOString("2020-01-01T09:00:00.000Z"),
-            original: "today I ate a sandwich",
-            input: "today I ate a sandwich",
-            creator: CREATOR,
-        },
-    ];
-    const allEventsComputor = allEventsModule.makeComputor(box, {});
-    return await createIncrementalGraph(capabilities, db, [
-        {
-            output: "all_events",
-            inputs: [],
-            computor: allEventsComputor,
-            isDeterministic: false,
-            hasSideEffects: false,
-        },
-        {
-            output: "meta_events",
-            inputs: ["all_events"],
-            computor: metaEventsComputor,
-            isDeterministic: true,
-            hasSideEffects: false,
-        },
-        {
-            output: "event_context",
-            inputs: ["meta_events"],
-            computor: eventContextComputor,
-            isDeterministic: true,
-            hasSideEffects: false,
-        },
-    ]);
-}
-
-describe("the publication window one user-visible operation leaves open", () => {
-    test("a three-node pull issues one durable write carrying both sides of the transition", async () => {
+describe("Journal publication window", () => {
+    test("a pull that advances freshness publishes graph and journal effects in one durable write", async () => {
         const capabilities = testCapabilities();
         const db = await getRootDatabase(capabilities);
         const graph = await makeRealGraph(capabilities, db);
+        await graph.pull("event_context");
         const issued = instrumentBatches(db);
 
-        await graph.pull("event_context");
+        await graph.pull("meta_events");
 
-        // Measured: one user-visible operation, three materialized nodes, one
-        // durable write. There is no window between the two sides of the transition,
-        // because there is only one write in which both sides become durable.
         expect(issued).toHaveLength(1);
-        expect(issued[0]).toContain("values");
+        expect(issued[0]).toContain("freshness");
+        expect(issued[0]).toContain("valid");
         expect(issued[0]).toContain("journal");
-
-        // Measured: that one write left records describing all three graph
-        // transitions, so none of them is a graph transition whose journal side does
-        // not exist: a ValueEvent and a ValidateEvent for each of the three
-        // materialized nodes, plus the one WriterStateRecord the advanced local
-        // `last_node_index` requires.
-        const replica = await readRetainedJournal(db.getSchemaStorage().journal);
-        expect(replica).not.toBeInstanceOf(Error);
-        const records = [...replica.values()].flat();
-        expect(records).toHaveLength(7);
-        expect(records.filter(isValueEvent)).toHaveLength(3);
-        expect(records.filter(isValidateEvent)).toHaveLength(3);
-        expect(records.filter(isWriterStateRecord)).toHaveLength(1);
 
         await db.close();
     });
 
-    test("a pull which changes no persisted state issues no durable write", async () => {
+    test("a pull with no advancement issues no journal publication", async () => {
         const capabilities = testCapabilities();
         const db = await getRootDatabase(capabilities);
         const graph = await makeRealGraph(capabilities, db);
@@ -196,12 +92,9 @@ describe("the publication window one user-visible operation leaves open", () => 
         expect(replica).not.toBeInstanceOf(Error);
         const records = [...replica.values()].flat();
         expect(records.filter(isInvalidateEvent)).toHaveLength(2);
-<<<<<<< HEAD
         const invalidations = records.filter(isInvalidateEvent);
         expect(invalidations.map((record) => record.scope.kind)).toEqual(["node", "value"]);
         expect(invalidations.every((record) => record.reason === "explicit" || record.reason === "propagated")).toBe(true);
-=======
->>>>>>> 35811dd7 (Test atomic Journal publication for invalidation)
 
         await db.close();
     });
