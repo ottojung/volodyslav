@@ -100,7 +100,7 @@ async function readRetainedRecordAt(receiver, author, sequence) {
  * @param {JournalAuthor} author
  * @param {JournalSequence} sequence
  * @param {Map<string, JournalRecord>} cache
- * @returns {Promise<JournalRecord | undefined | JournalError>}
+ * @returns {Promise<import('../journal/records').SemanticEvent | undefined | JournalError>}
  */
 async function nearestRetainedSemantic(receiver, author, sequence, cache) {
     const name = journalAuthorToString(author);
@@ -120,7 +120,7 @@ async function nearestRetainedSemantic(receiver, author, sequence, cache) {
             cache.set(key, entry);
         }
         if (isSemanticEvent(entry)) {
-            return entry;
+            return /** @type {import('../journal/records').SemanticEvent} */ (entry);
         }
         const previous = predecessorJournalSequence(current);
         if (previous instanceof Error) {
@@ -210,7 +210,8 @@ async function verifyClaimedObservation(event, author, sequence, index, receiver
     if (nearest instanceof Error) {
         return nearest;
     }
-    for (const [observedAuthor, observedSequence] of nearest.context) {
+    const nearestSemantic = /** @type {import('../journal/records').SemanticEvent} */ (nearest);
+    for (const [observedAuthor, observedSequence] of nearestSemantic.context) {
         if (compareJournalSequence(
             observedSequence,
             journalSequenceAtFrontier(event.context, observedAuthor)
@@ -223,19 +224,19 @@ async function verifyClaimedObservation(event, author, sequence, index, receiver
                     ":" +
                     journalSequenceToString(observedSequence) +
                     " observed by the retained event " +
-                    journalRecordIdToString(nearest.id)
+                    journalRecordIdToString(nearestSemantic.id)
             );
         }
     }
-    if (authorityCompare(nearest, event) >= 0) {
+    if (authorityCompare(nearestSemantic, event) >= 0) {
         return makeJournalCausalClosureError(
             label,
             "authority consistency",
             "authority does not extend the observed retained predecessor " +
-                journalRecordIdToString(nearest.id)
+                journalRecordIdToString(nearestSemantic.id)
         );
     }
-    for (const [observedAuthor, observedSequence] of nearest.context) {
+    for (const [observedAuthor, observedSequence] of nearestSemantic.context) {
         const deeper = await verifyClaimedObservation(
             event, observedAuthor, observedSequence, index, receiver, cache, visited
         );
