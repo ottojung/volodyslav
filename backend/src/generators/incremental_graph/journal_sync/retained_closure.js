@@ -100,7 +100,7 @@ async function readRetainedRecordAt(receiver, author, sequence) {
  * @param {JournalAuthor} author
  * @param {JournalSequence} sequence
  * @param {Map<string, JournalRecord>} cache
- * @returns {Promise<JournalRecord | undefined | JournalError>}
+ * @returns {Promise<SemanticEvent | undefined | JournalError>}
  */
 async function nearestRetainedSemantic(receiver, author, sequence, cache) {
     const name = journalAuthorToString(author);
