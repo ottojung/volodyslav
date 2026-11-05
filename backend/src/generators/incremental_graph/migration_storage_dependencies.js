@@ -13,18 +13,13 @@ const {
     makeDecisionConflictError,
     makeInvalidMigrationDecisionError,
 } = require("./migration_errors");
-const {
-    checkSchemaCompatibility,
-} = require("./migration_storage_schema");
 
 /** @typedef {import('./database/types').ComputedValue} ComputedValue */
 /** @typedef {import('./database/types').NodeIdentifier} NodeIdentifier */
-/** @typedef {import('./types').CompiledNode} CompiledNode */
-/** @typedef {import('./types').NodeName} NodeName */
 /** @typedef {import('./migration_storage').ReadableMigrationStorage} ReadableMigrationStorage */
 
 /** @typedef {import('./migration_decisions').KeepDecision} KeepDecision */
-/** @typedef {import('./migration_decisions').OverrideDecision} OverrideDecision */
+/** @typedef {import('./migration_decisions').ReplaceDecision} ReplaceDecision */
 /** @typedef {import('./migration_decisions').InvalidateDecision} InvalidateDecision */
 /** @typedef {import('./migration_decisions').DeleteDecision} DeleteDecision */
 /** @typedef {import('./migration_decisions').CreatedFreshness} CreatedFreshness */
@@ -43,79 +38,28 @@ async function readValidDependents(nodeKey, prevStorage) {
 }
 
 /**
- * Propagate INVALIDATE through previous validity edges.
- *
- * Recursive invalidation propagates freshness only — it does not remove
- * validity edges. Each reached dependent is marked as a propagated
- * invalidation, and the traversal continues through its outgoing validity
- * frontier. A node-level visited set is sufficient; there is no need to
- * track causal predecessors because no validity edges are revoked.
- * @param {object} ctx
- * @param {NodeIdentifier} ctx.nodeKey
- * @param {Set<NodeIdentifier>} ctx.visited
- * @param {ReadableMigrationStorage} ctx.prevStorage
- * @param {Set<NodeIdentifier>} ctx.materializedNodes
- * @param {Map<NodeIdentifier, Decision>} ctx.decisions
- * @param {Map<NodeName, CompiledNode>} ctx.newHeadIndex
- * @param {() => Map<string, string>} ctx.getIdentifiersKeysIndex
- * @returns {Promise<void>}
- */
-async function propagateInvalidate(ctx) {
-    const { nodeKey, visited, prevStorage, materializedNodes, decisions, newHeadIndex, getIdentifiersKeysIndex } = ctx;
-    /** @type {NodeIdentifier[]} */
-    const worklist = [nodeKey];
-
-    while (worklist.length > 0) {
-        const current = worklist.pop();
-        if (current === undefined) continue;
-        if (visited.has(current)) continue;
-        visited.add(current);
-
-        const dependents = await readValidDependents(current, prevStorage);
-        for (const dep of dependents) {
-            if (!materializedNodes.has(dep)) continue;
-            const existing = decisions.get(dep);
-            if (existing !== undefined) {
-                if (existing.kind === "delete") {
-                    continue;
-                }
-                if (existing.kind === "invalidate") {
-                    if (!visited.has(dep)) {
-                        worklist.push(dep);
-                    }
-                    continue;
-                }
-                throw makeDecisionConflictError(dep, existing.kind, "invalidate");
-            }
-            const identifiersKeysIndex = getIdentifiersKeysIndex();
-            await checkSchemaCompatibility(dep, newHeadIndex, identifiersKeysIndex, decisions);
-            decisions.set(dep, { kind: "invalidate", provenance: "propagated" });
-            if (!visited.has(dep)) {
-                worklist.push(dep);
-            }
-        }
-    }
-}
-
-/**
  * BFS propagation of DELETE to every materialized structural dependent.
  *
  * Uses scheme-derived structural dependencies rather than valid so that
  * stale nodes whose dependents are absent from valid are still discovered.
+ *
+ * The structural dependencies are derived in the target NodeKey representation,
+ * which is the key space the target schema is written in.
+ *
  * @param {object} ctx
  * @param {Set<NodeIdentifier>} ctx.materializedNodes
  * @param {Map<NodeIdentifier, Decision>} ctx.decisions
  * @param {import('./database/graph_scheme').GraphScheme} ctx.newGraphScheme
- * @param {import('./database/identifier_lookup').IdentifierLookup} ctx.oldLookup
+ * @param {import('./migration_target_keys').TargetKeyView} ctx.targetKeyView
  * @returns {Promise<void>}
  */
 async function propagateDeletes(ctx) {
-    const { materializedNodes, decisions, newGraphScheme, oldLookup } = ctx;
+    const { materializedNodes, decisions, newGraphScheme, targetKeyView } = ctx;
     /** @type {Array<[NodeIdentifier, import('./database/types').NodeKeyString]>} */
     const candidateEntries = [];
     for (const nodeKey of materializedNodes) {
-        const semanticKey = oldLookup.idToKey.get(nodeIdentifierToString(nodeKey));
-        if (semanticKey !== undefined) {
+        const semanticKey = targetKeyView.keyForIdentifier(nodeKey);
+        if (!(semanticKey instanceof Error)) {
             candidateEntries.push([nodeKey, semanticKey]);
         }
     }
@@ -197,6 +141,5 @@ async function propagateDeletes(ctx) {
 
 module.exports = {
     readValidDependents,
-    propagateInvalidate,
     propagateDeletes,
 };

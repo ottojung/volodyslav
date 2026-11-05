@@ -1,0 +1,163 @@
+/**
+ * The maintenance traversal which reconstructs the retained replay state.
+ *
+ * `incremental-graph-journal-storage.md` §Derived indexes permits a missing derived
+ * index to be rebuilt only through an explicit rebuild/maintenance transition, and
+ * §Change-bounded proof summary says the same of the counted summary. This module is
+ * that transition for the whole of the state `retained.js` folds a reset delta
+ * into: it traverses the retained journal once and stores what the fold reads, so
+ * publication, maintenance and migration can construct or reconstruct it.
+ *
+ * Reset never calls it. A receiver whose activated replica does not hold the state
+ * must be rebuilt or maintained, not silently replayed.
+ */
+
+/** @typedef {import('../journal/errors').AnyJournalError} JournalError */
+/** @typedef {import('../journal/records').JournalRecord} JournalRecord */
+/** @typedef {import('../journal/types').JournalAuthor} JournalAuthor */
+/** @typedef {import('../journal/types').JournalSequence} JournalSequence */
+/** @typedef {import('../journal/oracle/heads').HeadSelection} HeadSelection */
+/** @typedef {import('../journal/oracle/record_source').JournalSource} JournalSource */
+/** @typedef {import('./proof_summary').CurrentInputKeysOfNode} CurrentInputKeysOfNode */
+/** @typedef {import('./retained').RetainedReplayState} RetainedReplayState */
+
+const {
+    compareJournalSequence,
+    isWriterStateRecord,
+    journalAuthorToString,
+    makeJournalReplica,
+    makeReplicaSource,
+    streamWithReport,
+} = require("../journal");
+const { buildProofSummary } = require("./proof_summary");
+
+const {
+    RetainedReplayStateClass,
+    admitRetainedHead,
+    projectRetainedReplay,
+    raiseAdmittedLength,
+} = require("./retained");
+
+/**
+ * Build the retained replay state of a retained journal.
+ *
+ * The properties that this call produces are the ones `retained.js`'s state class
+ * documents: a running maximum head candidate per node, the counted proof summary
+ * of the same admitted records, every retained writer, and the local writer's
+ * allocator watermark, followed by the resolution of the first cut.
+ *
+ * @param {object} request
+ * @param {JournalSource} request.source - The receiver's retained journal.
+ * @param {JournalAuthor} request.localWriter
+ * @param {CurrentInputKeysOfNode} request.currentInputKeysOfNode
+ * @returns {Promise<{state: RetainedReplayState} | {error: JournalError}>}
+ */
+async function buildRetainedReplayState(request) {
+    const { source, localWriter, currentInputKeysOfNode } = request;
+    /** @type {Map<string, HeadSelection>} */
+    const heads = new Map();
+    /** @type {Map<string, JournalAuthor>} */
+    const writers = new Map();
+    /** @type {Map<string, JournalSequence>} */
+    const admittedLengths = new Map();
+    const localName = journalAuthorToString(localWriter);
+    let lastNodeIndex = 0;
+    const failure = await streamWithReport(source, (record) => {
+        const name = journalAuthorToString(record.id.author);
+        writers.set(name, record.id.author);
+        raiseAdmittedLength(admittedLengths, name, record.id.sequence);
+        if (isWriterStateRecord(record)) {
+            if (journalAuthorToString(record.id.author) === localName) {
+                lastNodeIndex = record.lastNodeIndex;
+            }
+            return undefined;
+        }
+        admitRetainedHead(heads, record);
+        return undefined;
+    });
+    if (failure !== undefined) {
+        return { error: failure };
+    }
+    const proofs = await buildProofSummary({
+        source,
+        occurrences: new Map(),
+        currentInputKeysOfNode,
+    });
+    if ("error" in proofs) {
+        return { error: proofs.error };
+    }
+    const state = new RetainedReplayStateClass(
+        heads,
+        proofs.summary,
+        new Map(),
+        new Map(),
+        new Set(),
+        writers,
+        admittedLengths,
+        lastNodeIndex,
+        localWriter,
+        currentInputKeysOfNode
+    );
+    const projected = projectRetainedReplay(state);
+    if ("error" in projected) {
+        return projected;
+    }
+    return { state };
+}
+
+/**
+ * Build the retained replay state of one explicit record set.
+ *
+ * This is the in-memory form of `buildRetainedReplayState` for a maintenance transition
+ * which already holds the records it is installing — a canonical bootstrap or an
+ * absent-state restore — and therefore does not have a `JournalSource` to traverse.
+ * The records are grouped by writer in writer-stream order, which is the shape a
+ * replica source requires, so the resulting state is built by exactly the same
+ * traversal an explicit rebuild uses.
+ *
+ * @param {object} request
+ * @param {ReadonlyArray<JournalRecord>} request.records
+ * @param {JournalAuthor} request.localWriter
+ * @param {import('./proof_summary').CurrentInputKeysOfNode} request.currentInputKeysOfNode
+ * @returns {Promise<{state: RetainedReplayState} | {error: JournalError}>}
+ */
+async function buildRetainedReplayStateFromRecords(request) {
+    const { records, localWriter, currentInputKeysOfNode } = request;
+    /** @type {Map<string, {author: JournalAuthor, records: Array<JournalRecord>}>} */
+    const byWriter = new Map();
+    for (const record of records) {
+        const name = journalAuthorToString(record.id.author);
+        const existing = byWriter.get(name);
+        if (existing === undefined) {
+            byWriter.set(name, { author: record.id.author, records: [record] });
+        } else {
+            existing.records.push(record);
+        }
+    }
+    /** @type {Array<[JournalAuthor, ReadonlyArray<JournalRecord>]>} */
+    const streams = [];
+    for (const name of [...byWriter.keys()].sort()) {
+        const stream = byWriter.get(name);
+        if (stream === undefined) {
+            continue;
+        }
+        stream.records.sort((left, right) =>
+            compareJournalSequence(left.id.sequence, right.id.sequence)
+        );
+        streams.push([stream.author, stream.records]);
+    }
+    const replica = makeJournalReplica(streams);
+    if (replica instanceof Error) {
+        return { error: replica };
+    }
+    return buildRetainedReplayState({
+        source: makeReplicaSource(replica),
+        localWriter,
+        currentInputKeysOfNode,
+    });
+}
+
+module.exports = {
+    buildRetainedReplayState,
+    buildRetainedReplayStateFromRecords,
+};

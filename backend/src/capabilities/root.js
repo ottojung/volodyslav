@@ -34,6 +34,7 @@
 /** @typedef {import('../temporary').Temporary} Temporary */
 
 
+
 /**
  * @typedef {object} Capabilities
  * @property {Interface} interface - The incremental graph interface capability.
@@ -67,6 +68,7 @@
  * @property {Threading} threading - A threading instance.
  * @property {WifiConnectionChecker} wifiChecker - A WiFi connection checker instance.
  * @property {LevelDatabase} levelDatabase - A level database instance.
+
  */
 
 const random = require("../random");
@@ -108,6 +110,9 @@ const { makeTemporary } = require('../temporary');
  * It is supposed to be initialized at the main entry to Volodyslav, and then passed down the call stack.
  * It should be a pure, well-behaved, non-throwing function,
  * because it is required for everything else in Volodyslav to work, including error reporting.
+ *
+ *
+ * @returns {Capabilities}
  */
 const make = () => {
     const environment = environmentCapability.make();
@@ -150,7 +155,6 @@ const make = () => {
         threading,
         levelDatabase: levelDatabaseCapability.make(),
     };
-
     return ret;
 };
 

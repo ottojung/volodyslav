@@ -29,6 +29,8 @@ describe("Bound variables with DatabaseValue objects", () => {
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);
 
+        const computorCallLog = [];
+
         const schemas = [
             {
                 output: "source",
@@ -42,10 +44,10 @@ describe("Bound variables with DatabaseValue objects", () => {
                 inputs: ["source"],
                 computor: (inputs, _oldValue, bindings) => {
                     // bindings[0] should be a full DatabaseValue object
+                    computorCallLog.push({ x: bindings[0] });
                     return {
                         type: "meta_events",
                         meta_events: [],
-                        boundTo: bindings[0],
                     };
                 },
                 isDeterministic: true,
@@ -65,8 +67,8 @@ describe("Bound variables with DatabaseValue objects", () => {
         expect(result).toEqual({
             type: "meta_events",
             meta_events: [],
-            boundTo: objectBinding,
         });
+        expect(computorCallLog).toEqual([{ x: objectBinding }]);
 
         await db.close();
     });
@@ -93,7 +95,6 @@ describe("Bound variables with DatabaseValue objects", () => {
                     return {
                         type: "meta_events",
                         meta_events: [],
-                        boundTo: bindings[0],
                     };
                 },
                 isDeterministic: true,
@@ -111,8 +112,9 @@ describe("Bound variables with DatabaseValue objects", () => {
         const result1 = await graph.pull("derived", [binding1]);
         const result2 = await graph.pull("derived", [binding2]);
 
-        expect(result1.boundTo).toEqual(binding1);
-        expect(result2.boundTo).toEqual(binding2);
+        expect(result1).toEqual({ type: "meta_events", meta_events: [] });
+        expect(result2).toEqual({ type: "meta_events", meta_events: [] });
+        expect(computorCallLog).toEqual([{ x: binding1 }, { x: binding2 }]);
 
         // Should have computed both instances
         expect(computorCallLog).toHaveLength(2);
@@ -142,7 +144,6 @@ describe("Bound variables with DatabaseValue objects", () => {
                     return {
                         type: "meta_events",
                         meta_events: [],
-                        boundTo: bindings[0],
                     };
                 },
                 isDeterministic: true,

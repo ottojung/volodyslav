@@ -1,6 +1,6 @@
 const { format } = require("./date");
 const eventId = require("./id");
-const { fromISOString } = require("../datetime");
+const { fromISOString, isDateTime } = require("../datetime");
 const {
     makeMissingFieldError,
     makeInvalidTypeError,
@@ -209,8 +209,99 @@ function tryDeserialize(obj) {
     }
 }
 
+/**
+ * Check a live `Event` supplied by an in-process producer against the shape a
+ * current-version serialized event states.
+ *
+ * `tryDeserialize` validates the persisted form as text; this checks the live form
+ * an in-process producer holds. The event log accepts events from several producers,
+ * and one which is not a complete event becomes a computed value the Journal record
+ * layer cannot represent, because a current-version serialized event states
+ * `original` and `input` as strings.
+ *
+ * The identifier and the date are accepted in either representation the record layer
+ * reads: the nominal `EventId` and `DateTime` a live event carries, and the plain
+ * identifier record and Luxon field a persisted event is read back as.
+ *
+ * The properties that a value passing this check carries are:
+ * - `id` states a non-empty string identifier;
+ * - `date` is a nominal `DateTime` or states a Luxon date and time string;
+ * - `original` and `input` are strings;
+ * - `creator` states `name`, `uuid`, `version`, and `hostname` as strings.
+ *
+ * The proof of those properties is guaranteed by:
+ * - `tryValidateEvent(event)`: every property above is checked by an `instanceof`
+ *   test for the nominal members or by a `typeof` test for the string members, and a
+ *   validation error rather than success is returned when any of them fails.
+ *
+ * @param {unknown} event
+ * @returns {TryDeserializeError | undefined} The reason the event is not complete, or undefined when it is.
+ */
+function tryValidateEvent(event) {
+    if (!event || typeof event !== "object" || Array.isArray(event)) {
+        return makeInvalidStructureError(
+            "Event must be a non-null object and not an array",
+            event
+        );
+    }
+    if (!("id" in event)) return makeMissingFieldError("id");
+    const id = event.id;
+    if (!eventId.isEventId(id) && !(isPlainRecord(id) && typeof id["identifier"] === "string")) {
+        return makeInvalidTypeError("id", id, "an EventId");
+    }
+    if (!("date" in event)) return makeMissingFieldError("date");
+    const date = event.date;
+    if (!isDateTime(date) && !(isPlainRecord(date) && typeof date["_luxonDateTime"] === "string")) {
+        return makeInvalidTypeError("date", date, "a DateTime");
+    }
+    if (!("original" in event)) return makeMissingFieldError("original");
+    if (typeof event.original !== "string") {
+        return makeInvalidTypeError("original", event.original, "string");
+    }
+    if (!("input" in event)) return makeMissingFieldError("input");
+    if (typeof event.input !== "string") {
+        return makeInvalidTypeError("input", event.input, "string");
+    }
+    if (!("creator" in event)) return makeMissingFieldError("creator");
+    const creator = event.creator;
+    if (!isPlainRecord(creator)) {
+        return makeInvalidTypeError("creator", creator, "object");
+    }
+    if (
+        !("name" in creator) ||
+        !("uuid" in creator) ||
+        !("version" in creator) ||
+        !("hostname" in creator)
+    ) {
+        return makeNestedFieldError("creator", "name", creator, "missing required field");
+    }
+    const { name, uuid, version, hostname } = creator;
+    if (typeof name !== "string") {
+        return makeNestedFieldError("creator", "name", name, "expected string");
+    }
+    if (typeof uuid !== "string") {
+        return makeNestedFieldError("creator", "uuid", uuid, "expected string");
+    }
+    if (typeof version !== "string") {
+        return makeNestedFieldError("creator", "version", version, "expected string");
+    }
+    if (typeof hostname !== "string") {
+        return makeNestedFieldError("creator", "hostname", hostname, "expected string");
+    }
+    return undefined;
+}
+
+/**
+ * @param {unknown} value
+ * @returns {value is Record<string, unknown>}
+ */
+function isPlainRecord(value) {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 module.exports = {
     serialize,
     deserialize,
     tryDeserialize,
+    tryValidateEvent,
 };

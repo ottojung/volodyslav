@@ -7,7 +7,12 @@
  * metadata.
  *
  * This function enforces the strict lifecycle:
- * - Uninitialized: both "version" and "graph_scheme" missing → initialize both.
+ * - Uninitialized: both "version" and "graph_scheme" missing and the replica holds
+ *   no structured graph/journal state → initialize both.
+ * - Structured but unversioned: both "version" and "graph_scheme" missing while the
+ *   replica already holds structured graph/journal state → throw clearly, because
+ *   that state was produced outside the supported lifecycle transitions and must not
+ *   be erased by re-initializing the replica as fresh.
  * - Half-initialized: one present without the other → throw clearly.
  * - Initialized, matching version: exact string compare graph_scheme.
  * - Version mismatch: graph construction over a replica that needs migration is
@@ -27,6 +32,7 @@
 /** @typedef {import('./database/graph_scheme').GraphScheme} GraphScheme */
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
+/** @typedef {import('./database/identifier_lookup').IdentifierLookup} IdentifierLookup */
 
 const {
     compileValidatedGraphSchema,
@@ -39,6 +45,69 @@ const {
     initializeReplicaGlobals,
     assertValidReplicaMaterializationState,
 } = require("./database");
+const {
+    appendRetainedStateOp,
+} = require("./journal_store");
+const {
+    makeEmptyRetainedReplayState,
+} = require("./journal_retained");
+const {
+    makeCurrentInputKeysOfNode,
+} = require("./journal_bootstrap_startup");
+const { makeJournalAuthor } = require("./journal");
+
+/**
+ * The current schema's direct inputs per node, as the retained replay state reads them.
+ *
+ * `makeCurrentInputKeysOfNode` reports a node the scheme does not name as having no
+ * template at all. A node the current schema does not name has no direct inputs in the
+ * current schema either, so its input set is empty.
+ *
+ * @param {GraphScheme} graphScheme
+ * @returns {(nodeKeyString: string) => ReadonlyArray<string>}
+ */
+function currentInputKeysOfGraphScheme(graphScheme) {
+    const template = makeCurrentInputKeysOfNode(graphScheme);
+    return (nodeKeyString) => template(nodeKeyString) ?? [];
+}
+
+/**
+ * Persist the empty retained replay state of a genuinely fresh replica.
+ *
+ * A replica which holds no record has an empty summary, not a missing one, so writing
+ * it here is initialization rather than a scan of retained history, and it is what lets
+ * the first ordinary publication maintain the summary incrementally instead of having
+ * to rebuild it by traversal.
+ *
+ * `incremental-graph-journal-storage.md` §Startup validation bounds routine open by the
+ * current state rather than by retained history: a non-empty replica's summary is not
+ * read here, because it is derived state rather than committed-pair metadata. A
+ * non-empty replica whose summary is absent or stale is the missing/stale case
+ * §Change-bounded proof summary reserves for explicit rebuild/maintenance, and the
+ * first operation which would consume it fails closed rather than scanning.
+ *
+ * @param {RootDatabase} rootDatabase
+ * @param {SchemaStorage} schemaStorage
+ * @param {GraphScheme} graphScheme
+ * @returns {Promise<void>}
+ */
+async function initializeRetainedReplayState(rootDatabase, schemaStorage, graphScheme) {
+    const localWriter = makeJournalAuthor(rootDatabase.getFingerprint());
+    if (localWriter instanceof Error) {
+        throw localWriter;
+    }
+    const state = makeEmptyRetainedReplayState(
+        localWriter,
+        currentInputKeysOfGraphScheme(graphScheme)
+    );
+    /** @type {Array<*>} */
+    const operations = [];
+    const rejected = appendRetainedStateOp(schemaStorage.journal, operations, state);
+    if (rejected !== undefined) {
+        throw rejected;
+    }
+    await schemaStorage.batch(operations);
+}
 
 /**
  * @typedef {object} PreparedGraphStorage
@@ -50,12 +119,53 @@ const {
  */
 
 /**
+ * Determine whether the active replica already holds structured graph/journal state.
+ *
+ * A genuinely fresh replica materializes nothing: its identifier lookup is empty and
+ * its `values`, `freshness`, `timestamps`, `valid`, and `journal` sublevels hold no
+ * entry. The global sublevel is deliberately not inspected because a fresh replica
+ * persists `identifiers_keys_map`, `last_node_index`, and `fingerprint` there before
+ * any version is written.
+ *
+ * Any materialized node, allocator mapping, or Journal record means the replica is an
+ * existing database. Missing or malformed version/schema metadata over such state is
+ * corruption, not absence, so it must never be erased by re-initializing the replica.
+ *
+ * @param {SchemaStorage} schemaStorage
+ * @param {IdentifierLookup} identifierLookup
+ * @returns {Promise<boolean>}
+ */
+async function replicaHoldsStructuredState(schemaStorage, identifierLookup) {
+    if (identifierLookup.idToKey.size > 0) {
+        return true;
+    }
+    const structuredSublevels = [
+        schemaStorage.values,
+        schemaStorage.freshness,
+        schemaStorage.timestamps,
+        schemaStorage.valid,
+        schemaStorage.journal,
+    ];
+    for (const sublevel of structuredSublevels) {
+        for await (const key of sublevel.keys()) {
+            void key;
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
  * Prepare incremental graph storage by validating persistent schema metadata and
  * compiling node definitions.
  *
  * Lifecycle logic:
- * - If both "version" and "graph_scheme" are missing → genuinely fresh replica.
- *   Initializes both via initializeReplicaGlobals.
+ * - If both "version" and "graph_scheme" are missing and the replica holds no
+ *   structured graph/journal state → genuinely fresh replica. Initializes both via
+ *   initializeReplicaGlobals.
+ * - If both "version" and "graph_scheme" are missing while the replica already holds
+ *   structured graph/journal state → corrupted/unsupported state produced outside the
+ *   supported lifecycle transitions; throws GraphSchemeError rather than erasing it.
  * - If "graph_scheme" exists but "version" is missing → half-initialized state,
  *   throws GraphSchemeError.
  * - If "version" exists but "graph_scheme" is missing → initialized replica
@@ -78,11 +188,21 @@ async function prepareIncrementalGraphStorage(rootDatabase, nodeDefs) {
     const currentVersion = rootDatabase.getVersion();
 
     if (storedVersion === undefined && storedScheme === undefined) {
+        // Absence of version/schema metadata is fresh only when the replica is
+        // genuinely empty. Structured state whose metadata is missing is corruption,
+        // and re-initializing it as fresh would erase an existing database.
+        if (await replicaHoldsStructuredState(schemaStorage, rootDatabase.getActiveIdentifierLookup())) {
+            throw new GraphSchemeError(
+                "Invalid graph storage: structured graph/journal state is present but both version " +
+                "and graph_scheme are missing; refusing to re-initialize an existing replica as fresh"
+            );
+        }
         // Genuinely fresh active replica: initialize both together.
         await initializeReplicaGlobals(schemaStorage, {
             version: currentVersion,
             graphSchemeString,
         });
+        await initializeRetainedReplayState(rootDatabase, schemaStorage, graphScheme);
     } else if (storedVersion === undefined && storedScheme !== undefined) {
         throw new GraphSchemeError(
             "Invalid graph storage: graph_scheme exists but version is missing"
@@ -122,5 +242,6 @@ async function prepareIncrementalGraphStorage(rootDatabase, nodeDefs) {
 }
 
 module.exports = {
+    currentInputKeysOfGraphScheme,
     prepareIncrementalGraphStorage,
 };

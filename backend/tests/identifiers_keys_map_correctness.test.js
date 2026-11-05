@@ -11,9 +11,10 @@
  *
  * The darkroom serialization guarantee (all finalization steps run inside
  * `darkroomActivity`) is structurally enforced in graph_state.js — it is
- * not re-tested here because it requires an integration harness. The unit
- * tests below verify the algebraic properties that make the serialization
- * correct regardless of scheduling.
+ * not re-tested here, because these tests call `serializeTransactionLookup`
+ * directly rather than through the finalization path which calls it. They verify
+ * the algebraic properties that make the serialization correct regardless of
+ * scheduling.
  */
 
 const {

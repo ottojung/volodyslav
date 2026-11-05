@@ -40,23 +40,17 @@ describe("IncrementalGraph integration with meta_events", () => {
         const testEvents = [
             {
                 id: "1",
-                type: "test",
-                description: "Event 1",
                 date: "2024-01-01",
                 original: "test1",
                 input: "test1",
-                modifiers: {},
-                creator: { name: "test", uuid: "00000000-0000-0000-0000-000000000001", version: "0.0.0" },
+                creator: { name: "test", uuid: "00000000-0000-0000-0000-000000000001", version: "0.0.0", hostname: "test-host" },
             },
             {
                 id: "2",
-                type: "test",
-                description: "Event 2",
                 date: "2024-01-02",
                 original: "test2",
                 input: "test2",
-                modifiers: {},
-                creator: { name: "test", uuid: "00000000-0000-0000-0000-000000000002", version: "0.0.0" },
+                creator: { name: "test", uuid: "00000000-0000-0000-0000-000000000002", version: "0.0.0", hostname: "test-host" },
             },
         ];
 
