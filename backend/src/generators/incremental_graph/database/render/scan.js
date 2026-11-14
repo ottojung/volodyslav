@@ -65,13 +65,13 @@ function isScanInputDirMissingError(object) {
  * avoids the previous clear-then-rewrite approach and minimises I/O when
  * the snapshot is largely unchanged.
  *
- * Works for any valid top-level sublevel, including hostname staging namespaces
- * (e.g. `_h_myhostname`).
+ * Works for any valid top-level sublevel, including the synchronization staging
+ * namespace (`sync_staging`).
  *
  * @param {ScanCapabilities} capabilities
  * @param {RootDatabase} rootDatabase - The database to populate.
  * @param {string} inputDir - Absolute path of the directory to read from.
- * @param {string} sublevel - Top-level database sublevel to scan into (e.g. "x", "_meta", "_h_myhostname").
+ * @param {string} sublevel - Top-level database sublevel to scan into (e.g. "x", "_meta", "sync_staging").
  * @returns {Promise<void>}
  */
 async function scanFromFilesystem(capabilities, rootDatabase, inputDir, sublevel) {

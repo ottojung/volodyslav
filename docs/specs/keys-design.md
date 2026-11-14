@@ -11,8 +11,8 @@ This model separates three concerns:
 - `NodeIdentifier` is the persisted storage identity of a materialized node
 - filesystem snapshots and internal storage operate directly on stored identifiers
 
-This document is the **intended target design specification** for IncrementalGraph
-node addressing. It describes the model as it is meant to be.
+This document defines the node-addressing model for IncrementalGraph storage,
+filesystem snapshots, and the HTTP inspection API as implemented.
 
 ## Terms
 
@@ -59,7 +59,7 @@ Migration code is internal storage logic, so migrations are fully `NodeIdentifie
 
 - Migration callbacks must receive and return concrete-node references as `NodeIdentifier` values.
 - Migration-produced `valid` must contain only `NodeIdentifier` values.
-- Migration control decisions (`keep`, `override`, `invalidate`, `create`, `delete`) operate on `NodeIdentifier`-addressed state, with `NodeKey` used only via the lookup bijection when needed for schema/head filtering or inspection.
+- Migration control decisions (`keep`, `replace`, `invalidate`, `create`, `delete`) operate on `NodeIdentifier`-addressed state, with `NodeKey` used only via the lookup bijection when needed for schema/head filtering or inspection.
 
 There is no mixed-mode migration API: `NodeKey`-addressed migration payloads are out of scope and unsupported.
 
@@ -167,10 +167,9 @@ persisted identity:
 - `nodeKeyToId(nodeKey) -> id`
 - `nodeIdToKey(id) -> nodeKey`
 
-These functions operate on the `/${current_replica}/global/identifiers_keys_map` database value.
-Here `${current_replica}` is the replica name of the current database instance, for example `x` or `y`.
+These functions operate on the active representation's `global/identifiers_keys_map` database value.
 
-`NodeKeyString` may remain persisted only in this lookup table at `/${current_replica}/global/identifiers_keys_map`.
+`NodeKeyString` may remain persisted only in this lookup table.
 
 The map is the materialized-node identity table, with a strict invariant:
 
@@ -208,8 +207,12 @@ Delete removes:
 - `nodeKeyToId(nodeKey)`
 - `nodeIdToKey(id)`
 
-Migration preserves identifiers for `keep`, `override`, and `invalidate`, and allocates
-fresh identifiers for `create` using the same fingerprint/index scheme.
+Migration preserves identifiers for `keep`, `replace`, and `invalidate`, and
+allocates fresh identifiers for `create` using the same fingerprint/index scheme.
+In particular, `replace` changes the semantic value occurrence without changing
+the materialized node's `NodeIdentifier`; its new Journal `ValueId` is distinct
+from that storage identity. The migration decision semantics are owned by
+`incremental-graph-journal-migrations.md` §11.
 
 ### last_node_index
 
@@ -227,10 +230,9 @@ sorting operates on `NodeIdentifier` values directly.
 
 ## Bijection cache
 
-The full contents of the lookup table (`/${current_replica}/global/identifiers_keys_map`)
-are loaded into RAM and kept synchronized as an in-memory cache. All lookups between
-`NodeKey` and `NodeIdentifier` go through this cache, not through direct database
-reads at call time.
+The full contents of the lookup table are loaded into RAM and kept synchronized as an in-memory
+cache. All lookups between `NodeKey` and `NodeIdentifier` go through this cache, not through direct
+database reads at call time.
 
 The cache is authoritative for the bijection while the database is open. Writes to
 the lookup sublevels and updates to the cache are atomic from the perspective of the
@@ -252,7 +254,7 @@ and analogously for the other graph-state sublevels:
 
 Lookup metadata remains explicit and separate:
 
-- `/${current_replica}/global/identifiers_keys_map`
+- the active representation's `global/identifiers_keys_map`
 
 The snapshot format therefore exposes graph-state records directly by identifier and
 uses the lookup table for semantic readability.
@@ -273,7 +275,7 @@ This prohibition applies to graph-state addressing and covers both:
 
 The following lookup-metadata path is explicitly exempt from this prohibition:
 
-- `/${current_replica}/global/identifiers_keys_map`
+- the active representation's `global/identifiers_keys_map`
 
 This path may encode or decode `NodeKey` values for the sole purpose of reading and
 writing the lookup tables. They must not be treated as a general filesystem addressing

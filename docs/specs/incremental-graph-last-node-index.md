@@ -55,10 +55,10 @@ Gaps are acceptable and expected:
 - `last_node_index` is the watermark of the largest index known to be
   retired; indices below it may not correspond to any materialized node.
 
-## Sync merge semantics
+## Synchronization semantics
 
-During normal sync merge, `last_node_index` is local allocation metadata and is
-preserved from the target/local replica. A host's `last_node_index` belongs to
+During normal synchronization, `last_node_index` is local allocation metadata
+and is preserved from the receiver. A host's `last_node_index` belongs to
 that host's fingerprint namespace and is not adopted.
 
 Numeric indices are meaningful only together with their allocation fingerprint.
@@ -66,11 +66,10 @@ Two hosts may safely allocate the same numeric index because the resulting node
 identifiers contain different fingerprints. Consequently, a host watermark must
 not advance or retire indices in the local fingerprint namespace.
 
-When host graph records are merged, the merge writes the target/local
-`last_node_index` to the target replica. A higher host `last_node_index` does not
-change that value. If the graph is otherwise unchanged, differences in the
-host's `last_node_index` are metadata-only and do not cause a merge commit or a
-replica switch.
+When foreign Journal history is imported, the receiver's own
+`last_node_index` is preserved. A higher host `last_node_index` does not
+change that value. Differences in the host's `last_node_index` are
+metadata-only and do not cause a projection change.
 
 ## Concurrency
 

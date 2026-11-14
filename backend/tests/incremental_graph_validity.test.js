@@ -12,13 +12,16 @@ const {
 const {
     GRAPH_SCHEME_KEY,
     makeEmptyIdentifierLookup,
+    makeIdentifierLookup,
     cloneIdentifierLookup,
     nodeIdToKeyFromLookup,
     nodeKeyToIdFromLookup,
+    makeNodeIdentifier,
     nodeIdentifierFromString,
     nodeIdentifierToString,
 } = require("../src/generators/incremental_graph/database");
 const { getMockedRootCapabilities } = require("./spies");
+const { numberComputedValue, textComputedValue } = require("./computed_value_fixture");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, stubScheduler, stubRuntimeStateStorage } = require("./stubs");
 const { getRootDatabase } = require("../src/generators/incremental_graph/database");
 const { prepareIncrementalGraphStorage } = require("../src/generators/incremental_graph/prepare_graph_storage");
@@ -90,13 +93,7 @@ class InMemoryDatabase {
 
     generateNodeIdentifier() {
         this._identifierCounter++;
-        let n = this._identifierCounter;
-        let id = '';
-        for (let i = 0; i < 9; i++) {
-            id = String.fromCharCode(97 + (n % 26)) + id;
-            n = Math.floor(n / 26);
-        }
-        return nodeIdentifierFromString(id);
+        return makeNodeIdentifier(this.getFingerprint(), this._identifierCounter);
     }
 
     getCurrentAllocationWatermark() {
@@ -194,6 +191,7 @@ class InMemoryDatabase {
         const valid = createSublevel('valid');
         const timestamps = createSublevel('timestamps');
         const global = createSublevel('global');
+        const journal = createSublevel('journal');
 
         return {
             values,
@@ -201,6 +199,7 @@ class InMemoryDatabase {
             valid,
             timestamps,
             global,
+            journal,
             batch: async (operations) => {
                 this.batchLog.push({ ops: deepClone(operations.map(op => ({
                     type: op.type,
@@ -270,9 +269,9 @@ describe("Incremental graph validity", () => {
      * Creates a simple chain: source -> middle -> dependent
      */
     function createChainGraph(sourceComputor, middleComputor, dependentComputor) {
-        const sourceCC = countedComputor("source", sourceComputor || (() => ({ v: "src" })));
-        const middleCC = countedComputor("middle", middleComputor || ((n) => ({ v: "mid-" + n })));
-        const dependentCC = countedComputor("dependent", dependentComputor || ((n) => ({ v: "dep-" + n })));
+        const sourceCC = countedComputor("source", sourceComputor || (() => (textComputedValue("src"))));
+        const middleCC = countedComputor("middle", middleComputor || ((n) => (textComputedValue("mid-" + n))));
+        const dependentCC = countedComputor("dependent", dependentComputor || ((n) => (textComputedValue("dep-" + n))));
 
         const nodeDefs = [
             {
@@ -315,9 +314,9 @@ describe("Incremental graph validity", () => {
         it("invalidates source and cache-hits through valid flags when source returns Unchanged", async () => {
             let srcCalls = 0;
             const { nodeDefs, middleCC, dependentCC } = createChainGraph(
-                () => { srcCalls++; if (srcCalls === 1) return ({ v: "src" }); return makeUnchanged(); },
-                () => ({ v: "mid" }),
-                () => ({ v: "dep" })
+                () => { srcCalls++; if (srcCalls === 1) return (textComputedValue("src")); return makeUnchanged(); },
+                () => (textComputedValue("mid")),
+                () => (textComputedValue("dep"))
             );
 
             const testCapabilities = getTestCapabilities();
@@ -362,7 +361,7 @@ describe("Incremental graph validity", () => {
 
             expect(dependentCC.getCallCount()).toBe(depCallsBefore);
             expect(middleCC.getCallCount()).toBe(midCallsBefore);
-            expect(result).toEqual({ v: "dep" });
+            expect(result).toEqual(textComputedValue("dep"));
         });
     });
 
@@ -376,7 +375,7 @@ describe("Incremental graph validity", () => {
                     inputs: [],
                     computor: async () => {
                         callCount++;
-                        return { v: callCount };
+                        return numberComputedValue(callCount);
                     },
                     isDeterministic: false,
                     hasSideEffects: false,
@@ -404,13 +403,13 @@ describe("Incremental graph validity", () => {
         it("records valid[D].add(N) for every dependency edge while preserving downstream validity", async () => {
             let midCalls = 0;
             const { nodeDefs, dependentCC } = createChainGraph(
-                () => ({ v: "src" }),
+                () => (textComputedValue("src")),
                 () => {
                     midCalls++;
-                    if (midCalls === 1) return { v: "mid-first" };
+                    if (midCalls === 1) return textComputedValue("mid-first");
                     return makeUnchanged();
                 },
-                () => ({ v: "dep" })
+                () => (textComputedValue("dep"))
             );
 
             const testCapabilities = getTestCapabilities();
@@ -452,7 +451,7 @@ describe("Incremental graph validity", () => {
             const depCallsBefore = dependentCC.getCallCount();
             const result = await graph.pull("dependent", binding);
             expect(dependentCC.getCallCount()).toBe(depCallsBefore);
-            expect(result).toEqual({ v: "dep" });
+            expect(result).toEqual(textComputedValue("dep"));
         });
     });
 
@@ -461,9 +460,9 @@ describe("Incremental graph validity", () => {
         it("removes stale incoming validity, clears downstream validity, and writes the changed value", async () => {
             let srcValue = 0;
             const { nodeDefs } = createChainGraph(
-                () => ({ v: ++srcValue }),
-                () => ({ v: "mid" }),
-                () => ({ v: "dep" })
+                () => (numberComputedValue(++srcValue)),
+                () => (textComputedValue("mid")),
+                () => (textComputedValue("dep"))
             );
 
             const testCapabilities = getTestCapabilities();
@@ -511,9 +510,9 @@ describe("Incremental graph validity", () => {
         it("marks direct and transitive dependents potentially-outdated when value changes via direct storage manipulation bypassing invalidation", async () => {
             let srcValue = 0;
             const { nodeDefs } = createChainGraph(
-                () => ({ v: ++srcValue }),
-                () => ({ v: "mid" }),
-                () => ({ v: "dep" })
+                () => (numberComputedValue(++srcValue)),
+                () => (textComputedValue("mid")),
+                () => (textComputedValue("dep"))
             );
 
             const testCapabilities = getTestCapabilities();
@@ -556,9 +555,9 @@ describe("Incremental graph validity", () => {
         it("marks direct and transitive dependents potentially-outdated when value changes", async () => {
             let srcValue = 0;
             const { nodeDefs } = createChainGraph(
-                () => ({ v: ++srcValue }),
-                () => ({ v: "mid" }),
-                () => ({ v: "dep" })
+                () => (numberComputedValue(++srcValue)),
+                () => (textComputedValue("mid")),
+                () => (textComputedValue("dep"))
             );
 
             const testCapabilities = getTestCapabilities();
@@ -600,9 +599,9 @@ describe("Incremental graph validity", () => {
         it("clears valid[D] when D changes value, forcing dependent recompute", async () => {
             let srcValue = 0;
             const { nodeDefs, dependentCC } = createChainGraph(
-                () => ({ v: ++srcValue }),
-                () => ({ v: "mid" }),
-                () => ({ v: "dep" })
+                () => (numberComputedValue(++srcValue)),
+                () => (textComputedValue("mid")),
+                () => (textComputedValue("dep"))
             );
 
             const testCapabilities = getTestCapabilities();
@@ -649,9 +648,9 @@ describe("Incremental graph validity", () => {
     describe("test obligation 6: external invalidation preserves valid", () => {
         it("does not clear validity flags when nodes are marked potentially-outdated", async () => {
             const { nodeDefs } = createChainGraph(
-                () => ({ v: "src" }),
-                () => ({ v: "mid" }),
-                () => ({ v: "dep" })
+                () => (textComputedValue("src")),
+                () => (textComputedValue("mid")),
+                () => (textComputedValue("dep"))
             );
 
             const testCapabilities = getTestCapabilities();
@@ -687,12 +686,12 @@ describe("Incremental graph validity", () => {
         it("does not partially write values, freshness, or valid", async () => {
             let shouldFail = false;
             const { nodeDefs } = createChainGraph(
-                () => ({ v: "src" }),
+                () => (textComputedValue("src")),
                 () => {
                     if (shouldFail) throw new Error("computor failure");
-                    return { v: "mid" };
+                    return textComputedValue("mid");
                 },
-                () => ({ v: "dep" })
+                () => (textComputedValue("dep"))
             );
 
             const testCapabilities = getTestCapabilities();
@@ -750,7 +749,7 @@ describe("Incremental graph validity", () => {
                 {
                     output: "source",
                     inputs: [],
-                    computor: async () => ({ v: "src" }),
+                    computor: async () => (textComputedValue("src")),
                     isDeterministic: false,
                     hasSideEffects: false,
                 },
@@ -759,7 +758,7 @@ describe("Incremental graph validity", () => {
                     inputs: ["source", "source"], // duplicate dependency
                     computor: async (inputs, _oldValue, _bindings) => {
                         receivedInputs.push(inputs);
-                        return { v: "dup_user", count: inputs.length };
+                        return textComputedValue(`dup_user(${inputs.length})`);
                     },
                     isDeterministic: false,
                     hasSideEffects: false,
@@ -776,8 +775,8 @@ describe("Incremental graph validity", () => {
             // Computor should receive 2 arguments (both source values)
             expect(receivedInputs.length).toBe(1);
             expect(receivedInputs[0].length).toBe(2);
-            expect(receivedInputs[0][0]).toEqual({ v: "src" });
-            expect(receivedInputs[0][1]).toEqual({ v: "src" });
+            expect(receivedInputs[0][0]).toEqual(textComputedValue("src"));
+            expect(receivedInputs[0][1]).toEqual(textComputedValue("src"));
 
             // Valid flags should have only 1 entry (collapsed)
             const dupKey = makeNodeStorageKey("dup_user", binding);
@@ -799,7 +798,7 @@ describe("Incremental graph validity", () => {
                 {
                     output: "A",
                     inputs: [],
-                    computor: async () => ({ v: "A" }),
+                    computor: async () => (textComputedValue("A")),
                     isDeterministic: false,
                     hasSideEffects: false,
                 },
@@ -808,7 +807,7 @@ describe("Incremental graph validity", () => {
                     inputs: ["A"],
                     computor: async () => {
                         bCalls++;
-                        if (bCalls === 1) return { v: "B-first" };
+                        if (bCalls === 1) return textComputedValue("B-first");
                         return makeUnchanged();
                     },
                     isDeterministic: false,
@@ -819,7 +818,7 @@ describe("Incremental graph validity", () => {
                     inputs: ["B(x)"],
                     computor: async () => {
                         cCalls++;
-                        return { v: "C-" + cCalls };
+                        return textComputedValue("C-" + cCalls);
                     },
                     isDeterministic: false,
                     hasSideEffects: false,
@@ -861,7 +860,7 @@ describe("Incremental graph validity", () => {
             const cCallsBefore = cCalls;
             const result = await graph.pull("C", binding);
             expect(cCalls).toBe(cCallsBefore);
-            expect(result).toEqual({ v: "C-1" });
+            expect(result).toEqual(textComputedValue("C-1"));
         });
     });
 
@@ -869,9 +868,9 @@ describe("Incremental graph validity", () => {
     describe("deterministic serialization", () => {
         it("stores valid sets in sorted order", async () => {
             const { nodeDefs } = createChainGraph(
-                () => ({ v: "src" }),
-                () => ({ v: "mid" }),
-                () => ({ v: "dep" })
+                () => (textComputedValue("src")),
+                () => (textComputedValue("mid")),
+                () => (textComputedValue("dep"))
             );
 
             const testCapabilities = getTestCapabilities();
@@ -899,9 +898,9 @@ describe("Incremental graph validity", () => {
     describe("up-to-date fast path does not consult validity flags", () => {
         it("returns cached value for up-to-date non-source node even when validity flags are removed", async () => {
             const { nodeDefs, dependentCC } = createChainGraph(
-                () => ({ v: "src" }),
-                () => ({ v: "mid" }),
-                () => ({ v: "dep" })
+                () => (textComputedValue("src")),
+                () => (textComputedValue("mid")),
+                () => (textComputedValue("dep"))
             );
 
             const testCapabilities = getTestCapabilities();
@@ -936,7 +935,7 @@ describe("Incremental graph validity", () => {
             const result = await graph.pull("dependent", binding);
 
             expect(dependentCC.getCallCount()).toBe(depCallsBefore);
-            expect(result).toEqual({ v: "dep" });
+            expect(result).toEqual(textComputedValue("dep"));
         });
 
         it("returns cached value for up-to-date zero-input node (no validity flags needed)", async () => {
@@ -947,7 +946,7 @@ describe("Incremental graph validity", () => {
                     inputs: [],
                     computor: async () => {
                         callCount++;
-                        return { v: "src" };
+                        return textComputedValue("src");
                     },
                     isDeterministic: false,
                     hasSideEffects: false,
@@ -968,7 +967,7 @@ describe("Incremental graph validity", () => {
             // Second pull: fast path returns cached value without checking valid
             const result = await graph.pull("source");
             expect(callCount).toBe(1);
-            expect(result).toEqual({ v: "src" });
+            expect(result).toEqual(textComputedValue("src"));
         });
     });
 
@@ -977,9 +976,9 @@ describe("Incremental graph validity", () => {
         it("recomputes when potentially-outdated and validity flags are missing", async () => {
             let srcValue = 0;
             const { nodeDefs, dependentCC } = createChainGraph(
-                () => ({ v: ++srcValue }),
-                () => ({ v: "mid" }),
-                () => ({ v: "dep" })
+                () => (numberComputedValue(++srcValue)),
+                () => (textComputedValue("mid")),
+                () => (textComputedValue("dep"))
             );
 
             const testCapabilities = getTestCapabilities();
@@ -1012,7 +1011,7 @@ describe("Incremental graph validity", () => {
             // Pull dependent: potentially-outdated + no valid flags → must recompute
             const result = await graph.pull("dependent", binding);
             expect(dependentCC.getCallCount()).toBe(depCallsBefore + 1);
-            expect(result).toEqual({ v: "dep" });
+            expect(result).toEqual(textComputedValue("dep"));
         });
     });
 
@@ -1020,9 +1019,9 @@ describe("Incremental graph validity", () => {
     describe("up-to-date node invariant enforcement", () => {
         it("throws when up-to-date node has no stored value", async () => {
             const { nodeDefs } = createChainGraph(
-                () => ({ v: "src" }),
-                () => ({ v: "mid" }),
-                () => ({ v: "dep" })
+                () => (textComputedValue("src")),
+                () => (textComputedValue("mid")),
+                () => (textComputedValue("dep"))
             );
 
             const testCapabilities = getTestCapabilities();
@@ -1050,9 +1049,9 @@ describe("Incremental graph validity", () => {
     describe("graph_scheme persistence model", () => {
         it("writes graph_scheme and version on fresh database", async () => {
             const { nodeDefs } = createChainGraph(
-                () => ({ v: "src" }),
-                () => ({ v: "mid" }),
-                () => ({ v: "dep" })
+                () => (textComputedValue("src")),
+                () => (textComputedValue("mid")),
+                () => (textComputedValue("dep"))
             );
 
             const freshDb = new InMemoryDatabase();
@@ -1076,7 +1075,7 @@ describe("Incremental graph validity", () => {
             try {
                 const storage = db.getSchemaStorage();
                 await storage.batch([
-                    storage.values.putOp(nodeIdentifierFromString("1-abcdefghi"), { v: "stored" }),
+                    storage.values.putOp(nodeIdentifierFromString("1-abcdefghi"), textComputedValue("stored")),
                 ]);
 
                 expect(await storage.global.get("version")).toBeUndefined();
@@ -1088,9 +1087,9 @@ describe("Incremental graph validity", () => {
 
         it("prepareIncrementalGraphStorage writes version and graph_scheme on fresh database", async () => {
             const { nodeDefs } = createChainGraph(
-                () => ({ v: "src" }),
-                () => ({ v: "mid" }),
-                () => ({ v: "dep" })
+                () => (textComputedValue("src")),
+                () => (textComputedValue("mid")),
+                () => (textComputedValue("dep"))
             );
             const freshDb = new InMemoryDatabase();
 
@@ -1103,9 +1102,9 @@ describe("Incremental graph validity", () => {
 
         it("graph_scheme without version fails as graph scheme metadata error", async () => {
             const { nodeDefs } = createChainGraph(
-                () => ({ v: "src" }),
-                () => ({ v: "mid" }),
-                () => ({ v: "dep" })
+                () => (textComputedValue("src")),
+                () => (textComputedValue("mid")),
+                () => (textComputedValue("dep"))
             );
             const existingDb = new InMemoryDatabase();
             await existingDb.getSchemaStorage().global.put(GRAPH_SCHEME_KEY, JSON.stringify({ format: 1, nodes: [] }));
@@ -1115,11 +1114,73 @@ describe("Incremental graph validity", () => {
             ).rejects.toThrow(/graph_scheme exists but version is missing/);
         });
 
+        it("materialized node without version and graph_scheme fails closed instead of re-initializing", async () => {
+            const { nodeDefs } = createChainGraph(
+                () => (textComputedValue("src")),
+                () => (textComputedValue("mid")),
+                () => (textComputedValue("dep"))
+            );
+            const existingDb = new InMemoryDatabase();
+            const storage = existingDb.getSchemaStorage();
+            await storage.values.put(
+                nodeIdentifierFromString("1-abcdefghi"),
+                textComputedValue("stored")
+            );
+
+            await expect(
+                prepareIncrementalGraphStorage(existingDb, nodeDefs)
+            ).rejects.toThrow(/refusing to re-initialize an existing replica as fresh/);
+
+            // The existing state was not erased: neither key was rewritten.
+            expect(await storage.global.get("version")).toBeUndefined();
+            expect(await storage.global.get(GRAPH_SCHEME_KEY)).toBeUndefined();
+        });
+
+        it("retained Journal record without version and graph_scheme fails closed instead of re-initializing", async () => {
+            const { nodeDefs } = createChainGraph(
+                () => (textComputedValue("src")),
+                () => (textComputedValue("mid")),
+                () => (textComputedValue("dep"))
+            );
+            const existingDb = new InMemoryDatabase();
+            const storage = existingDb.getSchemaStorage();
+            await storage.journal.put("writer-a/1", "retained-journal-record");
+
+            await expect(
+                prepareIncrementalGraphStorage(existingDb, nodeDefs)
+            ).rejects.toThrow(/refusing to re-initialize an existing replica as fresh/);
+
+            expect(await storage.global.get("version")).toBeUndefined();
+            expect(await storage.global.get(GRAPH_SCHEME_KEY)).toBeUndefined();
+        });
+
+        it("non-empty identifier lookup without version and graph_scheme fails closed instead of re-initializing", async () => {
+            const { nodeDefs } = createChainGraph(
+                () => (textComputedValue("src")),
+                () => (textComputedValue("mid")),
+                () => (textComputedValue("dep"))
+            );
+            const existingDb = new InMemoryDatabase();
+            existingDb.replaceActiveIdentifierLookup(
+                makeIdentifierLookup([
+                    [nodeIdentifierFromString("1-abcdefghi"), '{"head":"source","args":[]}'],
+                ])
+            );
+            const storage = existingDb.getSchemaStorage();
+
+            await expect(
+                prepareIncrementalGraphStorage(existingDb, nodeDefs)
+            ).rejects.toThrow(/refusing to re-initialize an existing replica as fresh/);
+
+            expect(await storage.global.get("version")).toBeUndefined();
+            expect(await storage.global.get(GRAPH_SCHEME_KEY)).toBeUndefined();
+        });
+
         it("malformed graph_scheme JSON fails as graph scheme metadata error", async () => {
             const { nodeDefs } = createChainGraph(
-                () => ({ v: "src" }),
-                () => ({ v: "mid" }),
-                () => ({ v: "dep" })
+                () => (textComputedValue("src")),
+                () => (textComputedValue("mid")),
+                () => (textComputedValue("dep"))
             );
             const existingDb = new InMemoryDatabase();
             const storage = existingDb.getSchemaStorage();
@@ -1133,9 +1194,9 @@ describe("Incremental graph validity", () => {
 
         it("non-string stored graph_scheme fails as graph scheme metadata error", async () => {
             const { nodeDefs } = createChainGraph(
-                () => ({ v: "src" }),
-                () => ({ v: "mid" }),
-                () => ({ v: "dep" })
+                () => (textComputedValue("src")),
+                () => (textComputedValue("mid")),
+                () => (textComputedValue("dep"))
             );
             const existingDb = new InMemoryDatabase();
             const storage = existingDb.getSchemaStorage();
@@ -1156,9 +1217,9 @@ describe("Incremental graph validity", () => {
 
         it("prepared graph constructor accepts prepared storage", async () => {
             const { nodeDefs } = createChainGraph(
-                () => ({ v: "src" }),
-                () => ({ v: "mid" }),
-                () => ({ v: "dep" })
+                () => (textComputedValue("src")),
+                () => (textComputedValue("mid")),
+                () => (textComputedValue("dep"))
             );
             const db = new InMemoryDatabase();
             const prepared = await prepareIncrementalGraphStorage(db, nodeDefs);
@@ -1169,9 +1230,9 @@ describe("Incremental graph validity", () => {
 
         it("prepared graph constructor rejects prepared storage from a different root database", async () => {
             const { nodeDefs } = createChainGraph(
-                () => ({ v: "src" }),
-                () => ({ v: "mid" }),
-                () => ({ v: "dep" })
+                () => (textComputedValue("src")),
+                () => (textComputedValue("mid")),
+                () => (textComputedValue("dep"))
             );
             const sourceDb = new InMemoryDatabase();
             const targetDb = new InMemoryDatabase();
@@ -1183,9 +1244,9 @@ describe("Incremental graph validity", () => {
 
         it("prepared graph constructor rejects node definitions immediately", () => {
             const { nodeDefs } = createChainGraph(
-                () => ({ v: "src" }),
-                () => ({ v: "mid" }),
-                () => ({ v: "dep" })
+                () => (textComputedValue("src")),
+                () => (textComputedValue("mid")),
+                () => (textComputedValue("dep"))
             );
             const db = new InMemoryDatabase();
             const testCapabilities = getTestCapabilities();
@@ -1194,9 +1255,9 @@ describe("Incremental graph validity", () => {
 
         it("does not overwrite graph_scheme on existing initialized database with matching scheme", async () => {
             const { nodeDefs } = createChainGraph(
-                () => ({ v: "src" }),
-                () => ({ v: "mid" }),
-                () => ({ v: "dep" })
+                () => (textComputedValue("src")),
+                () => (textComputedValue("mid")),
+                () => (textComputedValue("dep"))
             );
 
             // Compute the exact scheme that createIncrementalGraph would write
@@ -1229,9 +1290,9 @@ describe("Incremental graph validity", () => {
 
         it("semantically equivalent but differently formatted scheme fails validation", async () => {
             const { nodeDefs } = createChainGraph(
-                () => ({ v: "src" }),
-                () => ({ v: "mid" }),
-                () => ({ v: "dep" })
+                () => (textComputedValue("src")),
+                () => (textComputedValue("mid")),
+                () => (textComputedValue("dep"))
             );
 
             // Pre-seed with a scheme that has different node ordering
@@ -1261,9 +1322,9 @@ describe("Incremental graph validity", () => {
 
         it("versioned database missing graph_scheme fails", async () => {
             const { nodeDefs } = createChainGraph(
-                () => ({ v: "src" }),
-                () => ({ v: "mid" }),
-                () => ({ v: "dep" })
+                () => (textComputedValue("src")),
+                () => (textComputedValue("mid")),
+                () => (textComputedValue("dep"))
             );
 
             const existingDb = new InMemoryDatabase();
@@ -1286,9 +1347,9 @@ describe("Incremental graph validity", () => {
             let bCalls = 0;
 
             const { nodeDefs } = createChainGraph(
-                () => ({ v: "src" }),
-                () => { bCalls++; return ({ v: "mid" }); },
-                () => ({ v: "dep" })
+                () => (textComputedValue("src")),
+                () => { bCalls++; return (textComputedValue("mid")); },
+                () => (textComputedValue("dep"))
             );
             const testCapabilities = getTestCapabilities();
             graph = await createIncrementalGraph(testCapabilities, db, nodeDefs);
@@ -1329,16 +1390,16 @@ describe("Incremental graph validity", () => {
             // Pull C — B's computor must run (B lacks incoming proof)
             const result = await graph.pull("dependent", binding);
             expect(bCalls).toBe(bCallsBefore + 1);
-            expect(result).toEqual({ v: "dep" });
+            expect(result).toEqual(textComputedValue("dep"));
         });
 
         it("explicit B invalidated, B returns Unchanged, C cache-revalidates", async () => {
             let bCalls = 0;
             let cCalls = 0;
             const { nodeDefs } = createChainGraph(
-                () => ({ v: "src" }),
-                () => { bCalls++; if (bCalls === 1) return ({ v: "mid" }); return makeUnchanged(); },
-                () => { cCalls++; return ({ v: "dep" }); }
+                () => (textComputedValue("src")),
+                () => { bCalls++; if (bCalls === 1) return (textComputedValue("mid")); return makeUnchanged(); },
+                () => { cCalls++; return (textComputedValue("dep")); }
             );
             const testCapabilities = getTestCapabilities();
             graph = await createIncrementalGraph(testCapabilities, db, nodeDefs);
@@ -1356,16 +1417,16 @@ describe("Incremental graph validity", () => {
             const result = await graph.pull("dependent", binding);
             expect(bCalls).toBe(2); // initial + invalidation recompute
             expect(cCalls).toBe(cCallsBefore);
-            expect(result).toEqual({ v: "dep" });
+            expect(result).toEqual(textComputedValue("dep"));
         });
 
         it("explicit B invalidated, B returns changed, C recomputes", async () => {
             let bCalls = 0;
             let cCalls = 0;
             const { nodeDefs } = createChainGraph(
-                () => ({ v: "src" }),
-                () => { bCalls++; return ({ v: "mid-" + bCalls }); },
-                () => { cCalls++; return ({ v: "dep-" + cCalls }); }
+                () => (textComputedValue("src")),
+                () => { bCalls++; return (textComputedValue("mid-" + bCalls)); },
+                () => { cCalls++; return (textComputedValue("dep-" + cCalls)); }
             );
             const testCapabilities = getTestCapabilities();
             graph = await createIncrementalGraph(testCapabilities, db, nodeDefs);
@@ -1393,9 +1454,9 @@ describe("Incremental graph validity", () => {
         it("invalidate(D) removes both incoming proofs A→D and B→D", async () => {
             let dCalls = 0;
             const nodeDefs = [
-                { output: "A", inputs: [], computor: async () => ({ v: "a" }), isDeterministic: false, hasSideEffects: false },
-                { output: "B", inputs: [], computor: async () => ({ v: "b" }), isDeterministic: false, hasSideEffects: false },
-                { output: "D(x)", inputs: ["A", "B"], computor: async () => { dCalls++; return ({ v: "d" }); }, isDeterministic: false, hasSideEffects: false },
+                { output: "A", inputs: [], computor: async () => (textComputedValue("a")), isDeterministic: false, hasSideEffects: false },
+                { output: "B", inputs: [], computor: async () => (textComputedValue("b")), isDeterministic: false, hasSideEffects: false },
+                { output: "D(x)", inputs: ["A", "B"], computor: async () => { dCalls++; return (textComputedValue("d")); }, isDeterministic: false, hasSideEffects: false },
             ];
             const testCapabilities = getTestCapabilities();
             graph = await createIncrementalGraph(testCapabilities, db, nodeDefs);
@@ -1436,9 +1497,9 @@ describe("Incremental graph validity", () => {
             let bCalls = 0;
             let cCalls = 0;
             const { nodeDefs } = createChainGraph(
-                () => { aCalls++; if (aCalls === 1) return ({ v: "src" }); return makeUnchanged(); },
-                () => { bCalls++; return ({ v: "mid" }); },
-                () => { cCalls++; return ({ v: "dep" }); }
+                () => { aCalls++; if (aCalls === 1) return (textComputedValue("src")); return makeUnchanged(); },
+                () => { bCalls++; return (textComputedValue("mid")); },
+                () => { cCalls++; return (textComputedValue("dep")); }
             );
             const testCapabilities = getTestCapabilities();
             graph = await createIncrementalGraph(testCapabilities, db, nodeDefs);
@@ -1478,7 +1539,7 @@ describe("Incremental graph validity", () => {
             expect(aCalls).toBe(aCallsBefore + 1);
             expect(bCalls).toBe(bCallsBefore);
             expect(cCalls).toBe(cCallsBefore);
-            expect(result).toEqual({ v: "dep" });
+            expect(result).toEqual(textComputedValue("dep"));
         });
 
         it("A changed, B returns Unchanged, C cache-revalidates", async () => {
@@ -1486,9 +1547,9 @@ describe("Incremental graph validity", () => {
             let bCalls = 0;
             let cCalls = 0;
             const { nodeDefs } = createChainGraph(
-                () => ({ v: ++aValue }),
-                () => { bCalls++; if (bCalls === 1) return ({ v: "mid" }); return makeUnchanged(); },
-                () => { cCalls++; return ({ v: "dep" }); }
+                () => (numberComputedValue(++aValue)),
+                () => { bCalls++; if (bCalls === 1) return (textComputedValue("mid")); return makeUnchanged(); },
+                () => { cCalls++; return (textComputedValue("dep")); }
             );
             const testCapabilities = getTestCapabilities();
             graph = await createIncrementalGraph(testCapabilities, db, nodeDefs);
@@ -1514,7 +1575,7 @@ describe("Incremental graph validity", () => {
             const cCallsBefore = cCalls;
             const result = await graph.pull("dependent", binding);
             expect(cCalls).toBe(cCallsBefore);
-            expect(result).toEqual({ v: "dep" });
+            expect(result).toEqual(textComputedValue("dep"));
         });
 
         it("A changed, B changed value, C recomputes", async () => {
@@ -1522,9 +1583,9 @@ describe("Incremental graph validity", () => {
             let bValue = 0;
             let cCalls = 0;
             const { nodeDefs } = createChainGraph(
-                () => ({ v: ++aValue }),
-                () => { bValue++; return ({ v: "mid-" + bValue }); },
-                () => { cCalls++; return ({ v: "dep" }); }
+                () => (numberComputedValue(++aValue)),
+                () => { bValue++; return (textComputedValue("mid-" + bValue)); },
+                () => { cCalls++; return (textComputedValue("dep")); }
             );
             const testCapabilities = getTestCapabilities();
             graph = await createIncrementalGraph(testCapabilities, db, nodeDefs);
@@ -1562,10 +1623,10 @@ describe("Incremental graph validity", () => {
             let cCalls = 0;
             let dCalls = 0;
             const nodeDefs = [
-                { output: "A", inputs: [], computor: () => { aCalls++; if (aCalls === 1) return ({ v: 1 }); return makeUnchanged(); }, isDeterministic: false, hasSideEffects: false },
-                { output: "B", inputs: ["A"], computor: () => { bCalls++; return ({ v: 2 }); }, isDeterministic: false, hasSideEffects: false },
-                { output: "C", inputs: ["A"], computor: () => { cCalls++; return ({ v: 3 }); }, isDeterministic: false, hasSideEffects: false },
-                { output: "D", inputs: ["B", "C"], computor: () => { dCalls++; return ({ v: 4 }); }, isDeterministic: false, hasSideEffects: false },
+                { output: "A", inputs: [], computor: () => { aCalls++; if (aCalls === 1) return (numberComputedValue(1)); return makeUnchanged(); }, isDeterministic: false, hasSideEffects: false },
+                { output: "B", inputs: ["A"], computor: () => { bCalls++; return (numberComputedValue(2)); }, isDeterministic: false, hasSideEffects: false },
+                { output: "C", inputs: ["A"], computor: () => { cCalls++; return (numberComputedValue(3)); }, isDeterministic: false, hasSideEffects: false },
+                { output: "D", inputs: ["B", "C"], computor: () => { dCalls++; return (numberComputedValue(4)); }, isDeterministic: false, hasSideEffects: false },
             ];
             const testCapabilities = getTestCapabilities();
             graph = await createIncrementalGraph(testCapabilities, db, nodeDefs);
@@ -1616,9 +1677,9 @@ describe("Incremental graph validity", () => {
     describe("already-stale traversal", () => {
         it("B already stale before invalidating source, traversal still reaches C", async () => {
             const { nodeDefs } = createChainGraph(
-                () => ({ v: "src" }),
-                () => ({ v: "mid" }),
-                () => ({ v: "dep" })
+                () => (textComputedValue("src")),
+                () => (textComputedValue("mid")),
+                () => (textComputedValue("dep"))
             );
             const testCapabilities = getTestCapabilities();
             graph = await createIncrementalGraph(testCapabilities, db, nodeDefs);

@@ -82,6 +82,7 @@ fail hard instead of being silently accepted or replaced.
   `r/global/fingerprint` becomes the local allocation fingerprint.
 - On non-first-boot reset, the pre-import local fingerprint is written back
   to the target replica's global sublevel before the replica switch.
+  This rule is stated in `incremental-graph-volatile-consistency.md` §P10 — Replica cutover preserves local fingerprint during reset/import. The single completely-absent-receiver exception — there is no pre-import local fingerprint when the receiver is absent, so absent-state restoration applies instead — is stated in `incremental-graph-journal-reset.md` §Preconditions and `database-lifecycle.md` §4.
 
 ## Render and scan
 
@@ -91,15 +92,15 @@ fail hard instead of being silently accepted or replaced.
 - `scanFromFilesystem` imports the fingerprint as part of the replica's
   global sublevel.
 
-## Relationship to sync and merge
+## Relationship to sync and reset
 
 The fingerprint is included in rendered snapshots and may be staged from
 remote hosts during sync/reset. However:
 
-- **Normal sync merge**: A host's staged snapshot may contain a different
-  fingerprint. The local active replica keeps its own fingerprint; the
-  remote host fingerprint is not adopted. Merge does not modify the local
-  fingerprint.
+- **Normal synchronization**: A host's held source snapshot may contain a
+  different fingerprint. The local active replica keeps its own fingerprint;
+  the remote host fingerprint is not adopted. Synchronization does not
+  modify the local fingerprint.
 
 - **Reset/import into existing live DB**: The snapshot may contain a remote
   fingerprint. After import, the live database preserves its pre-import
