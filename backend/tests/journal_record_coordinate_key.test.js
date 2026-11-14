@@ -69,7 +69,7 @@ test("reverse retained-length lookup chooses the numeric maximum above 30 digits
             for (const key of [...values.keys()].sort()) yield key;
         },
         iterator({ gte, lte, reverse, limit }) {
-            const entries = [...values].filter(([key]) => key >= gte && key <= lte)
+            const entries = [...values].filter(([key]) => key >= gte && (lte === undefined || key <= lte))
                 .sort(([a], [b]) => reverse ? b.localeCompare(a) : a.localeCompare(b));
             return (async function* () {
                 for (const entry of entries.slice(0, limit ?? entries.length)) yield entry;
