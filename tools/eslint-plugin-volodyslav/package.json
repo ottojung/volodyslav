@@ -11,6 +11,6 @@
     "typescript": "^5.1.6"
   },
   "scripts": {
-    "test": "for test in tests/*.test.js; do echo \"Running $test\"; node \"$test\"; done"
+    "test": "set -e; for test in tests/*.test.js; do echo \"Running $test\"; node \"$test\"; done"
   }
 }

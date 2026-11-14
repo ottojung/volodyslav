@@ -10,13 +10,14 @@ const rule = require("../rules/no-any-type");
 // Test helper
 async function testRule(filename, code, shouldFail) {
   const testFile = path.join(testDir, filename);
+  const tsConfigFile = `tsconfig.${filename}.json`;
+  const tsConfigPath = path.join(testDir, tsConfigFile);
 
   try {
     // Write test file
     fs.writeFileSync(testFile, code);
 
     // Create a tsconfig for this specific file
-    const tsConfigPath = path.join(testDir, "tsconfig.test.json");
     const tsConfig = {
       compilerOptions: {
         allowJs: true,
@@ -42,7 +43,7 @@ async function testRule(filename, code, shouldFail) {
               ecmaVersion: "latest",
               sourceType: "module",
               tsconfigRootDir: testDir,
-              project: "./tsconfig.test.json",
+              project: `./${tsConfigFile}`,
             },
           },
           plugins: {
@@ -78,7 +79,6 @@ async function testRule(filename, code, shouldFail) {
     if (fs.existsSync(testFile)) {
       fs.unlinkSync(testFile);
     }
-    const tsConfigPath = path.join(testDir, "tsconfig.test.json");
     if (fs.existsSync(tsConfigPath)) {
       fs.unlinkSync(tsConfigPath);
     }
