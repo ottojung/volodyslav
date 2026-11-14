@@ -145,20 +145,30 @@ function coordinateTextOf(key) {
 async function readRetainedLengths(journalSublevel) {
     /** @type {Map<string, JournalSequence>} */
     const lengths = new Map();
-    /** @type {Set<string>} */
-    const writers = new Set();
-    for await (const key of journalSublevel.keys()) {
-        const text = journalKeyToString(key);
+    // Discover writer families by one-entry range seeks, not a full history scan.
+    // The character "}" sorts after both "|" and [a-z]; advancing to the
+    // current writer name plus "}" skips its keys, while longer writer names
+    // with the same prefix already sorted before this writer's "|" separator.
+    let nextFamily = stringToJournalKey(RECORD_KEY_PREFIX);
+    for (;;) {
+        /** @type {JournalKey | undefined} */
+        let firstKey;
+        for await (const [key] of journalSublevel.iterator({ gte: nextFamily, limit: 1 })) {
+            firstKey = key;
+            break;
+        }
+        if (firstKey === undefined) {
+            break;
+        }
+        const text = journalKeyToString(firstKey);
         if (!text.startsWith(RECORD_KEY_PREFIX)) {
-            continue;
+            break;
         }
         const separator = text.indexOf('|', RECORD_KEY_PREFIX.length);
         if (separator < 0) {
-            continue;
+            return makeJournalSourceReadError("the journal sublevel has a malformed record key");
         }
-        writers.add(text.slice(RECORD_KEY_PREFIX.length, separator));
-    }
-    for (const name of [...writers].sort()) {
+        const name = text.slice(RECORD_KEY_PREFIX.length, separator);
         const author = makeJournalAuthor(name);
         if (author instanceof Error) {
             return author;
@@ -183,8 +193,10 @@ async function readRetainedLengths(journalSublevel) {
             return sequence;
         }
         lengths.set(name, sequence);
+        nextFamily = stringToJournalKey(RECORD_KEY_PREFIX + name + "}");
     }
-    return lengths;
+    return new Map([...lengths].sort(([left], [right]) =>
+        left < right ? -1 : left > right ? 1 : 0));
 }
 
 /**
