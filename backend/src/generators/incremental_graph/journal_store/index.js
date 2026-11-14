@@ -53,6 +53,8 @@ const {
     retainedLengthTexts,
 } = require("./sublevel_source");
 
+const { decodeRecordCoordinate } = require("./record_coordinate_key");
+
 const { reconcileRetainedWriterHead } = require("./writer_head");
 
 /** @typedef {import('./record_store').RecordStoreClass} RecordStore */
@@ -66,6 +68,7 @@ module.exports = {
     appendRetainedStateOp,
     compareCoordinateText,
     coordinateTextOf,
+    decodeRecordCoordinate,
     deserializeWriterState,
     forEachRetainedRecord,
     isRecordStore,

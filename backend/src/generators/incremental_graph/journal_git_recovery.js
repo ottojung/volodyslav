@@ -26,7 +26,7 @@ const {
     isWriterStateRecord,
     replicaFrontier,
 } = require('./journal');
-const { deserializeWriterState } = require('./journal_store');
+const { deserializeWriterState, decodeRecordCoordinate } = require('./journal_store');
 const { makeContinuationSafeSnapshot, makeInstallationRecoverySource } =
     require('./journal_recovery_source');
 const {
@@ -61,8 +61,9 @@ async function snapshotFromRenderedReplica(capabilities, replicaPath) {
         if (!name.startsWith('record|')) {
             continue;
         }
-        const fields = /^record\|([a-z]{9,})\|([0-9]{30})$/.exec(name);
-        if (fields === null) {
+        const fields = /^record\|([a-z]{9,})\|(.+)$/.exec(name);
+        const coordinate = fields === null ? undefined : decodeRecordCoordinate(fields[2] ?? '');
+        if (fields === null || coordinate === undefined) {
             throw new Error('recovery checkpoint contains an invalid Journal record key');
         }
         const record = tryDecodeJournalRecord(await capabilities.reader.readFileAsText(member.path));
@@ -71,7 +72,7 @@ async function snapshotFromRenderedReplica(capabilities, replicaPath) {
         }
         // Reject files which claim a different coordinate in their body.
         if (journalAuthorToString(record.id.author) !== fields[1] ||
-            journalSequenceToString(record.id.sequence).padStart(30, '0') !== fields[2]) {
+            journalSequenceToString(record.id.sequence) !== coordinate) {
             throw new Error('recovery checkpoint record key disagrees with its semantic identity');
         }
         const records = byAuthor.get(fields[1]);
