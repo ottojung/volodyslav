@@ -54,7 +54,6 @@ const {
     makeAuthorityTime,
     makeJournalAuthor,
     makeJournalFrontier,
-    makeJournalPublicationError,
     makeJournalSourceReadError,
     makeJournalReplica,
     makeJournalSequence,
@@ -84,12 +83,7 @@ const {
 const JOURNAL_STATE_KEY = stringToJournalKey("state");
 
 const RECORD_KEY_PREFIX = "record|";
-
-/**
- * The fixed width every record coordinate is padded to inside the sublevel key.
- * A coordinate longer than this cannot be published through this sublevel.
- */
-const RECORD_KEY_DIGITS = 30;
+const { encodeRecordCoordinate } = require("./record_coordinate_key");
 
 /**
  * The storage key one record occupies.
@@ -99,14 +93,8 @@ const RECORD_KEY_DIGITS = 30;
  */
 function makeJournalRecordKey(author, sequence) {
     const digits = journalSequenceToString(sequence);
-    if (digits.length > RECORD_KEY_DIGITS) {
-        return makeJournalPublicationError(
-            "a journal coordinate of " + digits.length + " digits exceeds the " +
-                RECORD_KEY_DIGITS + "-digit storage key width"
-        );
-    }
     return stringToJournalKey(
-        RECORD_KEY_PREFIX + journalAuthorToString(author) + "|" + digits.padStart(RECORD_KEY_DIGITS, "0")
+        RECORD_KEY_PREFIX + journalAuthorToString(author) + "|" + encodeRecordCoordinate(digits)
     );
 }
 

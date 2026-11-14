@@ -66,6 +66,7 @@ const {
     stringToJournalKey,
 } = require('../database');
 const { makeJournalRecordKey } = require('./journal_database');
+const { decodeRecordCoordinate } = require('./record_coordinate_key');
 
 const RECORD_KEY_PREFIX = 'record|';
 
@@ -124,7 +125,7 @@ function recordRangeFromOf(author, fromSequence) {
 function coordinateTextOf(key) {
     const text = journalKeyToString(key);
     const separator = text.lastIndexOf('|');
-    return separator < 0 ? '' : text.slice(separator + 1).replace(/^0+(?=[0-9])/, '');
+    return separator < 0 ? '' : (decodeRecordCoordinate(text.slice(separator + 1)) ?? '');
 }
 
 /**
@@ -175,7 +176,7 @@ async function readRetainedLengths(journalSublevel) {
             break;
         }
         if (last === '') {
-            continue;
+            return makeJournalSourceReadError('the writer record range contains a malformed coordinate key');
         }
         const sequence = makeJournalSequence(last);
         if (sequence instanceof Error) {
