@@ -181,7 +181,7 @@ function deserializeWriterState(value, fingerprint) {
         writerHead, journalSequenceAtFrontier(committedFrontier, localWriter)
     ) !== 0) {
         return makeJournalSourceReadError(
-            "the journal state record's committed own-writer frontier disagrees with writerHead"
+            "the journal state record's committed own-writer frontier disagrees with local writer head"
         );
     }
     if (!Array.isArray(value.authorityHighWater) || value.authorityHighWater.length !== 2) {
