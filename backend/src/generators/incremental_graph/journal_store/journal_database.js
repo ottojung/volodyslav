@@ -46,10 +46,12 @@
 /** @typedef {import("../journal_retained").RetainedReplayState} RetainedReplayState */
 
 const {
+    compareJournalSequence,
     encodeJournalRecord,
     isDeleteEvent,
     isValueEvent,
     journalAuthorToString,
+    journalSequenceAtFrontier,
     journalSequenceToString,
     makeAuthorityTime,
     makeJournalAuthor,
@@ -174,6 +176,13 @@ function deserializeWriterState(value, fingerprint) {
     const committedFrontier = makeJournalFrontier(entries);
     if (committedFrontier instanceof Error) {
         return committedFrontier;
+    }
+    if (compareJournalSequence(
+        writerHead, journalSequenceAtFrontier(committedFrontier, localWriter)
+    ) !== 0) {
+        return makeJournalSourceReadError(
+            "the journal state record's committed own-writer frontier disagrees with writerHead"
+        );
     }
     if (!Array.isArray(value.authorityHighWater) || value.authorityHighWater.length !== 2) {
         return makeJournalSourceReadError("the journal state record has no authority high-water");
