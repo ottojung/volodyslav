@@ -174,6 +174,8 @@ async function readOccurrenceOf(storage, node) {
  *   direct inputs per node, which the snapshot's own graph scheme fixes for both sides.
  * @property {string} fingerprint - The snapshot replica's own writer identity, which is
  *   the local writer its committed allocator watermark belongs to.
+ * @property {import('../journal/emission').CommittedWriterState} committed - The
+ *   snapshot's committed writer state, checked against its retained own-writer suffix.
  */
 
 /**
@@ -183,7 +185,7 @@ async function readOccurrenceOf(storage, node) {
  * @returns {Promise<{source: ResetSource} | {error: JournalError}>}
  */
 async function readHeldResetSource(request) {
-    const { storage, journalSublevel, currentInputKeysOfNode, fingerprint } = request;
+    const { storage, journalSublevel, currentInputKeysOfNode, fingerprint, committed } = request;
 
     const databaseVersion = requiredText(await storage.global.get('version'), 'database version');
     const graphSchemeString = requiredText(
@@ -204,7 +206,7 @@ async function readHeldResetSource(request) {
         return { error: localWriter };
     }
 
-    const journal = await readJournalSource(journalSublevel);
+    const journal = await readJournalSource(journalSublevel, committed);
     if (journal instanceof Error) {
         return { error: journal };
     }

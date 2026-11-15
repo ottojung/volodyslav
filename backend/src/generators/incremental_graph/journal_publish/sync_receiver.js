@@ -242,7 +242,10 @@ async function syncJournalReceiverToSource(request) {
         throw retained;
     }
 
-    const source = await readJournalSource(database.replicaJournalSublevel(sourceReplica));
+    const source = await readJournalSource(
+        database.replicaJournalSublevel(sourceReplica),
+        sourceCommitted
+    );
     if (source instanceof Error) {
         throw source;
     }
