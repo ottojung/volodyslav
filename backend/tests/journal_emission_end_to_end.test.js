@@ -36,12 +36,16 @@ const {
     validateJournalReplica,
 } = require("../src/generators/incremental_graph/journal");
 const { projectRetainedJournal, makeReplicaSource } = require("../src/generators/incremental_graph/journal/oracle");
-const { openRecordStore } = require("../src/generators/incremental_graph/journal_store");
+const {
+    appendJournalPublicationOps,
+    readRetainedJournal,
+} = require("../src/generators/incremental_graph/journal_store");
 
 const { compileValidatedGraphSchema } = require("../src/generators/incremental_graph/graph_schema");
 const {
     deriveInputPositions,
     deserializeNodeKey,
+    getRootDatabase,
     stringToNodeName,
 } = require("../src/generators/incremental_graph/database");
 const { makeNodeIdentifier } = require("../src/generators/incremental_graph/database/node_identifier");
@@ -55,13 +59,8 @@ const MATERIALIZED_HEADS = new Set(["all_events", "meta_events", "event_context"
 const eventId = require("../src/event/id");
 const { fromISOString } = require("../src/datetime");
 
-const creator = require("../src/filesystem/creator").make();
-const writer = require("../src/filesystem/writer").make();
-const reader = require("../src/filesystem/reader").make();
-const dirscanner = require("../src/filesystem/dirscanner").make();
-const deleter = require("../src/filesystem/deleter").make();
-
-const { stubLogger } = require("./stubs");
+const { getMockedRootCapabilities } = require("./spies");
+const { stubLogger, stubEnvironment } = require("./stubs");
 
 const CREATOR = {
     name: "tester",
@@ -76,10 +75,8 @@ const MODIFIED_AT = "2020-01-02T00:00:00.000Z";
 const CREATED_AT = "2020-01-01T00:00:00.000Z";
 const PUBLICATION_INSTANT = fromISOString("2020-01-02T00:00:01.000Z").toMillis();
 
-/** @type {string} */
-let root;
-/** @type {object} */
-let storeCapabilities;
+/** @type {import("../src/generators/incremental_graph/database/root_database").RootDatabase} */
+let database;
 /** @type {import("../src/generators/incremental_graph/journal").CommittedWriterState} */
 let writerState;
 /** @type {Map<string, import("../src/generators/incremental_graph/journal").JournalRecordId>} */
@@ -90,9 +87,10 @@ let everyRecord;
 let livePayloads;
 
 beforeAll(async () => {
-    root = await creator.createTemporaryDirectory();
-    storeCapabilities = { creator, writer, reader, scanner: dirscanner, deleter };
-    stubLogger(storeCapabilities);
+    const capabilities = getMockedRootCapabilities();
+    stubLogger(capabilities);
+    stubEnvironment(capabilities);
+    database = await getRootDatabase(capabilities);
     const author = makeJournalAuthor(WRITER_NAME);
     if (author instanceof Error) {
         throw new Error("the test writer name is not a valid fingerprint: " + author.message);
@@ -113,8 +111,8 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-    if (root !== undefined) {
-        await deleter.deleteDirectory(root);
+    if (database !== undefined) {
+        await database.close();
     }
 });
 
@@ -272,7 +270,7 @@ async function publishMaterialization(entry, payload) {
         throw new Error("emission rejected a settled materialization of " + entry.key + ": " + publication.message);
     }
     const store = openStore();
-    const failure = await store.publish(publication.records);
+    const failure = await store.publish(publication);
     if (failure !== undefined) {
         throw new Error("the store could not make the publication durable: " + failure.message);
     }
@@ -290,19 +288,27 @@ async function publishMaterialization(entry, payload) {
     return valueId;
 }
 
-/** @type {import("../src/generators/incremental_graph/journal_store").RecordStore | undefined} */
-let theStore;
-
 /**
- * One store instance shared by every publication, so the store retains all five
- * materializations as a single committed prefix per writer.
- * @returns {import("../src/generators/incremental_graph/journal_store").RecordStore}
+ * The real LevelDB Journal sublevel, using the same atomic batch and record
+ * validation as production publication. There is no second file-based store.
+ * @returns {{publish: (publication: import("../src/generators/incremental_graph/journal").FinalizedPublication) => Promise<import("../src/generators/incremental_graph/journal/errors").AnyJournalError | undefined>, readReplica: () => Promise<import("../src/generators/incremental_graph/journal/replica").JournalReplica | import("../src/generators/incremental_graph/journal/errors").AnyJournalError>}}
  */
 function openStore() {
-    if (theStore === undefined) {
-        theStore = openRecordStore(storeCapabilities, root);
-    }
-    return theStore;
+    const schema = database.getSchemaStorage();
+    const journal = schema.journal;
+    return {
+        async publish(publication) {
+            /** @type {Array<*>} */
+            const operations = [];
+            const error = await appendJournalPublicationOps(journal, operations, publication);
+            if (error !== undefined) return error;
+            await schema.batch(operations);
+            return undefined;
+        },
+        readReplica() {
+            return readRetainedJournal(journal);
+        },
+    };
 }
 
 /**

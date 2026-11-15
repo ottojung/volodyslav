@@ -198,7 +198,7 @@ function gitInstallationRecoverySource(capabilities) {
             const branch = defaultBranch(capabilities);
             // Do not collapse a failed ls-remote into definite absence.
             const response = await capabilities.git.call(
-                'ls-remote', '--heads', '--', remote, 'refs/heads/' + branch
+                '-c', 'safe.directory=*', 'ls-remote', '--heads', '--', remote, 'refs/heads/' + branch
             );
             if (response.stdout.trim() === '') {
                 return null;
@@ -208,7 +208,7 @@ function gitInstallationRecoverySource(capabilities) {
             const temp = await capabilities.creator.createTemporaryDirectory();
             try {
                 await capabilities.git.call(
-                    'clone', '--depth', '1', '--single-branch', '--branch', branch,
+                    '-c', 'safe.directory=*', 'clone', '--depth', '1', '--single-branch', '--branch', branch,
                     '--', remote, temp
                 );
                 return await snapshotFromRenderedReplica(capabilities, path.join(temp, 'rendered', 'r'));

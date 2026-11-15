@@ -12,14 +12,6 @@
  */
 
 const {
-    RecordStoreClass,
-    compareCoordinateText,
-    isRecordStore,
-    openRecordStore,
-    recordPath,
-} = require("./record_store");
-
-const {
     JOURNAL_STATE_KEY,
     appendJournalPublicationOps,
     appendRetainedStateOp,
@@ -57,21 +49,16 @@ const { decodeRecordCoordinate } = require("./record_coordinate_key");
 
 const { reconcileCommittedFrontier, reconcileRetainedWriterHead } = require("./writer_head");
 
-/** @typedef {import('./record_store').RecordStoreClass} RecordStore */
-/** @typedef {import('./record_store').StoreCapabilities} StoreCapabilities */
 
 module.exports = {
     JOURNAL_RETAINED_STATE_KEY,
     JOURNAL_STATE_KEY,
-    RecordStoreClass,
     appendJournalPublicationOps,
     appendRetainedStateOp,
-    compareCoordinateText,
     coordinateTextOf,
     decodeRecordCoordinate,
     deserializeWriterState,
     forEachRetainedRecord,
-    isRecordStore,
     journalRetainsRecords,
     maintainedRetainedState,
     makeInitialCommittedWriterState,
@@ -81,7 +68,6 @@ module.exports = {
     makeJournalRecordKey,
     makeStreamingJournalSource,
     makeSyncJournalSource,
-    openRecordStore,
     readCommittedWriterState,
     readCurrentOccurrence,
     readJournalSource,
@@ -90,7 +76,6 @@ module.exports = {
     readRetainedReplayState,
     reconcileCommittedFrontier,
     reconcileRetainedWriterHead,
-    recordPath,
     recordRangeOf,
     retainedLengthTexts,
     serializeWriterState,

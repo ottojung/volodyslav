@@ -89,14 +89,14 @@ function decodeArtifact(value) {
  */
 async function readGitCanonicalArtifact(capabilities) {
     const remote = capabilities.environment.generatorsRepository();
-    const answer = await capabilities.git.call('ls-remote', '--heads', '--', remote, CANONICAL_REF);
+    const answer = await capabilities.git.call('-c', 'safe.directory=*', 'ls-remote', '--heads', '--', remote, CANONICAL_REF);
     if (answer.stdout.trim() === '') {
         return null;
     }
     const temp = await capabilities.creator.createTemporaryDirectory();
     try {
         await capabilities.git.call(
-            'clone', '--depth', '1', '--single-branch', '--branch', CANONICAL_BRANCH,
+            '-c', 'safe.directory=*', 'clone', '--depth', '1', '--single-branch', '--branch', CANONICAL_BRANCH,
             '--', remote, temp
         );
         return decodeArtifact(JSON.parse(await capabilities.reader.readFileAsText(path.join(temp, ARTIFACT_FILE))));

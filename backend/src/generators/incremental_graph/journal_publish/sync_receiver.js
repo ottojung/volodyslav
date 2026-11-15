@@ -30,6 +30,7 @@ const {
 const { SnapshotIdentityClass, synchronizeRetainedJournal } = require('../journal_sync');
 const { makeCurrentInputKeysOfNode } = require('../journal_bootstrap_startup');
 const {
+    journalRetainsRecords,
     readCommittedWriterState,
     readJournalSource,
     readRetainedReplayState,
@@ -41,17 +42,6 @@ const {
 /** @typedef {import('../database/root_database').ReplicaName} ReplicaName */
 /** @typedef {import('../journal/records').JournalRecord} JournalRecord */
 /** @typedef {import('../journal/emission').CommittedWriterState} CommittedWriterState */
-
-/**
- * @param {{ keys: () => AsyncIterable<unknown> }} sublevel
- * @returns {Promise<boolean>}
- */
-async function hasAnyKey(sublevel) {
-    for await (const _key of sublevel.keys()) {
-        return true;
-    }
-    return false;
-}
 
 /**
  * Thrown when a receiver which retains Journal records is asked to synchronize from a
@@ -85,19 +75,6 @@ class SyncSourceIsNotAJournalSnapshotError extends Error {
  */
 function isSyncSourceIsNotAJournalSnapshotError(object) {
     return object instanceof SyncSourceIsNotAJournalSnapshotError;
-}
-
-/**
- * Whether a replica namespace retains Journal records at all.
- *
- * A namespace which retains none materializes rows without retaining the records which
- * explain them, so it is a pre-Journal replica rather than a Journal 3 one.
- *
- * @param {SchemaStorage} storage
- * @returns {Promise<boolean>}
- */
-async function retainsJournalRecords(storage) {
-    return await hasAnyKey(storage.journal);
 }
 
 /**
@@ -180,7 +157,7 @@ async function syncJournalReceiverToSource(request) {
         await sourceStorage.global.get('fingerprint'),
         'held synchronization source snapshot fingerprint'
     );
-    if (!await retainsJournalRecords(sourceStorage)) {
+    if (!await journalRetainsRecords(sourceStorage.journal)) {
         throw new SyncSourceIsNotAJournalSnapshotError(sourceFingerprint);
     }
 
