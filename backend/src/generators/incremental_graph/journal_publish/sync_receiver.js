@@ -199,7 +199,7 @@ async function syncJournalReceiverToSource(request) {
         await sourceStorage.global.get(GRAPH_SCHEME_KEY),
         'source graph scheme'
     );
-    const sourceCommitted = await readCommittedWriterState(sourceStorage.journal, sourceFingerprint);
+    const sourceCommitted = await readCommittedWriterState(sourceStorage.journal, sourceFingerprint, true);
     if (isJournalError(sourceCommitted)) {
         throw sourceCommitted;
     }

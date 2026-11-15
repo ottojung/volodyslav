@@ -197,7 +197,7 @@ async function resetJournalReceiverToSnapshot(request) {
         parseGraphScheme(receiverGraphScheme)
     );
 
-    const sourceCommitted = await readCommittedWriterState(sourceStorage.journal, sourceFingerprint);
+    const sourceCommitted = await readCommittedWriterState(sourceStorage.journal, sourceFingerprint, true);
     if (isJournalError(sourceCommitted)) {
         throw sourceCommitted;
     }

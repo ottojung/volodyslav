@@ -280,3 +280,31 @@ describe("held source rollback is refused before synchronization or reset", () =
         });
     }
 });
+
+describe("a held Journal source without its committed writer state is corrupted", () => {
+    for (const [label, operation] of [
+        ["synchronization", syncJournalReceiverToSource],
+        ["reset", resetJournalReceiverToSnapshot],
+    ]) {
+        test(label + " fails rather than accepting an uncommitted history", async () => {
+            const capabilities = testCapabilities();
+            const { database, receiver, source } =
+                await buildReceiverWithHeldSnapshot(capabilities);
+            try {
+                const sourceStorage = database.schemaStorageForReplica(source);
+                await sourceStorage.journal.del("state");
+                const before = database.currentReplicaName();
+                let failure;
+                try {
+                    await operation({ database, capabilities, receiver, source });
+                } catch (error) {
+                    failure = error;
+                }
+                expect(failure).toBeInstanceOf(Error);
+                expect(database.currentReplicaName()).toBe(before);
+            } finally {
+                await database.close();
+            }
+        });
+    }
+});
