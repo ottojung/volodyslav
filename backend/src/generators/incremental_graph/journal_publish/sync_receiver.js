@@ -204,7 +204,7 @@ async function syncJournalReceiverToSource(request) {
         throw sourceCommitted;
     }
 
-    const committed = await readCommittedWriterState(receiverStorage.journal, receiverFingerprint);
+    const committed = await readCommittedWriterState(receiverStorage.journal, receiverFingerprint, true);
     if (isJournalError(committed)) {
         throw committed;
     }

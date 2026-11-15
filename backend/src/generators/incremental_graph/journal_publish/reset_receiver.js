@@ -212,7 +212,7 @@ async function resetJournalReceiverToSnapshot(request) {
         throw held.error;
     }
 
-    const committed = await readCommittedWriterState(receiverStorage.journal, receiverFingerprint);
+    const committed = await readCommittedWriterState(receiverStorage.journal, receiverFingerprint, true);
     if (isJournalError(committed)) {
         throw committed;
     }
