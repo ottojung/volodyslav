@@ -59,7 +59,7 @@ const {
     tryDecodeJournalRecord,
     ZERO_JOURNAL_SEQUENCE,
 } = require('../journal');
-const { reconcileRetainedWriterHead } = require('./writer_head');
+const { reconcileCommittedFrontier, reconcileRetainedWriterHead } = require('./writer_head');
 const {
     journalKeyToString,
     journalTextToString,
@@ -444,9 +444,14 @@ async function readJournalSource(journalSublevel, committed) {
         return lengths;
     }
     if (committed !== undefined) {
-        const lost = reconcileRetainedWriterHead(makeSyncJournalSource(lengths, () => []), committed);
+        const metadata = makeSyncJournalSource(lengths, () => []);
+        const lost = reconcileRetainedWriterHead(metadata, committed);
         if (lost !== undefined) {
             return lost;
+        }
+        const inconsistent = reconcileCommittedFrontier(metadata, committed);
+        if (inconsistent !== undefined) {
+            return inconsistent;
         }
     }
     return makeStreamingJournalSource(lengths, journalSublevel);

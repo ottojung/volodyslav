@@ -55,7 +55,7 @@ const {
 
 const { decodeRecordCoordinate } = require("./record_coordinate_key");
 
-const { reconcileRetainedWriterHead } = require("./writer_head");
+const { reconcileCommittedFrontier, reconcileRetainedWriterHead } = require("./writer_head");
 
 /** @typedef {import('./record_store').RecordStoreClass} RecordStore */
 /** @typedef {import('./record_store').StoreCapabilities} StoreCapabilities */
@@ -88,6 +88,7 @@ module.exports = {
     readRetainedJournal,
     readRetainedLengths,
     readRetainedReplayState,
+    reconcileCommittedFrontier,
     reconcileRetainedWriterHead,
     recordPath,
     recordRangeOf,

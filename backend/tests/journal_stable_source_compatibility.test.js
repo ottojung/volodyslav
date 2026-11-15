@@ -360,3 +360,31 @@ describe("a held source with committed own-writer head lower than retained prefi
         });
     }
 });
+
+describe("a held snapshot's committed foreign frontier must agree with retained records", () => {
+    for (const [label, operation] of [
+        ["synchronization", syncJournalReceiverToSource],
+        ["reset", resetJournalReceiverToSnapshot],
+    ]) {
+        test(label + " refuses a phantom foreign writer in committed source frontier", async () => {
+            const capabilities = testCapabilities();
+            const { database, receiver, source } =
+                await buildReceiverWithHeldSnapshot(capabilities);
+            try {
+                const sourceJournal = database.schemaStorageForReplica(source).journal;
+                const raw = await sourceJournal.get("state");
+                const state = JSON.parse(raw);
+                state.committedFrontier.push(["bbbbbbbbb", "1"]);
+                await sourceJournal.put("state", JSON.stringify(state));
+
+                const before = database.currentReplicaName();
+                let failure;
+                try {
+                    await operation({database, capabilities, receiver, source});
+                } catch (error) {failure=error;}
+                expect(failure).toBeInstanceOf(Error);
+                expect(database.currentReplicaName()).toBe(before);
+            } finally {await database.close();}
+        });
+    }
+});
