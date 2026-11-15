@@ -186,6 +186,16 @@ class RetainedReplayStateClass {
         this.lastNodeIndex = lastNodeIndex;
         this.localWriter = localWriter;
         this.currentInputKeysOfNode = currentInputKeysOfNode;
+        /** @type {Map<string, string> | undefined} */
+        this.shardDigests = undefined;
+        /** @type {string | undefined} */
+        this.shardAccumulator = undefined;
+        /** @type {Set<string> | undefined} */
+        this.persistAffected = undefined;
+        /** @type {Set<string>} */
+        this.lastAffected = new Set();
+        /** @type {{indexed: Set<string>, dependents: Map<string, Set<string>>, owners: Map<string, string>, byNode: Map<string, string>} | undefined} */
+        this.localIndex = undefined;
     }
 }
 
@@ -468,6 +478,7 @@ function projectRetainedReplay(state) {
         }
     }
     const affected = affectedClosure(state, selected, nodeKeyStrings);
+    state.lastAffected = affected;
     for (const nodeKeyString of affected) {
         const certificate = resolveCertificate(state, nodeKeyString, selected);
         if (certificate === undefined) {
@@ -543,6 +554,8 @@ module.exports = {
     invalidationSummaryOf,
     isRetainedReplayState,
     projectRetainedReplay,
+    resolveCertificate,
+    selectedValueIdOf,
     selectedHeadsOf,
     selectedOccurrencesOf,
     stageRetainedRecords,

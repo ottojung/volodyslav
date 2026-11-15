@@ -45,13 +45,22 @@ const {
 const { buildRetainedReplayState, buildRetainedReplayStateFromRecords } = require("./retained_maintenance");
 const { refuseStaleRetainedState } = require("./correspondence");
 const { commitRetainedReplayState, forkRetainedReplayState } = require("./transaction");
+const { ensureIndex, projectLocalRetainedReplay } = require("./local_projection");
 const {
     deserializeRetainedReplayState,
     makeEmptyRetainedReplayState,
     serializeRetainedReplayState,
 } = require("./state_codec");
+const { RETAINED_STATE_FORMAT, RETAINED_STATE_VERSION } = require("./state_codec_records");
+const { encodeCertificates, encodeSelected } = require("./state_codec_records");
+const { encodeProofs } = require("./state_codec_scopes");
 
 module.exports = {
+    RETAINED_STATE_FORMAT,
+    RETAINED_STATE_VERSION,
+    encodeCertificates,
+    encodeSelected,
+    encodeProofs,
     ProofSummaryClass,
     RetainedReplayStateClass,
     admitRetainedHead,
@@ -67,6 +76,8 @@ module.exports = {
     serializeRetainedReplayState,
     countEligibleProofEdges,
     eligibleProofEdgeUnion,
+    ensureIndex,
+    projectLocalRetainedReplay,
     invalidationSummaryOf,
     invalidationViewOf,
     isProofSummary,

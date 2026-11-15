@@ -31,6 +31,7 @@
  */
 
 const {
+    encodeJournalRecord,
     journalAuthorToString,
     makeAuthorityTime,
     makeInvalidateEvent,
@@ -62,7 +63,10 @@ const {
 const {
     appendRetainedStateOp,
     maintainedRetainedState,
+    makeJournalRecordKey,
 } = require("../src/generators/incremental_graph/journal_store");
+
+const { stringToJournalText } = require("../src/generators/incremental_graph/database");
 
 const NODE_B = { head: "event", args: [{ id: 2 }] };
 const NODE_D = { head: "event", args: [{ id: 4 }] };
@@ -357,9 +361,22 @@ function fakeJournal() {
         putOp(key, value) {
             return { type: "put", key, value, __fake: true, commit: () => stored.set(String(key), value) };
         },
-        async *keys() {
-            for (const key of stored.keys()) {
+        delOp(key) {
+            return { type: "del", key, commit: () => stored.delete(String(key)) };
+        },
+        async *keys(options = {}) {
+            for (const key of [...stored.keys()].sort()) {
+                if (options.gte !== undefined && key < options.gte) continue;
+                if (options.lt !== undefined && key >= options.lt) continue;
                 yield key;
+            }
+        },
+        async *entries(options = {}) {
+            for (const [key, value] of [...stored.entries()].sort(([a], [b]) =>
+                a < b ? -1 : a > b ? 1 : 0)) {
+                if (options.gte !== undefined && key < options.gte) continue;
+                if (options.lte !== undefined && key > options.lte) continue;
+                yield [key, value];
             }
         },
     };
@@ -371,9 +388,9 @@ function fakeJournal() {
  * @param {object} journal
  * @param {import("../src/generators/incremental_graph/journal_retained").RetainedReplayState} state
  */
-function persist(journal, state) {
+async function persist(journal, state) {
     const operations = [];
-    const rejected = appendRetainedStateOp(journal, operations, state);
+    const rejected = await appendRetainedStateOp(journal, operations, state);
     if (rejected !== undefined) {
         throw rejected;
     }
@@ -386,7 +403,12 @@ describe("an ordinary publication maintains the counted eligible-proof summary",
     test("the D -> B count falls 2 -> 1 -> 0 and the union tracks it", async () => {
         const base = baseWithTwoProvingCertificates();
         const journal = fakeJournal();
-        persist(journal, await builtStateOf(base));
+        for (const record of base) {
+            const key = makeJournalRecordKey(record.id.author, record.id.sequence);
+            if (key instanceof Error) throw key;
+            journal.putOp(key, stringToJournalText(encodeJournalRecord(record))).commit();
+        }
+        await persist(journal, await builtStateOf(base));
 
         // The base retains two independently eligible and effective certificates
         // which both prove D, so the count is two and D is in the union. The
@@ -416,7 +438,7 @@ describe("an ordinary publication maintains the counted eligible-proof summary",
         expect(countOfD(afterOne.proofs, WRITER_LOCAL + ":3")).toBe(1);
         expect(unionOfB(afterOne.proofs, WRITER_LOCAL + ":3")).toEqual([KEY_D]);
         expect(await rebuiltCountOf([...base, ...retiredOnce], WRITER_LOCAL + ":3")).toBe(1);
-        persist(journal, afterOne);
+        await persist(journal, afterOne);
 
         // A second publication invalidates the node again with no replacement, so
         // the remaining contribution is removed: count zero and D leaves the union.

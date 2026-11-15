@@ -467,7 +467,7 @@ async function restoreAbsentFrom(capabilities, snapshot) {
         // traversing the snapshot's retained history, which is the explicit
         // maintenance transition the restore already is, and is installed in the same
         // atomic write as the pair.
-        const rejected = appendRetainedStateOp(target.journal, operations, built.state);
+        const rejected = await appendRetainedStateOp(target.journal, operations, built.state);
         if (rejected !== undefined) {
             throw rejected;
         }
