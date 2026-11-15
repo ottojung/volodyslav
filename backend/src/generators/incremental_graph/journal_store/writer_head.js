@@ -25,6 +25,7 @@ const {
     journalAuthorToString,
     journalSequenceToString,
     makeJournalWriterBehindError,
+    makeJournalSourceReadError,
     ZERO_JOURNAL_SEQUENCE,
 } = require('../journal');
 
@@ -39,8 +40,16 @@ const {
 function reconcileRetainedWriterHead(source, committed) {
     const retained = source.retainedLengthOf(committed.localWriter);
     const retainedSequence = retained === undefined ? ZERO_JOURNAL_SEQUENCE : retained;
-    if (compareJournalSequence(committed.writerHead, retainedSequence) <= 0) {
+    const compared = compareJournalSequence(committed.writerHead, retainedSequence);
+    if (compared === 0) {
         return undefined;
+    }
+    if (compared < 0) {
+        return makeJournalSourceReadError(
+            "the committed writer head " + journalSequenceToString(committed.writerHead) +
+                " is behind retained writer " + journalAuthorToString(committed.localWriter) +
+                " at " + journalSequenceToString(retainedSequence)
+        );
     }
     return makeJournalWriterBehindError(
         journalAuthorToString(committed.localWriter),

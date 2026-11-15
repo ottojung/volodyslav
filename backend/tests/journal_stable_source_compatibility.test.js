@@ -335,3 +335,28 @@ describe("a receiver retaining Journal records without its committed state is co
         });
     }
 });
+
+describe("a held source with committed own-writer head lower than retained prefix is corrupt", () => {
+    for (const [label, operation] of [
+        ["synchronization", syncJournalReceiverToSource],
+        ["reset", resetJournalReceiverToSnapshot],
+    ]) {
+        test(label + " rejects a writer head regressed behind retained events", async () => {
+            const capabilities = testCapabilities();
+            const {database, receiver, source} = await buildReceiverWithHeldSnapshot(capabilities);
+            try {
+                const state = database.schemaStorageForReplica(source).journal;
+                const value = JSON.parse(await state.get("state"));
+                value.writerHead = "0";
+                await state.put("state", JSON.stringify(value));
+                const before = database.currentReplicaName();
+                let failure;
+                try {
+                    await operation({database, capabilities, receiver, source});
+                } catch (error) {failure = error;}
+                expect(failure).toBeInstanceOf(Error);
+                expect(database.currentReplicaName()).toBe(before);
+            } finally {await database.close();}
+        });
+    }
+});
