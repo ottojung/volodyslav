@@ -68,7 +68,7 @@ const {
     makeJournalOccurrenceText,
     readCurrentOccurrence,
 } = require("./occurrence_index");
-const { reconcileRetainedWriterHead } = require("./writer_head");
+const { reconcileCommittedFrontier, reconcileRetainedWriterHead } = require("./writer_head");
 const { appendRetainedStateOp } = require("./retained_state");
 const {
     journalKeyToString,
@@ -387,9 +387,14 @@ async function readRetainedJournal(journalDatabase, committed) {
         return makeJournalSourceReadError("the journal sublevel could not assemble a retained replica: " + replica.message);
     }
     if (committed !== undefined) {
-        const lost = reconcileRetainedWriterHead(makeReplicaSource(replica), committed);
+        const source = makeReplicaSource(replica);
+        const lost = reconcileRetainedWriterHead(source, committed);
         if (lost !== undefined) {
             return lost;
+        }
+        const inconsistent = reconcileCommittedFrontier(source, committed);
+        if (inconsistent !== undefined) {
+            return inconsistent;
         }
     }
     return replica;

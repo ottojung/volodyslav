@@ -58,6 +58,36 @@ function reconcileRetainedWriterHead(source, committed) {
     );
 }
 
+
+/**
+ * Check that every writer coordinate claimed by the committed frontier exists.
+ * The inactive snapshot can contain extra records from an interrupted staging
+ * attempt: those do not establish a new committed cut, but must not cause a
+ * legitimate retry to fail. Missing claimed records, however, mean lost
+ * committed writer history and are rejected before any synchronization/reset.
+ *
+ * The source already has per-writer retained lengths available via metadata:
+ * this performs O(W) point reads for W committed writers, no body scan.
+ *
+ * @param {JournalSource} source
+ * @param {CommittedWriterState} committed
+ * @returns {JournalError | undefined}
+ */
+function reconcileCommittedFrontier(source, committed) {
+    for (const [author, sequence] of committed.committedFrontier) {
+        const retained = source.retainedLengthOf(author) ?? ZERO_JOURNAL_SEQUENCE;
+        if (compareJournalSequence(retained, sequence) < 0) {
+            return makeJournalSourceReadError(
+                "the committed frontier for writer " + journalAuthorToString(author) +
+                    " claims " + journalSequenceToString(sequence) +
+                    " but the retained Journal ends at " + journalSequenceToString(retained)
+            );
+        }
+    }
+    return undefined;
+}
+
 module.exports = {
+    reconcileCommittedFrontier,
     reconcileRetainedWriterHead,
 };
