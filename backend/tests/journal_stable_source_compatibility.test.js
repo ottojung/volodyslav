@@ -388,3 +388,35 @@ describe("a held snapshot's committed foreign frontier must agree with retained 
         });
     }
 });
+
+describe("committed own-writer frontier is not allowed to trail its committed writer head", () => {
+    for (const [label, operation] of [
+        ["synchronization", syncJournalReceiverToSource],
+        ["reset", resetJournalReceiverToSnapshot],
+    ]) {
+        for (const direction of ["behind", "ahead"]) {
+        test(label + " refuses own-writer frontier " + direction + " of its head", async () => {
+            const capabilities = testCapabilities();
+            const { database, receiver, source } =
+                await buildReceiverWithHeldSnapshot(capabilities);
+            try {
+                const sourceJournal = database.schemaStorageForReplica(source).journal;
+                const state = JSON.parse(await sourceJournal.get("state"));
+                const own = state.committedFrontier.find(([writer]) => writer === state.localWriter);
+                expect(own).toBeDefined();
+                expect(state.writerHead).not.toBe("0");
+                own[1] = direction === "behind"
+                    ? "0" : String(BigInt(state.writerHead) + 1n);
+                await sourceJournal.put("state", JSON.stringify(state));
+                const before = database.currentReplicaName();
+                let failure;
+                try {
+                    await operation({database, capabilities, receiver, source});
+                } catch (error) {failure=error;}
+                expect(failure).toBeInstanceOf(Error);
+                expect(database.currentReplicaName()).toBe(before);
+            } finally {await database.close();}
+        });
+        }
+    }
+});
