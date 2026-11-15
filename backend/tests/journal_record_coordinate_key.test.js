@@ -1,6 +1,6 @@
 /**
  * The Journal sequence type is arbitrary precision. Storage's record-key
- * lexical order must therefore remain numeric beyond its historical 30 digits.
+ * lexical order must therefore remain numeric for every sequence width.
  */
 const { makeJournalAuthor, makeJournalSequence, journalSequenceToString } =
     require("../src/generators/incremental_graph/journal");
@@ -29,15 +29,15 @@ function storageKeyOf(digits) {
     return key;
 }
 
-test("arbitrary-width record keys round-trip and retain old 30-digit keys", () => {
+test("one canonical key format round-trips every coordinate width", () => {
     const sequences = [
         "0", "1", "9", "10", "9".repeat(29), "1" + "0".repeat(29),
         "9".repeat(30), "1" + "0".repeat(30), "2" + "0".repeat(30),
         "9".repeat(31), "1" + "0".repeat(31), "1" + "0".repeat(200),
     ];
     const keys = sequences.map(storageKeyOf);
-    expect(keys[0]).toBe("record|" + AUTHOR + "|" + "0".repeat(30));
-    expect(keys[1]).toBe("record|" + AUTHOR + "|" + "0".repeat(29) + "1");
+    expect(keys[0]).toBe("record|" + AUTHOR + "|z10100");
+    expect(keys[1]).toBe("record|" + AUTHOR + "|z10101");
     expect(keys).toEqual([...keys].sort());
     for (let index = 0; index < sequences.length; index++) {
         const encoded = keys[index].split("|").pop();
@@ -45,14 +45,15 @@ test("arbitrary-width record keys round-trip and retain old 30-digit keys", () =
     }
 });
 
-test("the extended coordinate decoder rejects noncanonical lengths and digits", () => {
+test("the unified coordinate decoder rejects noncanonical lengths and digits", () => {
     const d31 = "1" + "0".repeat(30);
     expect(encodeRecordCoordinate(d31)).toBe("z110310" + d31);
     for (const bad of [
         "z0" + d31, "z110300" + d31, "z110310" + "0".repeat(31),
         "z110310" + d31 + "0", "z1100310" + d31, "z110320" + d31,
         "z1110310" + d31,
-        "0".repeat(31), "0".repeat(29), "not-a-coordinate",
+        "0".repeat(30), "0".repeat(31), "0".repeat(29), "not-a-coordinate",
+        "z10100" + "0", "z10202", "z101001",
     ]) {
         expect(decodeRecordCoordinate(bad)).toBeUndefined();
     }

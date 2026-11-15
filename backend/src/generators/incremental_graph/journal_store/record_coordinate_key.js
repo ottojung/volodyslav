@@ -1,21 +1,16 @@
 /**
  * Order-preserving storage keys for arbitrary-width JournalSequence coordinates.
  *
- * At most 30 digits retain their old, zero-padded key. Longer coordinates use
- * the marker "z" (after ASCII digits), then a unary decimal-length width, the
- * decimal length, and finally canonical digits. All delimiters are "0".
- * This orders by coordinate length then numeric digits without a fixed ceiling.
+ * Every canonical coordinate uses the same format: "z" followed by unary
+ * decimal-length width, the decimal length, a separator "0", then its digits.
+ * The length prefix orders arbitrary-precision values numerically.
  */
-const PADDED_WIDTH = 30;
 
 /**
  * @param {string} digits - Canonical decimal JournalSequence text.
  * @returns {string}
  */
 function encodeRecordCoordinate(digits) {
-    if (digits.length <= PADDED_WIDTH) {
-        return digits.padStart(PADDED_WIDTH, "0");
-    }
     const widthText = String(digits.length);
     return "z" + "1".repeat(widthText.length) + "0" + widthText + "0" + digits;
 }
@@ -25,9 +20,6 @@ function encodeRecordCoordinate(digits) {
  * @returns {string | undefined} - Canonical decimal or undefined for malformed keys.
  */
 function decodeRecordCoordinate(encoded) {
-    if (/^[0-9]{30}$/.test(encoded)) {
-        return encoded.replace(/^0+(?=[0-9])/, "");
-    }
     const match = /^z(1+)0/.exec(encoded);
     const widthDigits = match?.[1]?.length;
     if (widthDigits === undefined) {
@@ -39,7 +31,7 @@ function decodeRecordCoordinate(encoded) {
         return undefined;
     }
     const digits = encoded.slice(start + widthDigits + 1);
-    if (!/^[1-9][0-9]*$/.test(digits) || digits.length <= PADDED_WIDTH ||
+    if (!/^(0|[1-9][0-9]*)$/.test(digits) ||
         String(digits.length) !== lengthText) {
         return undefined;
     }

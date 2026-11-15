@@ -36,7 +36,7 @@ const { stubLogger, stubEnvironment } = require('./stubs');
  */
 
 /** The three key families the Journal sublevel holds, in the shapes it stores them. */
-const RECORD_KEY = stringToJournalKey('record|qai1|000000000000000000000000000001');
+const RECORD_KEY = stringToJournalKey('record|qai1|z10101');
 const RECORD_TEXT = stringToJournalText(
     '{"id":"qai1:1","kind":"value","node":"{\\"head\\":\\"all_events\\",\\"args\\":[]}",' +
     '"context":[],"authorityTime":{"physical":1,"logical":"1"},"nodeIdentifier":"all_events",' +

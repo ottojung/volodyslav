@@ -74,10 +74,10 @@ test('Git recovery refuses a checkpoint whose retained writer stream has a seque
  try{
   await fs.cp(fixture,dest,{recursive:true});
   const recordsPath=path.join(dest,'journal');
-  const files=(await fs.readdir(recordsPath)).filter(name=>/^record\|[a-z]{9,}\|[0-9]{30}$/.test(name));
+  const files=(await fs.readdir(recordsPath)).filter(name=>/^record\|[a-z]{9,}\|z.+$/.test(name));
   const byWriter=new Map();
   for(const name of files){
-   const [,writer,sequence]=/^record\|([a-z]{9,})\|([0-9]{30})$/.exec(name);
+   const [,writer,sequence]=/^record\|([a-z]{9,})\|(z.+)$/.exec(name);
    const stream=byWriter.get(writer)||[];
    stream.push({name,sequence});byWriter.set(writer,stream);
   }
@@ -121,7 +121,7 @@ test('Git recovery refuses a checkpoint with an undecodable Journal record body'
  const fixture=path.join(__dirname,'mock-incremental-database-remote-populated','rendered','r');
  try{
   await fs.cp(fixture,dest,{recursive:true});
-  await fs.writeFile(path.join(dest,'journal','record|testfingerprnt|000000000000000000000000000006'),'not-json{{{');
+  await fs.writeFile(path.join(dest,'journal','record|testfingerprnt|z10106'),'not-json{{{');
   await expect(snapshotFromRenderedReplica(capabilities,dest)).rejects.toThrow(/not valid JSON/);
  }finally{await fs.rm(dest,{recursive:true,force:true})}
 });
@@ -132,8 +132,8 @@ test('Git recovery refuses a checkpoint whose record key disagrees with its sema
  const fixture=path.join(__dirname,'mock-incremental-database-remote-populated','rendered','r');
  try{
   await fs.cp(fixture,dest,{recursive:true});
-  const body=await fs.readFile(path.join(dest,'journal','record|testfingerprnt|000000000000000000000000000001'),'utf8');
-  await fs.writeFile(path.join(dest,'journal','record|testfingerprnt|000000000000000000000000000099'),body);
+  const body=await fs.readFile(path.join(dest,'journal','record|testfingerprnt|z10101'),'utf8');
+  await fs.writeFile(path.join(dest,'journal','record|testfingerprnt|z102099'),body);
   await expect(snapshotFromRenderedReplica(capabilities,dest)).rejects.toThrow(/disagrees with its semantic identity/);
  }finally{await fs.rm(dest,{recursive:true,force:true})}
 });

@@ -13,14 +13,13 @@
  *
  * ```text
  * state                                the Journal committed-pair metadata record
- * record|<author>|<padded coordinate>  one canonical current-format record per key
+ * record|<author>|<length-ordered coordinate>  one canonical record per key
  * occurrence|<sha256(canonical node key)>  JSON node/record-id occurrence metadata
  * ```
  *
- * The coordinate is left-padded to a fixed width so that a plain byte-ordered
- * iteration of the sublevel yields each writer's records in writer-stream order
- * without a numeric decode. The record's own text keeps the canonical unpadded
- * coordinate, so padding is a storage concern only.
+ * The canonical length-prefixed coordinate orders each writer's records by
+ * numeric sequence under plain byte-ordered iteration, at any decimal width.
+ * The record's own text uses the canonical unpadded JournalSequence.
  *
  * The committed-pair metadata is the Journal side of the pair the publication
  * advances: local writer, writer head, committed frontier, authority high-water and
