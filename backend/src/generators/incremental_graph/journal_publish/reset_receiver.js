@@ -197,7 +197,7 @@ async function resetJournalReceiverToSnapshot(request) {
         parseGraphScheme(receiverGraphScheme)
     );
 
-    const sourceCommitted = await readCommittedWriterState(sourceStorage.journal, sourceFingerprint);
+    const sourceCommitted = await readCommittedWriterState(sourceStorage.journal, sourceFingerprint, true);
     if (isJournalError(sourceCommitted)) {
         throw sourceCommitted;
     }
@@ -212,7 +212,7 @@ async function resetJournalReceiverToSnapshot(request) {
         throw held.error;
     }
 
-    const committed = await readCommittedWriterState(receiverStorage.journal, receiverFingerprint);
+    const committed = await readCommittedWriterState(receiverStorage.journal, receiverFingerprint, true);
     if (isJournalError(committed)) {
         throw committed;
     }

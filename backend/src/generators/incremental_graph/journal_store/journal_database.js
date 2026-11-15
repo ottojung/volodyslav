@@ -230,11 +230,19 @@ function makeInitialCommittedWriterState(localWriter) {
  *
  * @param {JournalDatabase} journalDatabase
  * @param {string} fingerprint - This database's fingerprint, which is the local writer name.
+ * @param {boolean} [requireExisting=false] - A held source known to retain records
+ *   must have its committed writer-state record. Missing state is initial only for
+ *   a genuinely empty local Journal.
  * @returns {Promise<CommittedWriterState | JournalError>}
  */
-async function readCommittedWriterState(journalDatabase, fingerprint) {
+async function readCommittedWriterState(journalDatabase, fingerprint, requireExisting = false) {
     const raw = await journalDatabase.get(JOURNAL_STATE_KEY);
     if (raw === undefined) {
+        if (requireExisting) {
+            return makeJournalSourceReadError(
+                "the held source retains Journal records but has no committed writer state"
+            );
+        }
         const author = makeJournalAuthor(fingerprint);
         if (author instanceof Error) {
             return author;

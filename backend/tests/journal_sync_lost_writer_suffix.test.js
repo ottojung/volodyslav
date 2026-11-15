@@ -30,6 +30,7 @@ const {
 } = require("../src/generators/incremental_graph/journal_store");
 const {
     isJournalWriterBehindError,
+    isJournalSourceReadError,
     journalAuthorToString,
     makeAuthorityTime,
     makeJournalAuthor,
@@ -384,4 +385,16 @@ describe("the production readers reconcile the retained length against the commi
             await database.close();
         }
     });
+});
+
+
+test("a committed head behind retained own-writer history is inconsistent", () => {
+    const source = makeReplicaSource(replicaOf(receiverChain()));
+    const committed = {
+        localWriter: made(makeJournalAuthor(WRITER_LOCAL)),
+        writerHead: made(makeJournalSequence("3")),
+    };
+    expect(isJournalSourceReadError(
+        reconcileRetainedWriterHead(source, committed)
+    )).toBe(true);
 });
