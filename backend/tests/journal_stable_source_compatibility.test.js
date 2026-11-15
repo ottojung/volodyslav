@@ -512,3 +512,30 @@ describe("a newly created receiver accepts its first held Journal snapshot", () 
         });
     }
 });
+
+
+describe("a source with Journal metadata but zero retained records is not a snapshot", () => {
+    for (const [name, operation, ErrorClass] of [
+        ["sync", syncJournalReceiverToSource, SyncSourceIsNotAJournalSnapshotError],
+        ["reset", resetJournalReceiverToSnapshot, ResetSourceIsNotAJournalSnapshotError],
+    ]) {
+        test(name + " rejects metadata-only source before cutting over", async () => {
+            const capabilities = testCapabilities();
+            const { database, receiver, source } =
+                await buildReceiverWithHeldSnapshot(capabilities);
+            try {
+                const journal = database.schemaStorageForReplica(source).journal;
+                for await (const key of journal.keys()) {
+                    if (String(key).startsWith("record|")) await journal.del(key);
+                }
+                expect(await journal.get("state")).toBeDefined();
+                const before = database.currentReplicaName();
+                await expect(operation({ database, capabilities, receiver, source }))
+                    .rejects.toBeInstanceOf(ErrorClass);
+                expect(database.currentReplicaName()).toBe(before);
+            } finally {
+                await database.close();
+            }
+        });
+    }
+});
