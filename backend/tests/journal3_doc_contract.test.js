@@ -11,36 +11,16 @@ function read(relativePath) {
     return fs.readFileSync(path.join(ROOT, relativePath), "utf8");
 }
 
+// Every numbered obligation from the retired REQ-SYNC-01..27 contract,
+// including its lettered refinements, must be dispositioned explicitly.
+// Generate the original complete numeric range rather than hand-listing the
+// subset the initial cutover happened to mention.
 const RETIRED_SYNC_REQUIREMENTS = [
-    "REQ-SYNC-04",
-    "REQ-SYNC-05",
-    "REQ-SYNC-06",
-    "REQ-SYNC-07",
-    "REQ-SYNC-08",
-    "REQ-SYNC-08a",
-    "REQ-SYNC-08b",
-    "REQ-SYNC-08c",
-    "REQ-SYNC-08d",
-    "REQ-SYNC-09",
-    "REQ-SYNC-10",
-    "REQ-SYNC-11",
+    ...Array.from({length: 27}, (_, index) =>
+        "REQ-SYNC-" + String(index + 1).padStart(2, "0")
+    ),
+    ..."abcd".split("").map(letter => "REQ-SYNC-08" + letter),
     "REQ-SYNC-11a",
-    "REQ-SYNC-12",
-    "REQ-SYNC-13",
-    "REQ-SYNC-14",
-    "REQ-SYNC-15",
-    "REQ-SYNC-16",
-    "REQ-SYNC-17",
-    "REQ-SYNC-18",
-    "REQ-SYNC-19",
-    "REQ-SYNC-20",
-    "REQ-SYNC-21",
-    "REQ-SYNC-22",
-    "REQ-SYNC-23",
-    "REQ-SYNC-24",
-    "REQ-SYNC-25",
-    "REQ-SYNC-26",
-    "REQ-SYNC-27",
     "DEF-SYNC-02",
 ];
 
@@ -53,6 +33,26 @@ describe("Journal 3 documentation contracts restored against the pre-Journal bas
         }
         expect(text).toContain("Superseded");
         expect(text).toContain("Still applicable");
+    });
+
+    test("release policy describes Journal suffix import, not retired mutable-graph merging", () => {
+        const text = read("docs/release-safety.md");
+        expect(text).toContain("immutable foreign-writer suffixes");
+        expect(text).toContain("atomically");
+        expect(text).toContain("writer fork");
+        expect(text).toContain("missing committed writer prefix");
+        expect(text).not.toContain("merge graph records deliberately");
+        expect(text).not.toContain("current merge algorithm");
+    });
+
+    test("the three previously omitted synchronization requirements explain their Journal 3 replacements", () => {
+        const text = read("docs/specs/incremental-graph-synchronization.md");
+        const old01 = text.split("`REQ-SYNC-01`")[1].split("`REQ-SYNC-07`")[0];
+        const old02 = text.split("`REQ-SYNC-02`")[1].split("`REQ-SYNC-03`")[0];
+        const old03 = text.split("`REQ-SYNC-03`")[1].split("`REQ-SYNC-04`")[0];
+        expect(old01).toContain("ValueId");
+        expect(old02).toContain("foreign Journal suffixes");
+        expect(old03).toContain("retaining the receiver's observed immutable Journal history");
     });
 
     test("keys-design records replace as identifier-preserving", () => {

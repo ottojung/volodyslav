@@ -54,9 +54,9 @@ When old snapshots require a special conversion path, that path should be owned 
 
 Synchronization is release-sensitive because it combines state from multiple places.
 
-Volodyslav synchronization should validate versions, validate identifier metadata, stage incoming state, merge graph records deliberately, rebuild derived indexes where appropriate, and only then publish the result.
+Journal 3 synchronization validates the held source's version, graph scheme, and committed Journal frontier, imports compatible immutable foreign-writer suffixes, checks causal closure and record well-formedness, and deterministically replays the retained Journal. It stages the derived graph and Journal together in an inactive replica and publishes that pair atomically. It does **not** merge materialized graph records, identifiers, timestamps, or stored validity edges as independent authorities.
 
-Known synchronization cases that are not correctly handled must be treated as release blockers. For example, if two hosts can independently assign different storage identifiers to the same semantic node key and the current merge algorithm cannot repair that situation, that is not merely a TODO. It is a condition that must prevent installation until resolved.
+Known synchronization correctness gaps must block release. Examples include a writer fork, a missing committed writer prefix, incompatible Journal history, an invalid proof, or a failure that exposes a partial graph/Journal cutover. Different hosts normally have different fingerprint-scoped storage identifiers; such differences do not invoke the retired graph-record merge algorithm.
 
 ## Release-blocker markers
 
