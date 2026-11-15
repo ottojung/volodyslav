@@ -204,3 +204,34 @@ test("a failed atomic publication leaves every shard unchanged and retry succeed
         expect(verified).not.toBeInstanceOf(Error);
     });
 });
+
+test("a retained head with unchanged identity but altered payload must be rejected", async () => {
+    await withGraph(1, async (iface) => {
+        const db = iface._database;
+        const journal = db.getSchemaStorage().journal;
+        const { parseJournalRecordId } =
+            require("../src/generators/incremental_graph/journal");
+        const { makeJournalRecordKey } =
+            require("../src/generators/incremental_graph/journal_store");
+        let head;
+        for (const nodeKey of await shardKeys(journal)) {
+            const shard = JSON.parse(await journal.get(nodeKey));
+            if (shard.headId !== null) { head = shard.headId; break; }
+        }
+        expect(head).toBeDefined();
+        const parsed = parseJournalRecordId(head);
+        if (parsed instanceof Error) throw parsed;
+        const recordKey = makeJournalRecordKey(parsed.author, parsed.sequence);
+        if (recordKey instanceof Error) throw recordKey;
+        const original = await journal.get(recordKey);
+        expect(original).toBeDefined();
+        const modified = String(original).replace("independent event", "altered event");
+        expect(modified).not.toBe(String(original));
+        await journal.put(recordKey, modified);
+        const checked = await readRetainedReplayState(journal, {
+            localWriter: makeJournalAuthor(db.getFingerprint()),
+            currentInputKeysOfNode: () => [],
+        });
+        expect(checked).toBeInstanceOf(Error);
+    });
+});

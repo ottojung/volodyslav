@@ -10,6 +10,12 @@ const { resolveCertificate, selectedValueIdOf } = require("./retained");
 /** @typedef {import('./retained').RetainedReplayState} RetainedReplayState */
 
 /**
+ * The input graph is fixed by the prepared graph scheme captured when
+ * IncrementalGraph constructs its GraphStorage. An ordinary Journal record
+ * cannot change that schema; migration builds a new graph instance and fully
+ * rebuilds the retained projection. Therefore the indexed dependency edges
+ * need not be refreshed for a node merely because its value changes.
+ *
  * @param {RetainedReplayState} state
  * @param {string} node
  * @param {Set<string>} indexed

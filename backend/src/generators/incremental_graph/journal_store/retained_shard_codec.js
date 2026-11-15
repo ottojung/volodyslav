@@ -8,6 +8,7 @@
 
 const { createHash } = require("node:crypto");
 const {
+    encodeJournalRecord,
     journalAuthorToString,
     journalRecordIdToString,
     journalSequenceToString,
@@ -64,10 +65,12 @@ function encodeNodeShard(state, node) {
         onlyNode(proofs.certificates, node), onlyNode(proofs.nodeScoped, node),
         onlyNode(proofs.valueScoped, node), onlyNode(proofs.proofScoped, node)
     );
+    const head = selected?.winner;
     return JSON.stringify({
         node,
-        headId: selected?.winner === undefined
-            ? null : journalRecordIdToString(selected.winner.id),
+        headId: head === undefined ? null : journalRecordIdToString(head.id),
+        headHash: head === undefined ? null : createHash("sha256")
+            .update(encodeJournalRecord(head), "utf8").digest("hex"),
         selected: encodeSelected(onlyNode(state.selected, node)),
         certificates: encodeCertificates(onlyNode(state.certificates, node)),
         proofs: encodeProofs(summary),

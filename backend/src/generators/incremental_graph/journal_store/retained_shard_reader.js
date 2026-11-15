@@ -2,6 +2,7 @@
  * Reconstruct the retained replay state only from the indexed node-shard range.
  * Retained Journal record history is never enumerated to obtain the summary.
  */
+const { createHash } = require("node:crypto");
 const {
     isDeleteEvent, isValueEvent, journalAuthorToString, journalRecordIdToString,
     journalSequenceToString, makeJournalSourceReadError,
@@ -25,9 +26,10 @@ const { ZERO_DIGEST, memberDigest, xorDigest } = require("./retained_shard_integ
  * @param {JournalDatabase} journalDatabase
  * @param {string} recordIdText
  * @param {string} node
+ * @param {string} expectedHash
  * @returns {Promise<string | Error>}
  */
-async function encodedHead(journalDatabase, recordIdText, node) {
+async function encodedHead(journalDatabase, recordIdText, node, expectedHash) {
     const id = parseJournalRecordId(recordIdText);
     if (id instanceof Error) return id;
     const key = stringToJournalKey(
@@ -45,6 +47,11 @@ async function encodedHead(journalDatabase, recordIdText, node) {
         return makeJournalSourceReadError("the retained summary names a missing head record " + recordIdText);
     }
     const text = journalTextToString(raw);
+    if (createHash("sha256").update(text, "utf8").digest("hex") !== expectedHash) {
+        return makeJournalSourceReadError(
+            "the retained head record's content differs from the committed shard hash"
+        );
+    }
     const record = tryDecodeJournalRecord(text);
     if (record instanceof Error) return record;
     if ((!isValueEvent(record) && !isDeleteEvent(record)) ||
@@ -120,11 +127,14 @@ async function readShardState(journalDatabase, meta, request) {
 async function appendShard(journalDatabase, reconstructed, shard) {
     const node = Reflect.get(shard, "node");
     const id = Reflect.get(shard, "headId");
-    if (id !== null && typeof id !== "string") {
-        return makeJournalSourceReadError("a retained node shard has an invalid head reference");
+    const hash = Reflect.get(shard, "headHash");
+    if ((id === null && hash !== null) ||
+        (id !== null && (typeof id !== "string" ||
+            typeof hash !== "string" || !/^[0-9a-f]{64}$/.test(hash)))) {
+        return makeJournalSourceReadError("a retained node shard has an invalid head reference or hash");
     }
     if (id !== null) {
-        const text = await encodedHead(journalDatabase, id, node);
+        const text = await encodedHead(journalDatabase, id, node, hash);
         if (text instanceof Error) return text;
         reconstructed.heads.push([node, text]);
     }
