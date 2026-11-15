@@ -28,7 +28,8 @@ const os = require("os");
 const path = require("path");
 
 const { getRootDatabase } = require("../src/generators/incremental_graph/database");
-const { readCommittedWriterState, readRetainedJournal } = require("../src/generators/incremental_graph/journal_store");
+const { decodeRecordCoordinate, readCommittedWriterState, readRetainedJournal } =
+    require("../src/generators/incremental_graph/journal_store");
 const {
     isJournalGapError,
     isJournalSourceReadError,
@@ -230,8 +231,9 @@ describe("Journal 3 §7 lifecycle fault model: physical damage of the local stor
         const rollbackTo = 3;
         const { db, entries } = await rawLiveDatabase(capabilities);
         for (const key of journalRecordKeys(entries)) {
-            const coordinate = Number(key.slice(key.lastIndexOf("|") + 1));
-            if (coordinate > rollbackTo) {
+            const decoded = decodeRecordCoordinate(key.slice(key.lastIndexOf("|") + 1));
+            if (decoded === undefined) throw new Error("the fixture has an invalid Journal coordinate");
+            if (Number(decoded) > rollbackTo) {
                 await db._rawDel(key);
             }
         }

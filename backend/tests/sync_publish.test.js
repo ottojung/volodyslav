@@ -55,6 +55,7 @@ const {
 } = require('../src/generators/incremental_graph/journal_publish/sync_publish');
 
 const {
+    makeJournalRecordKey,
     readRetainedLengths,
     retainedLengthTexts,
 } = require('../src/generators/incremental_graph/journal_store');
@@ -548,10 +549,8 @@ describe('publishSyncOutcome, lowering project(Jfinal)', () => {
             await publishSyncOutcome({ target, outcome });
 
             for (const record of outcome.records) {
-                const key = stringToJournalKey(
-                    'record|' + journalAuthorToString(record.id.author) + '|' +
-                    journalSequenceToString(record.id.sequence).padStart(30, '0')
-                );
+                const key = makeJournalRecordKey(record.id.author, record.id.sequence);
+                if (key instanceof Error) throw key;
                 const stored = await target.journal.get(key);
                 expect(stored).toBeDefined();
             }
@@ -677,8 +676,8 @@ describe('readRetainedLengths', () => {
             const journal = await journalSublevelOf(db);
             for (let index = 1; index <= count; index += 1) {
                 await journal.put(
-                    stringToJournalKey(
-                        'record|' + WRITER_LOCAL + '|' + String(index).padStart(30, '0')
+                    makeJournalRecordKey(
+                        makeJournalAuthor(WRITER_LOCAL), makeJournalSequence(String(index))
                     ),
                     stringToJournalText('{}')
                 );

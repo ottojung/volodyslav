@@ -218,7 +218,7 @@ describe("populated rendered fixture migration", () => {
         // includes the additional record.
         expect(lastNodeIndex).toBe(4);
         expect(writerState.writerHead).toBe("11");
-        expect(migratedFiles).toContain("record|testfingerprnt|000000000000000000000000000011");
+        expect(migratedFiles).toContain("record|testfingerprnt|z102011");
     });
 });
 
