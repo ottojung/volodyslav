@@ -197,11 +197,16 @@ async function resetJournalReceiverToSnapshot(request) {
         parseGraphScheme(receiverGraphScheme)
     );
 
+    const sourceCommitted = await readCommittedWriterState(sourceStorage.journal, sourceFingerprint);
+    if (isJournalError(sourceCommitted)) {
+        throw sourceCommitted;
+    }
     const held = await readHeldResetSource({
         storage: sourceStorage,
         journalSublevel: database.replicaJournalSublevel(sourceReplica),
         currentInputKeysOfNode,
         fingerprint: sourceFingerprint,
+        committed: sourceCommitted,
     });
     if ('error' in held) {
         throw held.error;
@@ -210,10 +215,6 @@ async function resetJournalReceiverToSnapshot(request) {
     const committed = await readCommittedWriterState(receiverStorage.journal, receiverFingerprint);
     if (isJournalError(committed)) {
         throw committed;
-    }
-    const sourceCommitted = await readCommittedWriterState(sourceStorage.journal, sourceFingerprint);
-    if (isJournalError(sourceCommitted)) {
-        throw sourceCommitted;
     }
     const localWriter = makeJournalAuthor(receiverFingerprint);
     if (isJournalError(localWriter)) {

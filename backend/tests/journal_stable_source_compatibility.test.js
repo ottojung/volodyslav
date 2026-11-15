@@ -36,6 +36,14 @@ const {
     ResetSourceIsNotAJournalSnapshotError,
     SyncSourceIsNotAJournalSnapshotError,
 } = require("../src/generators/incremental_graph/journal_publish");
+const {
+    isJournalWriterBehindError,
+    makeJournalAuthor,
+} = require("../src/generators/incremental_graph/journal");
+const {
+    makeJournalRecordKey,
+    readCommittedWriterState,
+} = require("../src/generators/incremental_graph/journal_store");
 
 const allEventsModule = require("../src/generators/individual/all_events/wrapper");
 const metaEventsComputor = require("../src/generators/individual/meta_events/wrapper").computor;
@@ -223,4 +231,52 @@ describe("a held Journal source snapshot binds the records of its cut", () => {
             await database.close();
         }
     });
+});
+
+
+/**
+ * A held snapshot must be checked against its *own* persisted writer head,
+ * not only the receiver's. A missing surviving source record is unsupported
+ * partial rollback, even when the receiver itself is fully intact.
+ *
+ * The record is deleted after a normal render/scan, so the committed head and
+ * projection metadata still refer to it. Both front doors must fail before
+ * modifying the currently activated receiver.
+ */
+describe("held source rollback is refused before synchronization or reset", () => {
+    for (const [label, operation] of [
+        ["synchronization", syncJournalReceiverToSource],
+        ["reset", resetJournalReceiverToSnapshot],
+    ]) {
+        test(label + " rejects the missing source writer suffix", async () => {
+            const capabilities = testCapabilities();
+            const { database, receiver, source } =
+                await buildReceiverWithHeldSnapshot(capabilities);
+            try {
+                const sourceStorage = database.schemaStorageForReplica(source);
+                const sourceWriter = await sourceStorage.global.get("fingerprint");
+                const state = await readCommittedWriterState(
+                    sourceStorage.journal, sourceWriter
+                );
+                if (state instanceof Error) throw state;
+                const author = makeJournalAuthor(sourceWriter);
+                if (author instanceof Error) throw author;
+                const key = makeJournalRecordKey(author, state.writerHead);
+                if (key instanceof Error) throw key;
+                await sourceStorage.journal.del(key);
+
+                const before = database.currentReplicaName();
+                let failure;
+                try {
+                    await operation({ database, capabilities, receiver, source });
+                } catch (error) {
+                    failure = error;
+                }
+                expect(isJournalWriterBehindError(failure)).toBe(true);
+                expect(database.currentReplicaName()).toBe(before);
+            } finally {
+                await database.close();
+            }
+        });
+    }
 });
