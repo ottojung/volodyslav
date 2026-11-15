@@ -44,9 +44,13 @@ const {
     assertExactStoredGraphSchemeMatches,
     initializeReplicaGlobals,
     assertValidReplicaMaterializationState,
+    stringToJournalText,
 } = require("./database");
 const {
+    JOURNAL_STATE_KEY,
     appendRetainedStateOp,
+    makeInitialCommittedWriterState,
+    serializeWriterState,
 } = require("./journal_store");
 const {
     makeEmptyRetainedReplayState,
@@ -89,9 +93,10 @@ function currentInputKeysOfGraphScheme(graphScheme) {
  * @param {RootDatabase} rootDatabase
  * @param {SchemaStorage} schemaStorage
  * @param {GraphScheme} graphScheme
- * @returns {Promise<void>}
+ * @param {Array<*>} operations
+ * @returns {void}
  */
-async function initializeRetainedReplayState(rootDatabase, schemaStorage, graphScheme) {
+function initializeRetainedReplayState(rootDatabase, schemaStorage, graphScheme, operations) {
     const localWriter = makeJournalAuthor(rootDatabase.getFingerprint());
     if (localWriter instanceof Error) {
         throw localWriter;
@@ -100,13 +105,17 @@ async function initializeRetainedReplayState(rootDatabase, schemaStorage, graphS
         localWriter,
         currentInputKeysOfGraphScheme(graphScheme)
     );
-    /** @type {Array<*>} */
-    const operations = [];
     const rejected = appendRetainedStateOp(schemaStorage.journal, operations, state);
     if (rejected !== undefined) {
         throw rejected;
     }
-    await schemaStorage.batch(operations);
+    const initial = makeInitialCommittedWriterState(localWriter);
+    if (initial instanceof Error) {
+        throw initial;
+    }
+    operations.push(schemaStorage.journal.putOp(
+        JOURNAL_STATE_KEY, stringToJournalText(JSON.stringify(serializeWriterState(initial)))
+    ));
 }
 
 /**
@@ -197,12 +206,16 @@ async function prepareIncrementalGraphStorage(rootDatabase, nodeDefs) {
                 "and graph_scheme are missing; refusing to re-initialize an existing replica as fresh"
             );
         }
-        // Genuinely fresh active replica: initialize both together.
-        await initializeReplicaGlobals(schemaStorage, {
+        // Commit the whole initial state atomically; no receiver may observe a
+        // retained summary without its matching committed writer state.
+        /** @type {Array<*>} */
+        const operations = [];
+        initializeReplicaGlobals(schemaStorage, {
             version: currentVersion,
             graphSchemeString,
-        });
-        await initializeRetainedReplayState(rootDatabase, schemaStorage, graphScheme);
+        }, operations);
+        initializeRetainedReplayState(rootDatabase, schemaStorage, graphScheme, operations);
+        await schemaStorage.batch(operations);
     } else if (storedVersion === undefined && storedScheme !== undefined) {
         throw new GraphSchemeError(
             "Invalid graph storage: graph_scheme exists but version is missing"

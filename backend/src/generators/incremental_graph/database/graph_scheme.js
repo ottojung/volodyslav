@@ -366,21 +366,18 @@ function assertExactStoredGraphSchemeMatches(stored, expected, contextDescriptio
 /**
  * Initialize replica global metadata for a fresh database.
  *
- * `global/version` and `global/graph_scheme` are written together as one
- * logical initialization operation. This is the single place where fresh
- * initialization writes both keys.
+ * Append the global keys to the caller's fresh-replica initialization batch.
+ * The Journal committed metadata and empty retained state must be born in
+ * that SAME atomic batch so no half-initialized replica can become visible.
  *
  * @param {import('./root_database').SchemaStorage} schemaStorage
  * @param {{ version: import('./types').Version, graphSchemeString: string }} params
- * @returns {Promise<void>}
+ * @param {Array<*>} operations
+ * @returns {void}
  */
-async function initializeReplicaGlobals(schemaStorage, { version, graphSchemeString }) {
-    /** @type {Array<*>} */
-    const ops = [
-        schemaStorage.global.putOp("version", versionToString(version)),
-        schemaStorage.global.putOp(GRAPH_SCHEME_KEY, graphSchemeString),
-    ];
-    await schemaStorage.batch(ops);
+function initializeReplicaGlobals(schemaStorage, { version, graphSchemeString }, operations) {
+    operations.push(schemaStorage.global.putOp("version", versionToString(version)));
+    operations.push(schemaStorage.global.putOp(GRAPH_SCHEME_KEY, graphSchemeString));
 }
 
 module.exports = {

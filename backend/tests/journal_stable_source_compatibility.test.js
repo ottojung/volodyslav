@@ -464,3 +464,51 @@ describe("extra uncommitted foreign records from inactive staging are not source
         });
     }
 });
+
+/**
+ * A newly prepared receiver has no published Journal record yet. Its first
+ * source must be allowed to synchronize/reset from another real database.
+ * The source and receiver are distinct LevelDB roots and distinct writers.
+ */
+describe("a newly created receiver accepts its first held Journal snapshot", () => {
+    for (const [name, operation] of [
+        ["synchronization", syncJournalReceiverToSource],
+        ["reset", resetJournalReceiverToSnapshot],
+    ]) {
+        test(name + " works before the receiver has ever pulled", async () => {
+            const capabilities = testCapabilities();
+            const database = await getRootDatabase(capabilities);
+            const foreignCapabilities = testCapabilities();
+            const foreign = await getRootDatabase(foreignCapabilities);
+            try {
+                await makeRealGraph(capabilities, database, "fresh receiver");
+                const graph = await makeRealGraph(foreignCapabilities, foreign, "published source");
+                await graph.pull("event_context");
+                const receiver = database.currentReplicaName();
+                const source = database.otherReplicaName();
+                const working = await capabilities.creator.createTemporaryDirectory();
+                try {
+                    const location = path.join(working, "r");
+                    await renderToFilesystem(
+                        foreignCapabilities, foreign, location, foreign.currentReplicaName()
+                    );
+                    await scanFromFilesystem(capabilities, database, location, source);
+                } finally {
+                    await capabilities.deleter.deleteDirectory(working);
+                }
+                const retained = database.schemaStorageForReplica(receiver).journal;
+                expect(await retained.get("state")).toBeDefined();
+                const records = [];
+                for await (const key of retained.keys()) {
+                    if (String(key).startsWith("record|")) records.push(key);
+                }
+                expect(records).toEqual([]);
+                const changed = await operation({ database, capabilities, receiver, source });
+                expect(changed).toBe(true);
+            } finally {
+                await foreign.close();
+                await database.close();
+            }
+        });
+    }
+});
