@@ -320,7 +320,7 @@ async function appendJournalPublicationOps(journalDatabase, operations, publicat
         )
     );
     if (retainedState !== undefined) {
-        const rejected = appendRetainedStateOp(journalDatabase, operations, retainedState);
+        const rejected = await appendRetainedStateOp(journalDatabase, operations, retainedState);
         if (rejected !== undefined) {
             return rejected;
         }

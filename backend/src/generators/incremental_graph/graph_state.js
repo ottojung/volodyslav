@@ -38,11 +38,8 @@ const {
 const {
     darkroomActivity,
 } = require('./lock');
-const {
-    appendJournalPublicationOps,
-    maintainedRetainedState,
-    readCommittedWriterState,
-} = require('./journal_store');
+const { readCommittedWriterState } = require('./journal_store');
+const { makeRetainedPublicationCache } = require('./graph_retained_cache');
 const { finalizeEmission, makeJournalPublicationError } = require('./journal');
 const { makeTransactionJournal } = require('./journal_staging');
 const { appendValidMutationOps, applyValidMutations } = require('./validity_mutations');
@@ -386,6 +383,9 @@ function groupByDependency(withdrawn) {
  * @returns {GraphStorage}
  */
 function makeGraphStorage(rootDatabase, sleeper, datetime, currentInputKeysOfNode) {
+    const retainedCache = makeRetainedPublicationCache(
+        rootDatabase.getFingerprint(), currentInputKeysOfNode
+    );
     /**
      * @returns {Promise<NodeIdentifier[]>}
      */
@@ -515,6 +515,8 @@ function makeGraphStorage(rootDatabase, sleeper, datetime, currentInputKeysOfNod
 
                     /** @type {number | undefined} */
                     let commitLastNodeIndex;
+                    /** @type {{retained: import('./journal_retained').RetainedReplayState, committedText: string} | undefined} */
+                    let publicationResult;
                     if (hasPendingAllocations) {
                         commitLastNodeIndex = rootDatabase.getCurrentAllocationWatermark();
                         operations.push(
@@ -548,24 +550,16 @@ function makeGraphStorage(rootDatabase, sleeper, datetime, currentInputKeysOfNod
                         if (publication instanceof Error) {
                             throw publication;
                         }
-                        const retained = await maintainedRetainedState(
-                            activeSchemaStorage.journal,
-                            rootDatabase.getFingerprint(),
-                            currentInputKeysOfNode,
-                            publication.records
+                        publicationResult = await retainedCache.stage(
+                            activeSchemaStorage.journal, operations, publication, committed,
+                            rootDatabase.currentReplicaName()
                         );
-                        const rejected = await appendJournalPublicationOps(
-                            activeSchemaStorage.journal,
-                            operations,
-                            publication,
-                            retained
-                        );
-                        if (rejected !== undefined) {
-                            throw rejected;
-                        }
                     }
 
                     await activeSchemaStorage.batch(operations);
+                    retainedCache.published(
+                        publicationResult, rootDatabase.currentReplicaName()
+                    );
 
                     if (hasPendingAllocations && commitLastNodeIndex !== undefined) {
                         commitTransactionLookup(tx.identifierLookup);

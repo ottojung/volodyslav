@@ -126,7 +126,7 @@ async function planSyncReceiverPublication(request) {
             outcome: { records: [], projection: outcome.projection, publication: outcome.publication },
         }),
     ];
-    const rejected = appendRetainedStateOp(target.journal, operations, outcome.retainedState);
+    const rejected = await appendRetainedStateOp(target.journal, operations, outcome.retainedState);
     if (rejected !== undefined) {
         throw rejected;
     }

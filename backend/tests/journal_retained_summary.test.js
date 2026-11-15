@@ -26,7 +26,9 @@ const path = require("path");
 const {
     journalAuthorToString,
     journalRecordIdToString,
+    encodeJournalRecord,
     makeAuthorityTime,
+    makeDeleteEvent,
     makeInvalidateEvent,
     makeJournalAuthor,
     makeJournalFrontierFromText,
@@ -46,14 +48,17 @@ const {
     buildRetainedReplayState,
     deserializeRetainedReplayState,
     eligibleProofEdgeUnion,
+    forkRetainedReplayState,
     makeEmptyRetainedReplayState,
     projectRetainedReplay,
     selectedOccurrencesOf,
     serializeRetainedReplayState,
+    stageRetainedRecords,
 } = require("../src/generators/incremental_graph/journal_retained");
 
 const {
     appendRetainedStateOp,
+    makeJournalRecordKey,
     readRetainedJournal,
     readRetainedReplayState,
 } = require("../src/generators/incremental_graph/journal_store");
@@ -61,6 +66,9 @@ const {
 const {
     createIncrementalGraph,
 } = require("../src/generators/incremental_graph");
+const { stringToJournalText } = require("../src/generators/incremental_graph/database");
+const { ensureIndex, projectLocalRetainedReplay } =
+    require("../src/generators/incremental_graph/journal_retained/local_projection");
 const {
     getRootDatabase,
 } = require("../src/generators/incremental_graph/database");
@@ -279,10 +287,23 @@ function countingJournal() {
             putOp(key, value) {
                 return { type: "put", key, value, __fake: true, commit: () => stored.set(String(key), value) };
             },
-            async *keys() {
+            delOp(key) {
+                return { type: "del", key, commit: () => stored.delete(String(key)) };
+            },
+            async *keys(options = {}) {
                 iterations += 1;
-                for (const key of stored.keys()) {
+                for (const key of [...stored.keys()].sort()) {
+                    if (options.gte !== undefined && key < options.gte) continue;
+                    if (options.lt !== undefined && key >= options.lt) continue;
                     yield key;
+                }
+            },
+            async *entries(options = {}) {
+                for (const [key, value] of [...stored.entries()].sort(([a], [b]) =>
+                    a < b ? -1 : a > b ? 1 : 0)) {
+                    if (options.gte !== undefined && key < options.gte) continue;
+                    if (options.lte !== undefined && key > options.lte) continue;
+                    yield [key, value];
                 }
             },
         },
@@ -355,24 +376,32 @@ describe("the retained replay state codec", () => {
     });
 });
 
-describe("the persisted summary is acquired as one key, not by traversal", () => {
-    test("reading the summary performs exactly one point read and no iteration", async () => {
-        const state = await buildOf(richReceiver());
+describe("the persisted summary is acquired from bounded node shards", () => {
+    test("reading the summary seeks its head IDs, not unrelated Journal history", async () => {
+        const records = richReceiver();
+        const state = await buildOf(records);
         const counter = countingJournal();
-        const ops = [];
-        const rejected = appendRetainedStateOp(counter.journal, ops, state);
+        for (const record of records) {
+            const key = makeJournalRecordKey(record.id.author, record.id.sequence);
+            if (key instanceof Error) throw key;
+            counter.journal.putOp(key, stringToJournalText(encodeJournalRecord(record))).commit();
+        }
+        const operations = [];
+        const rejected = await appendRetainedStateOp(counter.journal, operations, state);
         expect(rejected).toBeUndefined();
-        expect(ops).toHaveLength(1);
-        ops[0].commit();
+        expect(operations.filter(op => String(op.key) === "retained_state")).toHaveLength(1);
+        expect(operations.some(op => String(op.key).startsWith("retained_state|node|")))
+            .toBe(true);
+        for (const operation of operations) operation.commit();
 
         const decoded = await readRetainedReplayState(counter.journal, {
             localWriter: makeJournalAuthor(WRITER_LOCAL),
             currentInputKeysOfNode: chainInputs,
         });
-        expect(decoded).not.toBeInstanceOf(Error);
-        expect(decoded).not.toBeUndefined();
-        expect(counter.gets.length).toBe(1);
-        expect(counter.iterations).toBe(0);
+        if (decoded instanceof Error || decoded === undefined) throw decoded;
+        expect(resolutionOf(decoded)).toEqual(resolutionOf(state));
+        expect(proofUnionOf(decoded)).toEqual(proofUnionOf(state));
+        expect(counter.gets.every(key => !key.startsWith("record|"))).toBe(true);
     });
 
     test("an absent summary reads as undefined without iteration", async () => {
@@ -484,4 +513,109 @@ describe("an ordinary publication maintains the persisted summary", () => {
             await db.close();
         }
     });
+});
+
+
+describe("incremental local projection agrees with the full replay oracle", () => {
+    test("node, value and proof invalidation update the same certificates", async () => {
+        const base = await buildOf(richReceiver());
+        const initial = projectRetainedReplay(base);
+        if ("error" in initial) throw initial.error;
+        const batches = [
+            [made(makeInvalidateEvent(
+                { id: WRITER_LOCAL + ":9", context: makeJournalFrontierFromText([]),
+                  authorityTime: authorityOf(9), node: NODE_A },
+                makeNodeScope(), "explicit"
+            ))],
+            [made(makeInvalidateEvent(
+                { id: WRITER_LOCAL + ":10", context: makeJournalFrontierFromText([]),
+                  authorityTime: authorityOf(10), node: NODE_B },
+                makeValueScope(WRITER_LOCAL + ":3"), "propagated"
+            ))],
+            [made(makeInvalidateEvent(
+                { id: WRITER_LOCAL + ":11", context: makeJournalFrontierFromText([]),
+                  authorityTime: authorityOf(11), node: NODE_B },
+                makeProofScope(WRITER_LOCAL + ":3", NODE_A), "reset"
+            ))],
+        ];
+        for (const records of batches) {
+            const full = forkRetainedReplayState(base);
+            const local = forkRetainedReplayState(base);
+            ensureIndex(local);
+            stageRetainedRecords(full, records);
+            stageRetainedRecords(local, records);
+            const projected = projectRetainedReplay(full);
+            if ("error" in projected) throw projected.error;
+            const rejected = projectLocalRetainedReplay(local);
+            if (rejected !== undefined) throw rejected;
+            expect(serializeRetainedReplayState(local)).toEqual(
+                serializeRetainedReplayState(full)
+            );
+            // The next step must retain the prior resolution, not restart.
+            const committed = serializeRetainedReplayState(full);
+            const reconstructed = deserializeRetainedReplayState(committed, {
+                localWriter: makeJournalAuthor(WRITER_LOCAL),
+                currentInputKeysOfNode: chainInputs,
+            });
+            if (reconstructed instanceof Error) throw reconstructed;
+            base.heads = reconstructed.heads;
+            base.proofs = reconstructed.proofs;
+            base.certificates = reconstructed.certificates;
+            base.selected = reconstructed.selected;
+            base.admittedLengths = reconstructed.admittedLengths;
+            base.writers = reconstructed.writers;
+        }
+    });
+
+    test("a new selected value invalidates dependent proof bases the same way", async () => {
+        const base = await buildOf(richReceiver());
+        const cut = projectRetainedReplay(base);
+        if ("error" in cut) throw cut.error;
+        const records = materialize({
+            writer: WRITER_LOCAL, sequence: "9", node: NODE_A,
+            context: [], basis: [],
+        });
+        const full = forkRetainedReplayState(base);
+        const local = forkRetainedReplayState(base);
+        ensureIndex(local);
+        stageRetainedRecords(full, records);
+        stageRetainedRecords(local, records);
+        const replay = projectRetainedReplay(full);
+        if ("error" in replay) throw replay.error;
+        const error = projectLocalRetainedReplay(local);
+        if (error !== undefined) throw error;
+        expect(serializeRetainedReplayState(local)).toEqual(
+            serializeRetainedReplayState(full)
+        );
+    });
+});
+
+
+test("incremental local deletion prunes unselected certificates as full replay does", async () => {
+    const base = await buildOf(materialize({
+        writer: WRITER_LOCAL, sequence: "1", node: NODE_A, context: [], basis: [],
+    }));
+    const initial = projectRetainedReplay(base);
+    if ("error" in initial) throw initial.error;
+    expect(base.proofs.certificates.has(KEY_A)).toBe(true);
+    const removed = made(makeDeleteEvent({
+        id: WRITER_LOCAL + ":9",
+        context: makeJournalFrontierFromText([]),
+        authorityTime: authorityOf(9),
+        node: NODE_A,
+    }, "operation"));
+    const full = forkRetainedReplayState(base);
+    const local = forkRetainedReplayState(base);
+    ensureIndex(local);
+    stageRetainedRecords(full, [removed]);
+    stageRetainedRecords(local, [removed]);
+    const projected = projectRetainedReplay(full);
+    if ("error" in projected) throw projected.error;
+    const rejected = projectLocalRetainedReplay(local);
+    if (rejected !== undefined) throw rejected;
+    expect(full.proofs.certificates.has(KEY_A)).toBe(false);
+    expect(local.proofs.certificates.has(KEY_A)).toBe(false);
+    expect(serializeRetainedReplayState(local)).toEqual(
+        serializeRetainedReplayState(full)
+    );
 });

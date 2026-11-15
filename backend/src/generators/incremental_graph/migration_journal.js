@@ -262,7 +262,7 @@ async function buildMigrationJournal(sourceStorage, targetStorage, fingerprint, 
             throw rejected;
         }
     }
-    const stateRejected = appendRetainedStateOp(targetStorage.journal, operations, repaired.retainedState);
+    const stateRejected = await appendRetainedStateOp(targetStorage.journal, operations, repaired.retainedState);
     if (stateRejected !== undefined) {
         throw stateRejected;
     }

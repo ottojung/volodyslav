@@ -94,9 +94,9 @@ function currentInputKeysOfGraphScheme(graphScheme) {
  * @param {SchemaStorage} schemaStorage
  * @param {GraphScheme} graphScheme
  * @param {Array<*>} operations
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function initializeRetainedReplayState(rootDatabase, schemaStorage, graphScheme, operations) {
+async function initializeRetainedReplayState(rootDatabase, schemaStorage, graphScheme, operations) {
     const localWriter = makeJournalAuthor(rootDatabase.getFingerprint());
     if (localWriter instanceof Error) {
         throw localWriter;
@@ -105,7 +105,7 @@ function initializeRetainedReplayState(rootDatabase, schemaStorage, graphScheme,
         localWriter,
         currentInputKeysOfGraphScheme(graphScheme)
     );
-    const rejected = appendRetainedStateOp(schemaStorage.journal, operations, state);
+    const rejected = await appendRetainedStateOp(schemaStorage.journal, operations, state);
     if (rejected !== undefined) {
         throw rejected;
     }
@@ -214,7 +214,7 @@ async function prepareIncrementalGraphStorage(rootDatabase, nodeDefs) {
             version: currentVersion,
             graphSchemeString,
         }, operations);
-        initializeRetainedReplayState(rootDatabase, schemaStorage, graphScheme, operations);
+        await initializeRetainedReplayState(rootDatabase, schemaStorage, graphScheme, operations);
         await schemaStorage.batch(operations);
     } else if (storedVersion === undefined && storedScheme !== undefined) {
         throw new GraphSchemeError(

@@ -30,19 +30,20 @@ const {
     journalKeyToString,
     journalTextToString,
     stringToJournalKey,
-    stringToJournalText,
 } = require("../database");
 const {
     makeJournalAuthor,
     makeJournalPublicationError,
 } = require("../journal");
 const {
-    deserializeRetainedReplayState,
+    ensureIndex,
     makeEmptyRetainedReplayState,
+    projectLocalRetainedReplay,
     projectRetainedReplay,
-    serializeRetainedReplayState,
     stageRetainedRecords,
 } = require("../journal_retained");
+const { readShardState } = require("./retained_shard_reader");
+const { appendShardedStateOps } = require("./retained_shard_writer");
 
 /**
  * The one key the Journal's persisted change-bounded retained replay state occupies.
@@ -60,32 +61,23 @@ const JOURNAL_RETAINED_STATE_KEY = stringToJournalKey("retained_state");
 const RECORD_KEY_PREFIX = "record|";
 
 /**
- * Append the operations which persist one retained replay state.
- *
- * The state is the change-bounded proof summary and the replay state derived from the
- * journal the same batch publishes, so it is written in the same atomic write rather
- * than afterwards. A caller which does not hold the state omits this call and its
- * journal is left without a summary, which the consuming lifecycles treat as the
- * missing-summary case §Change-bounded proof summary reserves for explicit
- * rebuild/maintenance.
+ * Append the node-sharded retained replay state to this publication's atomic
+ * batch. Ordinary publications update only affected node shards; explicit
+ * rebuild/reset/migration replaces the entire derived index.
  *
  * @param {JournalDatabase} journalDatabase
  * @param {Array<DatabaseBatchOperation>} operations
  * @param {RetainedReplayState} state
- * @returns {JournalError | undefined}
+ * @returns {Promise<JournalError | undefined>}
  */
-function appendRetainedStateOp(journalDatabase, operations, state) {
-    let text;
+async function appendRetainedStateOp(journalDatabase, operations, state) {
     try {
-        text = serializeRetainedReplayState(state);
+        return await appendShardedStateOps(journalDatabase, operations, state);
     } catch (error) {
         return makeJournalPublicationError(
-            "the retained replay state could not be serialized: " +
-                (error instanceof Error ? error.message : String(error))
+            "the retained replay shards could not be persisted: " + String(error)
         );
     }
-    operations.push(journalDatabase.putOp(JOURNAL_RETAINED_STATE_KEY, stringToJournalText(text)));
-    return undefined;
 }
 
 /**
@@ -107,7 +99,13 @@ async function readRetainedReplayState(journalDatabase, request) {
     if (raw === undefined) {
         return undefined;
     }
-    return deserializeRetainedReplayState(journalTextToString(raw), request);
+    let parsed;
+    try {
+        parsed = JSON.parse(journalTextToString(raw));
+    } catch {
+        return makeJournalPublicationError("the retained shard metadata is not valid JSON");
+    }
+    return readShardState(journalDatabase, parsed, request);
 }
 
 /**
@@ -122,10 +120,12 @@ async function readRetainedReplayState(journalDatabase, request) {
  * @returns {Promise<boolean>}
  */
 async function journalRetainsRecords(journalDatabase) {
-    for await (const key of journalDatabase.keys()) {
-        if (journalKeyToString(key).startsWith(RECORD_KEY_PREFIX)) {
-            return true;
-        }
+    for await (const key of journalDatabase.keys({
+        gte: stringToJournalKey(RECORD_KEY_PREFIX),
+        lt: stringToJournalKey("record}"),
+        limit: 1,
+    })) {
+        return journalKeyToString(key).startsWith(RECORD_KEY_PREFIX);
     }
     return false;
 }
@@ -150,14 +150,15 @@ async function journalRetainsRecords(journalDatabase) {
  * @param {string} fingerprint
  * @param {CurrentInputKeysOfNode} currentInputKeysOfNode
  * @param {ReadonlyArray<JournalRecord>} records
+ * @param {RetainedReplayState | undefined} [cached]
  * @returns {Promise<RetainedReplayState>}
  */
-async function maintainedRetainedState(journalDatabase, fingerprint, currentInputKeysOfNode, records) {
+async function maintainedRetainedState(journalDatabase, fingerprint, currentInputKeysOfNode, records, cached) {
     const localWriter = makeJournalAuthor(fingerprint);
     if (localWriter instanceof Error) {
         throw localWriter;
     }
-    const persisted = await readRetainedReplayState(journalDatabase, {
+    const persisted = cached ?? await readRetainedReplayState(journalDatabase, {
         localWriter,
         currentInputKeysOfNode,
     });
@@ -177,11 +178,19 @@ async function maintainedRetainedState(journalDatabase, fingerprint, currentInpu
     } else {
         state = persisted;
     }
+    // A loaded persisted cut is already materialized and checksum-validated.
+    // Index it once on reopening, then resolve only this publication's closure.
+    // Full projection is reserved for the genuinely empty initial cut.
+    if (persisted !== undefined) ensureIndex(state);
     stageRetainedRecords(state, records);
-    const projected = projectRetainedReplay(state);
-    if ("error" in projected) {
-        throw projected.error;
+    if (persisted !== undefined) {
+        const failure = projectLocalRetainedReplay(state);
+        if (failure !== undefined) throw failure;
+    } else {
+        const projected = projectRetainedReplay(state);
+        if ("error" in projected) throw projected.error;
     }
+    state.persistAffected = state.lastAffected;
     return state;
 }
 
