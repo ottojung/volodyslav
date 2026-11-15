@@ -396,8 +396,12 @@ function makeStreamingJournalSource(lengths, journalSublevel) {
                     ZERO_JOURNAL_SEQUENCE
                 );
             }
-            const { gte, lte } = recordRangeOf(author);
-            return readerOverRange(name, journalSublevel, author, gte, lte, claimed);
+            const { gte } = recordRangeOf(author);
+            const through = makeJournalRecordKey(author, claimed);
+            if (through instanceof Error) {
+                return readerOverRecordSupply(name, async () => through, claimed);
+            }
+            return readerOverRange(name, journalSublevel, author, gte, through, claimed);
         },
         suffixReaderOf(author, fromSequence) {
             const name = journalAuthorToString(author);
@@ -414,7 +418,14 @@ function makeStreamingJournalSource(lengths, journalSublevel) {
             if (range instanceof Error) {
                 return readerOverRecordSupply(name, async () => range, claimed, fromSequence);
             }
-            return readerOverRange(name, journalSublevel, author, range.gte, range.lte, claimed, fromSequence);
+            const through = makeJournalRecordKey(author, claimed);
+            if (through instanceof Error) {
+                return readerOverRecordSupply(name, async () => through, claimed, fromSequence);
+            }
+            if (compareJournalSequence(fromSequence, claimed) > 0) {
+                return readerOverRecordSupply(name, async () => undefined, claimed, fromSequence);
+            }
+            return readerOverRange(name, journalSublevel, author, range.gte, through, claimed, fromSequence);
         },
     };
 }
@@ -453,6 +464,18 @@ async function readJournalSource(journalSublevel, committed) {
         if (inconsistent !== undefined) {
             return inconsistent;
         }
+        // A held snapshot's source cut is defined by its committed frontier,
+        // not every physical record in its inactive namespace. Aborted staging
+        // may have left extra foreign records on disk; they are not yet
+        // committed and must never enter the source's effective Journal.
+        /** @type {Map<string, JournalSequence>} */
+        const committedLengths = new Map();
+        for (const [author, sequence] of committed.committedFrontier) {
+            if (compareJournalSequence(sequence, ZERO_JOURNAL_SEQUENCE) > 0) {
+                committedLengths.set(journalAuthorToString(author), sequence);
+            }
+        }
+        return makeStreamingJournalSource(committedLengths, journalSublevel);
     }
     return makeStreamingJournalSource(lengths, journalSublevel);
 }

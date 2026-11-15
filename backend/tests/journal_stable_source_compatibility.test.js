@@ -43,6 +43,7 @@ const {
 const {
     makeJournalRecordKey,
     readCommittedWriterState,
+    readJournalSource,
 } = require("../src/generators/incremental_graph/journal_store");
 
 const allEventsModule = require("../src/generators/individual/all_events/wrapper");
@@ -418,5 +419,48 @@ describe("committed own-writer frontier is not allowed to trail its committed wr
             } finally {await database.close();}
         });
         }
+    }
+});
+
+describe("extra uncommitted foreign records from inactive staging are not source authority", () => {
+    for (const [label, operation] of [
+        ["synchronization", syncJournalReceiverToSource],
+        ["reset", resetJournalReceiverToSnapshot],
+    ]) {
+        test(label + " does not promote uncommitted writer state", async () => {
+            const capabilities = testCapabilities();
+            const { database, receiver, source } =
+                await buildReceiverWithHeldSnapshot(capabilities);
+            try {
+                const journal = database.schemaStorageForReplica(source).journal;
+                const {makeWriterStateRecord, makeJournalSequence, encodeJournalRecord} =
+                    require("../src/generators/incremental_graph/journal");
+                const {stringToJournalText} = require("../src/generators/incremental_graph/database");
+                const foreign = makeJournalAuthor("bbbbbbbbb");
+                const sequence = makeJournalSequence("1");
+                const extra = makeWriterStateRecord("bbbbbbbbb:1", 1);
+                if (extra instanceof Error) throw extra;
+                const key = makeJournalRecordKey(foreign, sequence);
+                await journal.put(key, stringToJournalText(encodeJournalRecord(extra)));
+                // The held snapshot's committed state does not claim this writer.
+                const committed = await readCommittedWriterState(journal, database.getFingerprint());
+                if (committed instanceof Error) throw committed;
+                const cut = await readJournalSource(
+                    database.replicaJournalSublevel(source), committed
+                );
+                if (cut instanceof Error) throw cut;
+                expect(cut.writers().map(String)).not.toContain("bbbbbbbbb");
+                const before = database.currentReplicaName();
+                let failure;
+                try {await operation({ database, capabilities, receiver, source });}
+                catch (error) {failure=error;}
+                const active = database.currentReplicaName();
+                const state = JSON.parse(
+                    await database.schemaStorageForReplica(active).journal.get("state")
+                );
+                expect(state.committedFrontier.some(([id]) => id === "bbbbbbbbb")).toBe(false);
+                expect(failure === undefined || active === before).toBe(true);
+            } finally {await database.close();}
+        });
     }
 });
