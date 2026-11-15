@@ -34,6 +34,12 @@ rather than silently dropped. The canonical owner
 
 Superseded by Journal 3 replay and identity semantics:
 
+- `REQ-SYNC-01` (value origin from copy, not deep equality): the old
+  copy-origin comparison is replaced by immutable Journal record identity
+  (`ValueId`) and writer-overlap validation. Equality of two payloads,
+  timestamps, or materialized identifiers never establishes provenance.
+  Owned by `incremental-graph-journal-well-formedness.md` §Record identity
+  and `incremental-graph-journal-replay.md` §Semantic value/absence head.
 - `REQ-SYNC-07`, `REQ-SYNC-08`, `REQ-SYNC-08a`, `REQ-SYNC-08b`,
   `REQ-SYNC-08c` (timestamp-based candidate selection and merge-time
   freshness): Journal 3 selects values by replay and `ValueId`, not by the
@@ -69,6 +75,23 @@ Superseded by Journal 3 replay and identity semantics:
 
 Still applicable, with their equivalent owner:
 
+- `REQ-SYNC-02` (normal synchronization pipeline): obtaining a stable
+  compatible source snapshot, sequential per-source processing, failure
+  isolation, and publication from inactive staging remain required. The old
+  transport-specific checkpoint/fetch and per-host materialized graph merge
+  steps are **not** the core Journal algorithm: pairwise `Sync` imports
+  committed immutable foreign Journal suffixes, validates them, replays the
+  result and atomically publishes the new pair. Owned by
+  `incremental-graph-journal-sync.md` §Scope and non-goals,
+  §Snapshot compatibility cut, §Atomic publication and §Multi-source execution;
+  transport-specific Git mechanics are outside that normative core.
+- `REQ-SYNC-03` (reset mode separation): controlled reset remains a distinct
+  operation, not a normal synchronization merge. Its old wholesale graph-state
+  replacement semantics are retired: Journal reset rebaselines the projection
+  while **retaining the receiver's observed immutable Journal history** and
+  preserving its local writer identity. Owned by
+  `incremental-graph-journal-reset.md` §Preconditions, §§Pass 1–3 and
+  `database-lifecycle.md` §10.
 - `REQ-SYNC-04`, `REQ-SYNC-05` (source and final consistency): a source whose
   retained records are inconsistent with its projection is rejected rather than
   silently dropped. Owned by `incremental-graph-journal-well-formedness.md`
