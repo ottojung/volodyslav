@@ -238,6 +238,42 @@ describe("the supported pre-Journal source boundary", () => {
         expect(state.graphSchemeString).toBe(GRAPH_SCHEME);
     });
 
+    test("accepts legacy timezone offsets without changing their instant or persisted source", () => {
+        const base = persistedState({});
+        const legacy = persistedState({
+            nodes: base.nodes.map((node) => ({
+                ...node,
+                createdAt: "2019-12-31T16:00:00.000-08:00",
+                modifiedAt: node.modifiedAt === EARLY
+                    ? "2020-01-01T16:00:00.000-08:00"
+                    : "2020-03-03T16:00:00.000-08:00",
+            })),
+        });
+        const original = JSON.stringify(legacy);
+        const parsed = readLegacyBootstrapState(legacy);
+        if (parsed instanceof Error) throw parsed;
+        const canonical = stagedOf(sourceState({}), CREATOR);
+        const converted = stagedOf(parsed, CREATOR);
+        expect(converted.records.map(encodeJournalRecord)).toEqual(
+            canonical.records.map(encodeJournalRecord)
+        );
+        expect(JSON.stringify(legacy)).toBe(original);
+    });
+
+    test("does not round fractional microseconds or guess a missing timezone", () => {
+        for (const timestamp of [
+            "2020-01-02T00:00:00.123456-08:00",
+            "2020-01-02T00:00:00.123",
+            "2020-13-02T00:00:00.123-08:00",
+        ]) {
+            const nodes = persistedState({}).nodes;
+            const result = readLegacyBootstrapState(persistedState({
+                nodes: [{ ...nodes[0], modifiedAt: timestamp }, nodes[1]],
+            }));
+            expect(isJournalVersionCompatibilityError(result)).toBe(true);
+        }
+    });
+
     test("rejects a persisted identifier outside the supported domain without re-minting it", () => {
         const rejection = readLegacyBootstrapState(
             persistedState({

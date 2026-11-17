@@ -31,8 +31,8 @@ const {
 } = require("../../database");
 const { makeJournalVersionCompatibilityError } = require("../errors");
 const { isNodeKey, nodeKeyToCanonicalString } = require("../basis");
+const { canonicalLegacyTimestamp } = require("./legacy_timestamp");
 const {
-    isCanonicalTimestamp,
     isComputedValue,
     isNodeIdentifier,
     isPlainRecord,
@@ -77,7 +77,8 @@ function unsupportedSource(detail) {
  *   `node` is the key it parses back to;
  * - `nodeIdentifier` is the identifier text the source replica already persists
  *   for this node, transported unchanged;
- * - `payload`, `createdAt` and `modifiedAt` are the persisted occurrence fields;
+ * - `payload` is the persisted occurrence value; `createdAt` and `modifiedAt`
+ *   represent the persisted instants in the canonical Journal timestamp form;
  * - `upToDate` is the persisted freshness of that occurrence;
  * - `directInputKeys` are the keys of the direct legacy inputs `D` for which
  *   legacy validity contains the edge `D -> K`, in canonical persisted order.
@@ -86,7 +87,8 @@ function unsupportedSource(detail) {
  * - `readLegacyBootstrapState(observed)`: rejects a node which is not a plain
  *   record with exactly `NODE_MEMBERS`, a `nodeKeyString` which is not the exact
  *   canonical serialization of the key it parses to, an identifier outside the
- *   domain the record layer accepts, a non-canonical timestamp, a payload the
+ *   domain the record layer accepts, a timestamp not exactly convertible from
+ *   an explicit-zone whole-millisecond legacy instant, a payload the
  *   record layer would refuse, a non-boolean freshness flag, and a `validInputs`
  *   member which is not a canonical node key text or names one input twice.
  *
@@ -269,10 +271,12 @@ function readLegacyNode(observed, label) {
     if (!isComputedValue(payload)) {
         return unsupportedSource(label + " does not persist a readable payload");
     }
-    const createdAt = observed["createdAt"];
-    const modifiedAt = observed["modifiedAt"];
-    if (!isCanonicalTimestamp(createdAt) || !isCanonicalTimestamp(modifiedAt)) {
-        return unsupportedSource(label + " does not persist canonical whole-millisecond timestamps");
+    const createdAt = canonicalLegacyTimestamp(observed["createdAt"]);
+    const modifiedAt = canonicalLegacyTimestamp(observed["modifiedAt"]);
+    if (createdAt === undefined || modifiedAt === undefined) {
+        return unsupportedSource(
+            label + " does not persist exactly representable whole-millisecond timestamps with explicit zones"
+        );
     }
     const upToDate = observed["upToDate"];
     if (typeof upToDate !== "boolean") {
