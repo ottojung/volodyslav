@@ -30,8 +30,13 @@
  *
  * Value serialisation
  * -------------------
- * Database values are serialised to JSON text when written to files
- * (serializeValue) and parsed back from JSON text when read (parseValue).
+ * A snapshot file holds the value in the encoding the key's own sublevel
+ * declares (`sublevel_encoding.js`): a JSON-valued sublevel holds a JSON
+ * document, and a text-valued sublevel — the Journal sublevel — holds the value
+ * itself as text. `serializeRawValue` and `parseRawValue` apply that per-key
+ * decision, because one snapshot directory spans sublevels which do not store
+ * values the same way and a single encoding for the whole directory would
+ * rewrite the Journal sublevel's canonical text as an escaped JSON string.
  *
  * Bijection guarantee
  * -------------------
@@ -39,6 +44,11 @@
  * relativePathToKey are exact inverses:
  *   relativePathToKey(keyToRelativePath(key)) === key
  */
+
+const { TEXT_VALUE_ENCODING, valueEncodingForRawKey } = require('./sublevel_encoding');
+const { isJournalText, journalTextToString, stringToJournalText } = require('./types');
+
+/** @typedef {import('./types').JournalText} JournalText */
 
 // Use uppercase sentinels as the canonical on-disk form for special segments so
 // renderToFilesystem() is deterministic; decode accepts lowercase too so
@@ -241,9 +251,84 @@ function parseValue(content) {
     return JSON.parse(content);
 }
 
+/**
+ * The snapshot file content for the value stored under one raw database key.
+ *
+ * @param {string} rawKey - The raw LevelDB key, whose innermost sublevel name decides the encoding.
+ * @param {unknown} value - The value as the raw database accessors decoded it.
+ * @returns {string} The file content for that key.
+ */
+function serializeRawValue(rawKey, value) {
+    if (valueEncodingForRawKey(rawKey) === TEXT_VALUE_ENCODING) {
+        if (!isJournalText(value)) {
+            throw new JournalTextRequiredError(rawKey);
+        }
+        return journalTextToString(value);
+    }
+    return serializeValue(value);
+}
+
+/**
+ * Thrown when a value that a text-valued sublevel holds is not text.
+ */
+class JournalTextRequiredError extends Error {
+    /** @param {string} rawKey */
+    constructor(rawKey) {
+        super(
+            `Cannot render '${rawKey}' as a snapshot file: the sublevel that key names stores its values as ` +
+                'utf8 text, so a snapshot file holds that text rather than a JSON document'
+        );
+        this.name = 'JournalTextRequiredError';
+        this.rawKey = rawKey;
+    }
+}
+
+/**
+ * The value a snapshot file's content describes, decoded for the sublevel its key names.
+ *
+ * A text-valued sublevel's content is the text itself, and it is wrapped as the
+ * Journal text that sublevel holds. Content that is a JSON string literal is
+ * unwrapped first, because snapshots whose renderer ignored a text sublevel's
+ * declared encoding persisted that text escaped inside a JSON string, and those
+ * snapshot directories are still readable.
+ *
+ * @param {string} rawKey - The raw LevelDB key, whose innermost sublevel name decides the encoding.
+ * @param {string} content - The raw file content.
+ * @returns {unknown} The value to store back into the database.
+ */
+function parseRawValue(rawKey, content) {
+    if (valueEncodingForRawKey(rawKey) === TEXT_VALUE_ENCODING) {
+        return stringToJournalText(unwrapJsonEncodedText(content));
+    }
+    return parseValue(content);
+}
+
+/**
+ * The text a file holds, whether it is that text itself or a JSON string
+ * literal wrapping it.
+ *
+ * @param {string} content
+ * @returns {string}
+ */
+function unwrapJsonEncodedText(content) {
+    /** @type {unknown} */
+    let parsed;
+    try {
+        parsed = JSON.parse(content);
+    } catch (error) {
+        if (error instanceof SyntaxError) {
+            return content;
+        }
+        throw error;
+    }
+    return typeof parsed === 'string' ? parsed : content;
+}
+
 module.exports = {
     keyToRelativePath,
     relativePathToKey,
     serializeValue,
     parseValue,
+    serializeRawValue,
+    parseRawValue,
 };

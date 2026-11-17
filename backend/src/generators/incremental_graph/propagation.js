@@ -21,13 +21,15 @@ const { nodeIdentifierToString, ReplicaStateInvariantError } = require("./databa
  * @param {GraphStorage} storage
  * @param {BatchBuilder} batch
  * @param {NodeIdentifier[]} initialDependents
- * @returns {Promise<void>}
+ * @returns {Promise<NodeIdentifier[]>} The nodes this call transitioned from up-to-date to potentially-outdated.
  */
 async function propagatePotentiallyOutdated(storage, batch, initialDependents) {
     /** @type {Set<string>} */
     const expanded = new Set();
     /** @type {NodeIdentifier[]} */
     const worklist = [...initialDependents];
+    /** @type {NodeIdentifier[]} */
+    const transitioned = [];
 
     while (worklist.length > 0) {
         const current = worklist.pop();
@@ -53,6 +55,7 @@ async function propagatePotentiallyOutdated(storage, batch, initialDependents) {
         }
         if (freshness === "up-to-date") {
             batch.freshness.put(current, "potentially-outdated");
+            transitioned.push(current);
         }
 
         const dependents = await storage.getValid(current, batch);
@@ -63,6 +66,7 @@ async function propagatePotentiallyOutdated(storage, batch, initialDependents) {
             }
         }
     }
+    return transitioned;
 }
 
 module.exports = {

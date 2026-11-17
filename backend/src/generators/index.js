@@ -5,7 +5,9 @@
 
 const { makeInterface, isInterface } = require('./interface');
 const { event: individualEvent } = require('./individual');
-const { isMissingTimestamp } = require('./incremental_graph');
+const {
+    isMissingTimestamp,
+} = require('./incremental_graph');
 
 /** @typedef {import('./interface').Interface} Interface */
 

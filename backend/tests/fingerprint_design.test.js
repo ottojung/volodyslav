@@ -409,10 +409,10 @@ describe('fingerprint design', () => {
             const hostname = 'remote-host';
             const appVersionStr = db.getVersion();
             await db.setGlobalVersion(appVersionStr);
-            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+            await db.syncStagingStorage().global.put('version', appVersionStr);
 
             // Put a different fingerprint in the host's global sublevel.
-            const hostGlobal = db.hostnameSchemaStorage(hostname).global;
+            const hostGlobal = db.syncStagingStorage().global;
             await hostGlobal.put('fingerprint', 'remotehostfingerprint');
             await hostGlobal.put(IDENTIFIERS_KEY, []);
             await hostGlobal.put(LAST_NODE_INDEX_KEY, 0);
@@ -449,9 +449,9 @@ describe('fingerprint design', () => {
             const hostname = 'remote-host';
             const appVersionStr = db.getVersion();
             await db.setGlobalVersion(appVersionStr);
-            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+            await db.syncStagingStorage().global.put('version', appVersionStr);
 
-            const H = db.hostnameSchemaStorage(hostname);
+            const H = db.syncStagingStorage();
             await H.timestamps.put(HOST_NODE_A, { createdAt: TS1, modifiedAt: TS1 });
             await H.freshness.put(HOST_NODE_A, 'up-to-date');
             await H.values.put(HOST_NODE_A, { value: { id: 'a', type: 'test', description: 'a' }, isDirty: false });
@@ -498,7 +498,7 @@ describe('fingerprint design', () => {
             const hostname = 'missing-fp-host';
             const appVersionStr = db.getVersion();
             await db.setGlobalVersion(appVersionStr);
-            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+            await db.syncStagingStorage().global.put('version', appVersionStr);
 
             const active = db.schemaStorageForReplica('x');
             const inactive = db.schemaStorageForReplica('y');
@@ -557,7 +557,7 @@ describe('fingerprint design', () => {
             const inactiveBefore = await snapshot(inactive);
 
             // Deliberately omit fingerprint from host storage.
-            const H = db.hostnameSchemaStorage(hostname);
+            const H = db.syncStagingStorage();
             await H.global.put(IDENTIFIERS_KEY, []);
             await H.global.put(LAST_NODE_INDEX_KEY, 0);
             await H.global.put(GRAPH_SCHEME_KEY, schemeJson);
@@ -587,10 +587,10 @@ describe('fingerprint design', () => {
             const hostname = 'remote-host';
             const appVersionStr = db.getVersion();
             await db.setGlobalVersion(appVersionStr);
-            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+            await db.syncStagingStorage().global.put('version', appVersionStr);
 
             const L = db.schemaStorageForReplica('x');
-            const H = db.hostnameSchemaStorage(hostname);
+            const H = db.syncStagingStorage();
 
             // Both sides have identical graph state (both empty).
             await L.global.put(IDENTIFIERS_KEY, []);

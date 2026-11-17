@@ -40,7 +40,8 @@
  * @property {(key: TKey) => Promise<void>} noFlushDel - Delete a value with sync:false (mirrors noFlushPut)
  * @property {(key: TKey, value: TValue) => DatabasePutOperation<TValue, TKey>} putOp - Store a value operation
  * @property {(key: TKey) => DatabaseDelOperation<TValue, TKey>} delOp - Delete a value operation
- * @property {() => AsyncIterable<TKey>} keys - Iterate over all keys
+ * @property {(options?: {gte?: TKey, lt?: TKey, limit?: number}) => AsyncIterable<TKey>} keys - Iterate keys, optionally within a bounded range
+ * @property {(options?: {gte?: TKey, lte?: TKey, limit?: number}) => AsyncIterable<[TKey, TValue]>} entries - Bounded key/value range iterator
  * @property {() => Promise<void>} clear - Clear all entries
  */
 
@@ -144,12 +145,24 @@ class TypedDatabaseClass {
     }
 
     /**
-     * Iterate over all keys in the database.
+     * Iterate over the database's keys, optionally within a bounded range.
+     * @param {{gte?: TKey, lt?: TKey, limit?: number}} [options]
      * @returns {AsyncIterable<TKey>}
      */
-    async *keys() {
-        for await (const key of this.sublevel.keys()) {
+    async *keys(options) {
+        for await (const key of this.sublevel.keys(options ?? {})) {
             yield key;
+        }
+    }
+
+    /**
+     * Iterate a bounded range without a record point-get or a history scan.
+     * @param {{gte?: TKey, lte?: TKey, limit?: number}} [options]
+     * @returns {AsyncIterable<[TKey, TValue]>}
+     */
+    async *entries(options) {
+        for await (const [key, value] of this.sublevel.iterator(options ?? {})) {
+            yield [key, value];
         }
     }
 

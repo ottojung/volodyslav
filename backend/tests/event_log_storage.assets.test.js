@@ -1,6 +1,7 @@
 const path = require("path");
-const { transaction } = require("../src/event_log_storage");
+const { transaction, isIncompleteEventError } = require("../src/event_log_storage");
 const { targetPath } = require("../src/event/asset");
+const eventId = require("../src/event/id");
 const { makeFromBuffer, makeFromData } = require("../src/filesystem/file_ref");
 const { fromISOString } = require("../src/datetime");
 const { getMockedRootCapabilities } = require("./spies");
@@ -23,8 +24,10 @@ function getTestCapabilities() {
 
 function makeEvent(id) {
     return {
-        id: { identifier: id },
+        id: eventId.fromString(id),
         date: fromISOString("2025-05-13T00:00:00.000Z"),
+        original: "test content",
+        input: "test content",
         creator: { name: "test", uuid: "uuid", version: "1.0.0", hostname: "test-host" },
     };
 }
@@ -76,6 +79,24 @@ describe("event_log_storage assets", () => {
         expect(capabilities.deleter.deleteFile).toHaveBeenCalledWith(
             targetPath(capabilities, goodAsset)
         );
+        await expect(capabilities.interface.getAllEvents()).resolves.toEqual([]);
+    });
+
+    test("refuses an entry which is not a complete event", async () => {
+        const capabilities = getTestCapabilities();
+        const incomplete = {
+            id: eventId.fromString("incomplete-event"),
+            date: fromISOString("2025-05-13T00:00:00.000Z"),
+            creator: { name: "test", uuid: "uuid", version: "1.0.0", hostname: "test-host" },
+        };
+
+        const error = await transaction(capabilities, async (storage) => {
+            storage.addEntry(incomplete, []);
+        }).catch((thrown) => thrown);
+
+        expect(isIncompleteEventError(error)).toBe(true);
+        expect(error.cause.field).toBe("original");
+
         await expect(capabilities.interface.getAllEvents()).resolves.toEqual([]);
     });
 });

@@ -1,0 +1,1 @@
+{"id":"testfingerprnt:10","kind":"validate","node":"{\"head\":\"events_count\",\"args\":[]}","context":[["testfingerprnt","9"]],"authorityTime":{"physical":1775714460000,"logical":"8"},"value":"testfingerprnt:9","basis":[{"input":"{\"head\":\"all_events\",\"args\":[]}","value":"testfingerprnt:1"}],"reason":"compute"}

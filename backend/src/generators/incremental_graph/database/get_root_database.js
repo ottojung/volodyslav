@@ -13,8 +13,10 @@
  *
  * Recovery when the live LevelDB directory is missing (for example, deleted
  * or lost after a format-mismatch crash) is handled by the caller
- * (`internalEnsureInitialized` in lifecycle.js): it performs bootstrap via
- * `synchronizeNoLock` before this module opens the database.
+ * (`internalEnsureInitialized` in lifecycle.js): the absent-state decision
+ * either restores a held continuation-safe snapshot or, on definite absence,
+ * lets this module create the empty database directly. It never merges foreign
+ * history into a fresh database.
  */
 
 const { pathToLiveDatabase } = require('./gitstore');

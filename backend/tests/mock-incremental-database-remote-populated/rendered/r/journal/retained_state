@@ -1,0 +1,1 @@
+{"format":"volodyslav.journal.retained-replay-state","version":1,"localWriter":"testfingerprnt","lastNodeIndex":4,"writers":["testfingerprnt"],"admittedLengths":[["testfingerprnt","11"]],"touched":[],"nodeCount":5,"nodeDigest":"aaa5bf15c340cb31f39a37d8b20ff4235d7d840423501d0d2f5d3414e4df52b1"}

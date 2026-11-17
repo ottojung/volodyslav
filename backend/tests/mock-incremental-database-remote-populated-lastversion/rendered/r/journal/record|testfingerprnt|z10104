@@ -1,0 +1,1 @@
+{"id":"testfingerprnt:4","kind":"validate","node":"{\"head\":\"config\",\"args\":[]}","context":[["testfingerprnt","3"]],"authorityTime":{"physical":1775714460000,"logical":"2"},"value":"testfingerprnt:3","basis":[],"reason":"compute"}

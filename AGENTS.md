@@ -1,3 +1,22 @@
+## Journal 3 integration scope
+
+Journal 3 implementation must not become a vehicle for unrelated infrastructure,
+test-runner policy, or application API changes. In the Journal 3 waterfall PR:
+
+- Do not add Jest configuration files, timeout-resolution modules, worker-count
+  ceilings, wrapper launchers, or CI scripts that restrict test parallelism. Use
+  the repository's existing Jest configurations as they stand on `master`.
+- Do not change `backend/src/index.js` or the root `README.md` relative to
+  `master`. Do not add standalone review artifacts under `docs/reviews/`.
+- Do not extend the root capabilities object or add deployment-provided
+  capabilities. Any requirement that appears to need one must be escalated as
+  an explicit design conflict, not silently added to the Journal 3 PR.
+- Carry unrelated ESLint fixes independently on `master`, not inside Journal 3.
+
+Never satisfy these scope rules by silently weakening Journal 3 correctness or
+inventing replacement persistence/recovery behavior. Record any conflict and
+leave the release blocked until it has a sound resolution.
+
 # Project Overview
 This is a JavaScript project with JSDoc typing for a highly reliable event logging system. It consists of a Node.js backend and a React frontend in a monorepo structure.
 

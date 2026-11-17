@@ -41,6 +41,7 @@
  * @property {AITranscription} aiTranscription - AI transcription capability.
  * @property {NonDeterministicSeed} seed - A random number generator instance.
  * @property {import('../../generators').Interface} interface - The incremental graph interface capability.
+
  */
 
 module.exports = {};
