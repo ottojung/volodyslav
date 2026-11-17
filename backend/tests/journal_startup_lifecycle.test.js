@@ -42,6 +42,10 @@ const allEventsModule = require("../src/generators/individual/all_events/wrapper
 const metaEventsComputor = require("../src/generators/individual/meta_events/wrapper").computor;
 const eventId = require("../src/event/id");
 const { fromISOString } = require("../src/datetime");
+const { DateTime: LuxonDateTime } = require("luxon");
+const { canonicalJournalTimestamp } = require(
+    "../src/generators/incremental_graph/journal/canonical_timestamp"
+);
 const { makeInterface } = require("../src/generators/interface");
 const { gitCanonicalBootstrapSource } = require("../src/generators/incremental_graph");
 const { queryCanonicalBootstrap, isCanonicalBootstrapExists } = require("../src/generators/incremental_graph/journal/bootstrap");
@@ -394,6 +398,71 @@ describe("Journal 3 startup canonical-bootstrap gate", () => {
         const meta = await readInstalledGraph(capabilities, db);
         expect(meta.type).toBe("meta_events");
         expect(meta.meta_events).toHaveLength(2);
+        await db.close();
+    });
+
+    test("real pre-Journal offset timestamps bootstrap without modifying the old active replica", async () => {
+        const { db } = await preJournalReplica();
+        const oldReplica = db.currentReplicaName();
+        const oldStorage = db.getSchemaStorage();
+        const lookup = await oldStorage.global.get("identifiers_keys_map");
+        const original = new Map();
+        for (const [identifier] of lookup) {
+            const before = await oldStorage.timestamps.get(identifier);
+            const local = (iso) => LuxonDateTime.fromISO(iso, { setZone: true })
+                .setZone("America/Vancouver").toISO({ suppressMilliseconds: false });
+            const changed = {
+                createdAt: local(before.createdAt),
+                modifiedAt: local(before.modifiedAt),
+            };
+            expect(changed.modifiedAt).toMatch(/[+-]0[78]:00$/);
+            await oldStorage.timestamps.put(identifier, changed);
+            original.set(identifier, changed);
+        }
+        const calls = { queries: 0, publications: 0, published: [] };
+        const result = await runCanonicalBootstrapGate({
+            rootDatabase: db,
+            nodeDefs: nodeDefsOf(),
+            source: emptyCohortSource(calls),
+        });
+        expect(result.status).toBe("canonical-bootstrapped");
+        expect(result.operation).toBe("resume-canonical-creator");
+        expect(db.currentReplicaName()).not.toBe(oldReplica);
+        expect(calls.publications).toBe(1);
+        for (const [identifier, before] of original) {
+            expect(await oldStorage.timestamps.get(identifier)).toEqual(before);
+            const installed = await db.getSchemaStorage().timestamps.get(identifier);
+            expect(installed.createdAt).toBe(
+                canonicalJournalTimestamp(LuxonDateTime.fromISO(before.createdAt).toMillis())
+            );
+            expect(installed.modifiedAt).toBe(
+                canonicalJournalTimestamp(LuxonDateTime.fromISO(before.modifiedAt).toMillis())
+            );
+        }
+        await db.close();
+    });
+
+    test("a canonical artifact can be joined by a legacy replica with offset timestamps", async () => {
+        const { db } = await preJournalReplica();
+        const oldStorage = db.getSchemaStorage();
+        const sourceArtifact = await foreignArtifactOf(db, OTHER_CREATOR);
+        const lookup = await oldStorage.global.get("identifiers_keys_map");
+        for (const [identifier] of lookup) {
+            const before = await oldStorage.timestamps.get(identifier);
+            const offset = (iso) => LuxonDateTime.fromISO(iso, { setZone: true })
+                .setZone("America/Vancouver").toISO({ suppressMilliseconds: false });
+            await oldStorage.timestamps.put(identifier, {
+                createdAt: offset(before.createdAt), modifiedAt: offset(before.modifiedAt),
+            });
+        }
+        const result = await runCanonicalBootstrapGate({
+            rootDatabase: db,
+            nodeDefs: nodeDefsOf(),
+            source: holdingCohortSource(sourceArtifact),
+        });
+        expect(result.status).toBe("canonical-bootstrapped");
+        expect(result.operation).toBe("join-canonical-bootstrap");
+        expect(await retainedRecordCount(db)).toBeGreaterThan(0);
         await db.close();
     });
 
